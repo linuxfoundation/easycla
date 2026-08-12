@@ -1,9 +1,9 @@
 # Phase 0 Research: M2 — backend spikes
 
-**Input**: [spec.md](spec.md) open questions 2 and 4 | [plan.md](plan.md) Complexity Tracking risks 1 and 2
-**Date**: 2026-08-11 | **Status**: both spikes resolved; recommendations below feed `/speckit.clarify` and the contracts
+**Input**: [spec.md](spec.md) open questions 2 and 4 (Spikes 1–2) and 1 and 5 (Addendum) | [plan.md](plan.md) Complexity Tracking risks 1–5
+**Date**: 2026-08-11, addendum 2026-08-12 | **Status**: **all five spec open questions resolved**; one measurement outstanding (CLA-group cardinality, FR-001a). Recommendations below feed the contracts.
 
-These are the two `[NEEDS CLARIFICATION]` items that block M2's sign-entry and ECLA-invalidation paths. Neither was answerable from the requirements text — both needed the code traced. Every claim below cites the file and line it was read from (`cla-backend-go` and `easycla-contributor-console` at `dev`/`main`, 2026-08-11).
+Spikes 1 and 2 (2026-08-11) trace the two `[NEEDS CLARIFICATION]` items that blocked M2's sign-entry and ECLA-invalidation paths. The [addendum](#addendum-2026-08-12--open-questions-1-and-5-resolved-mockup-read-in-full) (2026-08-12) closes the remaining two open questions and records a full read of the Final/v16 mockup. Neither spike was answerable from the requirements text — both needed the code traced. Every claim cites the file and line it was read from (`cla-backend-go`, `easycla-contributor-console`, and `lfx-self-serve` at `dev`/`main`; mockup at `easyclav2-migration-planning@86f5a35`).
 
 ---
 
@@ -126,6 +126,67 @@ New swagger-first endpoint in `cla-backend-go` for self-service ECLA invalidatio
 
 ### Remaining open
 
-- FR-001's listing endpoint (open question 5, narrowed — which existing endpoint serves the name search).
-- Open question 1's identity-binding operation shape (create-vs-enrich branches, gateway auth). Spike 1 confirms *why* it's load-bearing: `acl = github:{user.GithubID}` at `v2/sign/service.go:1433` means the GitHub ID must be bound **before** signing, or the proactive signature carries an empty ACL.
-- ECLA "Download PDF" mockup discrepancy — still awaiting PM.
+All three items listed here on 2026-08-11 were resolved on 2026-08-12 — see the addendum below.
+
+---
+
+## Addendum (2026-08-12) — open questions 1 and 5 resolved; mockup read in full
+
+Two verification checks plus a full read of the Final/v16 mockup. Sources: `cla-backend-go` and `lfx-self-serve` at their working trees, and `easyclav2-migration-planning@86f5a35`.
+
+### Check A — GitHub identity types are compatible (resolves a caveat on open question 1)
+
+Spike 1 left an unverified caveat: whether SS's GitHub identity and EasyCLA's `user.GithubID` are the same type. They are, and the comparison key is the **numeric GitHub ID**:
+
+- EasyCLA declares `user_github_id` as a Go `string` (`users/models.go:18`) but stores and queries it as a **number**: `GetUserByUserName` strips the `github:` prefix, `strconv.Atoi`s it, and queries the `github-id-index` GSI with an integer (`users/repository.go:719-728`). Its comment states the ACL format outright — *"Username for GitHub comes in as github:123456"*. This is the only consumer of the `github:` ACL prefix in the repo.
+- SS already produces the same shape: `githubIds` via `normalizeGithubId()`, which reduces Auth0's `github|13434323` form to the bare numeric ID, keeping `githubUsernames` as a separate list (`server/services/cla.service.ts:193-196`).
+
+**Consequence, and a new rule**: SS carries `githubIds` as an **array** — multiple linked GitHub identities are possible — while a signature ACL binds exactly one. The sign flow needs a picker when several are linked (now spec FR-004), which is also what the mockup's authorize-the-account note implies.
+
+### Open question 1 — resolved by *not* building a binding operation
+
+The open `[NEEDS CLARIFICATION]` was the shape of a backend-owned identity-binding operation (create-vs-enrich branches, gateway auth). **Recommendation adopted: build neither branch.** SS runs a read-only pre-flight against the already-shipped `GET /v4/my-clas/identities`, gates per repo-source type (Gerrit needs no GitHub ID), and when the identity is missing hands off to the Console's existing GitHub OAuth, which binds it as it does today.
+
+Why the write path was rejected rather than designed:
+
+1. **`user.GithubID` is merge-gating state.** It becomes the signature ACL (`v2/sign/service.go:1433`) that the PR check resolves against. A second writer means two systems can disagree about which contributor owns a GitHub ID, and the casualty is a signature that gates merges.
+2. **The hazard is already proven on this branch.** Commit `d0a4f81e0` exists specifically to guard enrichment against overwriting a bound GitHub ID. Adding SS as a caller multiplies the paths that can trip that guard.
+3. **The design already puts linking elsewhere.** The mockup carries a dedicated **Identities** tab and the note *"You'll be asked to authorize the account you want to use (GitHub or GitLab) before EasyCLA opens"* — authorization in the hand-off, not pre-bound in SS.
+
+**Cost**: a contributor without a bound GitHub ID sees one OAuth screen they would have avoided. Judged the correct trade against a second writer into merge-gating identity state. **Deferred to M3**: reconciling a GitHub ID bound to a *different* EasyCLA record — log-only in M2, since reconciliation has real support implications.
+
+### Open question 5 — resolved: a new endpoint is required, and the current one's search is dead
+
+The question assumed an existing listing endpoint could be reused. None can:
+
+- `listClaGroupsUnderFoundation` (`GET /foundation/{projectSFID}/cla-groups`) and `listFoundationClaGroups` (`GET /foundation-mapping`) are both **scope-bound** by foundation/project SFID; the Sign CLA modal searches with no scope.
+- `GetCLAGroupByName` (`project/repository/repository.go:408-440`) is **exact-match only** via the `project-name-lower-search-index` GSI on `project_name_lower`.
+- **`GetCLAGroups` (`:525`) accepts `SearchField`/`SearchTerm`/`FullMatch` and ignores them.** It logs them at `:529-533`, then builds `expression.NewBuilder().WithProjection(buildProjection()).Build()` at `:538` — projection only, no `WithFilter` — so `expr.Filter()` at `:547` is nil. The endpoint is an unfiltered full-table `Scan` whose search parameters are decorative. **This is a latent bug**, and it has a direct bearing on the caching question below: search performance on this table has never actually been measured, so any claim that "DynamoDB can't do this" is inherited, not tested.
+
+Scope is also wider than the question assumed — the mockup searches **four** sources (`onSearchInput()`, mockup script `:540-544`): project name, CLA-group name, org name (with GitHub/GitLab/Gerrit provenance rendered by `orgDisplay()`), and repo URL. The earlier `RepositoryNameIndex`/`GitHubGetRepositoryByName` resolver remains right for the pasted-URL case — now one of four inputs.
+
+### On building a cache for the search (recommendation: not in M2)
+
+The proposal was a simple cache over DynamoDB to make search instant. Recommendation is **measure first, and if measurement demands a layer, use OpenSearch rather than a bespoke cache**:
+
+1. **Correctness outranks latency here.** A stale entry means a contributor signs against the **wrong CLA Group** — legal-correctness, not perf.
+2. **Invalidation spans four write paths, once per search source** — CLA-group create/rename, project enroll/unenroll (`unenrollProjects` exists today), org and repo additions.
+3. **Lambda undercuts in-process caching** — cold containers start empty; concurrency yields N copies with N staleness windows. A real cache therefore means shared infrastructure (ElastiCache/DAX/OpenSearch): new IaC, cost, failure mode, on-call surface — disproportionate in a milestone whose other backend deltas are single-condition changes.
+4. **A cache doesn't provide what "instant search" needs** — no ranking, no fuzzy matching, no prefix-across-fields. It buys invalidation complexity without search capability.
+5. **Cheaper levers first**: fix the dead filter, ~200 ms client debounce, server-side result cap, dropdown-only projection.
+
+**Explicitly unverified**: the CLA-group row count. The assumption is hundreds to low thousands (staff-created legal constructs, not user-generated content), which is where a projected scan is comfortably fast. It **could not be measured** in this session — no `lfproduct-*` profile exists in the local `~/.aws/config` (only `lfx-*`), and those SSO tokens were expired with no interactive browser flow available. Recorded in spec.md under *Performance assumptions* as an assumption to verify, not a finding. If per-keystroke **repo-URL** search is required at full fidelity, cardinality is genuinely much larger and the fallback is exact/suffix GSI matching before any indexing layer.
+
+### Mockup read in full — three items the artifacts were missing
+
+Previously only copy strings had been extracted. Reading Final/v16 end to end surfaced:
+
+- **The Download PDF "discrepancy" does not exist.** ICLA rows render a real `<a>` (rows 1/2/5/6); ECLA rows render a **disabled** `<span class="ccla-note">` with `cursor:not-allowed` and `title="Covered by Corporate CLA (CCLA)"` (rows 3/4). The mockup already encodes the no-ECLA-PDF backend reality. The item flagged for PM on 2026-08-08 was a misreading; **no PM input needed** — now spec FR-011a.
+- **A row action no FR covered: "Request approval."** Present only on the Needs-attention ECLA (mockup `:333`) and **removed** when the row becomes Invalidated (`confirmInvalidate()` removes `.approve-group`, `:674-675`). Now specified in FR-011 as conditional on that state.
+- **Exact status vocabulary, which pins FR-010 and forces FR-010a.** Three pills — `Valid`; `Needs attention` with *"No longer matches {company}'s approval criteria."*; `Invalidated` with *"You confirmed you no longer work at {company}."* The middle state is unrepresentable today: `row.Valid = sig.SignatureApproved && covered` (`v2/my_clas/service.go:218`) collapses approved-ness and coverage, and telling self- from manager-invalidation needs a third input (FR-008b's reason/actor). Hence FR-010a's three independent fields — the largest single M2 change to the My CLAs read path, and coupled to Spike 2's marker since they are the same field.
+
+Also noted: the ECLA type chip carries the company inline (`ECLA · IBM`), and the invalidate modal requires typing `INVALIDATE` (`:439`) — a friction gate the spec's copy did not mention.
+
+### Net effect
+
+All five spec open questions are now resolved. **Nothing remains blocked on clarification** — the one outstanding item is a *measurement* (CLA-group cardinality, for FR-001a). Two decisions deliberately keep M2's Simplicity gate intact: no SS-owned identity-binding operation, and no bespoke cache or new datastore. Risk 4 (status) grew from "small SS-side delta" to a joint-largest backend item and is now coupled to risk 1 through the shared provenance field; risk 5 (search endpoint) is new.
