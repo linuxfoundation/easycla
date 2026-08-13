@@ -180,8 +180,9 @@ trust (spec: "an incomplete list here erodes trust in every later milestone"). D
 lookups degrade per row where they are coverage evaluation: a missing CLA group name
 is omitted; a missing company, a sanctioned employer, a missing approved+signed CCLA,
 or a company/CCLA lookup error marks that ECLA `status=unknown` and still returns the
-rest of the list. CLA-group name and Salesforce project lookup failures remain
-whole-list errors (they are not coverage evaluation).
+rest of the list. CLA-group name lookup (anything other than "does not exist") and
+`projects_cla_groups` mapping failures remain whole-list errors. A Salesforce
+project-service miss only leaves the logo empty.
 
 On `user_emails` (why `secondaryEmail` is separate): the attribute is a DynamoDB
 string set and **cannot be GSI-indexed**, so matching it requires a table scan. The
@@ -418,7 +419,8 @@ dropped by the ownership enforcement, `"<parameter>:<value>"` strings, always pr
 Errors: `401` (token carries no username — also returned by the gateway for a
 missing/invalid token before the request reaches EasyCLA), `400` (admin caller with no
 username and no identity keys at all), `403` (ACS deny at the gateway), `500`
-(CLA-group name or Salesforce project lookup failure — coverage evaluation errors
+(CLA-group name or `projects_cla_groups` mapping lookup failure — a Salesforce
+project-service miss leaves the logo empty; coverage evaluation errors
 degrade that row instead).
 
 An identity that resolves to zero user records returns `200` with empty
