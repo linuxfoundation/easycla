@@ -518,3 +518,19 @@ func (mr *MockSignatureServiceMockRecorder) UserIsApproved(ctx, user, cclaSignat
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UserIsApproved", reflect.TypeOf((*MockSignatureService)(nil).UserIsApproved), ctx, user, cclaSignature)
 }
+
+// EvaluateUserApproval mocks base method.
+func (m *MockSignatureService) EvaluateUserApproval(ctx context.Context, user *models.User, cclaSignature *models.Signature) (bool, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EvaluateUserApproval", ctx, user, cclaSignature)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// EvaluateUserApproval indicates an expected call of EvaluateUserApproval.
+func (mr *MockSignatureServiceMockRecorder) EvaluateUserApproval(ctx, user, cclaSignature interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EvaluateUserApproval", reflect.TypeOf((*MockSignatureService)(nil).EvaluateUserApproval), ctx, user, cclaSignature)
+}

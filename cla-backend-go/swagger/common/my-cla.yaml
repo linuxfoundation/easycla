@@ -56,6 +56,22 @@ properties:
       not sanctioned, the employer still holds an approved+signed CCLA for the CLA Group, and
       the user still matches the current CCLA approval lists (email, email domain,
       GitHub/GitLab username, GitHub organization)
+  status:
+    type: string
+    x-omitempty: false
+    enum: [valid, needs_attention, invalidated, unknown]
+    description: >
+      Contributor-facing standing, independent of approved and valid. valid when coverage
+      completed and the user is covered; needs_attention only when coverage completed and
+      proved an Approved List miss; invalidated when the stored approval flag is false;
+      unknown when coverage could not be evaluated. ICLA is only valid or invalidated.
+  statusReason:
+    type: string
+    enum: [not_on_approval_list, unknown]
+    description: >
+      Why the standing is not valid. Omitted on valid rows and every ICLA.
+      not_on_approval_list is a completed Approved List miss; unknown is every other
+      unevaluable ECLA coverage outcome. Only these two tokens exist.
   documentMajorVersion:
     type: integer
     x-omitempty: false

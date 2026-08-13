@@ -176,10 +176,12 @@ the same key (one person with multiple records), which would silently drop histo
 
 Empty results are simply empty; any EasyCLA repository lookup error fails the request (`500`) — user-service failures instead skip and report the affected keys rather
 than silently returning a partial history — an incomplete list would erode user
-trust (spec: "an incomplete list here erodes trust in every later milestone"). The
-same rule applies to the display lookups: a *missing* CLA group or company record
-degrades gracefully (name omitted / ECLA marked invalid), while any other data-layer
-error fails the request.
+trust (spec: "an incomplete list here erodes trust in every later milestone"). Display
+lookups degrade per row where they are coverage evaluation: a missing CLA group name
+is omitted; a missing company, a sanctioned employer, a missing approved+signed CCLA,
+or a company/CCLA lookup error marks that ECLA `status=unknown` and still returns the
+rest of the list. CLA-group name and Salesforce project lookup failures remain
+whole-list errors (they are not coverage evaluation).
 
 On `user_emails` (why `secondaryEmail` is separate): the attribute is a DynamoDB
 string set and **cannot be GSI-indexed**, so matching it requires a table scan. The
@@ -269,13 +271,18 @@ boolean:
      - email-domain approval list — regex patterns (`*.corp.com`, `*corp.com`,
        `.corp.com`, `corp.com` forms);
      - GitHub org approval list — live lookup of the user's **public** GitHub org
-       memberships (transient GitHub API failures are treated as "no match", never as
-       an error — same as gating);
+       memberships. **Listing vs sign differ on lookup failure.** The sign path
+       (`ProcessEmployeeSignature` → `UserIsApproved`) still treats a GitHub API
+       blip as "no match" (`false, nil`) so `/v3/sign` does not 500. The listing
+       path calls a listing-only evaluator that reports the lookup as failed, and
+       the row is `status=unknown` rather than a completed Approved List miss.
      - GitLab group approval list — `UserIsApproved` cannot evaluate group membership
        live (that needs per-group OAuth tokens held by the MR-gating service), so when
        the CCLA carries GitLab group approvals and nothing else matched, the check
        **defers to the `signature_approved` flag** (which the approval-list
        invalidation flow maintains) instead of wrongly reporting the ECLA invalid.
+       `valid` therefore stays `true`; `status` is `unknown` because membership was
+       not actually evaluated.
 
   This is checked **at request time inside the API**, because approval lists change
   after acknowledgements are recorded. Approval-list edits do synchronously invalidate
@@ -283,6 +290,27 @@ boolean:
   reflects removals — the live re-check is the belt-and-braces guarantee the task
   demands, and it also catches drift (e.g. a user who left the company's GitHub org,
   or edits where the invalidation pass missed a record).
+
+`approved` and `valid` keep the formulae above. Additive `status` / `statusReason`
+are the contributor-facing standing and must not be inferred from those two booleans:
+
+| `claType` | `approved` | coverage | `status` | `statusReason` |
+|---|---|---|---|---|
+| icla | true | n/a | `valid` | omitted |
+| icla | false | n/a | `invalidated` | omitted |
+| ecla | false | any | `invalidated` | omitted |
+| ecla | true | completed, covered | `valid` | omitted |
+| ecla | true | completed, not on the lists | `needs_attention` | `not_on_approval_list` |
+| ecla | true | unevaluable | `unknown` | `unknown` |
+
+Unevaluable coverage includes: nil/error company, sanctioned employer, no
+approved+signed CCLA, `GetCorporateSignature` error, `UserIsApproved` error,
+GitHub-org lookup fail, GitLab group fallback. `needs_attention` is **only** a
+completed Approved List miss. There are no cause-specific reason tokens
+(`company_sanctioned`, `no_approved_ccla`, …).
+
+A `GetCorporateSignature` or non-`CompanyNotFound` company lookup error degrades
+**that row** to `unknown` and still returns sibling rows. It no longer 500s the list.
 
 The user record used for the approval-list check is the record that **owns** the ECLA
 (`signature_reference_id`), matching how gating evaluates that user — not the union of
@@ -316,6 +344,7 @@ sampling (SC-001) and support.
       "signed": true,
       "approved": true,
       "valid": true,
+      "status": "valid",
       "documentMajorVersion": 2,
       "documentMinorVersion": 0,
       "pdfAvailable": true
@@ -333,6 +362,7 @@ sampling (SC-001) and support.
       "signed": true,
       "approved": true,
       "valid": true,
+      "status": "valid",
       "documentMajorVersion": 2,
       "documentMinorVersion": 0,
       "pdfAvailable": false
@@ -349,6 +379,7 @@ sampling (SC-001) and support.
       "signed": true,
       "approved": false,
       "valid": false,
+      "status": "invalidated",
       "documentMajorVersion": 2,
       "documentMinorVersion": 0,
       "pdfAvailable": false
@@ -371,7 +402,9 @@ Field reference (`my-cla` rows):
 | `userID` | string | The owning EasyCLA user record — lets the consumer correlate rows with `userIds` and with other per-user endpoints |
 | `signedOn` | string | Signing/acknowledgement date (fallback: record creation date) |
 | `signed` / `approved` | bool | Raw signature flags |
-| `valid` | bool | Computed as defined above |
+| `valid` | bool | Computed as defined above. Unchanged by `status`. |
+| `status` | `valid` \| `needs_attention` \| `invalidated` \| `unknown` | Contributor-facing standing. Always present. Independent of `approved`/`valid`. ICLA is only `valid` or `invalidated`. |
+| `statusReason` | `not_on_approval_list` \| `unknown` | Why the standing is not `valid`. Omitted on valid rows and every ICLA. Two tokens only. |
 | `documentMajorVersion` / `documentMinorVersion` | int | CLA document version that was signed (display/superseded detection is the consumer's choice) |
 | `pdfAvailable` | bool | `true` when the record is a signed ICLA eligible for PDF retrieval (ECLAs have no signed document — FR-002); invalidated ICLAs stay eligible (it is the user's own signed legal record); actual S3 object availability is verified by the PDF endpoint on request |
 
@@ -383,7 +416,8 @@ dropped by the ownership enforcement, `"<parameter>:<value>"` strings, always pr
 Errors: `401` (token carries no username — also returned by the gateway for a
 missing/invalid token before the request reaches EasyCLA), `400` (admin caller with no
 username and no identity keys at all), `403` (ACS deny at the gateway), `500`
-(upstream data-layer failure — no partial results are returned).
+(CLA-group name or Salesforce project lookup failure — coverage evaluation errors
+degrade that row instead).
 
 An identity that resolves to zero user records returns `200` with empty
 `userIds`/`clas` (`resultCount: 0`) — that is the Self Serve "unmatched" empty state,

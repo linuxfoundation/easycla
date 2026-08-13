@@ -243,6 +243,24 @@ func TestUserIsApproved_GithubOrgApprovalList(t *testing.T) {
 	}
 }
 
+func TestEvaluateUserApproval_GithubOrgLookupFailed(t *testing.T) {
+	ctx := context.Background()
+	stubListUserPublicOrgs(t, nil, errors.New("simulated 502 from github"))
+
+	svc := NewService(nil, nil, nil, nil, false, nil, nil, nil, nil, "", "", "")
+	user := &v1Models.User{GithubUsername: "grace"}
+	ccla := &v1Models.Signature{GithubOrgApprovalList: []string{"acme"}}
+
+	approved, lookupFailed, err := svc.EvaluateUserApproval(ctx, user, ccla)
+	assert.NoError(t, err)
+	assert.False(t, approved)
+	assert.True(t, lookupFailed, "listing must see a GitHub-org lookup failure as failed, not a completed miss")
+
+	ok, wrapErr := svc.UserIsApproved(ctx, user, ccla)
+	assert.NoError(t, wrapErr)
+	assert.False(t, ok, "UserIsApproved must still swallow the lookup failure as (false, nil)")
+}
+
 // TestListUserPublicOrgs_RejectsEmptyUser guards the public helper itself:
 // go-github routes an empty user string to GET /user/orgs (the authenticated
 // bot's own orgs), so an empty argument must never silently succeed.

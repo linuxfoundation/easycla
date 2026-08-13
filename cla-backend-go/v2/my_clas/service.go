@@ -68,6 +68,7 @@ type PlatformUsersService interface {
 type SignaturesService interface {
 	GetCorporateSignature(ctx context.Context, claGroupID, companyID string, approved, signed *bool) (*v1Models.Signature, error)
 	UserIsApproved(ctx context.Context, user *v1Models.User, cclaSignature *v1Models.Signature) (bool, error)
+	EvaluateUserApproval(ctx context.Context, user *v1Models.User, cclaSignature *v1Models.Signature) (approved bool, githubOrgLookupFailed bool, err error)
 }
 
 // CompanyRepository is the subset of the company repository used to resolve employers
@@ -158,7 +159,7 @@ func (s *service) GetMyClas(ctx context.Context, currentUsername string, admin b
 	projectInfos := make(map[string]projectInfo)
 	companies := make(map[string]*v1Models.Company)
 	cclas := make(map[string]*v1Models.Signature)
-	approvals := make(map[string]bool)
+	approvals := make(map[string]eclaCoverage)
 
 	for _, userModel := range userModels {
 		result.UserIds = append(result.UserIds, userModel.UserID)
@@ -200,22 +201,27 @@ func (s *service) GetMyClas(ctx context.Context, currentUsername string, admin b
 				row.ClaType = utils.ClaTypeICLA
 				row.Valid = sig.SignatureApproved
 				row.PdfAvailable = true
+				assignMyClaStatus(&row, false, false)
 			} else {
 				row.ClaType = utils.ClaTypeECLA
 				row.CompanyID = sig.SignatureUserCompanyID
 				companyModel, companyErr := s.company(ctx, companies, sig.SignatureUserCompanyID)
 				if companyErr != nil {
-					return nil, companyErr
+					log.WithFields(f).WithError(companyErr).Warn("unable to lookup the employer for the employee acknowledgement - degrading the row")
+					companyModel = nil
 				}
 				if companyModel != nil {
 					row.CompanyName = companyModel.CompanyName
 					row.SigningEntityName = companyModel.SigningEntityName
 				}
-				covered, coveredErr := s.eclaCoveredByCurrentApprovalList(ctx, cclas, approvals, userModel, companyModel, sig)
+				covered, unevaluable, coveredErr := s.eclaCoveredByCurrentApprovalList(ctx, cclas, approvals, userModel, companyModel, sig)
 				if coveredErr != nil {
-					return nil, coveredErr
+					log.WithFields(f).WithError(coveredErr).Warn("unable to evaluate coverage for the employee acknowledgement - degrading the row")
+					covered = false
+					unevaluable = true
 				}
 				row.Valid = sig.SignatureApproved && covered
+				assignMyClaStatus(&row, covered, unevaluable)
 			}
 
 			result.Clas = append(result.Clas, row)
@@ -662,11 +668,46 @@ func (s *service) resolveUsers(ctx context.Context, identity *Identity) ([]*v1Mo
 	return userModels, nil
 }
 
+// eclaCoverage is the listing-internal coverage outcome. covered still drives
+// `valid`; unevaluable means a genuine approval-list check did not complete.
+type eclaCoverage struct {
+	covered     bool
+	unevaluable bool
+}
+
+// assignMyClaStatus sets status / statusReason independently of approved / valid.
+// ICLA is binary. ECLA needs_attention only after a completed list miss.
+func assignMyClaStatus(row *models.MyCla, covered, unevaluable bool) {
+	if row.ClaType == utils.ClaTypeICLA {
+		if row.Approved {
+			row.Status = models.MyClaStatusValid
+		} else {
+			row.Status = models.MyClaStatusInvalidated
+		}
+		return
+	}
+	if !row.Approved {
+		row.Status = models.MyClaStatusInvalidated
+		return
+	}
+	if unevaluable {
+		row.Status = models.MyClaStatusUnknown
+		row.StatusReason = models.MyClaStatusReasonUnknown
+		return
+	}
+	if covered {
+		row.Status = models.MyClaStatusValid
+		return
+	}
+	row.Status = models.MyClaStatusNeedsAttention
+	row.StatusReason = models.MyClaStatusReasonNotOnApprovalList
+}
+
 // eclaCoveredByCurrentApprovalList mirrors the PR gating logic (signatures service
 // ProcessEmployeeSignature/UserIsApproved): the company must not be sanctioned, must
 // hold an approved+signed CCLA for the CLA Group, and the user must match its current
 // approval lists
-func (s *service) eclaCoveredByCurrentApprovalList(ctx context.Context, cclas map[string]*v1Models.Signature, approvals map[string]bool, userModel *v1Models.User, companyModel *v1Models.Company, sig *signatures.ItemSignature) (bool, error) {
+func (s *service) eclaCoveredByCurrentApprovalList(ctx context.Context, cclas map[string]*v1Models.Signature, approvals map[string]eclaCoverage, userModel *v1Models.User, companyModel *v1Models.Company, sig *signatures.ItemSignature) (bool, bool, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.my_clas.service.eclaCoveredByCurrentApprovalList",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -676,7 +717,7 @@ func (s *service) eclaCoveredByCurrentApprovalList(ctx context.Context, cclas ma
 	}
 
 	if companyModel == nil || companyModel.IsSanctioned {
-		return false, nil
+		return false, true, nil
 	}
 
 	cclaKey := sig.SignatureProjectID + "|" + sig.SignatureUserCompanyID
@@ -686,32 +727,39 @@ func (s *service) eclaCoveredByCurrentApprovalList(ctx context.Context, cclas ma
 		cclaModel, cclaErr := s.signaturesService.GetCorporateSignature(ctx, sig.SignatureProjectID, sig.SignatureUserCompanyID, &approved, &signed)
 		if cclaErr != nil {
 			log.WithFields(f).WithError(cclaErr).Warn("unable to lookup the corporate signature for the employee acknowledgement")
-			return false, cclaErr
+			return false, true, nil
 		}
 		ccla = cclaModel
 		cclas[cclaKey] = ccla
 	}
 	if ccla == nil {
-		return false, nil
+		return false, true, nil
 	}
 
 	approvalKey := cclaKey + "|" + userModel.UserID
-	if covered, ok := approvals[approvalKey]; ok {
-		return covered, nil
+	if cached, ok := approvals[approvalKey]; ok {
+		return cached.covered, cached.unevaluable, nil
 	}
-	covered, approvedErr := s.signaturesService.UserIsApproved(ctx, userModel, ccla)
+	covered, githubOrgLookupFailed, approvedErr := s.signaturesService.EvaluateUserApproval(ctx, userModel, ccla)
+	unevaluable := false
 	if approvedErr != nil {
 		log.WithFields(f).WithError(approvedErr).Warn("unable to evaluate the approval list for the employee acknowledgement")
 		covered = false
+		unevaluable = true
+	}
+	if githubOrgLookupFailed {
+		unevaluable = true
 	}
 	// UserIsApproved cannot evaluate GitLab group membership (it needs per-group OAuth
 	// tokens); defer to the signature_approved flag, which the approval-list
-	// invalidation flow maintains (see docs/MY_CLAS_API.md).
+	// invalidation flow maintains (see docs/MY_CLAS_API.md). Membership was not
+	// actually evaluated, so the row stays unevaluable for status.
 	if !covered && approvedErr == nil && len(ccla.GitlabOrgApprovalList) > 0 {
 		covered = true
+		unevaluable = true
 	}
-	approvals[approvalKey] = covered
-	return covered, nil
+	approvals[approvalKey] = eclaCoverage{covered: covered, unevaluable: unevaluable}
+	return covered, unevaluable, nil
 }
 
 func (s *service) claGroupName(ctx context.Context, cache map[string]string, claGroupID string) (string, error) {

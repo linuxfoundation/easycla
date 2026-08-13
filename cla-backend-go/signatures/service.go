@@ -79,6 +79,10 @@ type SignatureService interface {
 	// handleGitHubStatusUpdate(ctx context.Context, employeeUserModel *models.User) error
 	ProcessEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, user *models.User) (*bool, error)
 	UserIsApproved(ctx context.Context, user *models.User, cclaSignature *models.Signature) (bool, error)
+	// EvaluateUserApproval is the listing-capable approval check. githubOrgLookupFailed
+	// is set when the GitHub public-orgs lookup errors; UserIsApproved wraps this and
+	// still returns (false, nil) in that case so /v3/sign does not 500.
+	EvaluateUserApproval(ctx context.Context, user *models.User, cclaSignature *models.Signature) (approved bool, githubOrgLookupFailed bool, err error)
 }
 
 type service struct {
@@ -1605,9 +1609,17 @@ func (s service) ProcessEmployeeSignature(ctx context.Context, companyModel *mod
 }
 
 func (s service) UserIsApproved(ctx context.Context, user *models.User, cclaSignature *models.Signature) (bool, error) {
+	approved, githubOrgLookupFailed, err := s.EvaluateUserApproval(ctx, user, cclaSignature)
+	if githubOrgLookupFailed {
+		return false, nil
+	}
+	return approved, err
+}
+
+func (s service) EvaluateUserApproval(ctx context.Context, user *models.User, cclaSignature *models.Signature) (bool, bool, error) {
 	// add lf email to emails
 	f := logrus.Fields{
-		"functionName": "v1.signatures.service.UserIsApproved",
+		"functionName": "v1.signatures.service.EvaluateUserApproval",
 	}
 
 	emails := user.Emails
@@ -1626,7 +1638,7 @@ func (s service) UserIsApproved(ctx context.Context, user *models.User, cclaSign
 	if len(gitHubUsernameApprovalList) > 0 {
 		for _, gitHubUsername := range gitHubUsernameApprovalList {
 			if strings.EqualFold(gitHubUsername, strings.TrimSpace(user.GithubUsername)) {
-				return true, nil
+				return true, false, nil
 			}
 		}
 	} else {
@@ -1638,7 +1650,7 @@ func (s service) UserIsApproved(ctx context.Context, user *models.User, cclaSign
 	if len(gitLabUsernameApprovalList) > 0 {
 		for _, gitLabUsername := range gitLabUsernameApprovalList {
 			if strings.EqualFold(gitLabUsername, strings.TrimSpace(user.GitlabUsername)) {
-				return true, nil
+				return true, false, nil
 			}
 		}
 	} else {
@@ -1654,7 +1666,7 @@ func (s service) UserIsApproved(ctx context.Context, user *models.User, cclaSign
 			// case insensitive search
 			for _, emailApproval := range emailApprovalList {
 				if strings.EqualFold(email, emailApproval) {
-					return true, nil
+					return true, false, nil
 				}
 			}
 		}
@@ -1667,10 +1679,10 @@ func (s service) UserIsApproved(ctx context.Context, user *models.User, cclaSign
 	if len(domainApprovalList) > 0 {
 		matched, err := s.processPattern(emails, domainApprovalList)
 		if err != nil {
-			return false, err
+			return false, false, err
 		}
 		if matched != nil && *matched {
-			return true, nil
+			return true, false, nil
 		}
 	}
 
@@ -1686,33 +1698,31 @@ func (s service) UserIsApproved(ctx context.Context, user *models.User, cclaSign
 			log.WithFields(f).Debugf("determining if github user :%s is associated with any of the github orgs : %+v", login, githubOrgApprovalList)
 			userOrgs, err := listUserPublicOrgs(ctx, login)
 			if err != nil {
-				// Mirror the Python flow (cla.utils.is_approved): if the
-				// public-orgs lookup fails, log and treat as no match — do
-				// not propagate. Returning an error here would 500 the
-				// /v3/sign route and a transient GitHub blip would block
-				// every org-approved contributor across the project.
+				// Listing reports this as githubOrgLookupFailed. UserIsApproved
+				// still swallows it as (false, nil) so /v3/sign does not 500 on a
+				// GitHub blip — the regression L1688–1694 originally prevented.
 				log.WithFields(f).Warnf("could not list public orgs for github user %s; treating as no org-approval match: %v", login, err)
-			} else {
-				for _, approvedOrg := range githubOrgApprovalList {
-					approvedOrgTrim := strings.TrimSpace(approvedOrg)
-					matched := false
-					for _, userOrg := range userOrgs {
-						if strings.EqualFold(approvedOrgTrim, userOrg) {
-							matched = true
-							break
-						}
+				return false, true, nil
+			}
+			for _, approvedOrg := range githubOrgApprovalList {
+				approvedOrgTrim := strings.TrimSpace(approvedOrg)
+				matched := false
+				for _, userOrg := range userOrgs {
+					if strings.EqualFold(approvedOrgTrim, userOrg) {
+						matched = true
+						break
 					}
-					if matched {
-						log.WithFields(f).Debugf("found matching github organization: %s for user: %s", approvedOrg, login)
-						return true, nil
-					}
-					log.WithFields(f).Debugf("user: %s is not in the organization: %s", login, approvedOrg)
 				}
+				if matched {
+					log.WithFields(f).Debugf("found matching github organization: %s for user: %s", approvedOrg, login)
+					return true, false, nil
+				}
+				log.WithFields(f).Debugf("user: %s is not in the organization: %s", login, approvedOrg)
 			}
 		}
 	}
 
-	return false, nil
+	return false, false, nil
 }
 
 func (s service) processPattern(emails []string, patterns []string) (*bool, error) {
