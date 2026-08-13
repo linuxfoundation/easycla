@@ -93,9 +93,11 @@ type fakeSignatures struct {
 	userIsApprovedErr     error
 	githubOrgLookupFailed bool
 	corporateSignatureErr map[string]error
+	corporateGets         int
 }
 
 func (f *fakeSignatures) GetCorporateSignature(_ context.Context, claGroupID, companyID string, _, _ *bool) (*v1Models.Signature, error) {
+	f.corporateGets++
 	key := claGroupID + "|" + companyID
 	if err := f.corporateSignatureErr[key]; err != nil {
 		return nil, err
@@ -116,9 +118,11 @@ func (f *fakeSignatures) EvaluateUserApproval(_ context.Context, user *v1Models.
 type fakeCompanies struct {
 	byID map[string]*v1Models.Company
 	errs map[string]error
+	gets int
 }
 
 func (f *fakeCompanies) GetCompany(_ context.Context, companyID string) (*v1Models.Company, error) {
+	f.gets++
 	if err := f.errs[companyID]; err != nil {
 		return nil, err
 	}
@@ -889,6 +893,65 @@ func TestGetMyClasCompanyLookupErrorDegradesRow(t *testing.T) {
 	assert.Equal(t, models.MyClaStatusValid, byID["sig-ok"].Status)
 	assert.Equal(t, models.MyClaStatusUnknown, byID["sig-fail"].Status)
 	assert.Equal(t, models.MyClaStatusReasonUnknown, byID["sig-fail"].StatusReason)
+}
+
+func TestGetMyClasCompanyLookupErrorCachesNilForSiblingRows(t *testing.T) {
+	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
+	companies := &fakeCompanies{
+		errs: map[string]error{
+			"company-1": fmt.Errorf("companies table unavailable"),
+		},
+	}
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a": {
+				ecla("sig-a", "company-1", "2024-01-01T00:00:00Z", true),
+				ecla("sig-b", "company-1", "2024-02-01T00:00:00Z", true),
+			},
+		},
+		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+	}
+	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, companies, &fakeClaGroups{})
+
+	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
+	require.NoError(t, err)
+	require.Len(t, result.Clas, 2)
+	assert.Equal(t, 1, companies.gets, "a failed company lookup is cached so sibling rows do not retry")
+	for _, row := range result.Clas {
+		assert.Equal(t, models.MyClaStatusUnknown, row.Status)
+		assert.Equal(t, models.MyClaStatusReasonUnknown, row.StatusReason)
+	}
+}
+
+func TestGetMyClasCorporateSignatureErrorCachesNilForSiblingRows(t *testing.T) {
+	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
+	companies := &fakeCompanies{byID: map[string]*v1Models.Company{
+		"company-1": {CompanyID: "company-1", CompanyName: "Good Corp"},
+	}}
+	signaturesService := &fakeSignatures{
+		corporateSignatureErr: map[string]error{
+			"cla-group-1|company-1": fmt.Errorf("dynamo timeout"),
+		},
+	}
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a": {
+				ecla("sig-a", "company-1", "2024-01-01T00:00:00Z", true),
+				ecla("sig-b", "company-1", "2024-02-01T00:00:00Z", true),
+			},
+		},
+		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+	}
+	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
+
+	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
+	require.NoError(t, err)
+	require.Len(t, result.Clas, 2)
+	assert.Equal(t, 1, signaturesService.corporateGets, "a failed CCLA lookup is cached so sibling rows do not retry")
+	for _, row := range result.Clas {
+		assert.Equal(t, models.MyClaStatusUnknown, row.Status)
+		assert.Equal(t, models.MyClaStatusReasonUnknown, row.StatusReason)
+	}
 }
 
 func TestGetMyClaPdfURL(t *testing.T) {

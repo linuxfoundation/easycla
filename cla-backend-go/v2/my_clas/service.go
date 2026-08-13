@@ -698,7 +698,7 @@ func assignMyClaStatus(row *models.MyCla, covered, unevaluable bool) {
 }
 
 // eclaCoveredByCurrentApprovalList mirrors the PR gating logic (signatures service
-// ProcessEmployeeSignature/UserIsApproved): the company must not be sanctioned, must
+// ProcessEmployeeSignature / EvaluateUserApproval): the company must not be sanctioned, must
 // hold an approved+signed CCLA for the CLA Group, and the user must match its current
 // approval lists
 func (s *service) eclaCoveredByCurrentApprovalList(ctx context.Context, cclas map[string]*v1Models.Signature, approvals map[string]eclaCoverage, userModel *v1Models.User, companyModel *v1Models.Company, sig *signatures.ItemSignature) (bool, bool) {
@@ -721,6 +721,7 @@ func (s *service) eclaCoveredByCurrentApprovalList(ctx context.Context, cclas ma
 		cclaModel, cclaErr := s.signaturesService.GetCorporateSignature(ctx, sig.SignatureProjectID, sig.SignatureUserCompanyID, &approved, &signed)
 		if cclaErr != nil {
 			log.WithFields(f).WithError(cclaErr).Warn("unable to lookup the corporate signature for the employee acknowledgement")
+			cclas[cclaKey] = nil
 			return false, true
 		}
 		ccla = cclaModel
@@ -744,10 +745,10 @@ func (s *service) eclaCoveredByCurrentApprovalList(ctx context.Context, cclas ma
 	if githubOrgLookupFailed {
 		unevaluable = true
 	}
-	// UserIsApproved cannot evaluate GitLab group membership (it needs per-group OAuth
-	// tokens); defer to the signature_approved flag, which the approval-list
-	// invalidation flow maintains (see docs/MY_CLAS_API.md). Membership was not
-	// actually evaluated, so the row stays unevaluable for status.
+	// EvaluateUserApproval cannot check GitLab group membership (that needs
+	// per-group OAuth tokens); defer to the signature_approved flag, which the
+	// approval-list invalidation flow maintains (see docs/MY_CLAS_API.md).
+	// Membership was not actually evaluated, so the row stays unevaluable for status.
 	if !covered && approvedErr == nil && len(ccla.GitlabOrgApprovalList) > 0 {
 		covered = true
 		unevaluable = true
@@ -851,6 +852,7 @@ func (s *service) company(ctx context.Context, cache map[string]*v1Models.Compan
 	if err != nil {
 		var companyNotFound *utils.CompanyNotFound
 		if !errors.As(err, &companyNotFound) {
+			cache[companyID] = nil
 			return nil, err
 		}
 		companyModel = nil

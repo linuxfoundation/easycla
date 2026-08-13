@@ -261,9 +261,10 @@ boolean:
   3. the employer **currently holds an approved + signed CCLA** for the CLA group
      (v1 `signatures.Service.GetCorporateSignature`);
   4. the user **still matches that CCLA's current approval lists** — evaluated by
-     reusing v1 `signatures.Service.UserIsApproved`, the *exact* function PR gating
-     uses (issue [#1164](https://github.com/linuxfoundation/lfx-self-serve/issues/1164)
-     demands the real gating logic, not an approximation):
+     reusing v1 `signatures.Service.EvaluateUserApproval` at listing time (the same
+     check `UserIsApproved` wraps for `/v3/sign` / `ProcessEmployeeSignature`). Issue
+     [#1164](https://github.com/linuxfoundation/lfx-self-serve/issues/1164)
+     demands the real gating logic, not an approximation:
      - GitHub username approval list — case-insensitive exact match;
      - GitLab username approval list — case-insensitive exact match;
      - email approval list — case-insensitive exact match over the user record's
@@ -274,9 +275,9 @@ boolean:
        memberships. **Listing vs sign differ on lookup failure.** The sign path
        (`ProcessEmployeeSignature` → `UserIsApproved`) still treats a GitHub API
        blip as "no match" (`false, nil`) so `/v3/sign` does not 500. The listing
-       path calls a listing-only evaluator that reports the lookup as failed, and
+       path calls `EvaluateUserApproval`, which reports the lookup as failed, and
        the row is `status=unknown` rather than a completed Approved List miss.
-     - GitLab group approval list — `UserIsApproved` cannot evaluate group membership
+     - GitLab group approval list — `EvaluateUserApproval` cannot evaluate group membership
        live (that needs per-group OAuth tokens held by the MR-gating service), so when
        the CCLA carries GitLab group approvals and nothing else matched, the check
        **defers to the `signature_approved` flag** (which the approval-list
@@ -304,7 +305,7 @@ are the contributor-facing standing and must not be inferred from those two bool
 | ecla | true | unevaluable | `unknown` | `unknown` |
 
 Unevaluable coverage includes: nil/error company, sanctioned employer, no
-approved+signed CCLA, `GetCorporateSignature` error, `UserIsApproved` error,
+approved+signed CCLA, `GetCorporateSignature` error, `EvaluateUserApproval` error,
 GitHub-org lookup fail, GitLab group fallback. `needs_attention` is **only** a
 completed Approved List miss. There are no cause-specific reason tokens
 (`company_sanctioned`, `no_approved_ccla`, …).
@@ -316,12 +317,13 @@ The user record used for the approval-list check is the record that **owns** the
 (`signature_reference_id`), matching how gating evaluates that user — not the union of
 all provided identities.
 
-The endpoint intentionally returns **invalid rows too** (flagged `valid=false`) instead
-of hiding them: story [#1158](https://github.com/linuxfoundation/lfx-self-serve/issues/1158)
-wants ICLAs in *all* statuses, while ECLAs are only *displayed* when valid (FR-002) —
-that final display filter is one line in the consumer (`clas.filter(c => c.claType !==
-'ecla' || c.valid)`), and keeping the data faithful makes the API useful for parity
-sampling (SC-001) and support.
+The endpoint intentionally returns **invalid and unknown rows too** instead of
+hiding them. Story [#1158](https://github.com/linuxfoundation/lfx-self-serve/issues/1158)
+wanted ICLAs in *all* statuses; M2 My CLAs ([#1256](https://github.com/linuxfoundation/lfx-self-serve/issues/1256))
+shows every agreement and reads producer `status` / `statusReason` directly.
+Do **not** derive standing from `valid`, and do **not** drop ECLAs with
+`valid=false` — that would hide both `needs_attention` and `unknown`. The
+`valid` flag keeps its pre-#1423 meaning for callers that only read the booleans.
 
 ### Response — `200 my-cla-list`
 
@@ -539,8 +541,9 @@ with a TODO for the missing lookup endpoint. With this API it collapses to:
   Project cell) with `claGroupName` as its subtext and `projectLogo` as the logo tile
   (falling back to `claGroupName` / a default icon when a field is absent — the endpoint
   now supplies the distinct project name + logo, so the old `projectName = claGroupName`
-  UUID fallback is retired), `status` from `valid`, drop ECLAs with `valid=false`
-  (FR-002), `pdfAvailable` as-is; identity telemetry from `userIds` and
+  UUID fallback is retired), `status` / `statusReason` copied from the producer
+  (do not derive from `valid`; do not drop ECLAs with `valid=false` — a GitLab
+  group fallback can be `valid=true` with `status=unknown`), `pdfAvailable` as-is; identity telemetry from `userIds` and
   `skippedIdentities` (`matchedUserIds = userIds.length`, `unmatched = resultCount ===
   0 && userIds.length === 0` — skipped keys are the direct signal for issue
   [#1165](https://github.com/linuxfoundation/lfx-self-serve/issues/1165)'s
