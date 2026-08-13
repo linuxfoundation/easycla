@@ -1698,10 +1698,10 @@ func (s service) EvaluateUserApproval(ctx context.Context, user *models.User, cc
 			log.WithFields(f).Debugf("determining if github user :%s is associated with any of the github orgs : %+v", login, githubOrgApprovalList)
 			userOrgs, err := listUserPublicOrgs(ctx, login)
 			if err != nil {
-				// Listing reports this as githubOrgLookupFailed. UserIsApproved
-				// still swallows it as (false, nil) so /v3/sign does not 500 on a
-				// GitHub blip — the regression L1688–1694 originally prevented.
-				log.WithFields(f).Warnf("could not list public orgs for github user %s; treating as no org-approval match: %v", login, err)
+				// Listing reports this as githubOrgLookupFailed (row is unknown, not a
+				// completed miss). UserIsApproved still swallows it as (false, nil) so
+				// /v3/sign does not 500 on a transient GitHub blip.
+				log.WithFields(f).Warnf("could not list public orgs for github user %s: %v", login, err)
 				return false, true, nil
 			}
 			for _, approvedOrg := range githubOrgApprovalList {

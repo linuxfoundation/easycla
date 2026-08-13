@@ -67,7 +67,6 @@ type PlatformUsersService interface {
 // SignaturesService is the subset of the v1 signatures service used to evaluate ECLA validity
 type SignaturesService interface {
 	GetCorporateSignature(ctx context.Context, claGroupID, companyID string, approved, signed *bool) (*v1Models.Signature, error)
-	UserIsApproved(ctx context.Context, user *v1Models.User, cclaSignature *v1Models.Signature) (bool, error)
 	EvaluateUserApproval(ctx context.Context, user *v1Models.User, cclaSignature *v1Models.Signature) (approved bool, githubOrgLookupFailed bool, err error)
 }
 
@@ -214,12 +213,7 @@ func (s *service) GetMyClas(ctx context.Context, currentUsername string, admin b
 					row.CompanyName = companyModel.CompanyName
 					row.SigningEntityName = companyModel.SigningEntityName
 				}
-				covered, unevaluable, coveredErr := s.eclaCoveredByCurrentApprovalList(ctx, cclas, approvals, userModel, companyModel, sig)
-				if coveredErr != nil {
-					log.WithFields(f).WithError(coveredErr).Warn("unable to evaluate coverage for the employee acknowledgement - degrading the row")
-					covered = false
-					unevaluable = true
-				}
+				covered, unevaluable := s.eclaCoveredByCurrentApprovalList(ctx, cclas, approvals, userModel, companyModel, sig)
 				row.Valid = sig.SignatureApproved && covered
 				assignMyClaStatus(&row, covered, unevaluable)
 			}
@@ -707,7 +701,7 @@ func assignMyClaStatus(row *models.MyCla, covered, unevaluable bool) {
 // ProcessEmployeeSignature/UserIsApproved): the company must not be sanctioned, must
 // hold an approved+signed CCLA for the CLA Group, and the user must match its current
 // approval lists
-func (s *service) eclaCoveredByCurrentApprovalList(ctx context.Context, cclas map[string]*v1Models.Signature, approvals map[string]eclaCoverage, userModel *v1Models.User, companyModel *v1Models.Company, sig *signatures.ItemSignature) (bool, bool, error) {
+func (s *service) eclaCoveredByCurrentApprovalList(ctx context.Context, cclas map[string]*v1Models.Signature, approvals map[string]eclaCoverage, userModel *v1Models.User, companyModel *v1Models.Company, sig *signatures.ItemSignature) (bool, bool) {
 	f := logrus.Fields{
 		"functionName":   "v2.my_clas.service.eclaCoveredByCurrentApprovalList",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -717,7 +711,7 @@ func (s *service) eclaCoveredByCurrentApprovalList(ctx context.Context, cclas ma
 	}
 
 	if companyModel == nil || companyModel.IsSanctioned {
-		return false, true, nil
+		return false, true
 	}
 
 	cclaKey := sig.SignatureProjectID + "|" + sig.SignatureUserCompanyID
@@ -727,18 +721,18 @@ func (s *service) eclaCoveredByCurrentApprovalList(ctx context.Context, cclas ma
 		cclaModel, cclaErr := s.signaturesService.GetCorporateSignature(ctx, sig.SignatureProjectID, sig.SignatureUserCompanyID, &approved, &signed)
 		if cclaErr != nil {
 			log.WithFields(f).WithError(cclaErr).Warn("unable to lookup the corporate signature for the employee acknowledgement")
-			return false, true, nil
+			return false, true
 		}
 		ccla = cclaModel
 		cclas[cclaKey] = ccla
 	}
 	if ccla == nil {
-		return false, true, nil
+		return false, true
 	}
 
 	approvalKey := cclaKey + "|" + userModel.UserID
 	if cached, ok := approvals[approvalKey]; ok {
-		return cached.covered, cached.unevaluable, nil
+		return cached.covered, cached.unevaluable
 	}
 	covered, githubOrgLookupFailed, approvedErr := s.signaturesService.EvaluateUserApproval(ctx, userModel, ccla)
 	unevaluable := false
@@ -759,7 +753,7 @@ func (s *service) eclaCoveredByCurrentApprovalList(ctx context.Context, cclas ma
 		unevaluable = true
 	}
 	approvals[approvalKey] = eclaCoverage{covered: covered, unevaluable: unevaluable}
-	return covered, unevaluable, nil
+	return covered, unevaluable
 }
 
 func (s *service) claGroupName(ctx context.Context, cache map[string]string, claGroupID string) (string, error) {

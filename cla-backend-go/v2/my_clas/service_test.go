@@ -113,14 +113,6 @@ func (f *fakeSignatures) EvaluateUserApproval(_ context.Context, user *v1Models.
 	return f.approvedUserIDs[user.UserID], false, nil
 }
 
-func (f *fakeSignatures) UserIsApproved(ctx context.Context, user *v1Models.User, ccla *v1Models.Signature) (bool, error) {
-	approved, githubOrgLookupFailed, err := f.EvaluateUserApproval(ctx, user, ccla)
-	if githubOrgLookupFailed {
-		return false, nil
-	}
-	return approved, err
-}
-
 type fakeCompanies struct {
 	byID map[string]*v1Models.Company
 	errs map[string]error
@@ -816,7 +808,9 @@ func TestGetMyClasGithubOrgLookupFailed(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.Clas, 1)
 	assert.True(t, result.Clas[0].Approved)
+	assert.False(t, result.Clas[0].Valid, "a GitHub-org lookup failure is not a completed miss, so valid stays false")
 	assert.Equal(t, models.MyClaStatusUnknown, result.Clas[0].Status)
+	assert.Equal(t, models.MyClaStatusReasonUnknown, result.Clas[0].StatusReason)
 	assert.NotEqual(t, models.MyClaStatusNeedsAttention, result.Clas[0].Status)
 }
 
