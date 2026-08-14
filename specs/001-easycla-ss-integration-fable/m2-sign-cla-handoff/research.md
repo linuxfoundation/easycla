@@ -1,11 +1,11 @@
 # Phase 0 Research: M2 — backend spikes
 
 **Input**: [spec.md](spec.md) Decisions 1–5 | [plan.md](plan.md) Complexity Tracking
-**Date**: 2026-08-11, addendum 2026-08-12
+**Date**: 2026-08-11, addendum 2026-08-12; **Spike 2 reframed 2026-08-14** for the legal/stakeholder review that removed self-service invalidation.
 
-Four spikes tracing the design questions that could not be answered from the requirements text. Every claim cites the file and line it was read from — `cla-backend-go`, `easycla-contributor-console`, and `lfx-self-serve` at `dev`/`main`; mockup at `easyclav2-migration-planning@86f5a35`.
+Four spikes tracing the design questions that could not be answered from the requirements text. Every claim cites the file and line it was read from — `cla-backend-go`, `easycla-contributor-console`, and `lfx-self-serve` at `dev`/`main`; mockup originally read at v16 (`easyclav2-migration-planning@86f5a35`), scope superseded by v17 Final.
 
-Outcome: all five spec design questions settled. One **measurement** outstanding — CLA-group cardinality for FR-001a (Spike 3).
+Outcome: all five original spec design questions settled. One **measurement** outstanding — CLA-group cardinality for FR-001a (Spike 3). Spike 2's code-level findings (durability of a flag flip, the three call sites) still hold; its recommendation of a self-service invalidation endpoint does not — see the spike for what survives.
 
 ---
 
@@ -66,11 +66,13 @@ Two ordering/data dependencies for the contracts:
 
 ---
 
-## Spike 2 — ECLA durable self-exclusion
+## Spike 2 — Durable revocation marker (originally scoped for ECLA self-exclusion, repurposed for system-set Revoked)
+
+> **2026-08-14 update**: this spike was written for a self-service ECLA-invalidation endpoint that no longer exists — self-service invalidation was removed by the legal/stakeholder review. The **durability problem and its three-call-site fix are unchanged and still needed**: the marker they protect is now the system-set **Revoked** state (sanctions/OFAC), written by the sanctions-screening path and by CLA-manager actions in the corporate console, not by any Self-Serve write. The "Recommendation" below describing a new SS-facing invalidation endpoint is **superseded** — see the note after it.
 
 ### Why a flag flip is insufficient
 
-`InvalidateProjectRecord` writes **only** `signature_approved = false` and `note` (`signatures/repository.go:2089-2130`) — no timestamp, reason, or actor, which independently confirms FR-008b's rationale.
+`InvalidateProjectRecord` writes **only** `signature_approved = false` and `note` (`signatures/repository.go:2089-2130`) — no timestamp, reason, or actor, which independently confirms FR-010b's rationale.
 
 That flip is then undone by two separate paths:
 
@@ -89,22 +91,18 @@ This rules out the obvious implementation: a marker stored on the employee signa
 - `ProcessEmployeeSignature` `:1578` — require `!selfExcluded` alongside `userApproved` before `hasSigned = true`.
 - `v2/my_clas/service.go:214` — `eclaCoveredByCurrentApprovalList` is the third consumer; the marker feeds FR-010's status directly.
 
-Three call sites, each a one-condition change, `UserIsApproved`'s contract untouched. The marker is FR-008b's reason/actor field — one concept, one field.
+Three call sites, each a one-condition change, `UserIsApproved`'s contract untouched. The marker is FR-010b's reason/actor field — one concept, one field.
 
-**Option B — thread the employee signature into `UserIsApproved`.** Centralizes the check but changes a widely-called interface method (`:70`, and mocked) and conflates "is on the Approved List" with "has self-excluded." **Not recommended.**
+**Option B — thread the employee signature into `UserIsApproved`.** Centralizes the check but changes a widely-called interface method (`:70`, and mocked) and conflates "is on the Approved List" with "has been revoked." **Not recommended.**
 
-### Recommendation
+### Recommendation — superseded 2026-08-14
 
-New swagger-first endpoint for self-service ECLA invalidation:
+The rest of this section originally recommended a **new swagger-first self-service ECLA-invalidation endpoint**, written by the contributor from the Me lens. **That endpoint is not built.** Self-service invalidation (ICLA and ECLA) was removed entirely by the 2026-08-14 legal/stakeholder review. What survives from this spike:
 
-- **Targeting**: by `signatureID`. `InvalidateProjectRecord` is already signature-ID-keyed (`:2112-2116`), so no repository change is needed for targeting — only for the added attributes.
-- **Ownership**: resolve through M1's existing `authorizeIdentity` (`v2/my_clas/service.go:383`), not a new check.
-- **Write**: `signature_approved = false`, a contributor-framed `note`, an invalidation timestamp, and the reason/actor marker (`self`) — atomically, one `UpdateItem`. `InvalidateProjectRecord` does **not** set `date_modified`, so the new timestamp is what makes the date recoverable.
-- **Honor the marker at the three call sites above.**
-- **Notify**: user (self-service template, FR-008a) + the company's CLA managers. No Approved List mutation.
-- **Additive schema only** — pre-M2 records carry empty values.
-
-**Reuse for ICLA (FR-007)**: the same attributes and contributor-framed note serve the revised ICLA endpoint, which additionally needs signature-ID targeting to avoid `GetIndividualSignature`'s `sigs[0]` behaviour on multiple matches (`signatures/repository.go:895-898`). The ECLA endpoint sidesteps this by being signature-ID-targeted from the start.
+- **The three call sites above are still exactly where the durability fix belongs** — they're now guarding the system-set **Revoked** marker (FR-010b) instead of a self-service one.
+- **The attribute shape survives**: a revocation timestamp + reason/actor (now values like `sanctions_screening` / `cla_manager`, not `self`), atomically alongside `InvalidateProjectRecord`'s existing write. `InvalidateProjectRecord` does **not** set `date_modified`, so the new timestamp is still what makes the date recoverable.
+- **What does not survive**: there is no M2-owned write path. The marker is written by the sanctions-screening job and by CLA-manager actions in the corporate console — both outside this milestone's code. M2 only needs to **read** the marker (for FR-010's status field) and honor it at the three call sites so a revoked ECLA doesn't silently get re-approved by `auto_create_ecla`.
+- **No ownership check, no notification template, no ICLA-endpoint revision** are needed here — those belonged to the self-service write path. The revised FR-008 notification (Request Removal/approval) is a **read-and-notify** flow, not a write, so it doesn't reuse `authorizeIdentity` for a mutation — only to confirm the caller owns the signature they're requesting removal for.
 
 ---
 
@@ -159,18 +157,22 @@ For the record, the enrichment path that was considered and dropped: `GET /v4/us
 
 ## Mockup read (v16) — items the artifacts had missed
 
-- **Download PDF is not a discrepancy.** ICLA rows render a real `<a>` (rows 1/2/5/6); ECLA rows render a **disabled** `<span class="ccla-note">` with `cursor:not-allowed` and `title="Covered by Corporate CLA (CCLA)"` (rows 3/4). The mockup already encodes the no-ECLA-PDF backend reality — now FR-011a, and no PM input is needed.
-- **A row action no FR covered: "Request approval."** Present only on the Needs-attention ECLA (`:333`) and **removed** when the row becomes Invalidated (`confirmInvalidate()` removes `.approve-group`, `:674-675`). Now FR-011.
-- **Exact status vocabulary, which forces FR-010a.** Three pills — `Valid`; `Needs attention` with *"No longer matches {company}'s approval criteria."*; `Invalidated` with *"You confirmed you no longer work at {company}."* The middle state is unrepresentable today: `row.Valid = sig.SignatureApproved && covered` (`v2/my_clas/service.go:218`) collapses approved-ness and coverage, and telling self- from manager-invalidation needs a third input. Hence three independent fields — the largest single M2 change to the read path, coupled to Spike 2's marker since they are the same field.
-- Also noted: the ECLA type chip carries the company inline (`ECLA · IBM`), and the invalidate modal requires typing `INVALIDATE` (`:439`).
+> **Superseded by v17 Final** (2026-08-14): the mockup was revised after this read to drop self-service invalidation and add signed-under identity, Request Removal/approval via a shared Contact-CLA-Manager modal, Manage-in-CCLA-Console, and the Revoked state. The v16-specific items below (typed-`INVALIDATE` modal, "Invalidated" pill, deep-link-style "Request approval") are **retired**; the Download-PDF and status-vocabulary-needs-three-fields findings still hold, adjusted for the new third state.
+
+- **Download PDF is not a discrepancy.** ICLA rows render a real `<a>`; ECLA rows render a **disabled** `<span class="ccla-note">` with `cursor:not-allowed` and `title="Covered by Corporate CLA (CCLA)"`. The mockup already encodes the no-ECLA-PDF backend reality — now FR-011a, and no PM input is needed. Revoked rows additionally suppress download regardless of type (v17).
+- **A row action originally uncovered by any FR: "Request approval."** Present only on the Needs-attention ECLA and removed once a row leaves that state. In v16 this was a deep link; **in v17 Final it opens the shared Contact-CLA-Manager modal in approval mode** instead (FR-011) — an in-app message to the manager(s), not a Console redirect.
+- **Status vocabulary, which forces FR-010a — updated for v17.** v16 had `Valid` / `Needs attention` / `Invalidated` (self-invalidation copy). **v17 Final replaces the third pill with `Revoked`** — system-set, sanctions/OFAC, read-only, `Revoked · <date>`, no user actions. The middle state remains unrepresentable today: `row.Valid = sig.SignatureApproved && covered` (`v2/my_clas/service.go:218`) collapses approved-ness and coverage. Hence three independent fields still — the largest single M2 change to the read path — but the third field is now revocation provenance (Spike 2, superseded section) rather than self-/manager-invalidation attribution.
+- v16's typed-`INVALIDATE` confirmation modal is **retired** — no self-service invalidation exists in v17 Final.
+- Also noted (still true in v17): the ECLA type chip carries the company inline (`ECLA · IBM`).
 
 ---
 
 ## Net effect on the plan
 
-- **Risk 1 (ECLA endpoint)** is well-defined but genuinely new work: endpoint + three call-site guards + two notification templates + additive attributes.
-- **Risk 2 (status)** grew from a small SS-side delta to a joint-largest backend item, and is coupled to risk 1 through the shared provenance field — design them together.
-- **Risk 3 (search)** is new: no reusable endpoint, a dead filter to fix, and a blocking cardinality measurement.
-- **Risk 4 (no-PR ICLA)** shrinks to two branch conditions plus a request-shape addition. Keep the GitHub sign entry.
-- **Risk 6 (binding)** is retired by scope decision, not deferred.
+- **Status (risk 1)** is unchanged in size, re-termed: the response-shape work is the same lift, now backing Revoked instead of self-/manager-invalidation attribution.
+- **CLA-manager resolution + notification endpoint (risk 2)** replaces the retired ECLA-invalidation endpoint and is smaller: no durable-exclusion write, no ownership-gated mutation, no notification-template pair beyond the manager email — just resolve + notify.
+- **Search (risk 3)** is unchanged: no reusable endpoint, a dead filter to fix, and a blocking cardinality measurement.
+- **Proactive no-PR ICLA (risk 4)** is unchanged: shrinks to two branch conditions plus a request-shape addition. Keep the GitHub sign entry.
+- **Account-binding (risk 6)** is retired by scope decision, not deferred — unchanged by the 2026-08-14 revision.
+- **Retired entirely, not shrunk**: the ICLA-invalidation revision and the self-service ECLA-invalidation endpoint. Neither appears in the plan's risk list anymore.
 - FR-002's hand-off needs no Console-side project fetch.
