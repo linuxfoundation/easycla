@@ -139,7 +139,7 @@ The open caveat was whether SS's GitHub identity and EasyCLA's `user.GithubID` a
 - EasyCLA declares `user_github_id` as a Go `string` (`users/models.go:18`) but stores and queries it as a **number**: `GetUserByUserName` strips the `github:` prefix, `strconv.Atoi`s it, and queries the `github-id-index` GSI with an integer (`users/repository.go:719-728`). Its comment states the ACL format outright — *"Username for GitHub comes in as github:123456"*. This is the only consumer of the `github:` ACL prefix in the repo.
 - SS produces the same shape via `normalizeGithubId()`, reducing Auth0's `github|13434323` form to the bare numeric ID and keeping `githubUsernames` separate (`server/services/cla.service.ts:193-196`).
 
-**A new rule follows**: SS carries `githubIds` as an **array** — multiple linked identities are possible — while a signature ACL binds exactly one. The sign flow needs a picker when several are linked (FR-004), which is also what the mockup's authorize-the-account note implies.
+**A new rule follows**: SS carries `githubIds` as an **array** — multiple linked identities are possible — while a signature ACL binds exactly one. Per mockup v17 Final, the sign flow shows an account-picker modal whenever one or more GitHub identities are linked (no auto-select, even for a single one), and blocks with an empty state linking to Identities when none are linked (FR-004).
 
 ### Why the write path was rejected rather than designed
 
@@ -170,7 +170,7 @@ For the record, the enrichment path that was considered and dropped: `GET /v4/us
 ## Net effect on the plan
 
 - **Status (risk 1)** is unchanged in size, re-termed: the response-shape work is the same lift, now backing Revoked instead of self-/manager-invalidation attribution.
-- **CLA-manager resolution + notification endpoint (risk 2)** replaces the retired ECLA-invalidation endpoint and is smaller: no durable-exclusion write, no ownership-gated mutation, no notification-template pair beyond the manager email — just resolve + notify.
+- **CLA-manager resolution + notification endpoint (risk 2)** replaces the retired ECLA-invalidation endpoint and is smaller: no durable-exclusion write, no signature mutation, no notification-template pair beyond the manager email. It is **not** a from-scratch build — it copies the existing `addCclaAllowlistRequest` pattern (resolve managers from the CCLA signature ACL → persist a request row → templated email via `utils.SendEmail()` → audit event; see spec.md Verified facts). M2 descopes that precedent's approve/reject half: the request record is a receipt, not a workflow.
 - **Search (risk 3)** is unchanged: no reusable endpoint, a dead filter to fix, and a blocking cardinality measurement.
 - **Proactive no-PR ICLA (risk 4)** is unchanged: shrinks to two branch conditions plus a request-shape addition. Keep the GitHub sign entry.
 - **Account-binding (risk 6)** is retired by scope decision, not deferred — unchanged by the 2026-08-14 revision.
