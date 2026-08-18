@@ -162,20 +162,26 @@ func (v *TrustedCallerVerifier) publicKey(kid string) (*rsa.PublicKey, error) {
 	defer v.mu.Unlock()
 
 	now := v.now()
-	fresh := now.Before(v.keysExpireAt)
-	if key, ok := v.keys[kid]; ok && fresh {
+	key, cached := v.keys[kid]
+	if cached && now.Before(v.keysExpireAt) {
 		return key, nil
 	}
-	// an unknown kid means a tenant key rotation, so rate limit the reload it triggers
-	if fresh && now.Before(v.nextRefreshAt) {
-		return nil, fmt.Errorf("unknown signing key ID: %s", kid)
+	usableWhileStale := cached && now.Before(v.keysExpireAt.Add(jwksStaleKeyGrace))
+
+	// a cache miss means a tenant key rotation or a JWKS outage, so rate limit the reload it
+	// triggers - without this an outage costs every request a fetch timeout once the TTL expires
+	if now.Before(v.nextRefreshAt) {
+		if usableWhileStale {
+			return key, nil
+		}
+		return nil, fmt.Errorf("unknown signing key ID: %s - the JWKS reload is rate limited", kid)
 	}
 
 	v.nextRefreshAt = now.Add(jwksRefreshCooldown)
 	keys, err := v.fetchKeys()
 	if err != nil {
 		// bounded, so a revoked key cannot stay usable for the whole length of a JWKS outage
-		if key, ok := v.keys[kid]; ok && now.Before(v.keysExpireAt.Add(jwksStaleKeyGrace)) {
+		if usableWhileStale {
 			log.WithError(err).Warn("unable to refresh the JWKS - using the cached signing key")
 			return key, nil
 		}
@@ -184,11 +190,11 @@ func (v *TrustedCallerVerifier) publicKey(kid string) (*rsa.PublicKey, error) {
 	v.keys = keys
 	v.keysExpireAt = now.Add(jwksCacheTTL)
 
-	key, ok := keys[kid]
+	refreshed, ok := keys[kid]
 	if !ok {
 		return nil, fmt.Errorf("unknown signing key ID: %s", kid)
 	}
-	return key, nil
+	return refreshed, nil
 }
 
 func (v *TrustedCallerVerifier) fetchJWKS() (map[string]*rsa.PublicKey, error) {

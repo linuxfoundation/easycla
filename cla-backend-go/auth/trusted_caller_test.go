@@ -304,6 +304,84 @@ func TestVerifyRejectsAStaleCachedKey(t *testing.T) {
 	assert.Error(t, err, "past the grace period a key that cannot be re-fetched must be rejected")
 }
 
+// the grace window is exclusive: at exactly keysExpireAt+jwksStaleKeyGrace the cached key is gone
+func TestVerifyRejectsTheCachedKeyAtTheGraceBoundary(t *testing.T) {
+	key := testKey(t)
+	verifier, _ := testVerifier(t, key)
+	clock := time.Now()
+	verifier.now = func() time.Time { return clock }
+	token := "Bearer " + testToken(t, key, testKeyID, testClaims(testTrustedClientID))
+
+	_, err := verifier.Verify(token)
+	require.NoError(t, err)
+	verifier.fetchKeys = func() (map[string]*rsa.PublicKey, error) { return nil, assert.AnError }
+	boundary := verifier.keysExpireAt.Add(jwksStaleKeyGrace)
+
+	clock = boundary.Add(-time.Nanosecond)
+	_, err = verifier.Verify(token)
+	require.NoError(t, err, "a nanosecond before the boundary the cached key is still served")
+
+	clock = boundary
+	_, err = verifier.Verify(token)
+	assert.Error(t, err, "at the boundary the cached key must be rejected")
+}
+
+// the tuning has to keep these relations: a reload is rate limited for less than the cache
+// lifetime, one attempt cannot outlast its own rate limit, and the outage grace outlives the cache
+func TestJWKSCacheTuning(t *testing.T) {
+	assert.Positive(t, jwksRefreshCooldown)
+	assert.Less(t, jwksRefreshCooldown, jwksCacheTTL)
+	assert.LessOrEqual(t, jwksRequestTimeout, jwksRefreshCooldown)
+	assert.Greater(t, jwksStaleKeyGrace, jwksCacheTTL)
+}
+
+// a failed reload must not be retried per request: once the TTL expires during a JWKS outage the
+// cooldown has to serve the grace-bounded cached key instead of paying the fetch timeout again
+func TestVerifyRateLimitsReloadsDuringAnOutage(t *testing.T) {
+	key := testKey(t)
+	verifier, _ := testVerifier(t, key)
+	clock := time.Now()
+	verifier.now = func() time.Time { return clock }
+	token := "Bearer " + testToken(t, key, testKeyID, testClaims(testTrustedClientID))
+
+	_, err := verifier.Verify(token)
+	require.NoError(t, err)
+
+	attempts := 0
+	verifier.fetchKeys = func() (map[string]*rsa.PublicKey, error) {
+		attempts++
+		return nil, assert.AnError
+	}
+	clock = clock.Add(jwksCacheTTL + time.Second)
+
+	for i := 0; i < 5; i++ {
+		caller, verifyErr := verifier.Verify(token)
+		require.NoError(t, verifyErr)
+		assert.True(t, caller.Trusted)
+	}
+	assert.Equal(t, 1, attempts, "a stale key set must be reloaded at most once per cooldown window")
+
+	clock = clock.Add(jwksRefreshCooldown + time.Second)
+	_, err = verifier.Verify(token)
+	require.NoError(t, err)
+	assert.Equal(t, 2, attempts, "after the cooldown the reload is attempted again")
+
+	caller, err := verifier.Verify("Bearer " + testToken(t, key, "kid-does-not-exist", testClaims(testTrustedClientID)))
+	assert.Nil(t, caller)
+	assert.ErrorContains(t, err, "rate limited", "the denial must come from the cooldown, not from a reload attempt")
+	assert.Equal(t, 2, attempts, "an unknown key ID must not reload the JWKS while the cooldown is open")
+
+	// the grace bound still applies when the cooldown short-circuits the reload
+	clock = clock.Add(jwksStaleKeyGrace)
+	_, err = verifier.Verify(token)
+	require.Error(t, err)
+	require.Equal(t, 3, attempts)
+	caller, err = verifier.Verify(token)
+	assert.Nil(t, caller)
+	assert.Error(t, err, "past the grace period the cooldown must not serve the cached key either")
+	assert.Equal(t, 3, attempts)
+}
+
 func TestVerifyIsSafeForConcurrentUse(t *testing.T) {
 	key := testKey(t)
 	verifier, fetches := testVerifier(t, key)

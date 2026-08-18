@@ -85,9 +85,9 @@ checked**, so anything able to invoke the Lambda directly could forge them. To m
 identity-list bypass below safe, the handlers re-verify the request bearer token themselves
 (`cla-backend-go/auth/trusted_caller.go`): the signing algorithm is pinned to the configured
 Auth0 algorithm, the signature is verified against the tenant JWKS by `kid`
-(`https://{cla-auth0-domain}/.well-known/jwks.json`, cached 15 min; an unknown `kid`
-refreshes it at most once a minute; a JWKS outage falls back to the cached key for at most
-24 h), `exp` must be present and unexpired, and the caller is **trusted** when the token's
+(`https://{cla-auth0-domain}/.well-known/jwks.json`, cached 15 min; a cache miss reloads it
+at most once a minute; a JWKS outage keeps serving the cached key for at most 24 h),
+`exp` must be present and unexpired, and the caller is **trusted** when the token's
 `azp` is listed in the SSM parameter `cla-ss-trusted-client-ids-{stage}` (comma-separated
 Auth0 client IDs).
 
