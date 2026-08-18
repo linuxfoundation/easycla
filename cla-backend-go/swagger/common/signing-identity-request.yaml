@@ -1,0 +1,28 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: Signing Identity Request
+description: The GitHub account the contributor selected to sign with
+required:
+  - githubId
+properties:
+  githubId:
+    type: integer
+    format: int64
+    minimum: 1
+    description: >
+      The GitHub account number the contributor selected. Taken on trust: this service
+      does not establish that the account belongs to the caller. Ownership is established
+      by the calling service, which offers the contributor only the accounts the identity
+      provider reports they have linked. What is checked here is whether recording the
+      account is safe given the records that already exist.
+    example: 26589865
+  githubUsername:
+    type: string
+    description: >
+      The GitHub handle for the selected account. Display only and never matched on, but
+      recorded because approval lists written against handles cannot match a record
+      without one. Sent by the caller because the handle is not derivable here.
+    example: "octocat"

@@ -31,6 +31,7 @@ type Repository interface {
 	GetUsersByGitlabID(ctx context.Context, gitlabID int64) ([]*v1Models.User, error)
 	GetUsersByGitlabUsername(ctx context.Context, gitlabUsername string) ([]*v1Models.User, error)
 	GetUsersBySecondaryEmails(ctx context.Context, emails []string) ([]*v1Models.User, error)
+	GetUserByIDConsistent(ctx context.Context, userID string) (*v1Models.User, error)
 }
 
 type repository struct {
@@ -185,6 +186,54 @@ func (repo repository) GetUsersBySecondaryEmails(ctx context.Context, emails []s
 	}
 
 	return toUserModels(dbUsers), nil
+}
+
+// GetUserByIDConsistent reads one user record by its primary key with a strongly
+// consistent read.
+//
+// Every other lookup here goes through a global secondary index, which is only ever
+// eventually consistent. That is fine for reading, and wrong for confirming a write: a
+// stale read after a successful write looks identical to the write having recorded the
+// wrong thing, and the caller cannot tell the two apart. Confirming on the base table with
+// ConsistentRead set removes the ambiguity, so a mismatch means a real mismatch.
+func (repo repository) GetUserByIDConsistent(ctx context.Context, userID string) (*v1Models.User, error) {
+	f := logrus.Fields{
+		"functionName":   "v2.my_clas.repository.GetUserByIDConsistent",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"userID":         userID,
+	}
+
+	expr, err := expression.NewBuilder().
+		WithKeyCondition(expression.Key("user_id").Equal(expression.Value(userID))).
+		Build()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("error building expression for consistent user read")
+		return nil, err
+	}
+
+	queryResults, err := repo.dynamoDBClient.QueryWithContext(ctx, &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		TableName:                 aws.String(repo.usersTableName),
+		ConsistentRead:            aws.Bool(true),
+	})
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("error reading user record by ID")
+		return nil, err
+	}
+
+	var dbUsers []users.DBUser
+	if unmarshalErr := dynamodbattribute.UnmarshalListOfMaps(queryResults.Items, &dbUsers); unmarshalErr != nil {
+		log.WithFields(f).WithError(unmarshalErr).Warn("error unmarshalling user record")
+		return nil, unmarshalErr
+	}
+
+	if len(dbUsers) == 0 {
+		return nil, nil
+	}
+
+	return toUserModels(dbUsers)[0], nil
 }
 
 func (repo repository) queryUsers(ctx context.Context, indexName string, condition expression.KeyConditionBuilder) ([]*v1Models.User, error) {

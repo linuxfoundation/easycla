@@ -438,7 +438,7 @@ func server(localMode bool) http.Handler {
 	gitlabOrganizationsService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoriesService, v1ProjectClaGroupRepo, storeRepository, usersService, signaturesRepo, v1CompanyRepo)
 	v1SignaturesService := signatures.NewService(signaturesRepo, v1CompanyService, usersService, eventsService, githubOrgValidation, v1RepositoriesService, githubOrganizationsService, v1ProjectService, gitlabApp, configFile.ClaV1ApiURL, configFile.CLALandingPage, configFile.CLALogoURL)
 	v2SignatureService := v2Signatures.NewService(awsSession, configFile.SignatureFilesBucket, v1ProjectService, v1CompanyService, v1SignaturesService, v1ProjectClaGroupRepo, signaturesRepo, usersService, approvalsRepo)
-	v2MyClasService := v2MyClas.NewService(v2MyClas.NewRepository(awsSession, stage), user_service.GetClient(), v1SignaturesService, v1CompanyRepo, v1ProjectClaGroupRepo, project_service.GetClient())
+	v2MyClasService := v2MyClas.NewService(v2MyClas.NewRepository(awsSession, stage), user_service.GetClient(), v1SignaturesService, v1CompanyRepo, v1ProjectClaGroupRepo, project_service.GetClient(), usersService)
 	v1ClaManagerService := cla_manager.NewService(claManagerReqRepo, v1ProjectClaGroupRepo, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService, configFile.CorporateConsoleV2URL)
 	v2ClaManagerService := v2ClaManager.NewService(emailTemplateService, v1CompanyService, v1ProjectService, v1ClaManagerService, usersService, v1RepositoriesService, v2CompanyService, eventsService, v1ProjectClaGroupRepo)
 	v1ApprovalListService := approval_list.NewService(approvalListRepo, v1ProjectClaGroupRepo, v1ProjectService, usersRepo, v1CompanyRepo, v1CLAGroupRepo, signaturesRepo, emailTemplateService, configFile.CorporateConsoleV2URL, http.DefaultClient)
@@ -998,6 +998,16 @@ func createUserFromRequest(authorizer auth.Authorizer, usersService users.Servic
 	f["claUserLFUsername"] = claUser.LFUsername
 	f["claUserLFEmail"] = claUser.LFEmail
 	f["claUserEmails"] = strings.Join(claUser.Emails, ",")
+
+	// Carry the token-verified caller on every request rather than under the path gate
+	// below. That gate decides whether the *user record* is injected for
+	// /v4/user-from-token; this is the caller's own identity as the token stated it, which
+	// the signing-identity endpoint needs in order to write against the right person and
+	// to notice if the gateway authenticated somebody else.
+	//
+	// Assigned to r before the lookups below so that every one of this function's early
+	// returns carries it - several of them return without reaching the end.
+	r = r.WithContext(user.ContextWithVerifiedCaller(r.Context(), claUser))
 
 	// only needed if API called is /v4/user-from-token
 	needToStoreUser := r.URL.Path == "/v4/user-from-token"

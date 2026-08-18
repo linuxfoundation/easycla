@@ -2862,6 +2862,56 @@ paths:
       tags:
         - my_clas
 
+  /my-clas/signing-identity:
+    post:
+      summary: Confirm And Record The Signing GitHub Identity
+      description: >
+        Records the GitHub account the contributor selected against their EasyCLA user
+        record, and returns that record's identifier for the CLA hand-off to consume.
+        The submitted githubId is taken on trust: ownership is established by the calling
+        service from the accounts the identity provider reports the contributor has
+        linked, and this endpoint verifies the caller rather than the account. What it
+        does check is that recording the account is safe given the records that already
+        exist - a contested account, a duplicated one, a record already holding a
+        different account, or a record naming nobody are all refused rather than
+        resolved. Resolution keys on the GitHub account number before the LF identity,
+        because the authentication middleware may have created an LF-only record moments
+        earlier on this same request. Every refusal writes nothing, except
+        recorded_mismatch, which is raised only after the write when the record cannot be
+        read back holding the submitted account, and does not undo it.
+      operationId: bindSigningIdentity
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - name: body
+          in: body
+          required: true
+          schema:
+            $ref: '#/definitions/signing-identity-request'
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/signing-identity'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '409':
+          $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - my_clas
+
   /user/{userID}/request-company-admin:
     post:
       summary: Request Manager
@@ -5066,6 +5116,12 @@ definitions:
 
   my-identity-list:
     $ref: './common/my-identity-list.yaml'
+
+  signing-identity:
+    $ref: './common/signing-identity.yaml'
+
+  signing-identity-request:
+    $ref: './common/signing-identity-request.yaml'
 
   #--------------------------------------
   # Docusign Webhook Payload

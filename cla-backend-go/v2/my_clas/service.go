@@ -93,6 +93,7 @@ type Service interface {
 	GetMyClas(ctx context.Context, currentUsername string, admin bool, requested *Identity) (*models.MyClaList, error)
 	GetMyClaPdfURL(ctx context.Context, currentUsername string, admin bool, requested *Identity, signatureID string) (*models.MyClaPdf, error)
 	GetMyIdentities(ctx context.Context, currentUsername string) (*models.MyIdentityList, error)
+	BindSigningIdentity(ctx context.Context, githubID int64, githubUsername string) (*models.SigningIdentity, error)
 }
 
 type service struct {
@@ -102,12 +103,13 @@ type service struct {
 	companyRepo           CompanyRepository
 	projectsClaGroupsRepo ProjectsCLAGroupsRepository
 	projectService        ProjectService
+	usersWriter           UsersWriter
 	presign               func(filename string) (string, error)
 	documentExists        func(filename string) (bool, error)
 }
 
 // NewService creates a new instance of the My CLAs service
-func NewService(repo Repository, platformUsersService PlatformUsersService, signaturesService SignaturesService, companyRepo CompanyRepository, projectsClaGroupsRepo ProjectsCLAGroupsRepository, projectService ProjectService) Service {
+func NewService(repo Repository, platformUsersService PlatformUsersService, signaturesService SignaturesService, companyRepo CompanyRepository, projectsClaGroupsRepo ProjectsCLAGroupsRepository, projectService ProjectService, usersWriter UsersWriter) Service {
 	return &service{
 		repo:                  repo,
 		platformUsersService:  platformUsersService,
@@ -115,6 +117,7 @@ func NewService(repo Repository, platformUsersService PlatformUsersService, sign
 		companyRepo:           companyRepo,
 		projectsClaGroupsRepo: projectsClaGroupsRepo,
 		projectService:        projectService,
+		usersWriter:           usersWriter,
 		presign:               utils.GetDownloadLink,
 		documentExists:        utils.DocumentExists,
 	}

@@ -1,0 +1,37 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: Signing Identity
+description: The EasyCLA user record the confirmed GitHub account is associated with
+required:
+  - userId
+  - githubId
+properties:
+  userId:
+    type: string
+    description: The EasyCLA user record identifier the CLA hand-off consumes
+    example: "f1a2b3c4-1234-5678-90ab-cdef12345678"
+  githubId:
+    type: integer
+    format: int64
+    description: >
+      The GitHub account actually recorded on the user record, echoed so the caller can
+      check for itself that what was recorded is what the contributor chose. That is a
+      different question from whether the write succeeded, and only the caller - which
+      knows what was on screen - can answer it.
+    example: 26589865
+  githubUsername:
+    type: string
+    description: The recorded GitHub handle. Display only - never matched on.
+    example: "octocat"
+  outcome:
+    type: string
+    enum:
+      - matched
+      - created
+      - adopted
+    description: >
+      Which resolution path was taken. Observability only; not behavioural for the caller.
+    example: "matched"

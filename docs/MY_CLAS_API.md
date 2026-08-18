@@ -485,6 +485,131 @@ Each entry is `"<type>:<value>"`, deduplicated and sorted; types are `lf-usernam
 
 A token carrying no username returns `401` (same as the list endpoint).
 
+## `POST /v4/my-clas/signing-identity`
+
+Records which GitHub account a contributor is signing as on their EasyCLA user record, and
+returns the record identifier the Contributor Console hand-off consumes. Unlike the three
+endpoints above this one **writes**, and it is the only path in the service that may attach
+a GitHub account to a user record.
+
+```bash
+curl -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"githubId": 26589865, "githubUsername": "octocat"}' \
+  "$GW/cla-service/v4/my-clas/signing-identity"
+```
+
+### The submitted account is taken on trust
+
+This endpoint does not establish that the GitHub account belongs to the caller, and must
+not be read as though it does. Ownership is established by the calling service, which
+offers the contributor only the accounts the identity provider reports as linked to their
+session. What this endpoint verifies is **who is calling** — the gateway principal and the
+token's LF identity, which must agree — and **whether recording the account is safe given
+the records already held**.
+
+That second part is the whole of what bounds a mistaken or hostile submission, which is
+why none of the refusals below may be relaxed. An account held by another contributor's
+record is refused, an account on a record naming nobody is refused, and a caller whose own
+record already holds a different account is refused. What remains recordable is an account
+that appears nowhere in the store — the same exposure `PUT /v3/users` already carries,
+since it too persists a client-supplied `user_github_id`.
+
+`githubUsername` is optional and is never matched on, but it is recorded, because approval
+lists written against handles cannot match a record that has none. A blank value is
+treated as absent rather than written: recording an empty handle would replace whatever
+the record already held with nothing.
+
+### Resolution
+
+Lookup by **account number comes before any lookup by LF identity**, and the order is
+load-bearing. The authentication middleware creates an LF-only user record whenever its
+own lookups miss, unconditionally, and it runs before this handler on the same request.
+An LF-first resolution would therefore find that freshly created empty record and bind
+the account to it while a record keyed on that account already existed — producing two
+records holding one account, which sends the pull-request check to the wrong one.
+
+| Record holding the account | Then |
+|---|---|
+| Exactly one, same LF identity | Reused. The handle is refreshed if it was renamed; the account number is not rewritten |
+| Exactly one, **no** LF identity | Refused. See below |
+| Exactly one, different LF identity | Refused. Never reassigned |
+| More than one | Refused. `github-id-index` does not enforce uniqueness, so this is detected rather than assumed |
+| None, caller has no record | Created, carrying the LF identity, the account and the handle |
+| None, caller's record holds no account | Adopted — the account is recorded on it |
+| None, caller's record holds a different account | Refused. A record holds one account, and overwriting detaches the previous one |
+
+The second row is the one worth understanding before anyone "fixes" it. Such a record holds
+the account but names nobody, so the CLA signed onto it appears in no one's list. Writing
+the caller's LF identity onto it would reunite the rightful contributor with their own
+signature history — and, for anyone else, would hand them somebody else's, since the record
+carries signatures already. Telling those two cases apart needs proof of who owns the
+account, and the account number here is the caller's own submission. So it is refused, and
+the rate of that refusal measures how many contributors this costs.
+
+After resolving, the record is re-read and the account on it compared against the account
+submitted. That is a check on what the store accepted, not on whether the right account was
+chosen — this side cannot know the latter.
+
+That re-read is strongly consistent and goes to the base table. The lookup that resolved
+the record went through a global secondary index, which is always eventually consistent, so
+the record may no longer hold the account it was indexed under — precisely what this check
+is for. An eventually consistent confirmation could not tell that apart from its own stale
+view, and would refuse a contributor whose write had in fact succeeded.
+
+The recorded account is echoed in the response so the caller can make its own comparison,
+and callers are expected to make it before acting on the result. The two checks answer
+different questions: this service can only confirm the record holds the account it was
+*sent*, which is equally true if the caller sent the wrong one of the contributor's
+accounts. Only the caller knows which account the contributor picked.
+
+### Response — `200 signing-identity`
+
+```json
+{
+  "userId": "f1a2b3c4-1234-5678-90ab-cdef12345678",
+  "githubId": 26589865,
+  "githubUsername": "lukaszgryglicki",
+  "outcome": "matched"
+}
+```
+
+`outcome` is one of `matched`, `created`, `adopted` — observability only, not behavioural
+for the caller.
+
+### Refusals
+
+Each refusal carries its own reason code and is logged under it with `functionName` and
+`x-request-id`, so refusals are countable **by reason**. That matters because a contested
+account, an unclaimable record and a caller who already has an account recorded all look
+like "binding failed" while needing different responses from different people.
+
+| Status | Reason code | When |
+|---|---|---|
+| 403 | `identity_unavailable` | The request carries no LF identity to associate the account with |
+| 403 | `identity_mismatch` | The gateway-authenticated principal and the token's LF identity disagree. Should never occur; checked because the write uses the token's identity, so a disagreement would record the submitted account against a different person |
+| 409 | `record_conflict` | The account is held by a record belonging to a different LF identity |
+| 409 | `record_unclaimed` | The account is held by a record that names nobody; claiming it needs proof of ownership this endpoint does not have |
+| 409 | `duplicate_github_id` | More than one record holds the account number |
+| 409 | `lf_record_already_bound` | The caller's own record already holds a different account |
+| 409 | `recorded_mismatch` | What was recorded is not what was submitted, or the resolved record carries no identifier |
+| 500 | — | Repository or downstream failure |
+
+Every refusal that is decided before the write writes nothing — that is, all of them except
+`recorded_mismatch`, which by definition can only be reached after a write and does not undo
+it. A caller that receives `recorded_mismatch` must not read it as "nothing happened": the
+record may hold the account, and what failed is the confirmation that it holds the right one.
+Retrying is safe, since a record that already holds the submitted account resolves as a match.
+
+### The account number's type
+
+Integer everywhere this endpoint owns it — the swagger schema, the generated model, the
+service, and the caller's request body — and a decimal string only at the `users`
+repository seam, where `DBUser.UserGithubID` and `models.User.GithubID` are both strings
+and the repository converts to a DynamoDB `N` at the AttributeValue boundary. The update
+path marshals whatever it is given, so writing a string there would store an `S`
+attribute that the numeric key condition on `github-id-index` would never match again:
+the association would look correct in the record and be invisible to every lookup.
+
 ## How LFX Self Serve consumes this (M1 mapping)
 
 The SS server slice already on `lfx-self-serve` branch `feat/easycla-my-clas-server`

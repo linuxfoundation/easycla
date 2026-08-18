@@ -30,6 +30,10 @@ type fakeRepo struct {
 	byGitlabUsername map[string][]*v1Models.User
 	bySecondaryEmail map[string][]*v1Models.User
 	secondaryScans   int
+	// consistentRead serves the post-write confirmation. Tests that write leave it wired
+	// to the writer's own store (see newBindingService), so the confirmation sees what was
+	// actually written rather than a second copy that could drift from it.
+	consistentRead func(userID string) (*v1Models.User, error)
 }
 
 func (f *fakeRepo) GetUserCLASignatures(_ context.Context, userID string) ([]*signatures.ItemSignature, error) {
@@ -58,6 +62,13 @@ func (f *fakeRepo) GetUsersByGitlabID(_ context.Context, gitlabID int64) ([]*v1M
 
 func (f *fakeRepo) GetUsersByGitlabUsername(_ context.Context, gitlabUsername string) ([]*v1Models.User, error) {
 	return f.byGitlabUsername[gitlabUsername], nil
+}
+
+func (f *fakeRepo) GetUserByIDConsistent(_ context.Context, userID string) (*v1Models.User, error) {
+	if f.consistentRead == nil {
+		return nil, nil
+	}
+	return f.consistentRead(userID)
 }
 
 func (f *fakeRepo) GetUsersBySecondaryEmails(_ context.Context, emails []string) ([]*v1Models.User, error) {
