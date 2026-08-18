@@ -16,9 +16,10 @@ their current and historical ICLAs and ECLAs** — matched across their LF usern
 emails and GitHub/GitLab/Gerrit identities, with per-record validity evaluated against
 the *current* company CCLA approval lists — download their signed ICLA PDFs via
 time-limited links, and list the deduplicated identity set they own (the same set the
-list endpoint authorizes them to search). Every provided identity key is **verified to belong to the
-authenticated user** before it is searched (see "Identity ownership enforcement"), so
-the endpoints cannot be used to freely enumerate other people's CLA history.
+list endpoint authorizes them to search). For non-admin, untrusted callers every provided identity
+key is **verified to belong to the authenticated user** before it is searched (see "Identity
+ownership enforcement" for the admin and trusted-caller exceptions), so the endpoints cannot be
+used to freely enumerate other people's CLA history.
 "Belongs to" means the identity is *currently* attached to the caller's LF account
 (their EasyCLA user record or their platform user-service profile/identities) — the
 accepted product bar for this read-only surface; the recycled-alias trade-off this
@@ -99,9 +100,11 @@ Auth0 client IDs).
 
 An absent header is denied exactly like an invalid one: the traefik `aws-lambda` middleware
 drops duplicated headers, so a duplicated `Authorization` header arrives as an absent one.
-`iss` and `aud` are deliberately not re-checked in-handler — the gateway validates them, and
-verifying the signature against this one tenant's JWKS already binds the token to that tenant
-(platform-side the audience is disabled, which is why `azp` is the client signal here).
+`iss` and `aud` are deliberately not re-checked in-handler: the JWKS already binds the token to
+this one tenant, and which audience an SS token carries is still open in the
+[trust-SS decision](https://github.com/linuxfoundation/lfx-self-serve/issues/1216) (session access
+token vs. the P3 api-gw-audience token), so pinning one would 401 the other. A token this tenant
+minted for another API therefore also verifies — accepted because `azp` stays the client signal.
 
 While the SSM parameter is unset the verifier is **disabled** — no bearer token is required
 and nothing is trusted, so the endpoints behave exactly as before. A local `./bin/cla` run
@@ -539,9 +542,9 @@ with a TODO for the missing lookup endpoint. With this API it collapses to:
   email as both `email` and `secondaryEmail` (they search different attributes), and
   provider usernames alongside numeric IDs (an ID present only on a detached
   pre-LFID record cannot be authorized by itself; the verified username recovers
-  it). The same full set goes on the PDF call (server-derived values from the
-  session — and EasyCLA now **re-verifies** every key against the LF account
-  server-side, so the enforcement is defense-in-depth rather than SS-only). Mapping to
+  it). The same full set goes on the PDF call (server-derived values from the session
+  — EasyCLA **re-verifies** every key against the LF account server-side until SS is
+  allow-listed, after which SS's Auth0-derived list is authoritative). Mapping to
   `MyClaAgreement`: `kind = claType`, `projectName = projectName` (bold top line of the
   Project cell) with `claGroupName` as its subtext and `projectLogo` as the logo tile
   (falling back to `claGroupName` / a default icon when a field is absent — the endpoint
@@ -608,8 +611,8 @@ assumption is to be confirmed on dev.
    cold start only: after `put-parameter`, force a Lambda restart/redeploy, otherwise warm
    containers keep the path disabled while fresh ones enable it. Rollback is
    `ssm delete-parameter` plus the same restart. A read failure other than a missing parameter
-   is logged as a warning and leaves the path disabled, i.e. every identity keeps being verified
-   per request — it never aborts the other lambdas that load this config.
+   is logged as a warning and leaves the path disabled, i.e. non-admin callers keep having every
+   identity verified per request — it never aborts the other lambdas that load this config.
 5. Read-only rollback: revert the ACS sync (or simply never flip the SS feature flag);
    the endpoints write nothing.
 
@@ -716,8 +719,10 @@ assumption is to be confirmed on dev.
   point the `githubId`/`githubUsername`/… parameters, the allow-list and the in-handler JWT
   verification all go away together. `swagger/cla.v2.yaml` carries the same note.
 - **The in-handler verification covers the bearer token, not the gateway's `X-ACL` headers.**
-  Those are still consumed unverified (`lfx-kit/auth.SwaggerAuth`), so what is closed is the
-  trust decision that matters here: a request bypassing the gateway cannot claim to be Self
-  Serve, nor pass an identity list, without a JWKS-verified allow-listed token. Forged
-  `X-ACL` can still assert a username (the pre-existing per-identity path); closing that is a
-  gateway concern, and the M6 move removes the header trust entirely.
+  Those are still consumed unverified (`lfx-kit/auth.SwaggerAuth`), so what is closed, once the
+  allow-list is configured, is the trust decision that matters here: nothing reaches the handlers
+  without a JWKS-verified tenant token, and nothing can claim to be Self Serve without an
+  allow-listed `azp`. A forged `X-ACL` can still assert a username, or the admin flag that bypasses
+  ownership checks — both pre-existing, both now additionally requiring a valid token. Binding the
+  principal to a token claim belongs to the v4 invoke-path trust work (spike 4); the M6 move removes
+  the header trust entirely.

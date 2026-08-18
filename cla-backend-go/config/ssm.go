@@ -295,8 +295,8 @@ func loadOptionalSelfServeConfig(ssmClient *ssm.SSM, stage string, config *Confi
 		if isParameterNotFound(err) {
 			log.WithFields(f).Debugf("optional SSM key %s not provisioned - no Self Serve caller is trusted until it is set", key)
 		} else {
-			// no caller is trusted, which is the pre-hardening posture (every identity is verified
-			// per request), so this degrades rather than aborting every lambda that loads config
+			// no caller is trusted, which is the pre-hardening posture, so this degrades rather
+			// than aborting every lambda that loads config
 			log.WithFields(f).WithError(err).Warnf("unable to read the SSM key %s - the trusted Self Serve caller path stays disabled", key)
 		}
 		return
