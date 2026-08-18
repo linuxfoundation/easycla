@@ -104,7 +104,8 @@ func TestTrustedCallerVerifierEnabled(t *testing.T) {
 func TestVerifyMissingBearerToken(t *testing.T) {
 	verifier, fetches := testVerifier(t, testKey(t))
 
-	for _, header := range []string{"", "   ", "Basic dXNlcjpwYXNz", "Bearer", "Bearer ", "Bearer    ", "bearer\t", "token abc", "Bearer\n"} {
+	basic := "Basic " + base64.StdEncoding.EncodeToString([]byte("user:pass"))
+	for _, header := range []string{"", "   ", basic, "Bearer", "Bearer ", "Bearer    ", "bearer\t", "token abc", "Bearer\n"} {
 		caller, err := verifier.Verify(header)
 		assert.Nil(t, caller)
 		assert.ErrorIs(t, err, ErrNoBearerToken, "header %q must be denied", header)
@@ -302,6 +303,34 @@ func TestVerifyRejectsAStaleCachedKey(t *testing.T) {
 	caller, err = verifier.Verify("Bearer " + testToken(t, key, testKeyID, testClaims(testTrustedClientID)))
 	assert.Nil(t, caller)
 	assert.Error(t, err, "past the grace period a key that cannot be re-fetched must be rejected")
+}
+
+// a misconfigured cla-auth0-algorithm cannot open a hole: the verifier only ever hands the parser
+// an RSA public key, so a non-RSA algorithm fails closed instead of accepting forged signatures
+func TestVerifyRejectsMisconfiguredAlgorithms(t *testing.T) {
+	key := testKey(t)
+
+	hmac := jwt.NewWithClaims(jwt.SigningMethodHS256, testClaims(testTrustedClientID))
+	hmac.Header["kid"] = testKeyID
+	hmacToken, err := hmac.SignedString(key.PublicKey.N.Bytes())
+	require.NoError(t, err)
+
+	none := jwt.NewWithClaims(jwt.SigningMethodNone, testClaims(testTrustedClientID))
+	none.Header["kid"] = testKeyID
+	noneToken, err := none.SignedString(jwt.UnsafeAllowNoneSignatureType)
+	require.NoError(t, err)
+
+	for algorithm, rawToken := range map[string]string{"HS256": hmacToken, "none": noneToken} {
+		verifier, verifierErr := NewTrustedCallerVerifier("linuxfoundation-dev.auth0.com", algorithm, []string{testTrustedClientID})
+		require.NoError(t, verifierErr)
+		verifier.fetchKeys = func() (map[string]*rsa.PublicKey, error) {
+			return map[string]*rsa.PublicKey{testKeyID: &key.PublicKey}, nil
+		}
+
+		caller, verifyErr := verifier.Verify("Bearer " + rawToken)
+		assert.Nil(t, caller, "a verifier configured with %s must not accept a token", algorithm)
+		assert.Error(t, verifyErr)
+	}
 }
 
 // the grace window is exclusive: at exactly keysExpireAt+jwksStaleKeyGrace the cached key is gone

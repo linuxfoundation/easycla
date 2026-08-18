@@ -99,6 +99,9 @@ Auth0 client IDs).
 
 An absent header is denied exactly like an invalid one: the traefik `aws-lambda` middleware
 drops duplicated headers, so a duplicated `Authorization` header arrives as an absent one.
+`iss` and `aud` are deliberately not re-checked in-handler — the gateway validates them, and
+verifying the signature against this one tenant's JWKS already binds the token to that tenant
+(platform-side the audience is disabled, which is why `azp` is the client signal here).
 
 While the SSM parameter is unset the verifier is **disabled** — no bearer token is required
 and nothing is trusted, so the endpoints behave exactly as before. A local `./bin/cla` run
@@ -601,8 +604,12 @@ assumption is to be confirmed on dev.
      --type String --value '<ss-client-id>[,<ss-client-id-2>]' --overwrite
    ```
 
-   Deploy order does not matter (the path is disabled without the parameter, the parameter is
-   ignored without the code); rollback is `ssm delete-parameter` + a Lambda restart.
+   Both partial states are safe, so deploy order does not matter, but the allow-list is read at
+   cold start only: after `put-parameter`, force a Lambda restart/redeploy, otherwise warm
+   containers keep the path disabled while fresh ones enable it. Rollback is
+   `ssm delete-parameter` plus the same restart. A read failure other than a missing parameter
+   is logged as a warning and leaves the path disabled, i.e. every identity keeps being verified
+   per request — it never aborts the other lambdas that load this config.
 5. Read-only rollback: revert the ACS sync (or simply never flip the SS feature flag);
    the endpoints write nothing.
 

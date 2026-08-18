@@ -5,6 +5,7 @@ package my_clas
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
@@ -169,6 +170,9 @@ func verifyCaller(callerVerifier CallerVerifier, r *http.Request, f logrus.Field
 	trustedCaller, err := callerVerifier.Verify(authorization)
 	if err != nil {
 		return nil, err
+	}
+	if trustedCaller == nil {
+		return nil, errors.New("the caller verifier returned no result")
 	}
 
 	f["callerClientID"] = trustedCaller.ClientID

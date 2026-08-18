@@ -57,6 +57,7 @@ type fakeVerifier struct {
 	enabled bool
 	callers map[string]*claAuth.TrustedCaller
 	seen    []string
+	noop    string
 }
 
 func (f *fakeVerifier) Enabled() bool {
@@ -65,6 +66,9 @@ func (f *fakeVerifier) Enabled() bool {
 
 func (f *fakeVerifier) Verify(authorization string) (*claAuth.TrustedCaller, error) {
 	f.seen = append(f.seen, authorization)
+	if f.noop != "" && authorization == f.noop {
+		return nil, nil
+	}
 	if caller, ok := f.callers[authorization]; ok {
 		return caller, nil
 	}
@@ -106,13 +110,17 @@ func TestHandlersDenyUnverifiedCallers(t *testing.T) {
 	api, service := configuredAPI(t, verifier)
 	authUser := &auth.User{UserName: "someone"}
 
-	for _, authorization := range []string{"", "Bearer forged"} {
+	// a verifier that reports neither a caller nor an error must deny rather than panic
+	verifier.noop = "Bearer nothing"
+
+	for _, authorization := range []string{"", "Bearer forged", "Bearer nothing"} {
 		req := request(t, authorization)
 		assert.Equal(t, http.StatusUnauthorized, statusOf(t, api.MyClasGetMyClasHandler.Handle(myClasOps.GetMyClasParams{HTTPRequest: req}, authUser)))
 		assert.Equal(t, http.StatusUnauthorized, statusOf(t, api.MyClasGetMyClaPdfHandler.Handle(myClasOps.GetMyClaPdfParams{HTTPRequest: req, SignatureID: "sig-1"}, authUser)))
 		assert.Equal(t, http.StatusUnauthorized, statusOf(t, api.MyClasGetMyIdentitiesHandler.Handle(myClasOps.GetMyIdentitiesParams{HTTPRequest: req}, authUser)))
 	}
 	assert.Empty(t, service.callers, "an unverified caller must never reach the service")
+	assert.Len(t, verifier.seen, 9, "every request must be verified")
 }
 
 func TestHandlersTrustAllowListedCallers(t *testing.T) {
@@ -167,7 +175,12 @@ func TestHandlersTrustAllowListedCallers(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, statusOf(t, api.MyClasGetMyIdentitiesHandler.Handle(identities, &auth.User{})))
 	assert.Equal(t, http.StatusOK, statusOf(t, api.MyClasGetMyIdentitiesHandler.Handle(identities, &auth.User{UserName: "someone"})))
 
-	assert.Equal(t, []string{"Bearer trusted"}, verifier.seen[:1], "the raw Authorization header is what gets verified")
+	// every request above is verified with the raw Authorization header, in order
+	assert.Equal(t, []string{
+		"Bearer trusted", "Bearer trusted",
+		"Bearer untrusted", "Bearer untrusted", "Bearer untrusted",
+		"Bearer trusted", "Bearer trusted", "Bearer trusted", "Bearer trusted", "Bearer trusted",
+	}, verifier.seen)
 }
 
 func TestHandlersMapServiceFailures(t *testing.T) {

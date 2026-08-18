@@ -4,6 +4,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -291,10 +292,12 @@ func loadOptionalSelfServeConfig(ssmClient *ssm.SSM, stage string, config *Confi
 		WithDecryption: aws.Bool(false),
 	})
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == ssm.ErrCodeParameterNotFound {
+		if isParameterNotFound(err) {
 			log.WithFields(f).Debugf("optional SSM key %s not provisioned - no Self Serve caller is trusted until it is set", key)
 		} else {
-			log.WithFields(f).WithError(err).Warnf("unable to read optional SSM key %s - no Self Serve caller is trusted", key)
+			// no caller is trusted, which is the pre-hardening posture (every identity is verified
+			// per request), so this degrades rather than aborting every lambda that loads config
+			log.WithFields(f).WithError(err).Warnf("unable to read the SSM key %s - the trusted Self Serve caller path stays disabled", key)
 		}
 		return
 	}
@@ -304,6 +307,14 @@ func loadOptionalSelfServeConfig(ssmClient *ssm.SSM, stage string, config *Confi
 
 	config.SelfServe.TrustedClientIDs = parseTrustedClientIDs(*out.Parameter.Value)
 	log.WithFields(f).Debugf("loaded %d trusted Self Serve client ID(s) from the SSM key %s", len(config.SelfServe.TrustedClientIDs), key)
+}
+
+func isParameterNotFound(err error) bool {
+	var aerr awserr.Error
+	if errors.As(err, &aerr) {
+		return aerr.Code() == ssm.ErrCodeParameterNotFound
+	}
+	return false
 }
 
 func parseTrustedClientIDs(value string) []string {

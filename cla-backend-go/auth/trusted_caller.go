@@ -197,9 +197,10 @@ func (v *TrustedCallerVerifier) publicKey(kid string) (*rsa.PublicKey, error) {
 	return refreshed, nil
 }
 
+var jwksClient = &http.Client{Timeout: jwksRequestTimeout}
+
 func (v *TrustedCallerVerifier) fetchJWKS() (map[string]*rsa.PublicKey, error) {
-	client := &http.Client{Timeout: jwksRequestTimeout}
-	resp, err := client.Get(v.wellKnownURL) // nolint
+	resp, err := jwksClient.Get(v.wellKnownURL) // nolint
 	if err != nil {
 		return nil, err
 	}
