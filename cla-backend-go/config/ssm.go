@@ -276,7 +276,44 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 	// environments, and the caller must enforce that (see config.SSS).
 	loadOptionalSSSConfig(ssmClient, stage, &config, f)
 
+	loadOptionalSelfServeConfig(ssmClient, stage, &config, f)
+
 	return config
+}
+
+// loadOptionalSelfServeConfig fetches the comma-separated allow-list of trusted LFX Self Serve
+// Auth0 client IDs without aborting startup when the key is missing, so the SSM parameter can
+// be provisioned independently of this code being deployed.
+func loadOptionalSelfServeConfig(ssmClient *ssm.SSM, stage string, config *Config, f logrus.Fields) {
+	key := fmt.Sprintf("cla-ss-trusted-client-ids-%s", stage)
+	out, err := ssmClient.GetParameter(&ssm.GetParameterInput{
+		Name:           aws.String(key),
+		WithDecryption: aws.Bool(false),
+	})
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == ssm.ErrCodeParameterNotFound {
+			log.WithFields(f).Debugf("optional SSM key %s not provisioned - no Self Serve caller is trusted until it is set", key)
+		} else {
+			log.WithFields(f).WithError(err).Warnf("unable to read optional SSM key %s - no Self Serve caller is trusted", key)
+		}
+		return
+	}
+	if out.Parameter == nil || out.Parameter.Value == nil {
+		return
+	}
+
+	config.SelfServe.TrustedClientIDs = parseTrustedClientIDs(*out.Parameter.Value)
+	log.WithFields(f).Debugf("loaded %d trusted Self Serve client ID(s) from the SSM key %s", len(config.SelfServe.TrustedClientIDs), key)
+}
+
+func parseTrustedClientIDs(value string) []string {
+	var clientIDs []string
+	for _, clientID := range strings.Split(value, ",") {
+		if clientID = strings.TrimSpace(clientID); clientID != "" {
+			clientIDs = append(clientIDs, clientID)
+		}
+	}
+	return clientIDs
 }
 
 // loadOptionalSSSConfig fetches the SSS keys without aborting startup when they

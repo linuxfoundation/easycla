@@ -101,6 +101,15 @@ type Config struct {
 
 	// SSS holds the Sanctions Screening Service client configuration
 	SSS SSS `json:"sss"`
+
+	// SelfServe holds the LFX Self Serve trusted-caller configuration
+	SelfServe SelfServe `json:"self_serve"`
+}
+
+// SelfServe holds the LFX Self Serve trusted-caller configuration: the Auth0 azp (client ID)
+// values whose caller-supplied identity list the My CLAs endpoints accept as authorized
+type SelfServe struct {
+	TrustedClientIDs []string `json:"trusted_client_ids"`
 }
 
 // Auth0 model
