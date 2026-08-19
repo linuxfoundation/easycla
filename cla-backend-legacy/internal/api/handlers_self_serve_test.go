@@ -3,7 +3,10 @@
 
 package api
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestIsSelfServeSignatureMetadata(t *testing.T) {
 	tests := []struct {
@@ -24,5 +27,12 @@ func TestIsSelfServeSignatureMetadata(t *testing.T) {
 				t.Errorf("isSelfServeSignatureMetadata(%v) = %v, expected %v", test.metadata, got, test.expected)
 			}
 		})
+	}
+}
+
+func TestAddSelfServeEmployeeSignerToGerritGroupsIsANoOpWithoutDependencies(t *testing.T) {
+	h := &Handlers{}
+	for _, lfUsername := range []string{"", "None", "someuser"} {
+		h.addSelfServeEmployeeSignerToGerritGroups(context.Background(), "project", "user", lfUsername)
 	}
 }

@@ -9146,6 +9146,39 @@ func (h *Handlers) parseDomain(s string) string {
 	return strings.TrimPrefix(u.Hostname(), "www.")
 }
 
+func (h *Handlers) addSelfServeEmployeeSignerToGerritGroups(ctx context.Context, projectID, userID, lfUsername string) {
+	if h.gerritInstances == nil || lfUsername == "" || lfUsername == "None" {
+		return
+	}
+
+	lfGroupConfigured := h.lfGroup != nil &&
+		strings.TrimSpace(h.lfGroup.BaseURL) != "" &&
+		strings.TrimSpace(h.lfGroup.ClientID) != "" &&
+		strings.TrimSpace(h.lfGroup.ClientSecret) != "" &&
+		strings.TrimSpace(h.lfGroup.RefreshToken) != ""
+	if !lfGroupConfigured {
+		return
+	}
+
+	gerrits, err := h.gerritInstances.QueryByProjectID(ctx, projectID)
+	if err != nil {
+		logging.Warnf("request_employee_signature ignored gerrit instance lookup failure for a self serve signing session project=%s user=%s: %v", projectID, userID, err)
+		return
+	}
+
+	for _, gerrit := range gerrits {
+		groupID := strings.TrimSpace(getAttrString(gerrit, "group_id_ccla"))
+		if groupID == "" {
+			continue
+		}
+		if res := h.lfGroup.AddUserToGroup(ctx, groupID, lfUsername); res != nil {
+			if _, bad := res["error"]; bad {
+				logging.Warnf("request_employee_signature ignored legacy LFGroup update failure for a self serve signing session group_id=%s user=%s result=%v", groupID, lfUsername, res)
+			}
+		}
+	}
+}
+
 func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	req := parseEmployeeSignatureRequestV2(r)
@@ -9400,6 +9433,12 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 		eventSummary := fmt.Sprintf("The user %s acknowledged the CLA employee affiliation for company %s and cla group %s.", userName, companyName, projectName)
 		h.putAuditEventBestEffort(ctx, auditEventInput{EventType: "EmployeeSignatureCreated", EventCompanyID: req.CompanyID, EventCLAGroupID: req.ProjectID, EventUserID: req.UserID, EventData: eventData, EventSummary: eventSummary, ContainsPII: true})
 		h.putAuditEventBestEffort(ctx, auditEventInput{EventType: "EmployeeSignatureSigned", EventCompanyID: req.CompanyID, EventCLAGroupID: req.ProjectID, EventUserID: req.UserID, EventData: eventData, EventSummary: eventSummary, ContainsPII: true})
+
+		// A Self Serve session reaches this branch even for a Gerrit backed CLA group, so mirror the
+		// gerrit branch's best effort LDAP group add that the return URL type would otherwise skip
+		if isSelfServeSignatureMetadata(signatureMetadata) {
+			h.addSelfServeEmployeeSignerToGerritGroups(ctx, req.ProjectID, req.UserID, lfUsername)
+		}
 
 		if strings.EqualFold(returnURLType, "github") {
 			uid := strings.TrimSpace(getAttrString(user, "user_id"))
