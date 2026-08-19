@@ -251,9 +251,11 @@ endpoint returns a user's ECLAs**:
 Each returned row carries the raw flags (`signed`, `approved`) plus a computed `valid`
 boolean:
 
-- **ICLA**: `valid = signed && approved`. `approved=false` means the signature was
-  invalidated (PM invalidation or approval-criteria removal set
-  `signature_approved=false`; the stored `note` records why).
+- **ICLA**: `valid = signed && approved`. `approved=false` means the stored
+  `signature_approved` flag is false — see
+  [What `approved=false` actually covers](#what-approvedfalse-actually-covers) for the
+  four unrelated paths that set it. The stored `note` records which one, but this
+  endpoint does not expose it.
 - **ECLA** (employee acknowledgement): `valid` requires **all** of:
   1. `signature_signed && signature_approved`;
   2. the employer (company record) exists and is **not sanctioned**
@@ -299,17 +301,32 @@ are the contributor-facing standing and must not be inferred from those two bool
 | `claType` | `approved` | coverage | `status` | `statusReason` |
 |---|---|---|---|---|
 | icla | true | n/a | `valid` | omitted |
-| icla | false | n/a | `invalidated` | omitted |
-| ecla | false | any | `invalidated` | omitted |
+| icla | false | n/a | `invalidated` (flag mirror) | omitted |
+| ecla | false | any | `invalidated` (flag mirror) | omitted |
 | ecla | true | completed, covered | `valid` | omitted |
 | ecla | true | completed, not on the lists | `needs_attention` | `not_on_approval_list` |
 | ecla | true | unevaluable | `unknown` | `unknown` |
+
+The `approved=false` row is checked **before** coverage, so it never carries a
+`statusReason` and never becomes `unknown` — even when the company lookup failed.
+`invalidated` is reachable for both types; `needs_attention` and `unknown` are
+ECLA-only, because the ICLA branch returns before coverage is read. So **ICLA is
+`valid` or `invalidated` only**, while an ECLA can be any of the four.
 
 Unevaluable coverage includes: nil/error company, sanctioned employer, no
 approved+signed CCLA, `GetCorporateSignature` error, `EvaluateUserApproval` error,
 GitHub-org lookup fail, GitLab group fallback. `needs_attention` is **only** a
 completed Approved List miss. There are no cause-specific reason tokens
 (`company_sanctioned`, `no_approved_ccla`, …).
+
+**The GitLab group fallback is deliberate.** When a CCLA carries GitLab group approvals
+and nothing else matched, coverage cannot be evaluated live (that needs per-group OAuth
+tokens held by the MR-gating service), so the check defers to the stored
+`signature_approved` flag: `valid` stays `true` while `status` is `unknown`. Every
+GitLab-group-approved contributor therefore renders as "—" rather than a Valid pill.
+That is accepted while GitLab is being removed from the M2 UI
+([#1418](https://github.com/linuxfoundation/lfx-self-serve/issues/1418)), and it is
+currently latent — no production CCLA relies on GitLab group approvals alone.
 
 A `GetCorporateSignature` or non-`CompanyNotFound` company lookup error degrades
 **that row** to `unknown` and still returns sibling rows. It no longer 500s the list.
@@ -325,6 +342,71 @@ shows every agreement and reads producer `status` / `statusReason` directly.
 Do **not** derive standing from `valid`, and do **not** drop ECLAs with
 `valid=false` — that would hide both `needs_attention` and `unknown`. The
 `valid` flag keeps its pre-#1423 meaning for callers that only read the booleans.
+
+### What `approved=false` actually covers
+
+`status=invalidated` is a **mirror of the stored `signature_approved` flag**, not a
+statement about who acted or why. Four unrelated paths set that flag to false, and
+**none of them is sanctions screening**:
+
+1. **A CLA manager edits or removes an approval-list entry.** `verifyUserApprovals`
+   (`signatures/repository.go:4139`, `:4168`, `:4177`) for the email-domain, GitHub-org,
+   GitHub-username and email criteria. ECLAs reach it through `invalidateSignatures`
+   iterating `approvalList.ECLAs` (`:4077-4090`). This is where a contributor's
+   manager-completed removal request ends up.
+2. **A project manager invalidates an ICLA from the Project Control Center.**
+   `PUT /cla-group/{claGroupID}/user/{userID}/icla` → `InvalidateICLA`
+   (`v2/signatures/service.go:355`). This path also emails the contributor and logs a
+   `signature.invalidated` event.
+3. **A CLA group or project is deleted.** `InvalidateProjectRecords`
+   (`signatures/service.go:937`), called from `v2/cla_groups/service.go:860` and
+   `project/handlers.go:245`, bulk-flips every signature in the group. The contributor
+   took no action at all.
+4. **A missing attribute.** `signature_approved` is absent on a small number of
+   production signed ICLAs; Go unmarshals a missing bool to `false`, so those rows land
+   here too.
+
+The first three go through the single writer `InvalidateProjectRecord`
+(`signatures/repository.go:2089-2130`), which writes only the flag plus a free-text
+`note` — no timestamp, no actor field, no reason code, and it does not touch
+`date_modified`. The fourth never went through a writer at all, so it does not even
+carry a `note`. **The cause is therefore not recoverable from this response.**
+Consumers must not present `invalidated` as an accusation, and must not label it
+"revoked": see [Revocation provenance](#revocation-provenance-arrives-with-1370) below.
+
+### The `status` enum is open to extension
+
+`revoked` will be **added** to `status` when revocation provenance lands (see below).
+Consumers **MUST tolerate unrecognised `status` values** rather than failing closed —
+generate permissive types, or handle the default case. A strict enum binding will break
+on the next additive release. `statusReason` is likewise open to extension, though no
+additional tokens are planned.
+
+### Revocation provenance arrives with #1370
+
+A **Revoked** state — system-set by sanctions/OFAC screening, read-only, dated, with no
+user actions — is specified for the Me lens, but this endpoint cannot produce it and
+does not try. Revoked is defined by a revocation **timestamp and reason/actor**, and no
+such data exists: sanctions live on the *company* row as `is_sanctioned` +
+`sanction_origin` (`company/models.go:27-28`) with **no sanction-specific timestamp** —
+the writer bumps only the row's shared `date_modified`
+(`company/repository.go:1296-1306`), which every other company mutation bumps too, so it
+cannot date the sanction. The only Go writer is the sign-flow screening check
+(`checkCompanyCompliance`, `v2/sign/service.go:3098`), which sets
+`sanction_origin="sss"`; manual/admin blocks are also supported and carry a different or
+absent origin (`company/repository.go:1313-1316`), so they are set out of band and no Go
+path dates them either. Nothing writes anything signature-level on sanction at all. That
+metadata is [#1370](https://github.com/linuxfoundation/lfx-self-serve/issues/1370).
+
+Two consequences worth stating plainly:
+
+- **Do not treat `invalidated` as "revoked".** The bare flag cannot distinguish a
+  sanctions revocation from a manager-completed removal, a PCC invalidation, or a
+  deleted CLA group — and telling a contributor who asked to be removed that they were
+  sanctioned is the specific failure mode to avoid.
+- **A sanctioned employer currently renders `unknown`, not anything Revoked-like.**
+  `companyModel.IsSanctioned` makes coverage unevaluable
+  (`v2/my_clas/service.go:713-715`), so the row shows "—".
 
 ### Response — `200 my-cla-list`
 
@@ -406,10 +488,10 @@ Field reference (`my-cla` rows):
 | `signedOn` | string | Signing/acknowledgement date (fallback: record creation date) |
 | `signed` / `approved` | bool | Raw signature flags |
 | `valid` | bool | Computed as defined above. Unchanged by `status`. |
-| `status` | `valid` \| `needs_attention` \| `invalidated` \| `unknown` | Contributor-facing standing. Always present. Independent of `approved`/`valid`. ICLA is only `valid` or `invalidated`. |
+| `status` | `valid` \| `needs_attention` \| `invalidated` \| `unknown` | Contributor-facing standing. Always present. Independent of `approved`/`valid`. ICLA is only `valid` or `invalidated`. `invalidated` mirrors the stored approval flag and attributes nothing. **Open to extension** — tolerate unrecognised values. |
 | `statusReason` | `not_on_approval_list` \| `unknown` | Why the standing is not `valid`. Omitted on valid rows and every ICLA. Two tokens only. |
 | `documentMajorVersion` / `documentMinorVersion` | int | CLA document version that was signed (display/superseded detection is the consumer's choice) |
-| `pdfAvailable` | bool | `true` when the record is a signed ICLA eligible for PDF retrieval (ECLAs have no signed document — FR-002); invalidated ICLAs stay eligible (it is the user's own signed legal record); actual S3 object availability is verified by the PDF endpoint on request |
+| `pdfAvailable` | bool | `true` for every signed ICLA, unconditionally; ECLAs have no signed document of their own (FR-002) so they are always `false`. It is **not** gated on `approved`: a flag-off ICLA keeps the affordance, because the document is the contributor's own signed legal record and the flag may have been set by a manager removal, a PCC invalidation, or a project deletion. When `revoked` joins `status`, that state must suppress the download and this field will need gating. Actual S3 object availability is verified by the PDF endpoint on request, and that endpoint does its own ownership check — this field is a UI hint, not the security boundary. |
 
 List-level fields: `lfUsername` (the effective username the list was resolved for),
 `userIds` (matched EasyCLA user record IDs), `skippedIdentities` (identity parameters

@@ -65,6 +65,12 @@ properties:
       completed and the user is covered; needs_attention only when coverage completed and
       proved an Approved List miss; invalidated when the stored approval flag is false;
       unknown when coverage could not be evaluated. ICLA is only valid or invalidated.
+      invalidated mirrors the stored approval flag and attributes nothing - a CLA manager
+      approval-list edit, a project manager invalidating an ICLA, and CLA group deletion all
+      produce it, and it does not mean the signature was revoked by sanctions screening.
+      This enum is open to extension - a revoked token is expected to be added once
+      revocation provenance (timestamp plus reason/actor) exists - so consumers MUST tolerate
+      unrecognised status values rather than failing closed.
   statusReason:
     type: string
     enum: [not_on_approval_list, unknown]
@@ -83,4 +89,9 @@ properties:
   pdfAvailable:
     type: boolean
     x-omitempty: false
-    description: True when the record is a signed ICLA eligible for PDF retrieval - object availability is verified by the PDF endpoint on request
+    description: >
+      True for every signed ICLA; ECLAs have no signed document of their own and are always
+      false. Not gated on approved - a flag-off ICLA keeps the affordance because the document
+      is the contributor's own signed legal record. Object availability is verified by the PDF
+      endpoint on request, and that endpoint enforces its own ownership check, so this field is
+      a display hint rather than the security boundary.
