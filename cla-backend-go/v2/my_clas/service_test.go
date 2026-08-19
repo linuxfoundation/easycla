@@ -906,7 +906,7 @@ func TestGetMyClasGithubOrgLookupFailed(t *testing.T) {
 	}
 	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
-	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
 	require.NoError(t, err)
 	require.Len(t, result.Clas, 1)
 	assert.True(t, result.Clas[0].Approved)
@@ -942,7 +942,7 @@ func TestGetMyClasCorporateSignatureErrorDegradesRow(t *testing.T) {
 	}
 	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
-	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
 	require.NoError(t, err)
 	require.Len(t, result.Clas, 2)
 	byID := map[string]models.MyCla{}
@@ -981,7 +981,7 @@ func TestGetMyClasCompanyLookupErrorDegradesRow(t *testing.T) {
 	}
 	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
-	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
 	require.NoError(t, err)
 	require.Len(t, result.Clas, 2)
 	byID := map[string]models.MyCla{}
@@ -1011,7 +1011,7 @@ func TestGetMyClasCompanyLookupErrorCachesNilForSiblingRows(t *testing.T) {
 	}
 	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, companies, &fakeClaGroups{})
 
-	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
 	require.NoError(t, err)
 	require.Len(t, result.Clas, 2)
 	assert.Equal(t, 1, companies.gets, "a failed company lookup is cached so sibling rows do not retry")
@@ -1042,7 +1042,7 @@ func TestGetMyClasCorporateSignatureErrorCachesNilForSiblingRows(t *testing.T) {
 	}
 	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
-	result, err := svc.GetMyClas(context.Background(), "someone", false, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
 	require.NoError(t, err)
 	require.Len(t, result.Clas, 2)
 	assert.Equal(t, 1, signaturesService.corporateGets, "a failed CCLA lookup is cached so sibling rows do not retry")
