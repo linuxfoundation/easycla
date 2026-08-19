@@ -2753,7 +2753,7 @@ paths:
   /my-clas:
     get:
       summary: Get My CLAs
-      description: Returns the signed ICLAs and ECLAs (employee acknowledgements) matching the provided identity - LF username, emails and GitHub/GitLab/Gerrit identities - aggregated across all matching EasyCLA user records and deduplicated, with validity evaluated against the current company CCLA approval lists. Unless the caller is an admin, each provided identity must belong to the authenticated user (per their EasyCLA user record or the identities connected to their LF account in the platform user-service) - identities that cannot be verified are not searched and are reported in skippedIdentities
+      description: Returns the signed ICLAs and ECLAs (employee acknowledgements) matching the provided identity - LF username, emails and GitHub/GitLab/Gerrit identities - aggregated across all matching EasyCLA user records and deduplicated, with validity evaluated against the current company CCLA approval lists. Unless the caller is an admin or a trusted LFX Self Serve client, each provided identity must belong to the authenticated user (per their EasyCLA user record or the identities connected to their LF account in the platform user-service) - identities that cannot be verified are not searched and are reported in skippedIdentities. A trusted caller is one whose Authorization bearer token is signature-verified against the Auth0 JWKS in-handler and whose azp claim is on the configured Self Serve client-ID allow-list; while that allow-list is configured every request must carry a verifiable bearer token, and a missing or unverifiable one is rejected with 401
       operationId: getMyClas
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -2791,7 +2791,7 @@ paths:
   /my-clas/{signatureID}/pdf:
     get:
       summary: Get a signed ICLA PDF download link
-      description: Returns a time-limited download URL for the signed ICLA PDF when the signature belongs to the provided identity - unknown, not-owned and ECLA signature IDs return 404. The same identity-ownership enforcement as GET /my-clas applies, so a non-admin caller can only download their own signed documents
+      description: Returns a time-limited download URL for the signed ICLA PDF when the signature belongs to the provided identity - unknown, not-owned and ECLA signature IDs return 404. The same identity-ownership enforcement and trusted-caller bearer token verification as GET /my-clas applies, so a caller that is neither an admin nor a trusted LFX Self Serve client can only download their own signed documents
       operationId: getMyClaPdf
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -2837,7 +2837,7 @@ paths:
   /my-clas/identities:
     get:
       summary: Get My Identities
-      description: Returns the deduplicated identities connected to the authenticated user, each formatted as "<type>:<value>" - the union of the identities on their EasyCLA user records and the identities connected to their LF account in the platform user-service, i.e. exactly the identity set the My CLAs API authorizes a non-admin caller to search
+      description: Returns the deduplicated identities connected to the authenticated user, each formatted as "<type>:<value>" - the union of the identities on their EasyCLA user records and the identities connected to their LF account in the platform user-service, i.e. exactly the identity set the My CLAs API authorizes a non-admin, non-trusted caller to search. This endpoint always reports the authenticated principal's own identities; when the trusted Self Serve client-ID allow-list is configured the request must still carry a verifiable Authorization bearer token
       operationId: getMyIdentities
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -5027,7 +5027,7 @@ parameters:
     required: true
   myClasLfUsername:
     name: lfUsername
-    description: The LF username (LFID) of the user - when omitted, the username of the authenticated principal is used; unless the caller is an admin, a value different from the authenticated principal is not searched and is reported in skippedIdentities
+    description: The LF username (LFID) of the user - when omitted, the username of the authenticated principal is used; unless the caller is an admin or a trusted LFX Self Serve client, a value different from the authenticated principal is not searched and is reported in skippedIdentities. Accepting a caller-supplied identity list is transitional - at M6, once EasyCLA runs on the K8s cluster, it should call lfx.auth-service.user_identity.list itself over NATS and drop both the caller-supplied list and the azp allow-list that authorizes it
     in: query
     type: string
     required: false

@@ -23,13 +23,18 @@ import (
 )
 
 const (
+	identitySummaryLimit       = 512
 	identitySourceGithub       = "github"
 	identitySourceGitlab       = "gitlab"
 	identitySourceGerrit       = "gerrit"
 	identityDataSourcePlatform = "platform"
 )
 
-// Identity holds the caller-provided identity keys used to resolve EasyCLA user records
+// Identity holds the caller-provided identity keys used to resolve EasyCLA user records.
+//
+// Taking the identity list from the caller is a transitional mechanism (P3/P9 of the trust-SS
+// decision): at M6 EasyCLA should call lfx.auth-service.user_identity.list itself over NATS and
+// drop both these parameters and the azp allow-list that authorizes them.
 type Identity struct {
 	LfUsername      string
 	Emails          []string
@@ -46,6 +51,49 @@ func (i *Identity) IsEmpty() bool {
 	return strings.TrimSpace(i.LfUsername) == "" && len(i.GithubIDs) == 0 && len(i.GitlabIDs) == 0 &&
 		!hasValue(i.Emails) && !hasValue(i.SecondaryEmails) && !hasValue(i.GithubUsernames) &&
 		!hasValue(i.GitlabUsernames) && !hasValue(i.GerritUsernames)
+}
+
+// Summary renders the identity keys as a compact, length-bounded string for the caller audit log
+func (i *Identity) Summary() string {
+	var parts []string
+	addStrings := func(param string, values []string) {
+		if trimmed := trimAll(values); len(trimmed) > 0 {
+			parts = append(parts, param+":"+strings.Join(trimmed, ","))
+		}
+	}
+	addIDs := func(param string, values []int64) {
+		ids := dedupeIDs(values)
+		if len(ids) == 0 {
+			return
+		}
+		formatted := make([]string, 0, len(ids))
+		for _, id := range ids {
+			formatted = append(formatted, strconv.FormatInt(id, 10))
+		}
+		parts = append(parts, param+":"+strings.Join(formatted, ","))
+	}
+
+	addStrings("lfUsername", []string{i.LfUsername})
+	addStrings("email", i.Emails)
+	addStrings("secondaryEmail", i.SecondaryEmails)
+	addIDs("githubId", i.GithubIDs)
+	addStrings("githubUsername", i.GithubUsernames)
+	addIDs("gitlabId", i.GitlabIDs)
+	addStrings("gitlabUsername", i.GitlabUsernames)
+	addStrings("gerritUsername", i.GerritUsernames)
+
+	summary := strings.Join(parts, " ")
+	if len(summary) > identitySummaryLimit {
+		summary = strings.ToValidUTF8(summary[:identitySummaryLimit], "") + "..."
+	}
+	return summary
+}
+
+// Caller is the authenticated principal a My CLAs lookup runs as
+type Caller struct {
+	Username string
+	Admin    bool
+	Trusted  bool
 }
 
 func hasValue(values []string) bool {
@@ -90,8 +138,8 @@ type ProjectService interface {
 
 // Service interface defines the My CLAs service methods
 type Service interface {
-	GetMyClas(ctx context.Context, currentUsername string, admin bool, requested *Identity) (*models.MyClaList, error)
-	GetMyClaPdfURL(ctx context.Context, currentUsername string, admin bool, requested *Identity, signatureID string) (*models.MyClaPdf, error)
+	GetMyClas(ctx context.Context, caller *Caller, requested *Identity) (*models.MyClaList, error)
+	GetMyClaPdfURL(ctx context.Context, caller *Caller, requested *Identity, signatureID string) (*models.MyClaPdf, error)
 	GetMyIdentities(ctx context.Context, currentUsername string) (*models.MyIdentityList, error)
 	AuthorizeIdentity(ctx context.Context, currentUsername string, admin bool, requested *Identity) (*Identity, []string, error)
 }
@@ -129,15 +177,16 @@ type projectInfo struct {
 
 // GetMyClas returns all signed ICLAs and ECLAs of the EasyCLA user records matching the
 // given identity, with validity evaluated against the current CCLA approval lists
-func (s *service) GetMyClas(ctx context.Context, currentUsername string, admin bool, requested *Identity) (*models.MyClaList, error) {
+func (s *service) GetMyClas(ctx context.Context, caller *Caller, requested *Identity) (*models.MyClaList, error) {
 	f := logrus.Fields{
 		"functionName":    "v2.my_clas.service.GetMyClas",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
-		"currentUsername": currentUsername,
-		"admin":           admin,
+		"currentUsername": callerUsername(caller),
+		"admin":           caller != nil && caller.Admin,
+		"trustedCaller":   caller != nil && caller.Trusted,
 	}
 
-	identity, skipped, err := s.effectiveIdentity(ctx, currentUsername, admin, requested)
+	identity, skipped, err := s.effectiveIdentity(ctx, caller, requested)
 	if err != nil {
 		return nil, err
 	}
@@ -235,16 +284,17 @@ func (s *service) GetMyClas(ctx context.Context, currentUsername string, admin b
 // GetMyClaPdfURL returns a time-limited download URL for the signed ICLA PDF when the
 // signature belongs to one of the EasyCLA user records matching the given identity -
 // a nil result means unknown, not-owned, unsigned or ECLA signature ID
-func (s *service) GetMyClaPdfURL(ctx context.Context, currentUsername string, admin bool, requested *Identity, signatureID string) (*models.MyClaPdf, error) {
+func (s *service) GetMyClaPdfURL(ctx context.Context, caller *Caller, requested *Identity, signatureID string) (*models.MyClaPdf, error) {
 	f := logrus.Fields{
 		"functionName":    "v2.my_clas.service.GetMyClaPdfURL",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
-		"currentUsername": currentUsername,
-		"admin":           admin,
+		"currentUsername": callerUsername(caller),
+		"admin":           caller != nil && caller.Admin,
+		"trustedCaller":   caller != nil && caller.Trusted,
 		"signatureID":     signatureID,
 	}
 
-	identity, _, err := s.effectiveIdentity(ctx, currentUsername, admin, requested)
+	identity, _, err := s.effectiveIdentity(ctx, caller, requested)
 	if err != nil {
 		return nil, err
 	}
@@ -360,21 +410,36 @@ func (s *service) GetMyIdentities(ctx context.Context, currentUsername string) (
 // AuthorizeIdentity narrows the requested identity keys to the ones that belong to the
 // authenticated user, reporting the dropped keys - the same boundary GET /my-clas enforces
 func (s *service) AuthorizeIdentity(ctx context.Context, currentUsername string, admin bool, requested *Identity) (*Identity, []string, error) {
-	return s.effectiveIdentity(ctx, currentUsername, admin, requested)
+	return s.effectiveIdentity(ctx, &Caller{Username: currentUsername, Admin: admin}, requested)
 }
 
-func (s *service) effectiveIdentity(ctx context.Context, currentUsername string, admin bool, requested *Identity) (*Identity, []string, error) {
-	if admin {
+// effectiveIdentity resolves which identity keys the lookup may search. An admin or a trusted
+// LFX Self Serve caller supplies them directly; anyone else has each key verified against their
+// own records first. A trusted caller's list is Auth0-derived and cannot be re-derived here: the
+// historical GitHub-only signers this endpoint serves have no lf_username on their EasyCLA
+// records, so verifying against those records would deny exactly the CLAs they may see.
+func (s *service) effectiveIdentity(ctx context.Context, caller *Caller, requested *Identity) (*Identity, []string, error) {
+	if caller == nil {
+		return nil, nil, errors.New("no authenticated principal")
+	}
+	if caller.Admin || caller.Trusted {
 		identity := *requested
 		if identity.LfUsername == "" {
-			identity.LfUsername = currentUsername
+			identity.LfUsername = caller.Username
 		}
 		return &identity, []string{}, nil
 	}
-	if currentUsername == "" {
+	if caller.Username == "" {
 		return nil, nil, errors.New("no username on the authenticated principal")
 	}
-	return s.authorizeIdentity(ctx, currentUsername, requested)
+	return s.authorizeIdentity(ctx, caller.Username, requested)
+}
+
+func callerUsername(caller *Caller) string {
+	if caller == nil {
+		return ""
+	}
+	return caller.Username
 }
 
 type platformIdentitySet struct {

@@ -441,6 +441,10 @@ func server(localMode bool) http.Handler {
 	v2SignatureService := v2Signatures.NewService(awsSession, configFile.SignatureFilesBucket, v1ProjectService, v1CompanyService, v1SignaturesService, v1ProjectClaGroupRepo, signaturesRepo, usersService, approvalsRepo)
 	v2MyClasService := v2MyClas.NewService(v2MyClas.NewRepository(awsSession, stage), user_service.GetClient(), v1SignaturesService, v1CompanyRepo, v1ProjectClaGroupRepo, project_service.GetClient())
 	v2SelfServeSignService := v2SelfServeSign.NewService(v2MyClasService, usersService, v1ProjectService, v1ProjectClaGroupRepo, storeRepository, configFile.CLAContributorv2Base)
+	trustedCallerVerifier, err := auth.NewTrustedCallerVerifier(configFile.Auth0.Domain, configFile.Auth0.Algorithm, configFile.SelfServe.TrustedClientIDs)
+	if err != nil {
+		logrus.Panic(err)
+	}
 	v1ClaManagerService := cla_manager.NewService(claManagerReqRepo, v1ProjectClaGroupRepo, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService, configFile.CorporateConsoleV2URL)
 	v2ClaManagerService := v2ClaManager.NewService(emailTemplateService, v1CompanyService, v1ProjectService, v1ClaManagerService, usersService, v1RepositoriesService, v2CompanyService, eventsService, v1ProjectClaGroupRepo)
 	v1ApprovalListService := approval_list.NewService(approvalListRepo, v1ProjectClaGroupRepo, v1ProjectService, usersRepo, v1CompanyRepo, v1CLAGroupRepo, signaturesRepo, emailTemplateService, configFile.CorporateConsoleV2URL, http.DefaultClient)
@@ -515,8 +519,8 @@ func server(localMode bool) http.Handler {
 	v2Gerrits.Configure(v2API, gerritService, v1ProjectService, eventsService, v1ProjectClaGroupRepo)
 	v2Company.Configure(v2API, v2CompanyService, v1ProjectClaGroupRepo, configFile.LFXPortalURL)
 	v2CurrentUser.Configure(v2API, v2CurrentUserService)
-	v2MyClas.Configure(v2API, v2MyClasService)
 	v2SelfServeSign.Configure(v2API, v2SelfServeSignService)
+	v2MyClas.Configure(v2API, v2MyClasService, trustedCallerVerifier)
 	cla_manager.Configure(api, v1ClaManagerService, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService)
 	v2ClaManager.Configure(v2API, v2ClaManagerService, v1CompanyService, configFile.LFXPortalURL, configFile.CorporateConsoleV2URL, v1ProjectClaGroupRepo, userRepo)
 	cla_groups.Configure(v2API, v2ClaGroupService, v1ProjectService, v1ProjectClaGroupRepo, eventsService)
