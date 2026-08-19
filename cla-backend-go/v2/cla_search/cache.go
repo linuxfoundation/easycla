@@ -14,8 +14,11 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
-// DefaultCacheTTL is how long a scanned table is served from memory before the next search re-scans it
-const DefaultCacheTTL = 5 * time.Minute
+// DefaultCacheTTL is how long a scanned table is served from memory before the next search re-scans
+// it. It is deliberately longer than a typical Lambda execution environment lives, so a container
+// normally scans each table once and never again - the reference data changes on the timescale of
+// project onboarding, not of searches.
+const DefaultCacheTTL = 30 * time.Minute
 
 // cacheTTLEnvVar overrides DefaultCacheTTL with any duration Go can parse, "0" disabling the cache
 const cacheTTLEnvVar = "CLA_SEARCH_CACHE_TTL"
