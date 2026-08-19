@@ -1,0 +1,18 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: CLA Search Organization
+description: A repository-hosting organization (GitHub organization, GitLab group or Gerrit instance) linked to the CLA Group
+properties:
+  name:
+    type: string
+    description: The organization/group/Gerrit instance name
+  source:
+    type: string
+    enum: [github, gitlab, gerrit]
+    description: The repository source hosting the organization
+  url:
+    type: string
+    description: The organization URL, omitted when the source record carries none
