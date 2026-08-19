@@ -33,13 +33,14 @@ const (
 	searchConcurrency = claGroupScanSegments + projectMappingScanSegments + 3*orgScanSegments + 2
 )
 
-// ClaGroupRow is a CLA Group record, projected to the fields the search results carry
+// ClaGroupRow is a CLA Group record, projected to the fields the search results carry. The CLA type
+// flags are pointers because a missing attribute means true - the Pynamo default the v1 reader keeps.
 type ClaGroupRow struct {
 	ClaGroupID  string `dynamodbav:"project_id"`
 	Name        string `dynamodbav:"project_name"`
 	ExternalID  string `dynamodbav:"project_external_id"`
-	IclaEnabled bool   `dynamodbav:"project_icla_enabled"`
-	CclaEnabled bool   `dynamodbav:"project_ccla_enabled"`
+	IclaEnabled *bool  `dynamodbav:"project_icla_enabled"`
+	CclaEnabled *bool  `dynamodbav:"project_ccla_enabled"`
 }
 
 // ProjectMappingRow is a projects-cla-groups mapping record, projected to the fields the search results carry
@@ -54,11 +55,12 @@ type ProjectMappingRow struct {
 
 // OrgRow is a repository-hosting organization - a GitHub organization, a GitLab group or a Gerrit instance
 type OrgRow struct {
-	Name        string
-	URL         string
-	Source      string
-	ProjectSFID string
-	ClaGroupID  string
+	Name                  string
+	URL                   string
+	Source                string
+	ProjectSFID           string
+	ClaGroupID            string
+	AutoEnabledClaGroupID string
 }
 
 // RepositoryRow is the repository a pasted URL or "owner/repo" path resolved to
@@ -90,8 +92,13 @@ type repository struct {
 	repositoryTableName     string
 }
 
-// NewRepository creates a new instance of the CLA Group search repository
+// NewRepository creates a new instance of the CLA Group search repository, with the scanned tables
+// served from the in-process cache
 func NewRepository(awsSession *session.Session, stage string) Repository {
+	return newCachedRepository(newScanRepository(awsSession, stage), cacheTTL())
+}
+
+func newScanRepository(awsSession *session.Session, stage string) Repository {
 	// a search fans out to more concurrent DynamoDB calls than the default two idle connections
 	// per host can serve, which would leave most of them paying for a fresh TLS handshake
 	transport := &http.Transport{
@@ -134,9 +141,10 @@ func (repo repository) GetProjectMappings(ctx context.Context) ([]*ProjectMappin
 }
 
 type orgDBRow struct {
-	Name        string `dynamodbav:"organization_name"`
-	URL         string `dynamodbav:"organization_url"`
-	ProjectSFID string `dynamodbav:"project_sfid"`
+	Name                  string `dynamodbav:"organization_name"`
+	URL                   string `dynamodbav:"organization_url"`
+	ProjectSFID           string `dynamodbav:"project_sfid"`
+	AutoEnabledClaGroupID string `dynamodbav:"auto_enabled_cla_group_id"`
 }
 
 func (repo repository) GetGithubOrgs(ctx context.Context) ([]*OrgRow, error) {
@@ -150,12 +158,14 @@ func (repo repository) GetGitlabOrgs(ctx context.Context) ([]*OrgRow, error) {
 func (repo repository) scanOrgs(ctx context.Context, tableName, source string) ([]*OrgRow, error) {
 	var rows []*orgDBRow
 	filter := enabledFilter()
-	if err := repo.scan(ctx, tableName, orgScanSegments, &filter, []string{"organization_name", "organization_url", "project_sfid"}, &rows); err != nil {
+	if err := repo.scan(ctx, tableName, orgScanSegments, &filter,
+		[]string{"organization_name", "organization_url", "project_sfid", "auto_enabled_cla_group_id"}, &rows); err != nil {
 		return nil, err
 	}
 	orgs := make([]*OrgRow, 0, len(rows))
 	for _, row := range rows {
-		orgs = append(orgs, &OrgRow{Name: row.Name, URL: row.URL, Source: source, ProjectSFID: row.ProjectSFID})
+		orgs = append(orgs, &OrgRow{Name: row.Name, URL: row.URL, Source: source, ProjectSFID: row.ProjectSFID,
+			AutoEnabledClaGroupID: row.AutoEnabledClaGroupID})
 	}
 	return orgs, nil
 }
@@ -269,6 +279,10 @@ func (repo repository) scan(ctx context.Context, tableName string, segments int,
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"tableName":      tableName,
 		"segments":       segments,
+	}
+
+	if len(attributes) == 0 {
+		return fmt.Errorf("no attributes to project from table %s", tableName)
 	}
 
 	names := make([]expression.NameBuilder, 0, len(attributes))

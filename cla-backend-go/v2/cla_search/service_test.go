@@ -114,9 +114,9 @@ func (f *fakeRepo) GetRepositoriesByOrganization(_ context.Context, organization
 func sampleRepo() *fakeRepo {
 	return &fakeRepo{
 		claGroups: []*ClaGroupRow{
-			{ClaGroupID: "cg-kube", Name: "Kubernetes CLA", ExternalID: "a09-kube", IclaEnabled: true, CclaEnabled: true},
-			{ClaGroupID: "cg-otio", Name: "OpenTimelineIO CLA", ExternalID: "a09-otio", CclaEnabled: true},
-			{ClaGroupID: "cg-onap", Name: "ONAP CLA", ExternalID: "a09-onap-f", IclaEnabled: true},
+			{ClaGroupID: "cg-kube", Name: "Kubernetes CLA", ExternalID: "a09-kube", IclaEnabled: flag(true), CclaEnabled: flag(true)},
+			{ClaGroupID: "cg-otio", Name: "OpenTimelineIO CLA", ExternalID: "a09-otio", IclaEnabled: flag(false), CclaEnabled: flag(true)},
+			{ClaGroupID: "cg-onap", Name: "ONAP CLA", ExternalID: "a09-onap-f", IclaEnabled: flag(true), CclaEnabled: flag(false)},
 			{ClaGroupID: "cg-orphan", Name: "Kubernetes Edge CLA"},
 		},
 		mappings: []*ProjectMappingRow{
@@ -148,6 +148,10 @@ func sampleRepo() *fakeRepo {
 			},
 		},
 	}
+}
+
+func flag(value bool) *bool {
+	return &value
 }
 
 func resultByID(list *models.ClaSearchList, claGroupID string) *models.ClaSearchResult {
@@ -425,6 +429,85 @@ func TestSearchRunsSourcesConcurrently(t *testing.T) {
 	require.NoError(t, err)
 	assert.ElementsMatch(t, []string{"claGroups", "mappings", "github", "gitlab", "gerrit"}, repo.callSequence)
 	assert.Equal(t, 1, repo.repoCalls)
+}
+
+func TestSearchMissingClaTypeFlagsDefaultToEnabled(t *testing.T) {
+	// a CLA Group row without the flag attributes is enabled for both types - the Pynamo default
+	list, err := NewService(sampleRepo()).Search(context.Background(), "kubernetes edge", 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"cg-orphan"}, ids(list))
+	assert.True(t, list.Results[0].IclaEnabled)
+	assert.True(t, list.Results[0].CclaEnabled)
+
+	otio := resultByID(mustSearch(t, "opentimelineio cla"), "cg-otio")
+	require.NotNil(t, otio)
+	assert.False(t, otio.IclaEnabled)
+	assert.True(t, otio.CclaEnabled)
+}
+
+func mustSearch(t *testing.T, term string) *models.ClaSearchList {
+	t.Helper()
+	list, err := NewService(sampleRepo()).Search(context.Background(), term, 0)
+	require.NoError(t, err)
+	return list
+}
+
+// autoEnabledRepo mirrors the production shape of an organization whose only link to a CLA Group is
+// the group its new repositories are auto-enabled into
+func autoEnabledRepo() *fakeRepo {
+	return &fakeRepo{
+		claGroups: []*ClaGroupRow{
+			{ClaGroupID: "cg-chips", Name: "CHIPS Alliance"},
+			{ClaGroupID: "cg-mapped", Name: "Mapped CLA"},
+		},
+		mappings: []*ProjectMappingRow{
+			{ClaGroupID: "cg-mapped", ClaGroupName: "Mapped CLA", ProjectSFID: "sfid-both", ProjectName: "Mapped Project"},
+		},
+		github: []*OrgRow{
+			{Name: "chipsalliance", Source: sourceGitHub, ProjectSFID: "sfid-unmapped", AutoEnabledClaGroupID: "cg-chips"},
+			{Name: "both-org", Source: sourceGitHub, ProjectSFID: "sfid-both", AutoEnabledClaGroupID: "cg-chips"},
+			{Name: "same-org", Source: sourceGitHub, ProjectSFID: "sfid-both", AutoEnabledClaGroupID: "cg-mapped"},
+			{Name: "blank-org", Source: sourceGitHub, ProjectSFID: "sfid-both", AutoEnabledClaGroupID: ""},
+			{Name: "dangling-org", Source: sourceGitHub, AutoEnabledClaGroupID: "cg-deleted"},
+		},
+	}
+}
+
+func TestSearchAutoEnabledOrgResolvesClaGroupWithoutAMapping(t *testing.T) {
+	list, err := NewService(autoEnabledRepo()).Search(context.Background(), "chipsalliance", 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"cg-chips"}, ids(list))
+	assert.Equal(t, []string{matchOrganization}, list.Results[0].MatchTypes)
+	assert.Equal(t, "CHIPS Alliance", list.Results[0].ClaGroupName)
+}
+
+func TestSearchAutoEnabledClaGroupUnionsWithTheMappedOnes(t *testing.T) {
+	list, err := NewService(autoEnabledRepo()).Search(context.Background(), "both-org", 0)
+	require.NoError(t, err)
+	assert.ElementsMatch(t, []string{"cg-chips", "cg-mapped"}, ids(list))
+}
+
+func TestSearchAutoEnabledClaGroupIsNotDuplicated(t *testing.T) {
+	list, err := NewService(autoEnabledRepo()).Search(context.Background(), "same-org", 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"cg-mapped"}, ids(list))
+	assert.Equal(t, []models.ClaSearchOrg{
+		{Name: "blank-org", Source: sourceGitHub, URL: "https://github.com/blank-org"},
+		{Name: "both-org", Source: sourceGitHub, URL: "https://github.com/both-org"},
+		{Name: "same-org", Source: sourceGitHub, URL: "https://github.com/same-org"},
+	}, list.Results[0].Organizations)
+}
+
+func TestSearchBlankAutoEnabledClaGroupFallsBackToTheMapping(t *testing.T) {
+	list, err := NewService(autoEnabledRepo()).Search(context.Background(), "blank-org", 0)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"cg-mapped"}, ids(list))
+}
+
+func TestSearchOmitsAClaGroupThatResolvesToNothingDisplayable(t *testing.T) {
+	list, err := NewService(autoEnabledRepo()).Search(context.Background(), "dangling-org", 0)
+	require.NoError(t, err)
+	assert.Empty(t, list.Results)
 }
 
 func TestRepositoryPath(t *testing.T) {

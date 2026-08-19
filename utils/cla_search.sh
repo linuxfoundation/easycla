@@ -64,14 +64,23 @@ then
 fi
 
 [ -z "$RUNS" ] && RUNS=1
+if ! printf '%s' "$RUNS" | grep -Eq '^[1-9][0-9]*$'
+then
+  echo "$0: RUNS must be a positive integer, got '${RUNS}'"
+  exit 4
+fi
+
 body="$(mktemp)"
 times="$(mktemp)"
+trap 'rm -f "$body" "$times"' EXIT INT TERM
+failed=0
 for i in $(seq 1 "$RUNS")
 do
   timing="$(curl -sS -G -XGET "${auth[@]}" -H "Content-Type: application/json" "${args[@]}" -w '%{http_code} %{time_total}' -o "$body" "$URL")"
   code="${timing% *}"
   secs="${timing#* }"
   echo "$secs" >> "$times"
+  case "$code" in 2??) ;; *) failed=$((failed+1)) ;; esac
   if [ "$i" = "1" ]
   then
     if command -v jq >/dev/null 2>&1
@@ -87,9 +96,16 @@ done
 
 if [ "$RUNS" != "1" ]
 then
-  sort -n "$times" | awk -v runs="$RUNS" '{t[NR]=$1} END {
-    p50=t[int((NR+1)*0.50+0.5)]; p95=t[int((NR+1)*0.95+0.5)]
-    printf "runs=%d min=%.3fs p50=%.3fs p95=%.3fs max=%.3fs\n", runs, t[1], p50, p95, t[NR]
+  sort -n "$times" | awk -v runs="$RUNS" -v failed="$failed" '{t[NR]=$1} END {
+    i50=int((NR+1)*0.50+0.5); if (i50>NR) i50=NR; if (i50<1) i50=1
+    i95=int((NR+1)*0.95+0.5); if (i95>NR) i95=NR; if (i95<1) i95=1
+    printf "runs=%d min=%.3fs p50=%.3fs p95=%.3fs max=%.3fs", runs, t[1], t[i50], t[i95], t[NR]
+    if (failed+0 > 0) printf " NON-2XX=%d (timings above are not a valid measurement)", failed
+    printf "\n"
   }'
+
+  if [ "$failed" != "0" ]
+  then
+    exit 5
+  fi
 fi
-rm -f "$body" "$times"

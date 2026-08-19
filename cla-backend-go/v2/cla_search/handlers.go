@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/go-openapi/runtime/middleware"
@@ -18,6 +19,10 @@ import (
 )
 
 const missingUsernameMsg = "the authenticated principal carries no username - unable to search"
+
+// searchTimeout bounds a search well inside the API Gateway limit, so a stuck DynamoDB call fails
+// the request rather than holding the Lambda open
+const searchTimeout = 15 * time.Second
 
 // authorized accepts a principal carrying a username, or an admin principal such as a machine token
 func authorized(authUser *auth.User) bool {
@@ -51,7 +56,10 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 				return claSearchOps.NewSearchClaGroupsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 			}
 
-			result, err := service.Search(ctx, params.SearchTerm, utils.Int64Value(params.Limit))
+			searchCtx, cancel := context.WithTimeout(ctx, searchTimeout)
+			defer cancel()
+
+			result, err := service.Search(searchCtx, params.SearchTerm, utils.Int64Value(params.Limit))
 			if err != nil {
 				msg := "unable to search the CLA Groups for the provided search term"
 				log.WithFields(f).WithError(err).Warn(msg)

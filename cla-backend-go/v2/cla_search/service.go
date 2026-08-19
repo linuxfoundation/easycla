@@ -302,12 +302,22 @@ func organizationNames(orgs []*OrgRow) []string {
 }
 
 // claGroupIDs returns the CLA Groups the organization is linked to - Gerrit instances reference the
-// CLA Group directly, GitHub organizations and GitLab groups reference it by project SFID
+// CLA Group directly, while a GitHub organization or GitLab group references it by project SFID, by
+// the CLA Group its new repositories are auto-enabled into, or by both
 func (o *OrgRow) claGroupIDs(sfidToClaGroups map[string][]string) []string {
 	if o.ClaGroupID != "" {
 		return []string{o.ClaGroupID}
 	}
-	return sfidToClaGroups[o.ProjectSFID]
+	mapped := sfidToClaGroups[o.ProjectSFID]
+	if o.AutoEnabledClaGroupID == "" {
+		return mapped
+	}
+	for _, claGroupID := range mapped {
+		if claGroupID == o.AutoEnabledClaGroupID {
+			return mapped
+		}
+	}
+	return append(append(make([]string, 0, len(mapped)+1), mapped...), o.AutoEnabledClaGroupID)
 }
 
 func indexProjectSFIDs(mappings []*ProjectMappingRow) map[string][]string {
@@ -350,7 +360,13 @@ func buildList(searchTerm string, limit int64, matches map[string]*match, src *s
 
 	results := make([]models.ClaSearchResult, 0, len(matches))
 	for claGroupID, m := range matches {
-		results = append(results, buildResult(claGroupID, m, claGroupByID[claGroupID], mappingsByClaGroup[claGroupID], orgsByClaGroup[claGroupID]))
+		result := buildResult(claGroupID, m, claGroupByID[claGroupID], mappingsByClaGroup[claGroupID], orgsByClaGroup[claGroupID])
+		// a CLA Group with neither a record nor a mapping - a deleted one still referenced by an
+		// organization - has nothing to display
+		if result.ClaGroupName == "" && result.ProjectName == "" {
+			continue
+		}
+		results = append(results, result)
 	}
 	sort.Slice(results, func(i, j int) bool {
 		if ri, rj := matches[results[i].ClaGroupID].rank, matches[results[j].ClaGroupID].rank; ri != rj {
@@ -386,8 +402,8 @@ func buildResult(claGroupID string, m *match, claGroup *ClaGroupRow, mappings []
 	if claGroup != nil {
 		result.ClaGroupName = claGroup.Name
 		result.ProjectExternalID = claGroup.ExternalID
-		result.IclaEnabled = claGroup.IclaEnabled
-		result.CclaEnabled = claGroup.CclaEnabled
+		result.IclaEnabled = enabledOrDefault(claGroup.IclaEnabled)
+		result.CclaEnabled = enabledOrDefault(claGroup.CclaEnabled)
 	}
 
 	// A foundation-level CLA Group is marked by a mapping whose ProjectSFID equals its
@@ -410,6 +426,12 @@ func buildResult(claGroupID string, m *match, claGroup *ClaGroupRow, mappings []
 		result.ProjectSFID, result.ProjectName = mappings[0].ProjectSFID, mappings[0].ProjectName
 	}
 	return result
+}
+
+// enabledOrDefault reads a CLA type flag, a missing attribute meaning enabled - the Pynamo
+// default=True the v1 CLA Group reader also honours
+func enabledOrDefault(enabled *bool) bool {
+	return enabled == nil || *enabled
 }
 
 func displayName(result models.ClaSearchResult) string {
