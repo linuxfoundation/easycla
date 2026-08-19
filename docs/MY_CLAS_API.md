@@ -393,7 +393,7 @@ Do **not** derive standing from `valid`, and do **not** drop ECLAs with
 statement about who acted or why. Four unrelated paths set that flag to false, and
 **none of them is sanctions screening**:
 
-1. **A CLA manager edits or removes an approval-list entry.** `verifyUserApprovals`
+1. **A CLA manager edits or removes an Approved List entry.** `verifyUserApprovals`
    (`signatures/repository.go:4139`, `:4168`, `:4177`) for the email-domain, GitHub-org,
    GitHub-username and email criteria. ECLAs reach it through `invalidateSignatures`
    iterating `approvalList.ECLAs` (`:4077-4090`). This is where a contributor's
@@ -533,7 +533,7 @@ Field reference (`my-cla` rows):
 | `signed` / `approved` | bool | Raw signature flags |
 | `valid` | bool | Computed as defined above. Unchanged by `status`. |
 | `status` | `valid` \| `needs_attention` \| `invalidated` \| `unknown` | Contributor-facing standing. Always present. Independent of `approved`/`valid`. ICLA is only `valid` or `invalidated`. `invalidated` mirrors the stored approval flag and attributes nothing. **Open to extension** — tolerate unrecognised values. |
-| `statusReason` | `not_on_approval_list` \| `unknown` | Why the standing is not `valid`. Omitted on valid rows and every ICLA. Two tokens only. |
+| `statusReason` | `not_on_approval_list` \| `unknown` | Why the standing is not `valid`. Omitted when `status` is `valid`, and on every ICLA. Keyed on `status`, **not** on the boolean `valid` — a GitLab-group fallback row is `valid=true` with `status=unknown` and does carry `statusReason=unknown`. Two tokens only. |
 | `documentMajorVersion` / `documentMinorVersion` | int | CLA document version that was signed (display/superseded detection is the consumer's choice) |
 | `pdfAvailable` | bool | `true` for every signed ICLA, unconditionally; ECLAs have no signed document of their own (FR-002) so they are always `false`. It is **not** gated on `approved`: a flag-off ICLA keeps the affordance, because the document is the contributor's own signed legal record and the flag may have been set by a manager removal, a PCC invalidation, or a project deletion. When `revoked` joins `status`, that state must suppress the download and this field will need gating. Actual S3 object availability is verified by the PDF endpoint on request, and that endpoint does its own ownership check — this field is a UI hint, not the security boundary. |
 

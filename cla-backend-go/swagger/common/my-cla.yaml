@@ -66,7 +66,7 @@ properties:
       proved an Approved List miss; invalidated when the stored approval flag is false;
       unknown when coverage could not be evaluated. ICLA is only valid or invalidated.
       invalidated mirrors the stored approval flag and attributes nothing - a CLA manager
-      approval-list edit, a project manager invalidating an ICLA, and CLA group deletion all
+      Approved List edit, a project manager invalidating an ICLA, and CLA group deletion all
       produce it, and it does not mean the signature was revoked by sanctions screening.
       This enum is open to extension - a revoked token is expected to be added once
       revocation provenance (timestamp plus reason/actor) exists - so consumers MUST tolerate
@@ -75,9 +75,11 @@ properties:
     type: string
     enum: [not_on_approval_list, unknown]
     description: >
-      Why the standing is not valid. Omitted on valid rows and every ICLA.
-      not_on_approval_list is a completed Approved List miss; unknown is every other
-      unevaluable ECLA coverage outcome. Only these two tokens exist.
+      Why the standing is not valid. Omitted when status is valid, and on every ICLA.
+      Keyed on status, not on the boolean valid field - the two can disagree, so a row
+      with valid true can still carry a reason. not_on_approval_list is a completed
+      Approved List miss; unknown is every other unevaluable ECLA coverage outcome.
+      Only these two tokens exist.
   documentMajorVersion:
     type: integer
     x-omitempty: false
