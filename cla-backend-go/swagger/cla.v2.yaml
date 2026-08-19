@@ -2865,7 +2865,7 @@ paths:
   /cla-group/search:
     get:
       summary: Search CLA Groups
-      description: Unscoped search over the CLA Group name, the Salesforce project (or foundation) name, the names of the linked GitHub organizations, GitLab groups and Gerrit instances, and the repository the search term resolves to - a pasted repository URL or a "owner/repo" path is resolved to the CLA Group owning that repository. Matching is case-insensitive substring matching performed server-side, results are deduplicated by CLA Group and capped at limit
+      description: Unscoped search over the CLA Group name, the Salesforce project (or foundation) name, the names of the linked GitHub organizations, GitLab groups and Gerrit instances, and the repository the search term resolves to - a pasted repository URL or a "owner/repo" path is resolved to the CLA Group owning that repository. Matching is case-insensitive substring matching performed server-side, results are deduplicated by CLA Group and capped at limit. A searchTerm shorter than 3 characters, or a limit outside its bounds, is rejected with a 422
       operationId: searchClaGroups
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -2889,6 +2889,8 @@ paths:
           $ref: '#/responses/unauthorized'
         '403':
           $ref: '#/responses/forbidden'
+        '422':
+          $ref: '#/responses/unprocessable-entity'
         '500':
           $ref: '#/responses/internal-server-error'
       tags:

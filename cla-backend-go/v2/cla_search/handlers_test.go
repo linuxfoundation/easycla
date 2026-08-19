@@ -55,6 +55,12 @@ func TestHandlerUnauthorizedWithoutPrincipal(t *testing.T) {
 	}
 }
 
+func TestHandlerAcceptsAdminPrincipalWithoutUsername(t *testing.T) {
+	svc := &stubService{list: &models.ClaSearchList{SearchTerm: "kubernetes"}}
+	assert.Equal(t, http.StatusOK, invoke(t, svc, &auth.User{ACL: auth.ACL{Admin: true}}, "kubernetes").Code)
+	assert.Equal(t, "kubernetes", svc.term)
+}
+
 func TestHandlerBadRequestOnWhitespaceOnlyTerm(t *testing.T) {
 	svc := &stubService{}
 	assert.Equal(t, http.StatusBadRequest, invoke(t, svc, &auth.User{UserName: "jdoe"}, "   ").Code)

@@ -73,8 +73,26 @@ func (s *service) Search(ctx context.Context, searchTerm string, limit int64) (*
 		limit = DefaultLimit
 	}
 
-	src, err := s.loadSources(ctx)
-	if err != nil {
+	// the reference data of every source and the repository the term addresses are fetched together
+	var (
+		src   *sources
+		repos []*RepositoryRow
+	)
+	path := repositoryPath(rawTerm)
+	fetch, fetchCtx := errgroup.WithContext(ctx)
+	fetch.Go(func() error {
+		var err error
+		src, err = s.loadSources(fetchCtx)
+		return err
+	})
+	if path != "" {
+		fetch.Go(func() error {
+			var err error
+			repos, err = s.repo.GetRepositoriesByName(fetchCtx, nameVariants(path))
+			return err
+		})
+	}
+	if err := fetch.Wait(); err != nil {
 		return nil, err
 	}
 	sfidToClaGroups := indexProjectSFIDs(src.mappings)
@@ -84,7 +102,7 @@ func (s *service) Search(ctx context.Context, searchTerm string, limit int64) (*
 	searchers.Go(func() error { matchClaGroupNames(src.claGroups, term, m); return nil })
 	searchers.Go(func() error { matchProjectNames(src.mappings, term, m); return nil })
 	searchers.Go(func() error { matchOrgNames(src.orgs, term, sfidToClaGroups, m); return nil })
-	searchers.Go(func() error { return s.matchRepositories(searchCtx, rawTerm, src, sfidToClaGroups, m) })
+	searchers.Go(func() error { return s.matchRepositories(searchCtx, path, repos, src, sfidToClaGroups, m) })
 	if err := searchers.Wait(); err != nil {
 		return nil, err
 	}
@@ -223,11 +241,11 @@ func orgRank(org *OrgRow, term, host string) int {
 	return -1
 }
 
-// matchRepositories resolves a pasted repository URL or "owner/repo" path to the CLA Group owning
-// that repository, and matches its owner segment against the linked organizations - which is the
-// only signal available for an auto-enabled organization, whose repositories carry no records
-func (s *service) matchRepositories(ctx context.Context, rawTerm string, src *sources, sfidToClaGroups map[string][]string, m *matcher) error {
-	path := repositoryPath(rawTerm)
+// matchRepositories resolves the pre-fetched repositories of a pasted repository URL or "owner/repo"
+// path to the CLA Group owning that repository, and matches its owner segment against the linked
+// organizations - the only signal available for an auto-enabled organization, whose repositories
+// carry no records
+func (s *service) matchRepositories(ctx context.Context, path string, repos []*RepositoryRow, src *sources, sfidToClaGroups map[string][]string, m *matcher) error {
 	if path == "" {
 		return nil
 	}
@@ -240,14 +258,11 @@ func (s *service) matchRepositories(ctx context.Context, rawTerm string, src *so
 		}
 	}
 
-	repos, err := s.repo.GetRepositoriesByName(ctx, nameVariants(path))
-	if err != nil {
-		return err
-	}
 	// the repository-name-index GSI is keyed on the case-preserved name, so a lower-cased paste of a
 	// mixed-case repository misses it - the owner's repositories are then listed through the
 	// organization GSI and compared case-insensitively
 	if len(repos) == 0 && len(ownerOrgs) > 0 {
+		var err error
 		repos, err = s.repo.GetRepositoriesByOrganization(ctx, organizationNames(ownerOrgs))
 		if err != nil {
 			return err
