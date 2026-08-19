@@ -93,6 +93,7 @@ type Service interface {
 	GetMyClas(ctx context.Context, currentUsername string, admin bool, requested *Identity) (*models.MyClaList, error)
 	GetMyClaPdfURL(ctx context.Context, currentUsername string, admin bool, requested *Identity, signatureID string) (*models.MyClaPdf, error)
 	GetMyIdentities(ctx context.Context, currentUsername string) (*models.MyIdentityList, error)
+	AuthorizeIdentity(ctx context.Context, currentUsername string, admin bool, requested *Identity) (*Identity, []string, error)
 }
 
 type service struct {
@@ -354,6 +355,12 @@ func (s *service) GetMyIdentities(ctx context.Context, currentUsername string) (
 		Identities:  identities,
 		ResultCount: int64(len(identities)),
 	}, nil
+}
+
+// AuthorizeIdentity narrows the requested identity keys to the ones that belong to the
+// authenticated user, reporting the dropped keys - the same boundary GET /my-clas enforces
+func (s *service) AuthorizeIdentity(ctx context.Context, currentUsername string, admin bool, requested *Identity) (*Identity, []string, error) {
+	return s.effectiveIdentity(ctx, currentUsername, admin, requested)
 }
 
 func (s *service) effectiveIdentity(ctx context.Context, currentUsername string, admin bool, requested *Identity) (*Identity, []string, error) {

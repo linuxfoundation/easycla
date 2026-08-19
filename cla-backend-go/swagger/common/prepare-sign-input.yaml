@@ -1,0 +1,47 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: Prepare Sign Input
+description: The CLA Group to sign and the single identity to sign it under - the identity must belong to the authenticated user
+required:
+  - claGroupId
+properties:
+  claGroupId:
+    type: string
+    description: The CLA Group ID (UUID) the contributor selected in Self Serve
+    pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{12}$'
+  returnUrl:
+    type: string
+    format: uri
+    maxLength: 1000
+    description: The URL the Contributor Console returns the contributor to once signing completes - typically the Self Serve My CLAs page; when omitted no return URL is recorded and the Console falls back to its own handling
+  lfUsername:
+    type: string
+    maxLength: 255
+    description: The LF username (LFID) to sign under - when omitted the authenticated principal is used; a different value is rejected unless the caller is an admin
+  email:
+    type: string
+    maxLength: 255
+    description: The email address to sign under
+  githubId:
+    type: integer
+    format: int64
+    description: The GitHub numeric user ID to sign under - accepted only when it matches the GitHub account named by githubUsername, or is already linked to one of the caller's EasyCLA user records
+  githubUsername:
+    type: string
+    maxLength: 255
+    description: The GitHub username to sign under
+  gitlabId:
+    type: integer
+    format: int64
+    description: The GitLab numeric user ID to sign under - accepted only when it is already linked to one of the caller's EasyCLA user records
+  gitlabUsername:
+    type: string
+    maxLength: 255
+    description: The GitLab username to sign under
+  gerritUsername:
+    type: string
+    maxLength: 255
+    description: The Gerrit username to sign under - Gerrit uses LF SSO accounts, so this is a (current or historical) LF username

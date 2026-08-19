@@ -96,6 +96,7 @@ type Service interface {
 	SignedIndividualCallbackGithub(ctx context.Context, payload []byte, installationID, changeRequestID, repositoryID string) error
 	SignedIndividualCallbackGitlab(ctx context.Context, payload []byte, userID, organizationID, repositoryID, mergeRequestID string) error
 	SignedIndividualCallbackGerrit(ctx context.Context, payload []byte, userID string) error
+	SignedIndividualCallbackSelfServe(ctx context.Context, payload []byte, userID string) error
 	SignedCorporateCallback(ctx context.Context, payload []byte, companyID, projectID string) error
 	GetUserActiveSignature(ctx context.Context, userID string) (*models.UserActiveSignature, error)
 }
@@ -1109,6 +1110,13 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 	return nil
 }
 
+// SignedIndividualCallbackSelfServe handles the DocuSign callback of an individual signature
+// started proactively from LFX Self Serve - it carries no pull/merge request context, which is
+// exactly the Gerrit callback's shape
+func (s *service) SignedIndividualCallbackSelfServe(ctx context.Context, payload []byte, userID string) error {
+	return s.SignedIndividualCallbackGerrit(ctx, payload, userID)
+}
+
 func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, companyID, projectID string) error {
 	f := logrus.Fields{
 		"functionName":   "sign.SignedCorporateCallback",
@@ -1435,6 +1443,10 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 		acl = fmt.Sprintf("%s:%s", strings.ToLower(input.ReturnURLType), user.GitlabID)
 	}
 
+	if utils.IsSelfServeActiveSignature(activeSignatureMetadata) && user.GithubID == "" && user.GitlabID == "" {
+		acl = user.LfUsername
+	}
+
 	log.WithFields(f).Debugf("acl: %s", acl)
 
 	majorVersion, err := strconv.Atoi(latestDocument.DocumentMajorVersion)
@@ -1685,6 +1697,11 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 			log.WithFields(f).WithError(err).Warnf("unable to get active signature meta data for user: %s", userID)
 			return "", err
 		}
+	}
+
+	if utils.IsSelfServeActiveSignature(metadata) {
+		log.WithFields(f).Debug("self serve signing session - using the no pull request callback")
+		return fmt.Sprintf("%s/v4/signed/self-serve/individual/%s", s.ClaV4ApiURL, userID), nil
 	}
 
 	repositoryID, err = metadataStringValue(metadata, "repository_id")
@@ -2878,6 +2895,13 @@ func (s *service) getActiveSignatureReturnURL(ctx context.Context, userID string
 	var pullRequestID int
 	var repositoryID int64
 	var installationID int64
+
+	if utils.IsSelfServeActiveSignature(metadata) {
+		if selfServeReturnURL, ok := metadata["return_url"].(string); ok {
+			returnURL = selfServeReturnURL
+		}
+		return returnURL, nil
+	}
 
 	if found, ok := metadata["pull_request_id"]; ok && found != nil {
 		prId := fmt.Sprintf("%v", found)

@@ -2796,6 +2796,12 @@ func metadataString(metadata map[string]any, key string) string {
 	return s
 }
 
+// isSelfServeSignatureMetadata reports whether the active signature session was started
+// proactively from LFX Self Serve - such a session carries no pull or merge request to update
+func isSelfServeSignatureMetadata(metadata map[string]any) bool {
+	return metadata != nil && strings.EqualFold(metadataString(metadata, "source"), "self-serve")
+}
+
 func (h *Handlers) computeReturnURLFromActiveSignatureMetadata(ctx context.Context, metadata map[string]any) (string, error) {
 	if metadata == nil {
 		return "", nil
@@ -9392,7 +9398,12 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 		// EASYCLA_PARITY_FLAG: legacy Python also updates the repository provider when the project
 		// does not require a separate ICLA, and only removes active signature metadata after that side effect succeeds.
 		if av, ok := project["project_ccla_requires_icla_signature"].(*types.AttributeValueMemberBOOL); ok && !av.Value {
-			switch strings.ToLower(returnURLType) {
+			providerUpdateType := strings.ToLower(returnURLType)
+			if isSelfServeSignatureMetadata(signatureMetadata) {
+				logging.Debugf("request_employee_signature skipping the repository provider update for a self serve signing session user=%s", req.UserID)
+				providerUpdateType = ""
+			}
+			switch providerUpdateType {
 			case "github":
 				if signatureMetadata == nil {
 					respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": legacyPythonNilSubscriptError().Error()}})

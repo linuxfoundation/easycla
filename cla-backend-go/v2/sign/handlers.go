@@ -284,6 +284,24 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 			return sign.NewCclaCallbackOK()
 		})
 
+	api.SignIclaCallbackSelfServeHandler = sign.IclaCallbackSelfServeHandlerFunc(
+		func(params sign.IclaCallbackSelfServeParams) middleware.Responder {
+			reqId := utils.GetRequestID(params.XREQUESTID)
+			ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTIDKey, reqId)
+			f := logrus.Fields{
+				"functionName":   "v2.sign.handlers.SignIclaCallbackSelfServeHandler",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			}
+
+			log.WithFields(f).Debug("self serve callback")
+
+			err := service.SignedIndividualCallbackSelfServe(ctx, iclaGitHubPayload, params.UserID)
+			if err != nil {
+				return sign.NewIclaCallbackSelfServeBadRequest()
+			}
+			return sign.NewCclaCallbackOK()
+		})
+
 	api.SignCclaCallbackHandler = sign.CclaCallbackHandlerFunc(
 		func(params sign.CclaCallbackParams) middleware.Responder {
 			reqId := utils.GetRequestID(params.XREQUESTID)
