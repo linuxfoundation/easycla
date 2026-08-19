@@ -16,9 +16,10 @@ their current and historical ICLAs and ECLAs** — matched across their LF usern
 emails and GitHub/GitLab/Gerrit identities, with per-record validity evaluated against
 the *current* company CCLA approval lists — download their signed ICLA PDFs via
 time-limited links, and list the deduplicated identity set they own (the same set the
-list endpoint authorizes them to search). Every provided identity key is **verified to belong to the
-authenticated user** before it is searched (see "Identity ownership enforcement"), so
-the endpoints cannot be used to freely enumerate other people's CLA history.
+list endpoint authorizes them to search). For non-admin, untrusted callers every provided identity
+key is **verified to belong to the authenticated user** before it is searched (see "Identity
+ownership enforcement" for the admin and trusted-caller exceptions), so the endpoints cannot be
+used to freely enumerate other people's CLA history.
 "Belongs to" means the identity is *currently* attached to the caller's LF account
 (their EasyCLA user record or their platform user-service profile/identities) — the
 accepted product bar for this read-only surface; the recycled-alias trade-off this
@@ -77,6 +78,41 @@ by lfx-gateway), exactly like every other secured v4 endpoint:
 
 Note the ACS warden caches authorize responses for ~30 minutes; that only affects the
 first rollout (after `acs-cli sync`), not steady-state behavior.
+
+### Trusted Self Serve caller (in-handler JWT verification + `azp` allow-list)
+
+The gateway-injected `X-ACL`/`X-USERNAME` headers are **decoded but never signature
+checked**, so anything able to invoke the Lambda directly could forge them. To make the
+identity-list bypass below safe, the handlers re-verify the request bearer token themselves
+(`cla-backend-go/auth/trusted_caller.go`): the signing algorithm is pinned to the configured
+Auth0 algorithm, the signature is verified against the tenant JWKS by `kid`
+(`https://{cla-auth0-domain}/.well-known/jwks.json`, cached 15 min; a cache miss reloads it
+at most once a minute; a JWKS outage keeps serving the cached key for at most 24 h),
+`exp` must be present and unexpired, and the caller is **trusted** when the token's
+`azp` is listed in the SSM parameter `cla-ss-trusted-client-ids-{stage}` (comma-separated
+Auth0 client IDs).
+
+| Request, once the allow-list is configured | Result |
+|---|---|
+| No `Authorization` header, or an unparseable/unverifiable/expired token | **401**, the service is never reached |
+| Verified token, `azp` **on** the allow-list | trusted: the caller-supplied identity list is searched as given, no per-identity verification |
+| Verified token, `azp` **not** on the allow-list (or absent) | untrusted: unchanged behavior — admin bypass or per-identity ownership enforcement |
+
+An absent header is denied exactly like an invalid one: the traefik `aws-lambda` middleware
+drops duplicated headers, so a duplicated `Authorization` header arrives as an absent one.
+`iss` and `aud` are deliberately not re-checked in-handler: the JWKS already binds the token to
+this one tenant, and which audience an SS token carries is still open in the
+[trust-SS decision](https://github.com/linuxfoundation/lfx-self-serve/issues/1216) (session access
+token vs. the P3 api-gw-audience token), so pinning one would 401 the other. A token this tenant
+minted for another API therefore also verifies — accepted because `azp` stays the client signal.
+
+While the SSM parameter is unset the verifier is **disabled** — no bearer token is required
+and nothing is trusted, so the endpoints behave exactly as before. A local `./bin/cla` run
+loads the stage's SSM, so once the parameter is set local requests need a real token too
+(`utils/my_clas.sh` sends one; its token-less `PRINCIPAL=...` mode does not). A non-empty
+allow-list without `cla-auth0-domain` panics at startup rather than trusting blindly. Each
+request is logged with `callerClientID` (`azp`), `callerSubject` (`sub`), `trustedCaller`
+and the requested identity list (length-bounded) for anomaly detection.
 
 ## `GET /v4/my-clas`
 
@@ -146,6 +182,14 @@ Callers whose gateway-injected `X-ACL` carries the **admin** flag
 sampling path (e.g. the SC-001 comparison script) without weakening the contributor
 case. The token username is always searched for non-admin callers, so a bare
 `GET /v4/my-clas` works even when every extra key is skipped.
+
+**A trusted Self Serve caller** (see [Trusted Self Serve caller](#trusted-self-serve-caller-in-handler-jwt-verification--azp-allow-list))
+also bypasses enforcement — deliberately, because here it is the *wrong* check: SS derives
+the list from the caller's Auth0 identities (authoritative, and not reconstructible by
+EasyCLA), while the historical GitHub-only signers this API exists to surface hold **no
+`lf_username`** on their EasyCLA records, so verifying against those records would deny
+exactly the CLAs the caller is entitled to see. Such a caller needs no username of its own;
+supplying neither a username nor any identity key is a `400`, not an "everyone" query.
 
 ### Identity resolution (step 1)
 
@@ -618,9 +662,9 @@ with a TODO for the missing lookup endpoint. With this API it collapses to:
   email as both `email` and `secondaryEmail` (they search different attributes), and
   provider usernames alongside numeric IDs (an ID present only on a detached
   pre-LFID record cannot be authorized by itself; the verified username recovers
-  it). The same full set goes on the PDF call (server-derived values from the
-  session — and EasyCLA now **re-verifies** every key against the LF account
-  server-side, so the enforcement is defense-in-depth rather than SS-only). Mapping to
+  it). The same full set goes on the PDF call (server-derived values from the session
+  — EasyCLA **re-verifies** every key against the LF account server-side until SS is
+  allow-listed, after which SS's Auth0-derived list is authoritative). Mapping to
   `MyClaAgreement`: `kind = claType`, `projectName = projectName` (bold top line of the
   Project cell) with `claGroupName` as its subtext and `projectLogo` as the logo tile
   (falling back to `claGroupName` / a default icon when a field is absent — the endpoint
@@ -675,7 +719,23 @@ assumption is to be confirmed on dev.
    environment (dev → staging → prod) so the ACS warden allows the paths; until then
    the gateway returns 403 for them (fail-closed — nothing else can regress).
 3. No lfx-gateway deploy is needed.
-4. Read-only rollback: revert the ACS sync (or simply never flip the SS feature flag);
+4. To switch on the trusted Self Serve caller path, provision the SSM parameter with the ID of a
+   Self Serve client whose tokens are **never returned to a user** — the only infrastructure change
+   the trust-SS hardening needs (the key matches the existing `cla-*` `ssm:GetParameter` grant).
+   The client SS calls with today does not qualify, so this step is on hold; see "Security notes":
+
+   ```bash
+   aws --profile lfproduct-dev ssm put-parameter --name cla-ss-trusted-client-ids-dev \
+     --type String --value '<ss-client-id>[,<ss-client-id-2>]' --overwrite
+   ```
+
+   Both partial states are safe, so deploy order does not matter, but the allow-list is read at
+   cold start only: after `put-parameter`, force a Lambda restart/redeploy, otherwise warm
+   containers keep the path disabled while fresh ones enable it. Rollback is
+   `ssm delete-parameter` plus the same restart. A read failure other than a missing parameter
+   is logged as a warning and leaves the path disabled, i.e. non-admin callers keep having every
+   identity verified per request — it never aborts the other lambdas that load this config.
+5. Read-only rollback: revert the ACS sync (or simply never flip the SS feature flag);
    the endpoints write nothing.
 
 ## Verification performed
@@ -697,6 +757,20 @@ assumption is to be confirmed on dev.
   not-found error classification; `GetMyIdentities` union/dedupe/sort of the
   `<type>:<value>` set across EasyCLA records + platform identities (deleted platform
   emails and non-code sources excluded, empty-username error).
+- Unit tests for the trusted-caller path (`cla-backend-go/auth/trusted_caller_test.go`,
+  `cla-backend-go/config/ssm_test.go`, `cla-backend-go/v2/my_clas/handlers_test.go`,
+  `service_test.go`): allow-list parsing and on/off (incl. a configured allow-list without an
+  Auth0 domain failing startup); missing/blank/`Basic`/`Bearer`-only headers denied without a
+  JWKS lookup; trusted vs. verified-but-not-allow-listed/`azp`-less tokens; rejection of
+  expired, `exp`-less, `nbf`/`iat`-future, `kid`-less, unknown-`kid`, wrong-key and
+  `HS256`/`alg: none` tokens (algorithm pinning); JWKS caching, refresh cooldown, TTL reload,
+  cached-key fallback and its 24 h bound, concurrent use, fetch/decode failure modes and both
+  the `n`+`e` and `x5c` key forms; per-handler 401 on an unverifiable caller (service never
+  reached), trusted caller reaching the service with `Trusted=true` and no username, `400`
+  when it supplies no identity at all, service-error/404 mapping, unchanged behavior with the
+  verifier disabled or absent; service-level trusted bypass (a GitHub-only record with no
+  `lf_username` resolves, its PDF downloads, the platform user-service is never consulted and
+  the requested identity is not mutated) and the bounded identity-summary log line.
 - Read-only checks against the shared **dev** AWS environment: confirmed
   `reference-signature-index` on `cla-dev-signatures` and all six identity GSIs on
   `cla-dev-users`; sampled real ICLA/ECLA records to verify the
@@ -755,3 +829,25 @@ assumption is to be confirmed on dev.
   (that is the platform-wide model — the gateway/ACS chain keys on the same claim),
   and admin-flagged principals bypass enforcement (needed for support/parity
   sampling; remove the `utils.IsUserAdmin` branch in `handlers.go` to revoke it).
+- **The `azp` allow-list is only as sound as no user being able to hold a token that carries an
+  allow-listed `azp`.** Server-side minting with a client secret is not sufficient: the token SS
+  sends here (`req.apiGatewayToken`, a refresh-token exchange on `PCC_AUTH0_CLIENT_ID`) is minted
+  that way and then returned to every logged-in user as `v1Token` by SS's
+  `GET /api/profile/developer` ([lfx-self-serve#1045](https://github.com/linuxfoundation/lfx-self-serve/pull/1045)),
+  and the v2 session token shares that `azp`. Allow-listing that client would therefore let any
+  logged-in user pass any identity — including to the PDF endpoint, whose presigned URL exposes a
+  signed ICLA. So allow-list only a client whose tokens are never surfaced to a user; SS needs a
+  dedicated client for this hop first. The same caveat is recorded in code at the `azp` check.
+- **Both the caller-supplied identity list and the `azp` allow-list are transitional (P3/P9
+  of the trust-SS decision).** At M6, once EasyCLA runs on K8s, it should call
+  `lfx.auth-service.user_identity.list` itself over NATS for the token's subject — at which
+  point the `githubId`/`githubUsername`/… parameters, the allow-list and the in-handler JWT
+  verification all go away together. `swagger/cla.v2.yaml` carries the same note.
+- **The in-handler verification covers the bearer token, not the gateway's `X-ACL` headers.**
+  Those are still consumed unverified (`lfx-kit/auth.SwaggerAuth`), so what is closed, once the
+  allow-list is configured, is the trust decision that matters here: nothing reaches the handlers
+  without a JWKS-verified tenant token, and nothing can claim to be Self Serve without an
+  allow-listed `azp`. A forged `X-ACL` can still assert a username, or the admin flag that bypasses
+  ownership checks — both pre-existing, both now additionally requiring a valid token. Binding the
+  principal to a token claim belongs to the v4 invoke-path trust work (spike 4); the M6 move removes
+  the header trust entirely.
