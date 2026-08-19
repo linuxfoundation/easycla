@@ -103,6 +103,53 @@ func TestCacheConcurrentMissesShareASingleScan(t *testing.T) {
 	assert.Equal(t, int32(1), atomic.LoadInt32(&loads))
 }
 
+func TestCacheFillSurvivesTheCancellationOfTheRequestThatTriggeredIt(t *testing.T) {
+	var loads int32
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	cache := newTableCache("projects", time.Minute, func(ctx context.Context) ([]*ClaGroupRow, error) {
+		atomic.AddInt32(&loads, 1)
+		started <- struct{}{}
+		<-release
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		return []*ClaGroupRow{{ClaGroupID: "cg-1"}}, nil
+	})
+
+	leaderCtx, cancelLeader := context.WithCancel(context.Background())
+	leaderErr := make(chan error, 1)
+	go func() {
+		_, err := cache.get(leaderCtx)
+		leaderErr <- err
+	}()
+	<-started
+
+	type waiterResult struct {
+		rows []*ClaGroupRow
+		err  error
+	}
+	waiter := make(chan waiterResult, 1)
+	go func() {
+		rows, err := cache.get(context.Background())
+		waiter <- waiterResult{rows: rows, err: err}
+	}()
+	time.Sleep(50 * time.Millisecond)
+
+	cancelLeader()
+	assert.ErrorIs(t, <-leaderErr, context.Canceled)
+
+	close(release)
+	result := <-waiter
+	require.NoError(t, result.err)
+	require.Len(t, result.rows, 1)
+
+	rows, err := cache.get(context.Background())
+	require.NoError(t, err)
+	assert.Len(t, rows, 1)
+	assert.Equal(t, int32(1), atomic.LoadInt32(&loads))
+}
+
 func TestCacheDoesNotRetainAFailedScan(t *testing.T) {
 	var loads int32
 	cache := newTableCache("projects", time.Minute, func(_ context.Context) ([]*ClaGroupRow, error) {

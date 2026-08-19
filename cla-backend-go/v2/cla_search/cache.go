@@ -20,6 +20,9 @@ import (
 // project onboarding, not of searches.
 const DefaultCacheTTL = 30 * time.Minute
 
+// loadTimeout bounds a table fill, which runs detached from the request that triggered it
+const loadTimeout = 30 * time.Second
+
 // cacheTTLEnvVar overrides DefaultCacheTTL with any duration Go can parse, "0" disabling the cache
 const cacheTTLEnvVar = "CLA_SEARCH_CACHE_TTL"
 
@@ -61,12 +64,16 @@ func (c *tableCache[T]) get(ctx context.Context) ([]T, error) {
 	}
 
 	f := logrus.Fields{"functionName": "v2.cla_search.cache.get", "tableName": c.name}
-	_, err, shared := c.flight.Do(c.name, func() (interface{}, error) {
+	fill := c.flight.DoChan(c.name, func() (interface{}, error) {
 		// a scan that finished while this call waited for the lock makes this one unnecessary
 		if _, ok := c.fresh(); ok {
 			return nil, nil
 		}
-		rows, loadErr := c.load(ctx)
+		// the fill outlives the request that happened to trigger it - one caller giving up must not
+		// fail the fill for every other caller waiting on it
+		loadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), loadTimeout)
+		defer cancel()
+		rows, loadErr := c.load(loadCtx)
 		if loadErr != nil {
 			return nil, loadErr
 		}
@@ -76,15 +83,21 @@ func (c *tableCache[T]) get(ctx context.Context) ([]T, error) {
 		log.WithFields(f).Debugf("cache miss - loaded %d rows", len(rows))
 		return nil, nil
 	})
-	if err != nil {
-		return nil, err
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case result := <-fill:
+		if result.Err != nil {
+			return nil, result.Err
+		}
+		if result.Shared {
+			log.WithFields(f).Debug("cache miss - served by a concurrent load")
+		}
+		c.mu.RLock()
+		defer c.mu.RUnlock()
+		return c.rows, nil
 	}
-	if shared {
-		log.WithFields(f).Debug("cache miss - served by a concurrent load")
-	}
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	return c.rows, nil
 }
 
 func (c *tableCache[T]) fresh() ([]T, bool) {
