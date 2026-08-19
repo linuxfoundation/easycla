@@ -357,6 +357,22 @@ The `approved=false` row is checked **before** coverage, so it never carries a
 ECLA-only, because the ICLA branch returns before coverage is read. So **ICLA is
 `valid` or `invalidated` only**, while an ECLA can be any of the four.
 
+**An Approved List change can produce either `needs_attention` or `invalidated`, and
+which one depends on whether a writer ran.** These are two distinct outcomes and are
+routinely conflated:
+
+- The contributor simply **stops matching** the current lists — nobody edited anything
+  targeting them, or the edit did not reach an invalidation writer. `signature_approved`
+  stays `true`, coverage is evaluated per request, and the row is `needs_attention`.
+- A CLA manager **removes an entry** through `UpdateApprovalList`, which walks the
+  affected ICLAs and ECLAs and calls `InvalidateProjectRecord`. `signature_approved`
+  becomes `false` and the row is `invalidated` — checked before coverage, so the
+  coverage evaluation never runs.
+
+So "no longer on the Approved List" is not sufficient to predict the status, and an ECLA
+with `signed=true, approved=false` is a real, reachable state rather than a
+contradiction.
+
 Unevaluable coverage includes: nil/error company, sanctioned employer, no
 approved+signed CCLA, `GetCorporateSignature` error, `EvaluateUserApproval` error,
 GitHub-org lookup fail, GitLab group fallback. `needs_attention` is **only** a
@@ -415,12 +431,19 @@ The first three go through the single writer `InvalidateProjectRecord`
 `note` — no timestamp, no actor field, no reason code, and it does not touch
 `date_modified`. The fourth never went through a writer at all, so it does not even
 carry a `note`. **The cause is therefore not recoverable from this response.**
-Consumers must not present `invalidated` as an accusation, and must not label it
-"revoked": see [Revocation provenance](#revocation-provenance-arrives-with-1370) below.
+Consumers must not label `invalidated` "revoked": see
+[Revocation provenance](#revocation-provenance-arrives-with-1370) below. How the state
+presents — label, severity, available actions — is the consumer's decision, not this
+endpoint's. All this endpoint guarantees is that the approval flag is off and the cause
+is not recoverable.
 
 ### The `status` enum is open to extension
 
-`revoked` will be **added** to `status` when revocation provenance lands (see below).
+A further token for the sanctions-revocation state will be **added** to `status` when
+revocation provenance lands (see below). Its spelling is not settled: the state's
+user-facing copy is "Revoked", but the wire token may instead name the mechanism
+(`sanctioned`), since a token describing the mechanism and a label chosen to avoid
+telling a contributor they were screened are two different decisions.
 Consumers **MUST tolerate unrecognised `status` values** rather than failing closed —
 generate permissive types, or handle the default case. A strict enum binding will break
 on the next additive release. `statusReason` is likewise open to extension, though no
@@ -535,7 +558,7 @@ Field reference (`my-cla` rows):
 | `status` | `valid` \| `needs_attention` \| `invalidated` \| `unknown` | Contributor-facing standing. Always present. Independent of `approved`/`valid`. ICLA is only `valid` or `invalidated`. `invalidated` mirrors the stored approval flag and attributes nothing. **Open to extension** — tolerate unrecognised values. |
 | `statusReason` | `not_on_approval_list` \| `unknown` | Why the standing is not `valid`. Omitted when `status` is `valid`, and on every ICLA. Keyed on `status`, **not** on the boolean `valid` — a GitLab-group fallback row is `valid=true` with `status=unknown` and does carry `statusReason=unknown`. Two tokens only. |
 | `documentMajorVersion` / `documentMinorVersion` | int | CLA document version that was signed (display/superseded detection is the consumer's choice) |
-| `pdfAvailable` | bool | `true` for every signed ICLA, unconditionally; ECLAs have no signed document of their own (FR-002) so they are always `false`. It is **not** gated on `approved`: a flag-off ICLA keeps the affordance, because the document is the contributor's own signed legal record and the flag may have been set by a manager removal, a PCC invalidation, or a project deletion. When `revoked` joins `status`, that state must suppress the download and this field will need gating. Actual S3 object availability is verified by the PDF endpoint on request, and that endpoint does its own ownership check — this field is a UI hint, not the security boundary. |
+| `pdfAvailable` | bool | `true` for every signed ICLA, unconditionally; ECLAs have no signed document of their own (FR-002) so they are always `false`. It is **not** gated on `approved`: a flag-off ICLA currently keeps the affordance, on the reading that the document is the contributor's own signed legal record and the flag may have been set by a manager removal, a PCC invalidation, or a project deletion. Whether it *should* is unsettled — the download and action affordances for a non-valid row have not been through legal review — so treat this as current behaviour rather than a ruling. When a revocation state joins `status`, it must suppress the download and this field will need gating. Actual S3 object availability is verified by the PDF endpoint on request, and that endpoint does its own ownership check — this field is a UI hint, not the security boundary. |
 
 List-level fields: `lfUsername` (the effective username the list was resolved for),
 `userIds` (matched EasyCLA user record IDs), `skippedIdentities` (identity parameters

@@ -68,9 +68,10 @@ properties:
       invalidated mirrors the stored approval flag and attributes nothing - a CLA manager
       Approved List edit, a project manager invalidating an ICLA, and CLA group deletion all
       produce it, and it does not mean the signature was revoked by sanctions screening.
-      This enum is open to extension - a revoked token is expected to be added once
-      revocation provenance (timestamp plus reason/actor) exists - so consumers MUST tolerate
-      unrecognised status values rather than failing closed.
+      This enum is open to extension - a further token for the sanctions-revocation state is
+      expected once its provenance (timestamp plus reason/actor) exists, and its spelling is
+      not settled - so consumers MUST tolerate unrecognised status values rather than failing
+      closed.
   statusReason:
     type: string
     enum: [not_on_approval_list, unknown]
