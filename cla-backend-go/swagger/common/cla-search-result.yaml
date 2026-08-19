@@ -1,0 +1,53 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: CLA Search Result
+description: A CLA Group matching the search term - the CLA Group is the signing unit, so results are deduplicated by claGroupID
+properties:
+  claGroupID:
+    type: string
+    description: The CLA Group ID (UUID) - the signing unit, used for the Contributor Console hand-off
+  claGroupName:
+    type: string
+    description: The CLA Group name, omitted when the CLA Group record could not be resolved
+  projectName:
+    type: string
+    description: The Salesforce project display name the CLA Group belongs to (a foundation-level CLA Group resolves to its foundation), omitted when the CLA Group maps to several projects with no foundation marker
+  projectSFID:
+    type: string
+    description: The Salesforce ID of the project in projectName, omitted when projectName could not be resolved
+  foundationSFID:
+    type: string
+    description: The Salesforce ID of the foundation the CLA Group belongs to, omitted when unknown
+  projectExternalID:
+    type: string
+    description: The external (Salesforce) ID stored on the CLA Group record, omitted when unset
+  iclaEnabled:
+    type: boolean
+    x-omitempty: false
+    description: The project_icla_enabled flag of the CLA Group
+  cclaEnabled:
+    type: boolean
+    x-omitempty: false
+    description: The project_ccla_enabled flag of the CLA Group
+  matchTypes:
+    type: array
+    x-omitempty: false
+    description: Why the CLA Group matched, sorted - claGroup (CLA Group name), project (project or foundation name), organization (linked organization name or URL), repository (the search term resolved to a repository)
+    items:
+      type: string
+      enum: [claGroup, project, organization, repository]
+  organizations:
+    type: array
+    x-omitempty: false
+    description: All repository-hosting organizations linked to the CLA Group, sorted by source then name - carries the repo-source provenance and backs the "N linked orgs" affordance
+    items:
+      $ref: '#/definitions/cla-search-org'
+  matchedRepositoryName:
+    type: string
+    description: The full repository name the search term resolved to, set only when matchTypes contains repository
+  matchedRepositoryURL:
+    type: string
+    description: The URL of the repository in matchedRepositoryName, set only when matchTypes contains repository

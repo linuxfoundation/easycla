@@ -2899,6 +2899,40 @@ paths:
       tags:
         - self_serve_sign
 
+  /cla-group/search:
+    get:
+      summary: Search CLA Groups
+      description: Unscoped search over the CLA Group name, the Salesforce project (or foundation) name, the names of the linked GitHub organizations, GitLab groups and Gerrit instances, and the repository the search term resolves to - a pasted repository URL or a "owner/repo" path is resolved to the CLA Group owning that repository. A URL that names a known repository resolves to that repository's CLA Group only - the owning organization is used as a fallback when no repository record matches - and a URL is matched against the repositories and organizations of the host it names - the forge for a github.com or gitlab.com URL, the host itself for a self-hosted one - while a bare "owner/repo" path matches either forge. Matching is case-insensitive substring matching performed server-side, results are deduplicated by CLA Group and capped at limit. A searchTerm shorter than 3 characters, or a limit outside its bounds, is rejected with a 422; a searchTerm that is shorter than 3 characters only after whitespace trimming is rejected with a 400. The reference data is served from an in-process cache with a short TTL, so a newly added CLA Group, organization or project mapping can take up to the cache TTL (30 minutes by default) to become searchable
+      operationId: searchClaGroups
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/claSearchTerm"
+        - $ref: "#/parameters/claSearchLimit"
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/cla-search-list'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '422':
+          $ref: '#/responses/unprocessable-entity'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - cla_search
+
   /user/{userID}/request-company-admin:
     post:
       summary: Request Manager
@@ -5101,6 +5135,23 @@ parameters:
       type: string
     collectionFormat: multi
     required: false
+  claSearchTerm:
+    name: searchTerm
+    description: The term to search for - matched case-insensitively as a substring against the CLA Group name, project/foundation name and linked organization names, and resolved as a repository URL or "owner/repo" path
+    in: query
+    type: string
+    minLength: 3
+    maxLength: 255
+    required: true
+  claSearchLimit:
+    name: limit
+    description: The maximum number of CLA Groups to return
+    in: query
+    type: integer
+    minimum: 1
+    maximum: 100
+    default: 20
+    required: false
 
 definitions:
   # Common definitions
@@ -5137,6 +5188,15 @@ definitions:
 
   prepare-sign:
     $ref: './common/prepare-sign.yaml'
+
+  cla-search-list:
+    $ref: './common/cla-search-list.yaml'
+
+  cla-search-result:
+    $ref: './common/cla-search-result.yaml'
+
+  cla-search-org:
+    $ref: './common/cla-search-org.yaml'
 
   #--------------------------------------
   # Docusign Webhook Payload

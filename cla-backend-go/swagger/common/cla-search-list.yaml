@@ -1,0 +1,26 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: CLA Search List
+description: The CLA Groups matching the search term
+properties:
+  searchTerm:
+    type: string
+    description: The search term the results were resolved for
+  resultCount:
+    type: integer
+    format: int64
+    x-omitempty: false
+    description: The number of results returned - at most limit
+  truncated:
+    type: boolean
+    x-omitempty: false
+    description: True when more CLA Groups matched than limit and the result set was capped - ask the user to refine the term
+  results:
+    type: array
+    x-omitempty: false
+    description: The matching CLA Groups, best match first
+    items:
+      $ref: '#/definitions/cla-search-result'

@@ -103,6 +103,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/template"
 	"github.com/linuxfoundation/easycla/cla-backend-go/user"
 	v2ClaManager "github.com/linuxfoundation/easycla/cla-backend-go/v2/cla_manager"
+	v2ClaSearch "github.com/linuxfoundation/easycla/cla-backend-go/v2/cla_search"
 	v2Company "github.com/linuxfoundation/easycla/cla-backend-go/v2/company"
 	v2CurrentUser "github.com/linuxfoundation/easycla/cla-backend-go/v2/current_user"
 	v2Health "github.com/linuxfoundation/easycla/cla-backend-go/v2/health"
@@ -439,6 +440,7 @@ func server(localMode bool) http.Handler {
 	gitlabOrganizationsService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoriesService, v1ProjectClaGroupRepo, storeRepository, usersService, signaturesRepo, v1CompanyRepo)
 	v1SignaturesService := signatures.NewService(signaturesRepo, v1CompanyService, usersService, eventsService, githubOrgValidation, v1RepositoriesService, githubOrganizationsService, v1ProjectService, gitlabApp, configFile.ClaV1ApiURL, configFile.CLALandingPage, configFile.CLALogoURL)
 	v2SignatureService := v2Signatures.NewService(awsSession, configFile.SignatureFilesBucket, v1ProjectService, v1CompanyService, v1SignaturesService, v1ProjectClaGroupRepo, signaturesRepo, usersService, approvalsRepo)
+	v2ClaSearchService := v2ClaSearch.NewService(v2ClaSearch.NewRepository(awsSession, stage))
 	v2MyClasService := v2MyClas.NewService(v2MyClas.NewRepository(awsSession, stage), user_service.GetClient(), v1SignaturesService, v1CompanyRepo, v1ProjectClaGroupRepo, project_service.GetClient())
 	v2SelfServeSignService := v2SelfServeSign.NewService(v2MyClasService, usersService, v1ProjectService, v1ProjectClaGroupRepo, storeRepository, configFile.CLAContributorv2Base)
 	trustedCallerVerifier, err := auth.NewTrustedCallerVerifier(configFile.Auth0.Domain, configFile.Auth0.Algorithm, configFile.SelfServe.TrustedClientIDs)
@@ -520,6 +522,7 @@ func server(localMode bool) http.Handler {
 	v2Company.Configure(v2API, v2CompanyService, v1ProjectClaGroupRepo, configFile.LFXPortalURL)
 	v2CurrentUser.Configure(v2API, v2CurrentUserService)
 	v2SelfServeSign.Configure(v2API, v2SelfServeSignService)
+	v2ClaSearch.Configure(v2API, v2ClaSearchService)
 	v2MyClas.Configure(v2API, v2MyClasService, trustedCallerVerifier)
 	cla_manager.Configure(api, v1ClaManagerService, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService)
 	v2ClaManager.Configure(v2API, v2ClaManagerService, v1CompanyService, configFile.LFXPortalURL, configFile.CorporateConsoleV2URL, v1ProjectClaGroupRepo, userRepo)
