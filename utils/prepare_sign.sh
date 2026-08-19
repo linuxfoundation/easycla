@@ -4,11 +4,12 @@
 
 # Calls the Self Serve sign APIs and reports the HTTP status and total time.
 # Default: POST /v4/self-serve/prepare-sign - confirms the given identity belongs to the token's LFID, creates the EasyCLA user record when missing, and returns the Contributor Console sign URL.
+# SIGN_ICLA=1: POST /v4/request-individual-signature the way the Contributor Console does after a prepare - needs USER_ID and CLA_GROUP_ID, prints the DocuSign sign_url.
 # CALLBACK=<userID>: POST /v4/signed/self-serve/individual/{user_id} - the DocuSign callback of a Self Serve started ICLA (XML body from PAYLOAD, default ./docusign_payload.xml); no token, DocuSign HMAC applies.
 # TOKEN: bearer access token (env, or ./prepare_sign.token.secret / ./my_clas.token.secret / ./auth0.token.secret). Get one with ~/get_oauth_token.sh (dev) or ~/get_oauth_token_prod.sh (prod).
 # STAGE: dev (default) | test | staging | prod - selects the api-gw host.
 # CLA_GROUP_ID (or 1st arg): the CLA Group UUID to sign - required.
-# RETURN_URL: where the Console sends the contributor once signing completes, typically the Self Serve My CLAs page.
+# RETURN_URL: where the Console sends the contributor once signing completes - the Self Serve My CLAs page; required for prepare-sign.
 # Identity params (a single value each): LF_USERNAME EMAIL GITHUB_ID GITHUB_USERNAME GITLAB_ID GITLAB_USERNAME GERRIT_USERNAME
 # Local mode (against a standalone backend, bypassing the gateway - lets you test the non-admin ownership enforcement): set PRINCIPAL to the token username and ADMIN=true|false (or pass a raw base64 X_ACL). Defaults API_URL to http://localhost:8080.
 # Examples:
@@ -16,6 +17,7 @@
 #   CLA_GROUP_ID=01af041c-... RETURN_URL=https://openprofile.dev/my-clas ./utils/prepare_sign.sh          # dev deployed
 #   STAGE=prod TOKEN="$(~/get_oauth_token_prod.sh)" CLA_GROUP_ID=01af041c-... ./utils/prepare_sign.sh      # prod deployed
 #   PRINCIPAL=lgryglicki ADMIN=false CLA_GROUP_ID=01af041c-... GITHUB_ID=2469783 ./utils/prepare_sign.sh   # local
+#   SIGN_ICLA=1 CLA_GROUP_ID=01af041c-... USER_ID=6c2d5a11-... ./utils/prepare_sign.sh                       # console leg: prepare -> request -> sign_url
 #   CALLBACK=6c2d5a11-... PAYLOAD=./docusign_payload.xml API_URL=http://localhost:8080 ./utils/prepare_sign.sh
 
 if [ -n "$PRINCIPAL" ] && [ -z "$X_ACL" ]
@@ -83,6 +85,12 @@ else
     rm -f "$body"
     exit 4
   fi
+  if [ -z "$SIGN_ICLA" ] && [ -z "$RETURN_URL" ]
+  then
+    echo "$0: RETURN_URL not set - prepare-sign requires the URL the Contributor Console returns the contributor to, e.g. RETURN_URL=https://openprofile.dev/my-clas"
+    rm -f "$body"
+    exit 7
+  fi
   if ! command -v jq >/dev/null 2>&1
   then
     echo "$0: jq is required to build the request body"
@@ -109,6 +117,23 @@ else
      + (if $gitlabUsername == "" then {} else {gitlabUsername: $gitlabUsername} end)
      + (if $gerritUsername == "" then {} else {gerritUsername: $gerritUsername} end)')"
   URL="${API_URL}/v4/self-serve/prepare-sign"
+  if [ -n "$SIGN_ICLA" ]
+  then
+    if [ -z "$USER_ID" ]
+    then
+      echo "$0: USER_ID not set - pass the EasyCLA user UUID returned by prepare-sign"
+      rm -f "$body"
+      exit 6
+    fi
+    payload="$(jq -nc \
+      --arg projectId "$CLA_GROUP_ID" \
+      --arg userId "$USER_ID" \
+      --arg returnUrlType "${RETURN_URL_TYPE:-Github}" \
+      --arg returnUrl "$RETURN_URL" \
+      '{project_id: $projectId, user_id: $userId, return_url_type: $returnUrlType}
+       + (if $returnUrl == "" then {} else {return_url: $returnUrl} end)')"
+    URL="${API_URL}/v4/request-individual-signature"
+  fi
   [ -n "$DEBUG" ] && echo "curl -sS -XPOST ${auth[0]} '<redacted>' -H 'Content-Type: application/json' -d '${payload}' '${URL}'"
   timing="$(curl -sS -XPOST "${auth[@]}" -H "Content-Type: application/json" -d "$payload" -w '%{http_code} %{time_total}' -o "$body" "$URL")"
 fi

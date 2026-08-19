@@ -299,7 +299,7 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 			if err != nil {
 				return sign.NewIclaCallbackSelfServeBadRequest()
 			}
-			return sign.NewCclaCallbackOK()
+			return sign.NewIclaCallbackSelfServeOK()
 		})
 
 	api.SignCclaCallbackHandler = sign.CclaCallbackHandlerFunc(

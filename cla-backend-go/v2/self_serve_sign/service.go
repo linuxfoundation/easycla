@@ -141,13 +141,16 @@ func (s *service) PrepareSign(ctx context.Context, currentUsername, currentEmail
 		return nil, ErrIdentityNotVerified
 	}
 
-	userModel, created, err := s.resolveOrCreateUser(ctx, allowed, currentEmail)
+	userModel, created, err := s.resolveOrCreateUser(ctx, allowed, currentUsername, currentEmail)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to resolve or create the EasyCLA user record")
 		return nil, err
 	}
 
-	returnURL := strings.TrimSpace(input.ReturnURL.String())
+	returnURL := ""
+	if input.ReturnURL != nil {
+		returnURL = strings.TrimSpace(input.ReturnURL.String())
+	}
 	if err := s.recordSigningSession(ctx, userModel.UserID, claGroupID, returnURL); err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to record the active signing session")
 		return nil, err
@@ -206,7 +209,7 @@ func (s *service) acceptVerifiedGithubID(ctx context.Context, input *models.Prep
 	return removeValue(skipped, "githubId:"+strconv.FormatInt(input.GithubID, 10))
 }
 
-func (s *service) resolveOrCreateUser(ctx context.Context, allowed *my_clas.Identity, currentEmail string) (*v1Models.User, bool, error) {
+func (s *service) resolveOrCreateUser(ctx context.Context, allowed *my_clas.Identity, currentUsername, currentEmail string) (*v1Models.User, bool, error) {
 	userModel := s.resolveUser(ctx, allowed)
 	if userModel != nil {
 		return s.enrichUser(ctx, userModel, allowed), false, nil
@@ -237,7 +240,7 @@ func (s *service) resolveOrCreateUser(ctx context.Context, allowed *my_clas.Iden
 		newUser.Username = string(newUser.LfEmail)
 	}
 
-	created, err := s.usersService.CreateUser(newUser, nil)
+	created, err := s.usersService.CreateUser(newUser, &user.CLAUser{LFUsername: currentUsername})
 	if err != nil {
 		return nil, false, err
 	}
@@ -256,7 +259,7 @@ func (s *service) resolveUser(ctx context.Context, allowed *my_clas.Identity) *v
 		}
 	}
 	for _, githubUsername := range allowed.GithubUsernames {
-		if found, err := s.usersService.GetUserByGitHubUsername(githubUsername); err == nil && found != nil {
+		if found, err := s.usersService.GetUserByGitHubUsername(githubUsername); err == nil && found != nil && idBelongs(found.GithubID, allowed.GithubIDs) {
 			return found
 		}
 	}
@@ -266,7 +269,7 @@ func (s *service) resolveUser(ctx context.Context, allowed *my_clas.Identity) *v
 		}
 	}
 	for _, gitlabUsername := range allowed.GitlabUsernames {
-		if found, err := s.usersService.GetUserByGitLabUsername(gitlabUsername); err == nil && found != nil {
+		if found, err := s.usersService.GetUserByGitLabUsername(gitlabUsername); err == nil && found != nil && idBelongs(found.GitlabID, allowed.GitlabIDs) {
 			return found
 		}
 	}
@@ -447,6 +450,20 @@ func firstValue(values []string) string {
 		}
 	}
 	return ""
+}
+
+// idBelongs guards the username lookups - provider usernames are recyclable, so a record whose
+// stored numeric ID is not one of the verified ones belongs to a previous owner of that username
+func idBelongs(storedID string, verifiedIDs []int64) bool {
+	storedID = strings.TrimSpace(storedID)
+	if storedID == "" {
+		return true
+	}
+	parsed, err := strconv.ParseInt(storedID, 10, 64)
+	if err != nil {
+		return false
+	}
+	return containsID(verifiedIDs, parsed)
 }
 
 func containsID(ids []int64, id int64) bool {

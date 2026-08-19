@@ -9307,6 +9307,19 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 		aclValue = "github:" + githubID
 	}
 
+	// A Self Serve signing session carries no pull or merge request, so the return URL type the
+	// console sends does not identify the signer - take the ACL from the user record instead
+	if isSelfServeSignatureMetadata(signatureMetadata) {
+		switch {
+		case githubID != "" && githubID != "None":
+			aclValue = "github:" + githubID
+		case gitlabID != "" && gitlabID != "None":
+			aclValue = "gitlab:" + gitlabID
+		case lfUsername != "" && lfUsername != "None":
+			aclValue = lfUsername
+		}
+	}
+
 	now := time.Now().UTC()
 	// Match the rest of the codebase's signature writes — pynamodb
 	// UTCDateTimeAttribute format ("YYYY-MM-DDTHH:MM:SS.ffffff+0000"), not

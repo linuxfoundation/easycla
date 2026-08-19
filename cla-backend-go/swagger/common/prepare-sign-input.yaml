@@ -7,6 +7,7 @@ title: Prepare Sign Input
 description: The CLA Group to sign and the single identity to sign it under - the identity must belong to the authenticated user
 required:
   - claGroupId
+  - returnUrl
 properties:
   claGroupId:
     type: string
@@ -15,8 +16,9 @@ properties:
   returnUrl:
     type: string
     format: uri
+    minLength: 1
     maxLength: 1000
-    description: The URL the Contributor Console returns the contributor to once signing completes - typically the Self Serve My CLAs page; when omitted no return URL is recorded and the Console falls back to its own handling
+    description: The URL the Contributor Console returns the contributor to once signing completes - the Self Serve My CLAs page; the Console has no other return target for a signing session started outside a pull or merge request
   lfUsername:
     type: string
     maxLength: 255

@@ -1443,8 +1443,8 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 		acl = fmt.Sprintf("%s:%s", strings.ToLower(input.ReturnURLType), user.GitlabID)
 	}
 
-	if utils.IsSelfServeActiveSignature(activeSignatureMetadata) && user.GithubID == "" && user.GitlabID == "" {
-		acl = user.LfUsername
+	if utils.IsSelfServeActiveSignature(activeSignatureMetadata) {
+		acl = selfServeSignatureACL(user)
 	}
 
 	log.WithFields(f).Debugf("acl: %s", acl)
@@ -1586,6 +1586,19 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 		SignatureID: itemSignature.SignatureID,
 		SignURL:     itemSignature.SignatureSignURL,
 	}, nil
+}
+
+// selfServeSignatureACL picks the ACL from the user record - a Self Serve session carries no pull
+// or merge request, so the return URL type the console sends does not identify the signer
+func selfServeSignatureACL(user *v1Models.User) string {
+	switch {
+	case user.GithubID != "":
+		return fmt.Sprintf("github:%s", user.GithubID)
+	case user.GitlabID != "":
+		return fmt.Sprintf("gitlab:%s", user.GitlabID)
+	default:
+		return user.LfUsername
+	}
 }
 
 func getUserName(user *v1Models.User) string {
