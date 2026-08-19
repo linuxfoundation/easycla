@@ -9157,6 +9157,7 @@ func (h *Handlers) addSelfServeEmployeeSignerToGerritGroups(ctx context.Context,
 		strings.TrimSpace(h.lfGroup.ClientSecret) != "" &&
 		strings.TrimSpace(h.lfGroup.RefreshToken) != ""
 	if !lfGroupConfigured {
+		logging.Debugf("request_employee_signature skipping the legacy LFGroup update for a self serve signing session; LFGroup client not configured project=%s user=%s", projectID, userID)
 		return
 	}
 
