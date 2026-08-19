@@ -83,7 +83,7 @@ func (s *service) Search(ctx context.Context, searchTerm string, limit int64) (*
 		src   *sources
 		repos []*RepositoryRow
 	)
-	path, forge := repositoryPath(rawTerm)
+	path, host := repositoryPath(rawTerm)
 	fetch, fetchCtx := errgroup.WithContext(ctx)
 	fetch.Go(func() error {
 		var err error
@@ -107,7 +107,7 @@ func (s *service) Search(ctx context.Context, searchTerm string, limit int64) (*
 	searchers.Go(func() error { matchClaGroupNames(src.claGroups, term, m); return nil })
 	searchers.Go(func() error { matchProjectNames(src.mappings, term, m); return nil })
 	searchers.Go(func() error { matchOrgNames(src.orgs, term, sfidToClaGroups, m); return nil })
-	searchers.Go(func() error { return s.matchRepositories(searchCtx, path, forge, repos, src, sfidToClaGroups, m) })
+	searchers.Go(func() error { return s.matchRepositories(searchCtx, path, host, repos, src, sfidToClaGroups, m) })
 	if err := searchers.Wait(); err != nil {
 		return nil, err
 	}
@@ -250,14 +250,15 @@ func orgRank(org *OrgRow, term, host string) int {
 // path to the CLA Group owning that repository. A pasted URL names exactly one repository, so its
 // owner organization is only consulted when no repository record answers - the case of an
 // auto-enabled organization, whose repositories carry no records
-func (s *service) matchRepositories(ctx context.Context, path, forge string, repos []*RepositoryRow, src *sources, sfidToClaGroups map[string][]string, m *matcher) error {
+func (s *service) matchRepositories(ctx context.Context, path, host string, repos []*RepositoryRow, src *sources, sfidToClaGroups map[string][]string, m *matcher) error {
 	if path == "" {
 		return nil
 	}
 	owner := path[:strings.Index(path, "/")]
-	ownerOrgs := orgsOnForge(orgsNamed(src.orgs, owner), forge)
+	forge := forgeHosts[host]
+	ownerOrgs := orgsOnHost(orgsNamed(src.orgs, owner), host, forge)
 
-	matched := reposNamed(repos, path, forge)
+	matched := reposNamed(repos, path, host, forge)
 	// the repository-name-index GSI is keyed on the case-preserved name, so a lower-cased paste of a
 	// mixed-case repository misses it - the owner's repositories are then listed through the
 	// organization GSI and compared case-insensitively
@@ -266,7 +267,7 @@ func (s *service) matchRepositories(ctx context.Context, path, forge string, rep
 		if err != nil {
 			return err
 		}
-		matched = reposNamed(listed, path, forge)
+		matched = reposNamed(listed, path, host, forge)
 	}
 
 	resolved := false
@@ -289,16 +290,22 @@ func (s *service) matchRepositories(ctx context.Context, path, forge string, rep
 	return nil
 }
 
-// reposNamed returns the repositories whose full name is the given path, restricted to the forge the
-// term named - a bare "owner/repo" names none and matches either forge
-func reposNamed(repos []*RepositoryRow, path, forge string) []*RepositoryRow {
+// reposNamed returns the repositories whose full name is the given path, restricted to the forge a
+// known host names, or to the host itself when the host is a self-hosted one - a bare "owner/repo"
+// names no host and matches either forge
+func reposNamed(repos []*RepositoryRow, path, host, forge string) []*RepositoryRow {
 	lowerPath := strings.ToLower(path)
 	var matched []*RepositoryRow
 	for _, repo := range repos {
 		if strings.ToLower(repo.Name) != lowerPath {
 			continue
 		}
-		if forge != "" && repo.Type != "" && !strings.EqualFold(repo.Type, forge) {
+		switch {
+		case forge != "":
+			if repo.Type != "" && !strings.EqualFold(repo.Type, forge) {
+				continue
+			}
+		case host != "" && hostOf(repo.URL) != host:
 			continue
 		}
 		matched = append(matched, repo)
@@ -306,16 +313,22 @@ func reposNamed(repos []*RepositoryRow, path, forge string) []*RepositoryRow {
 	return matched
 }
 
-// orgsOnForge drops the organizations of another forge than the one the term named
-func orgsOnForge(orgs []*OrgRow, forge string) []*OrgRow {
-	if forge == "" {
+// orgsOnHost drops the organizations the host of a pasted URL rules out - the ones of another forge
+// when the host names one, the ones of another host when it does not
+func orgsOnHost(orgs []*OrgRow, host, forge string) []*OrgRow {
+	if host == "" {
 		return orgs
 	}
 	matched := make([]*OrgRow, 0, len(orgs))
 	for _, org := range orgs {
-		if org.Source == "" || strings.EqualFold(org.Source, forge) {
-			matched = append(matched, org)
+		if forge != "" {
+			if org.Source != "" && !strings.EqualFold(org.Source, forge) {
+				continue
+			}
+		} else if hostOf(orgURL(org)) != host {
+			continue
 		}
+		matched = append(matched, org)
 	}
 	return matched
 }
@@ -561,15 +574,15 @@ func hostOf(rawURL string) string {
 
 // repositoryPath derives the full repository name the term addresses - the path of a pasted
 // repository URL, or the term itself when it looks like an "owner/repo" path - together with the
-// forge the URL host names, and is empty when the term addresses no repository
+// host the URL names, and is empty when the term addresses no repository
 func repositoryPath(term string) (string, string) {
-	path, forge := term, ""
+	path, host := term, ""
 	if strings.Contains(term, "://") {
 		parsed, err := url.Parse(term)
 		if err != nil || parsed.Hostname() == "" {
 			return "", ""
 		}
-		path, forge = parsed.Path, forgeHosts[strings.ToLower(parsed.Hostname())]
+		path, host = parsed.Path, strings.ToLower(parsed.Hostname())
 	}
 	path = strings.Trim(path, "/")
 	path = strings.TrimSuffix(path, ".git")
@@ -577,7 +590,7 @@ func repositoryPath(term string) (string, string) {
 	if !strings.Contains(path, "/") || strings.ContainsAny(path, " \t") {
 		return "", ""
 	}
-	return path, forge
+	return path, host
 }
 
 // nameVariants are the repository names looked up on the case-preserved repository-name-index GSI

@@ -514,7 +514,7 @@ func TestRepositoryPath(t *testing.T) {
 	for _, tc := range []struct {
 		term     string
 		expected string
-		forge    string
+		host     string
 		variants []string
 	}{
 		{"kubernetes", "", "", nil},
@@ -523,14 +523,14 @@ func TestRepositoryPath(t *testing.T) {
 		{"Owner/Repo", "Owner/Repo", "", []string{"Owner/Repo", "owner/repo"}},
 		{"owner/repo", "owner/repo", "", []string{"owner/repo"}},
 		{"https://gitlab.com/groups/onap", "", "", nil},
-		{"https://gitlab.com/onap/oom/oom", "onap/oom/oom", sourceGitLab, []string{"onap/oom/oom"}},
-		{"https://github.com/Owner/Repo.git", "Owner/Repo", sourceGitHub, []string{"Owner/Repo", "owner/repo"}},
-		{"https://WWW.GitHub.com/Owner/Repo", "Owner/Repo", sourceGitHub, []string{"Owner/Repo", "owner/repo"}},
-		{"https://gerrit.onap.org/r/aai/aai-common", "r/aai/aai-common", "", []string{"r/aai/aai-common"}},
+		{"https://gitlab.com/onap/oom/oom", "onap/oom/oom", "gitlab.com", []string{"onap/oom/oom"}},
+		{"https://github.com/Owner/Repo.git", "Owner/Repo", "github.com", []string{"Owner/Repo", "owner/repo"}},
+		{"https://WWW.GitHub.com/Owner/Repo", "Owner/Repo", "www.github.com", []string{"Owner/Repo", "owner/repo"}},
+		{"https://gerrit.onap.org/r/aai/aai-common", "r/aai/aai-common", "gerrit.onap.org", []string{"r/aai/aai-common"}},
 	} {
-		path, forge := repositoryPath(tc.term)
+		path, host := repositoryPath(tc.term)
 		assert.Equal(t, tc.expected, path, tc.term)
-		assert.Equal(t, tc.forge, forge, tc.term)
+		assert.Equal(t, tc.host, host, tc.term)
 		if path != "" {
 			assert.Equal(t, tc.variants, nameVariants(path), tc.term)
 		}
@@ -553,6 +553,7 @@ func divergentRepo() *fakeRepo {
 			"aswf/dna":            {{Name: "aswf/dna", URL: "https://github.com/aswf/dna", Type: sourceGitHub, ClaGroupID: "cg-repo"}},
 			"aswf/only-on-gitlab": {{Name: "aswf/only-on-gitlab", URL: "https://gitlab.com/aswf/only-on-gitlab", Type: sourceGitLab, ClaGroupID: "cg-gitlab"}},
 			"aswf/ghost":          {{Name: "aswf/ghost", URL: "https://github.com/aswf/ghost", Type: sourceGitHub, ClaGroupID: "cg-deleted"}},
+			"aswf/self-hosted":    {{Name: "aswf/self-hosted", URL: "https://git.aswf.example/aswf/self-hosted", Type: sourceGitHub, ClaGroupID: "cg-repo"}},
 		},
 	}
 }
@@ -600,4 +601,28 @@ func TestSearchOrganizationFallbackStaysOnTheForgeTheURLNamed(t *testing.T) {
 	list, err = NewService(divergentRepo()).Search(context.Background(), "https://gitlab.com/aswf/unknown-repo", 0)
 	require.NoError(t, err)
 	require.Equal(t, []string{"cg-gitlab"}, ids(list))
+}
+
+func TestSearchPastedURLOnAnUnknownHostDoesNotMatchAnotherHostsRepository(t *testing.T) {
+	list, err := NewService(divergentRepo()).Search(context.Background(), "https://unrelated.example/aswf/dna", 0)
+	require.NoError(t, err)
+	assert.Empty(t, list.Results)
+}
+
+func TestSearchPastedURLOnAnUnknownHostResolvesTheRepositoryOfThatHost(t *testing.T) {
+	list, err := NewService(divergentRepo()).Search(context.Background(), "https://git.aswf.example/aswf/self-hosted", 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"cg-repo"}, ids(list))
+	assert.Equal(t, []string{matchRepository}, list.Results[0].MatchTypes)
+	assert.Equal(t, "aswf/self-hosted", list.Results[0].MatchedRepositoryName)
+}
+
+func TestSearchPastedURLOnAnUnknownHostFallsBackToTheOrganizationOfThatHost(t *testing.T) {
+	repo := divergentRepo()
+	repo.claGroups = append(repo.claGroups, &ClaGroupRow{ClaGroupID: "cg-gerrit", Name: "Self Hosted CLA"})
+	repo.gerrit = []*OrgRow{{Name: "aswf", URL: "https://git.aswf.example", Source: sourceGerrit, ClaGroupID: "cg-gerrit"}}
+	list, err := NewService(repo).Search(context.Background(), "https://git.aswf.example/aswf/unknown-repo", 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"cg-gerrit"}, ids(list))
+	assert.Equal(t, []string{matchOrganization}, list.Results[0].MatchTypes)
 }
