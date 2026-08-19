@@ -598,9 +598,10 @@ assumption is to be confirmed on dev.
    environment (dev → staging → prod) so the ACS warden allows the paths; until then
    the gateway returns 403 for them (fail-closed — nothing else can regress).
 3. No lfx-gateway deploy is needed.
-4. To switch on the trusted Self Serve caller path, provision the SSM parameter with that
-   environment's Self Serve **confidential** client IDs — the only infrastructure change the
-   trust-SS hardening needs (the key matches the existing `cla-*` `ssm:GetParameter` grant):
+4. To switch on the trusted Self Serve caller path, provision the SSM parameter with the ID of a
+   Self Serve client whose tokens are **never returned to a user** — the only infrastructure change
+   the trust-SS hardening needs (the key matches the existing `cla-*` `ssm:GetParameter` grant).
+   The client SS calls with today does not qualify, so this step is on hold; see "Security notes":
 
    ```bash
    aws --profile lfproduct-dev ssm put-parameter --name cla-ss-trusted-client-ids-dev \
@@ -707,12 +708,15 @@ assumption is to be confirmed on dev.
   (that is the platform-wide model — the gateway/ACS chain keys on the same claim),
   and admin-flagged principals bypass enforcement (needed for support/parity
   sampling; remove the `utils.IsUserAdmin` branch in `handlers.go` to revoke it).
-- **The `azp` allow-list is only as sound as Self Serve staying a confidential client.**
-  Trusting an `azp` means trusting that only the SS backend can obtain a token carrying it —
-  true while SS mints tokens server-side with a client secret and they never reach a browser.
-  If that client ID is ever reused by a public/SPA client the boundary silently collapses and
-  any user could pass any identity, so never add a browser-facing client ID to the SSM
-  allow-list. The same caveat is recorded in code at the `azp` check.
+- **The `azp` allow-list is only as sound as no user being able to hold a token that carries an
+  allow-listed `azp`.** Server-side minting with a client secret is not sufficient: the token SS
+  sends here (`req.apiGatewayToken`, a refresh-token exchange on `PCC_AUTH0_CLIENT_ID`) is minted
+  that way and then returned to every logged-in user as `v1Token` by SS's
+  `GET /api/profile/developer` ([lfx-self-serve#1045](https://github.com/linuxfoundation/lfx-self-serve/pull/1045)),
+  and the v2 session token shares that `azp`. Allow-listing that client would therefore let any
+  logged-in user pass any identity — including to the PDF endpoint, whose presigned URL exposes a
+  signed ICLA. So allow-list only a client whose tokens are never surfaced to a user; SS needs a
+  dedicated client for this hop first. The same caveat is recorded in code at the `azp` check.
 - **Both the caller-supplied identity list and the `azp` allow-list are transitional (P3/P9
   of the trust-SS decision).** At M6, once EasyCLA runs on K8s, it should call
   `lfx.auth-service.user_identity.list` itself over NATS for the token's subject — at which

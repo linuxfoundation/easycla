@@ -113,11 +113,12 @@ func (v *TrustedCallerVerifier) Verify(authorization string) (*TrustedCaller, er
 	}
 	clientID := stringClaim(claims, "azp")
 
-	// Matching azp against an allow-list is sound ONLY because LFX Self Serve is a confidential
-	// backend client: its tokens are minted server-side with a client secret and never reach a
-	// browser, so an allow-listed azp means the SS backend built this request. If that client ID
-	// is ever reused by a public/SPA client - or its tokens otherwise become user-visible - this
-	// boundary silently collapses and any user could pass any identity.
+	// Matching azp against an allow-list is sound ONLY while no user can hold a token carrying an
+	// allow-listed azp - only then does the azp mean "the SS backend built this request". Minting
+	// server-side with a client secret is NOT sufficient: the token SS currently sends here is
+	// minted that way and then handed to every logged-in user as v1Token by SS's
+	// GET /api/profile/developer, so that client ID must not be allow-listed. Allow-list only a
+	// client whose tokens are never surfaced to a user; otherwise any user can pass any identity.
 	//
 	// Transitional mechanism (P3/P9 of the trust-SS decision): at M6, once EasyCLA runs on the
 	// K8s cluster, it should call lfx.auth-service.user_identity.list itself over NATS and drop
