@@ -31,7 +31,7 @@ properties:
   skippedIdentities:
     type: array
     x-omitempty: false
-    description: The provided identity keys that could not be verified as belonging to the authenticated user and were therefore ignored
+    description: The provided identity keys that could not be verified as belonging to the authenticated user and were therefore ignored - each entry names the rejected request parameter and its value, for example githubId:999
     items:
       type: string
   claGroupId:

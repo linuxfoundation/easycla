@@ -38,6 +38,9 @@ var ErrCLAGroupNotFound = errors.New("cla group not found")
 // ErrSigningNotEnabled is returned when the CLA Group offers neither an ICLA nor a CCLA
 var ErrSigningNotEnabled = errors.New("the cla group has neither an individual nor a corporate CLA enabled")
 
+// ErrReturnURLNotSupported is returned when the return URL is not an absolute https URL
+var ErrReturnURLNotSupported = errors.New("returnUrl must be an absolute https URL")
+
 const activeSignatureTTLDays = 1
 
 // MyClasService is the subset of the My CLAs service used to verify identity ownership
@@ -112,6 +115,15 @@ func (s *service) PrepareSign(ctx context.Context, currentUsername, currentEmail
 		"claGroupID":      claGroupID,
 	}
 
+	returnURL := ""
+	if input.ReturnURL != nil {
+		returnURL = strings.TrimSpace(input.ReturnURL.String())
+	}
+	if !isSupportedReturnURL(returnURL) {
+		log.WithFields(f).Warn(ErrReturnURLNotSupported.Error())
+		return nil, ErrReturnURLNotSupported
+	}
+
 	claGroup, err := s.claGroupService.GetCLAGroupByID(ctx, claGroupID)
 	if err != nil || claGroup == nil {
 		log.WithFields(f).WithError(err).Warn("unable to lookup the cla group")
@@ -130,28 +142,37 @@ func (s *service) PrepareSign(ctx context.Context, currentUsername, currentEmail
 		requested.LfUsername = currentUsername
 	}
 
+	requestedLfUsername := strings.TrimSpace(requested.LfUsername)
+	preparingForSelf := requestedLfUsername != "" && strings.EqualFold(requestedLfUsername, currentUsername)
+
 	allowed, skipped, err := s.myClasService.AuthorizeIdentity(ctx, currentUsername, admin, requested)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to verify the provided identity")
 		return nil, err
 	}
 	skipped = s.acceptVerifiedGithubID(ctx, input, allowed, skipped)
+
+	// An admin may prepare for somebody else, and My CLAs fills an unset lfUsername with the caller's
+	// own for read scoping - keep that from binding the caller's LF identity to the signer's record
+	fallbackEmail := currentEmail
+	if admin && !preparingForSelf {
+		if requestedLfUsername == "" {
+			allowed.LfUsername = ""
+		}
+		fallbackEmail = ""
+	}
 	if !identityAccepted(requested, allowed) {
 		log.WithFields(f).WithField("skippedIdentities", skipped).Warn(ErrIdentityNotVerified.Error())
 		return nil, ErrIdentityNotVerified
 	}
 
-	userModel, created, err := s.resolveOrCreateUser(ctx, allowed, currentUsername, currentEmail)
+	userModel, created, err := s.resolveOrCreateUser(ctx, allowed, currentUsername, fallbackEmail)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to resolve or create the EasyCLA user record")
 		return nil, err
 	}
 
-	returnURL := ""
-	if input.ReturnURL != nil {
-		returnURL = strings.TrimSpace(input.ReturnURL.String())
-	}
-	if err := s.recordSigningSession(ctx, userModel.UserID, claGroupID, returnURL); err != nil {
+	if err := s.recordSigningSession(ctx, userModel.UserID, claGroupID, returnURL, identityACL(allowed)); err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to record the active signing session")
 		return nil, err
 	}
@@ -209,7 +230,7 @@ func (s *service) acceptVerifiedGithubID(ctx context.Context, input *models.Prep
 	return removeValue(skipped, "githubId:"+strconv.FormatInt(input.GithubID, 10))
 }
 
-func (s *service) resolveOrCreateUser(ctx context.Context, allowed *my_clas.Identity, currentUsername, currentEmail string) (*v1Models.User, bool, error) {
+func (s *service) resolveOrCreateUser(ctx context.Context, allowed *my_clas.Identity, currentUsername, fallbackEmail string) (*v1Models.User, bool, error) {
 	userModel := s.resolveUser(ctx, allowed)
 	if userModel != nil {
 		return s.enrichUser(ctx, userModel, allowed), false, nil
@@ -232,7 +253,7 @@ func (s *service) resolveOrCreateUser(ctx context.Context, allowed *my_clas.Iden
 	if len(allowed.GitlabUsernames) > 0 {
 		newUser.GitlabUsername = allowed.GitlabUsernames[0]
 	}
-	if email := firstValue(append(allowed.Emails, currentEmail)); email != "" {
+	if email := firstValue(append(allowed.Emails, fallbackEmail)); email != "" {
 		newUser.LfEmail = strfmt.Email(email)
 		newUser.Emails = []string{email}
 	}
@@ -304,20 +325,21 @@ func (s *service) resolveUser(ctx context.Context, allowed *my_clas.Identity) *v
 }
 
 // enrichUser fills in the verified identity fields the matched record is missing - an existing
-// value is never replaced, so a record already bound to another linked identity is left alone
+// value is never replaced, so a record already bound to another linked identity is left alone.
+// The provider IDs go in as int64 - the table and its GSIs key them as DynamoDB numbers
 func (s *service) enrichUser(ctx context.Context, userModel *v1Models.User, allowed *my_clas.Identity) *v1Models.User {
 	updates := make(map[string]interface{})
 	if userModel.LfUsername == "" && allowed.LfUsername != "" {
 		updates["lf_username"] = allowed.LfUsername
 	}
 	if userModel.GithubID == "" && len(allowed.GithubIDs) > 0 {
-		updates["user_github_id"] = strconv.FormatInt(allowed.GithubIDs[0], 10)
+		updates["user_github_id"] = allowed.GithubIDs[0]
 	}
 	if userModel.GithubUsername == "" && len(allowed.GithubUsernames) > 0 {
 		updates["user_github_username"] = allowed.GithubUsernames[0]
 	}
 	if userModel.GitlabID == "" && len(allowed.GitlabIDs) > 0 {
-		updates["user_gitlab_id"] = strconv.FormatInt(allowed.GitlabIDs[0], 10)
+		updates["user_gitlab_id"] = allowed.GitlabIDs[0]
 	}
 	if userModel.GitlabUsername == "" && len(allowed.GitlabUsernames) > 0 {
 		updates["user_gitlab_username"] = allowed.GitlabUsernames[0]
@@ -343,14 +365,16 @@ type activeSignatureMetadata struct {
 	UserID    string `json:"user_id"`
 	ProjectID string `json:"project_id"`
 	ReturnURL string `json:"return_url,omitempty"`
+	ACL       string `json:"acl,omitempty"`
 	Source    string `json:"source"`
 }
 
-func (s *service) recordSigningSession(ctx context.Context, userID, claGroupID, returnURL string) error {
+func (s *service) recordSigningSession(ctx context.Context, userID, claGroupID, returnURL, acl string) error {
 	value, err := json.Marshal(&activeSignatureMetadata{
 		UserID:    userID,
 		ProjectID: claGroupID,
 		ReturnURL: returnURL,
+		ACL:       acl,
 		Source:    utils.SelfServeSignatureSource,
 	})
 	if err != nil {
@@ -462,6 +486,30 @@ func firstValue(values []string) string {
 		}
 	}
 	return ""
+}
+
+// identityACL names the identity the contributor signs under, so the signature records the one
+// that was verified here rather than the first one stored on the user record
+func identityACL(allowed *my_clas.Identity) string {
+	switch {
+	case len(allowed.GithubIDs) > 0:
+		return fmt.Sprintf("github:%d", allowed.GithubIDs[0])
+	case len(allowed.GitlabIDs) > 0:
+		return fmt.Sprintf("gitlab:%d", allowed.GitlabIDs[0])
+	case strings.TrimSpace(allowed.LfUsername) != "":
+		return strings.TrimSpace(allowed.LfUsername)
+	}
+	return ""
+}
+
+// isSupportedReturnURL keeps a hand-off from minting a return target the Contributor Console would
+// open in its own origin - the console opens the stored value with window.open(url, '_self')
+func isSupportedReturnURL(returnURL string) bool {
+	parsed, err := url.Parse(returnURL)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(parsed.Scheme, "https") && parsed.Host != ""
 }
 
 // idBelongs guards the username lookups - provider usernames are recyclable, so a record whose

@@ -18,7 +18,7 @@ properties:
     format: uri
     minLength: 1
     maxLength: 1000
-    description: The URL the Contributor Console returns the contributor to once signing completes - the Self Serve My CLAs page; the Console has no other return target for a signing session started outside a pull or merge request
+    description: The absolute https URL the Contributor Console returns the contributor to once signing completes - the Self Serve My CLAs page; the Console has no other return target for a signing session started outside a pull or merge request
   lfUsername:
     type: string
     maxLength: 255

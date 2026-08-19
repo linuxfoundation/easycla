@@ -47,7 +47,7 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 				case errors.Is(err, ErrIdentityNotVerified):
 					log.WithFields(f).WithError(err).Warn(err.Error())
 					return selfServeSignOps.NewPrepareSignForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, err.Error()))
-				case errors.Is(err, ErrIdentityRequired), errors.Is(err, ErrSigningNotEnabled):
+				case errors.Is(err, ErrIdentityRequired), errors.Is(err, ErrSigningNotEnabled), errors.Is(err, ErrReturnURLNotSupported):
 					log.WithFields(f).WithError(err).Warn(err.Error())
 					return selfServeSignOps.NewPrepareSignBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, err.Error()))
 				}

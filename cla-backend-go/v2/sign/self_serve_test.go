@@ -48,7 +48,64 @@ func TestGetActiveSignatureReturnURLSelfServe(t *testing.T) {
 }
 
 func TestSelfServeSignatureACL(t *testing.T) {
-	assert.Equal(t, "github:26589865", selfServeSignatureACL(&v1Models.User{GithubID: "26589865", GitlabID: "77", LfUsername: "lgryglicki"}))
-	assert.Equal(t, "gitlab:77", selfServeSignatureACL(&v1Models.User{GitlabID: "77", LfUsername: "lgryglicki"}))
-	assert.Equal(t, "lgryglicki", selfServeSignatureACL(&v1Models.User{LfUsername: "lgryglicki"}))
+	noACL := map[string]interface{}{}
+	assert.Equal(t, "github:26589865", selfServeSignatureACL(noACL, &v1Models.User{GithubID: "26589865", GitlabID: "77", LfUsername: "lgryglicki"}))
+	assert.Equal(t, "gitlab:77", selfServeSignatureACL(noACL, &v1Models.User{GitlabID: "77", LfUsername: "lgryglicki"}))
+	assert.Equal(t, "lgryglicki", selfServeSignatureACL(noACL, &v1Models.User{LfUsername: "lgryglicki"}))
+}
+
+func TestSelfServeSignatureACLPrefersTheSessionIdentity(t *testing.T) {
+	metadata := selfServeMetadata("")
+	metadata["acl"] = "gitlab:77"
+
+	// the record's GitHub identity would otherwise win, but the session was prepared under GitLab
+	assert.Equal(t, "gitlab:77", selfServeSignatureACL(metadata, &v1Models.User{GithubID: "26589865", GitlabID: "77"}))
+
+	metadata["acl"] = "   "
+	assert.Equal(t, "github:26589865", selfServeSignatureACL(metadata, &v1Models.User{GithubID: "26589865", GitlabID: "77"}))
+
+	metadata["acl"] = 26589865
+	assert.Equal(t, "github:26589865", selfServeSignatureACL(metadata, &v1Models.User{GithubID: "26589865", GitlabID: "77"}))
+}
+
+func TestGetIndividualSignatureCallbackURLGitlabSelfServe(t *testing.T) {
+	svc := &service{ClaV4ApiURL: "https://api.dev.lfx.linuxfoundation.org"}
+
+	callbackURL, err := svc.getIndividualSignatureCallbackURLGitlab(context.Background(), selfServeUserID, selfServeMetadata(""))
+
+	assert.NoError(t, err)
+	assert.Equal(t, "https://api.dev.lfx.linuxfoundation.org/v4/signed/self-serve/individual/"+selfServeUserID, callbackURL)
+}
+
+func TestEnvelopeCompleted(t *testing.T) {
+	envelope := func(status string) []byte {
+		return []byte(`<?xml version="1.0" encoding="utf-8"?><DocuSignEnvelopeInformation><EnvelopeStatus><EnvelopeID>e1</EnvelopeID><RecipientStatuses><RecipientStatus><Status>` + status + `</Status><ClientUserId>s1</ClientUserId></RecipientStatus></RecipientStatuses></EnvelopeStatus></DocuSignEnvelopeInformation>`)
+	}
+
+	completed, err := envelopeCompleted(envelope(DocusignCompleted))
+	assert.NoError(t, err)
+	assert.True(t, completed)
+
+	completed, err = envelopeCompleted(envelope("Sent"))
+	assert.NoError(t, err)
+	assert.False(t, completed)
+
+	completed, err = envelopeCompleted([]byte(`<?xml version="1.0" encoding="utf-8"?><DocuSignEnvelopeInformation><EnvelopeStatus><EnvelopeID>e1</EnvelopeID></EnvelopeStatus></DocuSignEnvelopeInformation>`))
+	assert.NoError(t, err)
+	assert.False(t, completed)
+
+	_, err = envelopeCompleted([]byte("not xml"))
+	assert.Error(t, err)
+}
+
+func TestSelfServeSessionMatchesProject(t *testing.T) {
+	claGroupID := "aa47b3e1-6f9c-4b6a-9f16-0f9d6a2e1c11"
+
+	assert.True(t, selfServeSessionMatchesProject(selfServeMetadata(""), claGroupID))
+	assert.False(t, selfServeSessionMatchesProject(selfServeMetadata(""), "62db1b81-6f4a-4b2e-9a4a-0f2d9f0a1b22"))
+
+	// a session written without the key, or with a non-string one, keeps the previous behaviour
+	assert.True(t, selfServeSessionMatchesProject(map[string]interface{}{"source": utils.SelfServeSignatureSource}, claGroupID))
+	assert.True(t, selfServeSessionMatchesProject(map[string]interface{}{"project_id": 7}, claGroupID))
+	assert.True(t, selfServeSessionMatchesProject(map[string]interface{}{"project_id": "   "}, claGroupID))
 }

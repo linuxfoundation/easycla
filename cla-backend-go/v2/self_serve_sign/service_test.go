@@ -352,3 +352,104 @@ func TestPrepareSignRequiresAnIdentityForAnAdminWithoutAPrincipal(t *testing.T) 
 
 	assert.ErrorIs(t, err, ErrIdentityRequired)
 }
+
+func TestPrepareSignStoresProviderIDsAsNumbers(t *testing.T) {
+	existing := &v1Models.User{UserID: "existing-user-id", LfUsername: "lgryglicki", GithubUsername: "octocat"}
+	users := &fakeUsers{byGithubUsername: map[string]*v1Models.User{"octocat": existing}}
+	svc := newTestService(
+		&fakeMyClas{allowed: &my_clas.Identity{GithubIDs: []int64{26589865}, GithubUsernames: []string{"octocat"}, GitlabIDs: []int64{77}}},
+		users, enabledCLAGroup(), &fakeStore{})
+
+	_, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+		ClaGroupID:     stringRef(testCLAGroupID),
+		ReturnURL:      uriRef(testReturnURL),
+		GithubID:       26589865,
+		GithubUsername: "octocat",
+	})
+
+	assert.NoError(t, err)
+	// the user table and its GSIs key both provider IDs as DynamoDB numbers
+	assert.Equal(t, int64(26589865), users.updates["user_github_id"])
+	assert.Equal(t, int64(77), users.updates["user_gitlab_id"])
+}
+
+func TestPrepareSignRecordsTheVerifiedIdentityACL(t *testing.T) {
+	sessionACL := func(t *testing.T, allowed *my_clas.Identity, input *models.PrepareSignInput) string {
+		t.Helper()
+		store := &fakeStore{}
+		svc := newTestService(&fakeMyClas{allowed: allowed}, &fakeUsers{}, enabledCLAGroup(), store)
+		_, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, input)
+		assert.NoError(t, err)
+		var metadata map[string]interface{}
+		assert.NoError(t, json.Unmarshal([]byte(store.value), &metadata))
+		acl, ok := metadata["acl"].(string)
+		assert.True(t, ok)
+		return acl
+	}
+
+	assert.Equal(t, "github:26589865", sessionACL(t,
+		&my_clas.Identity{GithubIDs: []int64{26589865}, GithubUsernames: []string{"octocat"}},
+		&models.PrepareSignInput{ClaGroupID: stringRef(testCLAGroupID), ReturnURL: uriRef(testReturnURL), GithubID: 26589865, GithubUsername: "octocat"}))
+
+	assert.Equal(t, "gitlab:77", sessionACL(t,
+		&my_clas.Identity{GitlabIDs: []int64{77}, GitlabUsernames: []string{"lgryglicki"}},
+		&models.PrepareSignInput{ClaGroupID: stringRef(testCLAGroupID), ReturnURL: uriRef(testReturnURL), GitlabID: 77, GitlabUsername: "lgryglicki"}))
+
+	assert.Equal(t, "lgryglicki", sessionACL(t,
+		&my_clas.Identity{LfUsername: "lgryglicki"},
+		&models.PrepareSignInput{ClaGroupID: stringRef(testCLAGroupID), ReturnURL: uriRef(testReturnURL), LfUsername: "lgryglicki"}))
+}
+
+func TestPrepareSignDoesNotBindTheAdminIdentityToAnotherContributor(t *testing.T) {
+	admin := &v1Models.User{UserID: "admin-user-id", LfUsername: "lfadmin", LfEmail: "admin@example.org"}
+	users := &fakeUsers{byLFUsername: map[string]*v1Models.User{"lfadmin": admin}}
+	svc := newTestService(
+		&fakeMyClas{allowed: &my_clas.Identity{GithubIDs: []int64{26589865}, GithubUsernames: []string{"octocat"}}},
+		users, enabledCLAGroup(), &fakeStore{})
+
+	result, err := svc.PrepareSign(context.Background(), "lfadmin", "admin@example.org", true, &models.PrepareSignInput{
+		ClaGroupID:     stringRef(testCLAGroupID),
+		ReturnURL:      uriRef(testReturnURL),
+		GithubID:       26589865,
+		GithubUsername: "octocat",
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, "created-user-id", result.UserID)
+	assert.True(t, result.UserCreated)
+	assert.Nil(t, users.updates)
+	assert.NotNil(t, users.created)
+	assert.Equal(t, "", users.created.LfUsername)
+	assert.Equal(t, "", string(users.created.LfEmail))
+	assert.Empty(t, users.created.Emails)
+	assert.Equal(t, "octocat", users.created.Username)
+}
+
+func TestPrepareSignLetsAnAdminPrepareForThemselves(t *testing.T) {
+	admin := &v1Models.User{UserID: "admin-user-id", LfUsername: "lfadmin"}
+	users := &fakeUsers{byLFUsername: map[string]*v1Models.User{"lfadmin": admin}}
+	svc := newTestService(&fakeMyClas{allowed: &my_clas.Identity{LfUsername: "lfadmin"}}, users, enabledCLAGroup(), &fakeStore{})
+
+	result, err := svc.PrepareSign(context.Background(), "lfadmin", "admin@example.org", true, &models.PrepareSignInput{
+		ClaGroupID: stringRef(testCLAGroupID),
+		ReturnURL:  uriRef(testReturnURL),
+		LfUsername: "lfadmin",
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, "admin-user-id", result.UserID)
+	assert.Nil(t, users.created)
+}
+
+func TestPrepareSignRejectsANonHTTPSReturnURL(t *testing.T) {
+	for _, returnURL := range []string{"http://openprofile.dev/my-clas", "javascript:alert(1)", "/my-clas", "https://"} {
+		svc := newTestService(&fakeMyClas{allowed: &my_clas.Identity{LfUsername: "lgryglicki"}}, &fakeUsers{}, enabledCLAGroup(), &fakeStore{})
+
+		_, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+			ClaGroupID: stringRef(testCLAGroupID),
+			ReturnURL:  uriRef(returnURL),
+		})
+
+		assert.ErrorIs(t, err, ErrReturnURLNotSupported, returnURL)
+	}
+}

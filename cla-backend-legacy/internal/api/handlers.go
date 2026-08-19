@@ -9344,7 +9344,9 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 	// A Self Serve signing session carries no pull or merge request, so the return URL type the
 	// console sends does not identify the signer - take the ACL from the user record instead
 	if isSelfServeSignatureMetadata(signatureMetadata) {
-		switch {
+		switch sessionACL := strings.TrimSpace(metadataString(signatureMetadata, "acl")); {
+		case sessionACL != "":
+			aclValue = sessionACL
 		case githubID != "" && githubID != "None":
 			aclValue = "github:" + githubID
 		case gitlabID != "" && gitlabID != "None":

@@ -297,6 +297,7 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 
 			err := service.SignedIndividualCallbackSelfServe(ctx, iclaGitHubPayload, params.UserID)
 			if err != nil {
+				log.WithFields(f).WithError(err).Warnf("unable to process the self serve callback for user: %s", params.UserID)
 				return sign.NewIclaCallbackSelfServeBadRequest()
 			}
 			return sign.NewIclaCallbackSelfServeOK()

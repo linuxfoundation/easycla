@@ -1114,7 +1114,33 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 // started proactively from LFX Self Serve - it carries no pull/merge request context, which is
 // exactly the Gerrit callback's shape
 func (s *service) SignedIndividualCallbackSelfServe(ctx context.Context, payload []byte, userID string) error {
-	return s.SignedIndividualCallbackGerrit(ctx, payload, userID)
+	f := logrus.Fields{
+		"functionName":   "sign.SignedIndividualCallbackSelfServe",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"userID":         userID,
+	}
+
+	if err := s.SignedIndividualCallbackGerrit(ctx, payload, userID); err != nil {
+		return err
+	}
+
+	// The Gerrit callback leaves the session in place because the Gerrit flow never writes one -
+	// a Self Serve session does, so remove it here once the envelope is complete
+	completed, err := envelopeCompleted(payload)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to unmarshal xml payload")
+		return err
+	}
+	if !completed {
+		return nil
+	}
+
+	log.WithFields(f).Debugf("removing active signature metadata for user: %s", userID)
+	if err := s.storeRepository.DeleteActiveSignatureMetaData(ctx, fmt.Sprintf("active_signature:%s", userID)); err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to remove active signature metadata for user: %s", userID)
+		return err
+	}
+	return nil
 }
 
 func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, companyID, projectID string) error {
@@ -1444,7 +1470,11 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 	}
 
 	if utils.IsSelfServeActiveSignature(activeSignatureMetadata) {
-		acl = selfServeSignatureACL(user)
+		if !selfServeSessionMatchesProject(activeSignatureMetadata, *input.ProjectID) {
+			log.WithFields(f).Warnf("self serve signing session does not belong to cla group: %s", *input.ProjectID)
+			return nil, errors.New("the active signing session belongs to a different cla group")
+		}
+		acl = selfServeSignatureACL(activeSignatureMetadata, user)
 	}
 
 	log.WithFields(f).Debugf("acl: %s", acl)
@@ -1588,9 +1618,34 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 	}, nil
 }
 
-// selfServeSignatureACL picks the ACL from the user record - a Self Serve session carries no pull
-// or merge request, so the return URL type the console sends does not identify the signer
-func selfServeSignatureACL(user *v1Models.User) string {
+// selfServeSessionMatchesProject keeps a session prepared for one CLA group from driving a signing
+// request for another - the request endpoint carries no token of its own
+func selfServeSessionMatchesProject(metadata map[string]interface{}, projectID string) bool {
+	sessionProjectID, ok := metadata["project_id"].(string)
+	if !ok || strings.TrimSpace(sessionProjectID) == "" {
+		return true
+	}
+	return sessionProjectID == projectID
+}
+
+func envelopeCompleted(payload []byte) (bool, error) {
+	var info DocuSignEnvelopeInformation
+	if err := xml.Unmarshal(payload, &info); err != nil {
+		return false, err
+	}
+	if len(info.EnvelopeStatus.RecipientStatuses) == 0 {
+		return false, nil
+	}
+	return info.EnvelopeStatus.RecipientStatuses[0].Status == DocusignCompleted, nil
+}
+
+// selfServeSignatureACL prefers the identity the session was prepared under and falls back to the
+// user record - a Self Serve session carries no pull or merge request, so the return URL type the
+// console sends does not identify the signer
+func selfServeSignatureACL(metadata map[string]interface{}, user *v1Models.User) string {
+	if acl, ok := metadata["acl"].(string); ok && strings.TrimSpace(acl) != "" {
+		return strings.TrimSpace(acl)
+	}
 	switch {
 	case user.GithubID != "":
 		return fmt.Sprintf("github:%s", user.GithubID)
@@ -1652,6 +1707,11 @@ func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, u
 			log.WithFields(f).WithError(err).Warnf("unable to get active signature meta data for user: %s", userID)
 			return "", err
 		}
+	}
+
+	if utils.IsSelfServeActiveSignature(metadata) {
+		log.WithFields(f).Debug("self serve signing session - using the no merge request callback")
+		return fmt.Sprintf("%s/v4/signed/self-serve/individual/%s", s.ClaV4ApiURL, userID), nil
 	}
 
 	repositoryID, err = metadataStringValue(metadata, "repository_id")
