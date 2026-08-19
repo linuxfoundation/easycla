@@ -108,6 +108,7 @@ import (
 	v2CurrentUser "github.com/linuxfoundation/easycla/cla-backend-go/v2/current_user"
 	v2Health "github.com/linuxfoundation/easycla/cla-backend-go/v2/health"
 	v2MyClas "github.com/linuxfoundation/easycla/cla-backend-go/v2/my_clas"
+	v2SelfServeSign "github.com/linuxfoundation/easycla/cla-backend-go/v2/self_serve_sign"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/store"
 	v2Template "github.com/linuxfoundation/easycla/cla-backend-go/v2/template"
 
@@ -441,6 +442,7 @@ func server(localMode bool) http.Handler {
 	v2SignatureService := v2Signatures.NewService(awsSession, configFile.SignatureFilesBucket, v1ProjectService, v1CompanyService, v1SignaturesService, v1ProjectClaGroupRepo, signaturesRepo, usersService, approvalsRepo)
 	v2ClaSearchService := v2ClaSearch.NewService(v2ClaSearch.NewRepository(awsSession, stage))
 	v2MyClasService := v2MyClas.NewService(v2MyClas.NewRepository(awsSession, stage), user_service.GetClient(), v1SignaturesService, v1CompanyRepo, v1ProjectClaGroupRepo, project_service.GetClient())
+	v2SelfServeSignService := v2SelfServeSign.NewService(v2MyClasService, usersService, v1ProjectService, v1ProjectClaGroupRepo, storeRepository, configFile.CLAContributorv2Base)
 	trustedCallerVerifier, err := auth.NewTrustedCallerVerifier(configFile.Auth0.Domain, configFile.Auth0.Algorithm, configFile.SelfServe.TrustedClientIDs)
 	if err != nil {
 		logrus.Panic(err)
@@ -519,6 +521,7 @@ func server(localMode bool) http.Handler {
 	v2Gerrits.Configure(v2API, gerritService, v1ProjectService, eventsService, v1ProjectClaGroupRepo)
 	v2Company.Configure(v2API, v2CompanyService, v1ProjectClaGroupRepo, configFile.LFXPortalURL)
 	v2CurrentUser.Configure(v2API, v2CurrentUserService)
+	v2SelfServeSign.Configure(v2API, v2SelfServeSignService)
 	v2ClaSearch.Configure(v2API, v2ClaSearchService)
 	v2MyClas.Configure(v2API, v2MyClasService, trustedCallerVerifier)
 	cla_manager.Configure(api, v1ClaManagerService, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService)
@@ -531,6 +534,7 @@ func server(localMode bool) http.Handler {
 	v2API.AddMiddlewareFor("POST", "/signed/corporate/{project_id}/{company_id}", sign.CCLADocusignMiddleware)
 	v2API.AddMiddlewareFor("POST", "/signed/gitlab/individual/{user_id}/{organization_id}/{gitlab_repository_id}/{merge_request_id}", sign.DocusignMiddleware)
 	v2API.AddMiddlewareFor("POST", "/signed/gerrit/individual/{user_id}", sign.DocusignMiddleware)
+	v2API.AddMiddlewareFor("POST", "/signed/self-serve/individual/{user_id}", sign.DocusignMiddleware)
 
 	userCreaterMiddleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

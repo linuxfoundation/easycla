@@ -2862,6 +2862,43 @@ paths:
       tags:
         - my_clas
 
+  /self-serve/prepare-sign:
+    post:
+      summary: Prepare Sign
+      description: Prepares a proactive (no pull/merge request) signing session started from LFX Self Serve - verifies that the provided identity belongs to the authenticated user with the same rules as GET /my-clas (their EasyCLA user records first, then the identities connected to their LF account in the platform user-service), creates the EasyCLA user record when the verified identity has none, records the return URL for the signing session, and returns the Contributor Console URL to hand off to so the contributor can choose ICLA or ECLA there
+      operationId: prepareSign
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - name: body
+          in: body
+          required: true
+          schema:
+            $ref: '#/definitions/prepare-sign-input'
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/prepare-sign'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - self_serve_sign
+
   /cla-group/search:
     get:
       summary: Search CLA Groups
@@ -4522,6 +4559,34 @@ paths:
       tags:
         - sign 
     
+  /signed/self-serve/individual/{user_id}:
+    post:
+      summary: Endpoint to receive DocuSign callback for signed documents from LFX Self Serve.
+      description: Receives XML data when an individual signs a document in DocuSign for a signing session started proactively from LFX Self Serve, i.e. with no pull or merge request context.
+      operationId: iclaCallbackSelfServe
+      security: [ ]
+      consumes:
+        - text/xml
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - name: user_id
+          in: path
+          required: true
+          type: string
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            additionalProperties: true
+      responses:
+        '200':
+          description: Successfully received and processed the Self Serve callback data.
+        '400':
+          description: Invalid request.
+      tags:
+        - sign
+
   /signed/corporate/{project_id}/{company_id}:
     post:
       summary: Endpoint to receive DocuSign callback for signed corporate documents.
@@ -5117,6 +5182,12 @@ definitions:
 
   my-identity-list:
     $ref: './common/my-identity-list.yaml'
+
+  prepare-sign-input:
+    $ref: './common/prepare-sign-input.yaml'
+
+  prepare-sign:
+    $ref: './common/prepare-sign.yaml'
 
   cla-search-list:
     $ref: './common/cla-search-list.yaml'

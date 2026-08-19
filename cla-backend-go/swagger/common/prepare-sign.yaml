@@ -1,0 +1,66 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: Prepare Sign
+description: The EasyCLA user record and CLA Group the contributor was prepared to sign for, plus the Contributor Console URL to hand off to
+properties:
+  userId:
+    type: string
+    description: The EasyCLA user record ID (UUID) to sign as - either the pre-existing record matching the verified identity or the record just created for it
+  userCreated:
+    type: boolean
+    x-omitempty: false
+    description: True when no EasyCLA user record matched the verified identity and a new one was created
+  lfUsername:
+    type: string
+    description: The LF username (LFID) on the EasyCLA user record
+  userName:
+    type: string
+    description: The display name on the EasyCLA user record
+  userEmail:
+    type: string
+    description: The primary email on the EasyCLA user record
+  identity:
+    type: array
+    x-omitempty: false
+    description: The verified identity keys the user record was resolved (or created) from, formatted as "<type>:<value>" (e.g. github-id:26589865, github-username:octocat, email:a@b.com)
+    items:
+      type: string
+  skippedIdentities:
+    type: array
+    x-omitempty: false
+    description: The provided identity keys that could not be verified as belonging to the authenticated user and were therefore ignored - each entry names the rejected request parameter and its value, for example githubId:999
+    items:
+      type: string
+  claGroupId:
+    type: string
+    description: The CLA Group ID (UUID)
+  claGroupName:
+    type: string
+    description: The CLA Group name
+  projectSfid:
+    type: string
+    description: The Salesforce project ID the CLA Group is mapped to, omitted for a CLA Group mapped to several projects
+  foundationSfid:
+    type: string
+    description: The Salesforce foundation ID the CLA Group belongs to
+  iclaEnabled:
+    type: boolean
+    x-omitempty: false
+    description: Whether the CLA Group offers an individual CLA
+  cclaEnabled:
+    type: boolean
+    x-omitempty: false
+    description: Whether the CLA Group offers a corporate CLA (employee acknowledgement)
+  cclaRequiresIcla:
+    type: boolean
+    x-omitempty: false
+    description: Whether an employee acknowledgement additionally requires an individual CLA
+  signUrl:
+    type: string
+    description: The Contributor Console URL to open - the ICLA/ECLA decision screen for this CLA Group and user, carrying the return URL
+  returnUrl:
+    type: string
+    description: The return URL recorded for this signing session, echoed back

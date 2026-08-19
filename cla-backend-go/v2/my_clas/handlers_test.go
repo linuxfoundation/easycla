@@ -53,6 +53,14 @@ func (f *fakeService) GetMyIdentities(_ context.Context, currentUsername string)
 	return &models.MyIdentityList{}, nil
 }
 
+func (f *fakeService) AuthorizeIdentity(_ context.Context, currentUsername string, admin bool, requested *Identity) (*Identity, []string, error) {
+	f.callers = append(f.callers, &Caller{Username: currentUsername, Admin: admin})
+	if f.err != nil {
+		return nil, nil, f.err
+	}
+	return requested, []string{}, nil
+}
+
 type fakeVerifier struct {
 	enabled bool
 	callers map[string]*claAuth.TrustedCaller

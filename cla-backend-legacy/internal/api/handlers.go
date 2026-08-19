@@ -2796,6 +2796,23 @@ func metadataString(metadata map[string]any, key string) string {
 	return s
 }
 
+// isSelfServeSignatureMetadata reports whether the active signature session was started
+// proactively from LFX Self Serve - such a session carries no pull or merge request to update
+func isSelfServeSignatureMetadata(metadata map[string]any) bool {
+	return metadata != nil && strings.EqualFold(metadataString(metadata, "source"), "self-serve")
+}
+
+// selfServeSessionMatchesProject keeps a session prepared for one CLA group from driving the self
+// serve handling of a request for another - a session stored without the key still matches
+func selfServeSessionMatchesProject(metadata map[string]any, projectID string) bool {
+	if metadata == nil {
+		return true
+	}
+	raw, _ := metadata["project_id"].(string)
+	sessionProjectID := strings.TrimSpace(raw)
+	return sessionProjectID == "" || sessionProjectID == projectID
+}
+
 func (h *Handlers) computeReturnURLFromActiveSignatureMetadata(ctx context.Context, metadata map[string]any) (string, error) {
 	if metadata == nil {
 		return "", nil
@@ -9140,6 +9157,40 @@ func (h *Handlers) parseDomain(s string) string {
 	return strings.TrimPrefix(u.Hostname(), "www.")
 }
 
+func (h *Handlers) addSelfServeEmployeeSignerToGerritGroups(ctx context.Context, projectID, userID, lfUsername string) {
+	if h.gerritInstances == nil || lfUsername == "" || lfUsername == "None" {
+		return
+	}
+
+	lfGroupConfigured := h.lfGroup != nil &&
+		strings.TrimSpace(h.lfGroup.BaseURL) != "" &&
+		strings.TrimSpace(h.lfGroup.ClientID) != "" &&
+		strings.TrimSpace(h.lfGroup.ClientSecret) != "" &&
+		strings.TrimSpace(h.lfGroup.RefreshToken) != ""
+	if !lfGroupConfigured {
+		logging.Debugf("request_employee_signature skipping the legacy LFGroup update for a self serve signing session; LFGroup client not configured project=%s user=%s", projectID, userID)
+		return
+	}
+
+	gerrits, err := h.gerritInstances.QueryByProjectID(ctx, projectID)
+	if err != nil {
+		logging.Warnf("request_employee_signature ignored gerrit instance lookup failure for a self serve signing session project=%s user=%s: %v", projectID, userID, err)
+		return
+	}
+
+	for _, gerrit := range gerrits {
+		groupID := strings.TrimSpace(getAttrString(gerrit, "group_id_ccla"))
+		if groupID == "" {
+			continue
+		}
+		if res := h.lfGroup.AddUserToGroup(ctx, groupID, lfUsername); res != nil {
+			if _, bad := res["error"]; bad {
+				logging.Warnf("request_employee_signature ignored legacy LFGroup update failure for a self serve signing session group_id=%s user=%s result=%v", groupID, lfUsername, res)
+			}
+		}
+	}
+}
+
 func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	req := parseEmployeeSignatureRequestV2(r)
@@ -9242,14 +9293,21 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 
 	// Python derives the return URL from active signature metadata when not provided.
 	var signatureMetadata map[string]any
+	selfServeSession := false
 	if h.kv != nil {
 		metadata, ok, lookupErr := h.loadActiveSignatureMetadata(ctx, req.UserID)
 		if lookupErr != nil {
 			logging.Warnf("active signature metadata lookup failed for employee signature user=%s err=%v", req.UserID, lookupErr)
 		} else if ok {
 			signatureMetadata = metadata
-			if strings.TrimSpace(req.ReturnURL) == "" {
-				if ru, rerr := h.computeReturnURLFromActiveSignatureMetadata(ctx, metadata); rerr == nil && strings.TrimSpace(ru) != "" {
+			selfServeSession = isSelfServeSignatureMetadata(signatureMetadata)
+			if selfServeSession && !selfServeSessionMatchesProject(signatureMetadata, req.ProjectID) {
+				logging.Debugf("request_employee_signature ignoring a self serve signing session prepared for another cla group user=%s session_cla_group=%s request_cla_group=%s", req.UserID, metadataString(signatureMetadata, "project_id"), req.ProjectID)
+				selfServeSession = false
+				signatureMetadata = nil
+			}
+			if signatureMetadata != nil && strings.TrimSpace(req.ReturnURL) == "" {
+				if ru, rerr := h.computeReturnURLFromActiveSignatureMetadata(ctx, signatureMetadata); rerr == nil && strings.TrimSpace(ru) != "" {
 					req.ReturnURL = ru
 				}
 			}
@@ -9299,6 +9357,21 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 			githubID = "None"
 		}
 		aclValue = "github:" + githubID
+	}
+
+	// A Self Serve signing session carries no pull or merge request, so the return URL type the
+	// console sends does not identify the signer - take the ACL from the user record instead
+	if selfServeSession {
+		switch sessionACL := strings.TrimSpace(metadataString(signatureMetadata, "acl")); {
+		case sessionACL != "":
+			aclValue = sessionACL
+		case githubID != "" && githubID != "None":
+			aclValue = "github:" + githubID
+		case gitlabID != "" && gitlabID != "None":
+			aclValue = "gitlab:" + gitlabID
+		case lfUsername != "" && lfUsername != "None":
+			aclValue = lfUsername
+		}
 	}
 
 	now := time.Now().UTC()
@@ -9382,6 +9455,12 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 		h.putAuditEventBestEffort(ctx, auditEventInput{EventType: "EmployeeSignatureCreated", EventCompanyID: req.CompanyID, EventCLAGroupID: req.ProjectID, EventUserID: req.UserID, EventData: eventData, EventSummary: eventSummary, ContainsPII: true})
 		h.putAuditEventBestEffort(ctx, auditEventInput{EventType: "EmployeeSignatureSigned", EventCompanyID: req.CompanyID, EventCLAGroupID: req.ProjectID, EventUserID: req.UserID, EventData: eventData, EventSummary: eventSummary, ContainsPII: true})
 
+		// A Self Serve session reaches this branch even for a Gerrit backed CLA group, so mirror the
+		// gerrit branch's best effort LDAP group add that the return URL type would otherwise skip
+		if selfServeSession {
+			h.addSelfServeEmployeeSignerToGerritGroups(ctx, req.ProjectID, req.UserID, lfUsername)
+		}
+
 		if strings.EqualFold(returnURLType, "github") {
 			uid := strings.TrimSpace(getAttrString(user, "user_id"))
 			aff := strings.TrimSpace(getAttrString(user, "user_company_id")) != ""
@@ -9392,7 +9471,12 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 		// EASYCLA_PARITY_FLAG: legacy Python also updates the repository provider when the project
 		// does not require a separate ICLA, and only removes active signature metadata after that side effect succeeds.
 		if av, ok := project["project_ccla_requires_icla_signature"].(*types.AttributeValueMemberBOOL); ok && !av.Value {
-			switch strings.ToLower(returnURLType) {
+			providerUpdateType := strings.ToLower(returnURLType)
+			if selfServeSession {
+				logging.Debugf("request_employee_signature skipping the repository provider update for a self serve signing session user=%s", req.UserID)
+				providerUpdateType = ""
+			}
+			switch providerUpdateType {
 			case "github":
 				if signatureMetadata == nil {
 					respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": legacyPythonNilSubscriptError().Error()}})
