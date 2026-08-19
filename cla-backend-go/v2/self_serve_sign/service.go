@@ -259,9 +259,15 @@ func (s *service) resolveUser(ctx context.Context, allowed *my_clas.Identity) *v
 		}
 	}
 	for _, githubUsername := range allowed.GithubUsernames {
-		if found, err := s.usersService.GetUserByGitHubUsername(githubUsername); err == nil && found != nil && idBelongs(found.GithubID, allowed.GithubIDs) {
-			return found
+		found, err := s.usersService.GetUserByGitHubUsername(githubUsername)
+		if err != nil || found == nil {
+			continue
 		}
+		if !idBelongs(found.GithubID, allowed.GithubIDs) {
+			log.WithFields(f).Warnf("skipping user record %s matched on github username %s - stored github id %s is not one of the verified ids %v", found.UserID, githubUsername, found.GithubID, allowed.GithubIDs)
+			continue
+		}
+		return found
 	}
 	for _, gitlabID := range allowed.GitlabIDs {
 		if found, err := s.usersService.GetUserByGitlabID(int(gitlabID)); err == nil && found != nil {
@@ -269,9 +275,15 @@ func (s *service) resolveUser(ctx context.Context, allowed *my_clas.Identity) *v
 		}
 	}
 	for _, gitlabUsername := range allowed.GitlabUsernames {
-		if found, err := s.usersService.GetUserByGitLabUsername(gitlabUsername); err == nil && found != nil && idBelongs(found.GitlabID, allowed.GitlabIDs) {
-			return found
+		found, err := s.usersService.GetUserByGitLabUsername(gitlabUsername)
+		if err != nil || found == nil {
+			continue
 		}
+		if !idBelongs(found.GitlabID, allowed.GitlabIDs) {
+			log.WithFields(f).Warnf("skipping user record %s matched on gitlab username %s - stored gitlab id %s is not one of the verified ids %v", found.UserID, gitlabUsername, found.GitlabID, allowed.GitlabIDs)
+			continue
+		}
+		return found
 	}
 	for _, lfUsername := range append([]string{allowed.LfUsername}, allowed.GerritUsernames...) {
 		if strings.TrimSpace(lfUsername) == "" {
