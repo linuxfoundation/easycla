@@ -39,8 +39,13 @@ const (
 )
 
 // forgeHosts are the shared repository hosts whose hostname carries no CLA Group signal, so a
-// pasted URL on one of them is matched by its path only
-var forgeHosts = map[string]bool{"github.com": true, "www.github.com": true, "gitlab.com": true, "www.gitlab.com": true}
+// pasted URL on one of them is matched by its path only, and the forge each one identifies
+var forgeHosts = map[string]string{
+	"github.com":     sourceGitHub,
+	"www.github.com": sourceGitHub,
+	"gitlab.com":     sourceGitLab,
+	"www.gitlab.com": sourceGitLab,
+}
 
 // Service interface defines the CLA Group search service
 type Service interface {
@@ -78,7 +83,7 @@ func (s *service) Search(ctx context.Context, searchTerm string, limit int64) (*
 		src   *sources
 		repos []*RepositoryRow
 	)
-	path := repositoryPath(rawTerm)
+	path, forge := repositoryPath(rawTerm)
 	fetch, fetchCtx := errgroup.WithContext(ctx)
 	fetch.Go(func() error {
 		var err error
@@ -102,7 +107,7 @@ func (s *service) Search(ctx context.Context, searchTerm string, limit int64) (*
 	searchers.Go(func() error { matchClaGroupNames(src.claGroups, term, m); return nil })
 	searchers.Go(func() error { matchProjectNames(src.mappings, term, m); return nil })
 	searchers.Go(func() error { matchOrgNames(src.orgs, term, sfidToClaGroups, m); return nil })
-	searchers.Go(func() error { return s.matchRepositories(searchCtx, path, repos, src, sfidToClaGroups, m) })
+	searchers.Go(func() error { return s.matchRepositories(searchCtx, path, forge, repos, src, sfidToClaGroups, m) })
 	if err := searchers.Wait(); err != nil {
 		return nil, err
 	}
@@ -235,47 +240,103 @@ func orgRank(org *OrgRow, term, host string) int {
 	if strings.Contains(urlSignal(org.URL), term) {
 		return rankSubstring
 	}
-	if host != "" && !forgeHosts[host] && hostOf(org.URL) == host {
+	if host != "" && forgeHosts[host] == "" && hostOf(org.URL) == host {
 		return rankSubstring
 	}
 	return -1
 }
 
 // matchRepositories resolves the pre-fetched repositories of a pasted repository URL or "owner/repo"
-// path to the CLA Group owning that repository, and matches its owner segment against the linked
-// organizations - the only signal available for an auto-enabled organization, whose repositories
-// carry no records
-func (s *service) matchRepositories(ctx context.Context, path string, repos []*RepositoryRow, src *sources, sfidToClaGroups map[string][]string, m *matcher) error {
+// path to the CLA Group owning that repository. A pasted URL names exactly one repository, so its
+// owner organization is only consulted when no repository record answers - the case of an
+// auto-enabled organization, whose repositories carry no records
+func (s *service) matchRepositories(ctx context.Context, path, forge string, repos []*RepositoryRow, src *sources, sfidToClaGroups map[string][]string, m *matcher) error {
 	if path == "" {
 		return nil
 	}
 	owner := path[:strings.Index(path, "/")]
+	ownerOrgs := orgsOnForge(orgsNamed(src.orgs, owner), forge)
 
-	ownerOrgs := orgsNamed(src.orgs, owner)
+	matched := reposNamed(repos, path, forge)
+	// the repository-name-index GSI is keyed on the case-preserved name, so a lower-cased paste of a
+	// mixed-case repository misses it - the owner's repositories are then listed through the
+	// organization GSI and compared case-insensitively
+	if len(matched) == 0 && len(ownerOrgs) > 0 {
+		listed, err := s.repo.GetRepositoriesByOrganization(ctx, organizationNames(ownerOrgs))
+		if err != nil {
+			return err
+		}
+		matched = reposNamed(listed, path, forge)
+	}
+
+	resolved := false
+	for _, repo := range matched {
+		if !displayableClaGroup(src, repo.ClaGroupID) {
+			continue
+		}
+		m.recordRepository(repo.ClaGroupID, repo.Name, repo.URL)
+		resolved = true
+	}
+	if resolved {
+		return nil
+	}
+
 	for _, org := range ownerOrgs {
 		for _, claGroupID := range org.claGroupIDs(sfidToClaGroups) {
 			m.record(claGroupID, matchOrganization, rankExact)
 		}
 	}
-
-	// the repository-name-index GSI is keyed on the case-preserved name, so a lower-cased paste of a
-	// mixed-case repository misses it - the owner's repositories are then listed through the
-	// organization GSI and compared case-insensitively
-	if len(repos) == 0 && len(ownerOrgs) > 0 {
-		var err error
-		repos, err = s.repo.GetRepositoriesByOrganization(ctx, organizationNames(ownerOrgs))
-		if err != nil {
-			return err
-		}
-	}
-
-	lowerPath := strings.ToLower(path)
-	for _, repo := range repos {
-		if strings.ToLower(repo.Name) == lowerPath {
-			m.recordRepository(repo.ClaGroupID, repo.Name, repo.URL)
-		}
-	}
 	return nil
+}
+
+// reposNamed returns the repositories whose full name is the given path, restricted to the forge the
+// term named - a bare "owner/repo" names none and matches either forge
+func reposNamed(repos []*RepositoryRow, path, forge string) []*RepositoryRow {
+	lowerPath := strings.ToLower(path)
+	var matched []*RepositoryRow
+	for _, repo := range repos {
+		if strings.ToLower(repo.Name) != lowerPath {
+			continue
+		}
+		if forge != "" && repo.Type != "" && !strings.EqualFold(repo.Type, forge) {
+			continue
+		}
+		matched = append(matched, repo)
+	}
+	return matched
+}
+
+// orgsOnForge drops the organizations of another forge than the one the term named
+func orgsOnForge(orgs []*OrgRow, forge string) []*OrgRow {
+	if forge == "" {
+		return orgs
+	}
+	matched := make([]*OrgRow, 0, len(orgs))
+	for _, org := range orgs {
+		if org.Source == "" || strings.EqualFold(org.Source, forge) {
+			matched = append(matched, org)
+		}
+	}
+	return matched
+}
+
+// displayableClaGroup reports whether the CLA Group has a record or a mapping to show - a repository
+// pointing at a deleted CLA Group resolves to nothing and must not suppress the organization match
+func displayableClaGroup(src *sources, claGroupID string) bool {
+	if claGroupID == "" {
+		return false
+	}
+	for _, claGroup := range src.claGroups {
+		if claGroup.ClaGroupID == claGroupID {
+			return true
+		}
+	}
+	for _, mapping := range src.mappings {
+		if mapping.ClaGroupID == claGroupID {
+			return true
+		}
+	}
+	return false
 }
 
 // orgsNamed returns the organizations whose name is the given name, compared case-insensitively
@@ -499,24 +560,24 @@ func hostOf(rawURL string) string {
 }
 
 // repositoryPath derives the full repository name the term addresses - the path of a pasted
-// repository URL, or the term itself when it looks like an "owner/repo" path - and is empty when
-// the term addresses no repository
-func repositoryPath(term string) string {
-	path := term
+// repository URL, or the term itself when it looks like an "owner/repo" path - together with the
+// forge the URL host names, and is empty when the term addresses no repository
+func repositoryPath(term string) (string, string) {
+	path, forge := term, ""
 	if strings.Contains(term, "://") {
 		parsed, err := url.Parse(term)
 		if err != nil || parsed.Hostname() == "" {
-			return ""
+			return "", ""
 		}
-		path = parsed.Path
+		path, forge = parsed.Path, forgeHosts[strings.ToLower(parsed.Hostname())]
 	}
 	path = strings.Trim(path, "/")
 	path = strings.TrimSuffix(path, ".git")
 	path = strings.TrimPrefix(path, "groups/")
 	if !strings.Contains(path, "/") || strings.ContainsAny(path, " \t") {
-		return ""
+		return "", ""
 	}
-	return path
+	return path, forge
 }
 
 // nameVariants are the repository names looked up on the case-preserved repository-name-index GSI
@@ -535,7 +596,7 @@ func urlSignal(rawURL string) string {
 	if err != nil {
 		return strings.ToLower(rawURL)
 	}
-	if forgeHosts[parsed.Hostname()] {
+	if forgeHosts[parsed.Hostname()] != "" {
 		return strings.Trim(parsed.Path, "/")
 	}
 	return parsed.Hostname() + parsed.Path

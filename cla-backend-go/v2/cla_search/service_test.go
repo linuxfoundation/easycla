@@ -248,7 +248,7 @@ func TestSearchResolvesPastedRepoURL(t *testing.T) {
 			list, err := svc.Search(context.Background(), term, 0)
 			require.NoError(t, err)
 			require.Equal(t, []string{"cg-otio"}, ids(list))
-			assert.Contains(t, list.Results[0].MatchTypes, matchRepository)
+			assert.Equal(t, []string{matchRepository}, list.Results[0].MatchTypes)
 			assert.Equal(t, "OpenTimelineIO/OpenTimelineIO-Java-Bindings", list.Results[0].MatchedRepositoryName)
 			assert.Equal(t, "https://github.com/OpenTimelineIO/OpenTimelineIO-Java-Bindings", list.Results[0].MatchedRepositoryURL)
 		})
@@ -260,7 +260,7 @@ func TestSearchResolvesNestedGitlabRepoURL(t *testing.T) {
 	list, err := svc.Search(context.Background(), "https://gitlab.com/onap/oom/oom", 0)
 	require.NoError(t, err)
 	require.Equal(t, []string{"cg-onap"}, ids(list))
-	assert.Contains(t, list.Results[0].MatchTypes, matchRepository)
+	assert.Equal(t, []string{matchRepository}, list.Results[0].MatchTypes)
 }
 
 func TestSearchResolvesGerritHostURL(t *testing.T) {
@@ -286,7 +286,7 @@ func TestSearchResolvesLowerCasedPasteOfMixedCaseRepoURL(t *testing.T) {
 	list, err := svc.Search(context.Background(), "https://github.com/opentimelineio/opentimelineio-java-bindings", 0)
 	require.NoError(t, err)
 	require.Equal(t, []string{"cg-otio"}, ids(list))
-	assert.Contains(t, list.Results[0].MatchTypes, matchRepository)
+	assert.Equal(t, []string{matchRepository}, list.Results[0].MatchTypes)
 	assert.Equal(t, "OpenTimelineIO/OpenTimelineIO-Java-Bindings", list.Results[0].MatchedRepositoryName)
 	assert.Equal(t, [][]string{{"OpenTimelineIO"}}, repo.orgQueries)
 }
@@ -514,21 +514,90 @@ func TestRepositoryPath(t *testing.T) {
 	for _, tc := range []struct {
 		term     string
 		expected string
+		forge    string
 		variants []string
 	}{
-		{"kubernetes", "", nil},
-		{"has space/repo", "", nil},
-		{"not-a-url://", "", nil},
-		{"Owner/Repo", "Owner/Repo", []string{"Owner/Repo", "owner/repo"}},
-		{"owner/repo", "owner/repo", []string{"owner/repo"}},
-		{"https://gitlab.com/groups/onap", "", nil},
-		{"https://gitlab.com/onap/oom/oom", "onap/oom/oom", []string{"onap/oom/oom"}},
-		{"https://github.com/Owner/Repo.git", "Owner/Repo", []string{"Owner/Repo", "owner/repo"}},
+		{"kubernetes", "", "", nil},
+		{"has space/repo", "", "", nil},
+		{"not-a-url://", "", "", nil},
+		{"Owner/Repo", "Owner/Repo", "", []string{"Owner/Repo", "owner/repo"}},
+		{"owner/repo", "owner/repo", "", []string{"owner/repo"}},
+		{"https://gitlab.com/groups/onap", "", "", nil},
+		{"https://gitlab.com/onap/oom/oom", "onap/oom/oom", sourceGitLab, []string{"onap/oom/oom"}},
+		{"https://github.com/Owner/Repo.git", "Owner/Repo", sourceGitHub, []string{"Owner/Repo", "owner/repo"}},
+		{"https://WWW.GitHub.com/Owner/Repo", "Owner/Repo", sourceGitHub, []string{"Owner/Repo", "owner/repo"}},
+		{"https://gerrit.onap.org/r/aai/aai-common", "r/aai/aai-common", "", []string{"r/aai/aai-common"}},
 	} {
-		path := repositoryPath(tc.term)
+		path, forge := repositoryPath(tc.term)
 		assert.Equal(t, tc.expected, path, tc.term)
+		assert.Equal(t, tc.forge, forge, tc.term)
 		if path != "" {
 			assert.Equal(t, tc.variants, nameVariants(path), tc.term)
 		}
 	}
+}
+
+// divergentRepo mirrors the AcademySoftwareFoundation shape: an organization auto-enabled into one
+// CLA Group while hosting a repository owned by another, and the same organization name on the other
+// forge behind a different CLA Group
+func divergentRepo() *fakeRepo {
+	return &fakeRepo{
+		claGroups: []*ClaGroupRow{
+			{ClaGroupID: "cg-org", Name: "MoonRay"},
+			{ClaGroupID: "cg-repo", Name: "Dailies Notes Assistant"},
+			{ClaGroupID: "cg-gitlab", Name: "GitLab Group CLA"},
+		},
+		github: []*OrgRow{{Name: "aswf", Source: sourceGitHub, AutoEnabledClaGroupID: "cg-org"}},
+		gitlab: []*OrgRow{{Name: "aswf", Source: sourceGitLab, AutoEnabledClaGroupID: "cg-gitlab"}},
+		repos: map[string][]*RepositoryRow{
+			"aswf/dna":            {{Name: "aswf/dna", URL: "https://github.com/aswf/dna", Type: sourceGitHub, ClaGroupID: "cg-repo"}},
+			"aswf/only-on-gitlab": {{Name: "aswf/only-on-gitlab", URL: "https://gitlab.com/aswf/only-on-gitlab", Type: sourceGitLab, ClaGroupID: "cg-gitlab"}},
+			"aswf/ghost":          {{Name: "aswf/ghost", URL: "https://github.com/aswf/ghost", Type: sourceGitHub, ClaGroupID: "cg-deleted"}},
+		},
+	}
+}
+
+func TestSearchPastedURLResolvesToTheRepositoryOwnerNotTheOrganization(t *testing.T) {
+	list, err := NewService(divergentRepo()).Search(context.Background(), "https://github.com/aswf/dna", 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"cg-repo"}, ids(list))
+	assert.Equal(t, []string{matchRepository}, list.Results[0].MatchTypes)
+	assert.Equal(t, "aswf/dna", list.Results[0].MatchedRepositoryName)
+}
+
+func TestSearchPastedURLFallsBackToTheOrganizationWhenTheRepositoryGroupIsGone(t *testing.T) {
+	list, err := NewService(divergentRepo()).Search(context.Background(), "https://github.com/aswf/ghost", 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"cg-org"}, ids(list))
+	assert.Equal(t, []string{matchOrganization}, list.Results[0].MatchTypes)
+	assert.Empty(t, list.Results[0].MatchedRepositoryName)
+}
+
+func TestSearchPastedURLIgnoresARepositoryOnAnotherForge(t *testing.T) {
+	list, err := NewService(divergentRepo()).Search(context.Background(), "https://github.com/aswf/only-on-gitlab", 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"cg-org"}, ids(list))
+	assert.Equal(t, []string{matchOrganization}, list.Results[0].MatchTypes)
+
+	list, err = NewService(divergentRepo()).Search(context.Background(), "https://gitlab.com/aswf/only-on-gitlab", 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"cg-gitlab"}, ids(list))
+	assert.Equal(t, []string{matchRepository}, list.Results[0].MatchTypes)
+}
+
+func TestSearchBareOwnerRepoMatchesEitherForge(t *testing.T) {
+	list, err := NewService(divergentRepo()).Search(context.Background(), "aswf/only-on-gitlab", 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"cg-gitlab"}, ids(list))
+	assert.Equal(t, []string{matchRepository}, list.Results[0].MatchTypes)
+}
+
+func TestSearchOrganizationFallbackStaysOnTheForgeTheURLNamed(t *testing.T) {
+	list, err := NewService(divergentRepo()).Search(context.Background(), "https://github.com/aswf/unknown-repo", 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"cg-org"}, ids(list))
+
+	list, err = NewService(divergentRepo()).Search(context.Background(), "https://gitlab.com/aswf/unknown-repo", 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"cg-gitlab"}, ids(list))
 }
