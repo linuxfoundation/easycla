@@ -2805,7 +2805,11 @@ func isSelfServeSignatureMetadata(metadata map[string]any) bool {
 // selfServeSessionMatchesProject keeps a session prepared for one CLA group from driving the self
 // serve handling of a request for another - a session stored without the key still matches
 func selfServeSessionMatchesProject(metadata map[string]any, projectID string) bool {
-	sessionProjectID := metadataString(metadata, "project_id")
+	if metadata == nil {
+		return true
+	}
+	raw, _ := metadata["project_id"].(string)
+	sessionProjectID := strings.TrimSpace(raw)
 	return sessionProjectID == "" || sessionProjectID == projectID
 }
 
@@ -9289,26 +9293,25 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 
 	// Python derives the return URL from active signature metadata when not provided.
 	var signatureMetadata map[string]any
+	selfServeSession := false
 	if h.kv != nil {
 		metadata, ok, lookupErr := h.loadActiveSignatureMetadata(ctx, req.UserID)
 		if lookupErr != nil {
 			logging.Warnf("active signature metadata lookup failed for employee signature user=%s err=%v", req.UserID, lookupErr)
 		} else if ok {
 			signatureMetadata = metadata
-			if strings.TrimSpace(req.ReturnURL) == "" {
-				if ru, rerr := h.computeReturnURLFromActiveSignatureMetadata(ctx, metadata); rerr == nil && strings.TrimSpace(ru) != "" {
+			selfServeSession = isSelfServeSignatureMetadata(signatureMetadata)
+			if selfServeSession && !selfServeSessionMatchesProject(signatureMetadata, req.ProjectID) {
+				logging.Debugf("request_employee_signature ignoring a self serve signing session prepared for another cla group user=%s session_cla_group=%s request_cla_group=%s", req.UserID, metadataString(signatureMetadata, "project_id"), req.ProjectID)
+				selfServeSession = false
+				signatureMetadata = nil
+			}
+			if signatureMetadata != nil && strings.TrimSpace(req.ReturnURL) == "" {
+				if ru, rerr := h.computeReturnURLFromActiveSignatureMetadata(ctx, signatureMetadata); rerr == nil && strings.TrimSpace(ru) != "" {
 					req.ReturnURL = ru
 				}
 			}
 		}
-	}
-
-	// The metadata key is single per user, so a later prepare overwrites an earlier console session -
-	// a session belonging to another CLA group is not this request's self serve session
-	selfServeSession := isSelfServeSignatureMetadata(signatureMetadata)
-	if selfServeSession && !selfServeSessionMatchesProject(signatureMetadata, req.ProjectID) {
-		logging.Debugf("request_employee_signature ignoring a self serve signing session prepared for another cla group user=%s session_cla_group=%s request_cla_group=%s", req.UserID, metadataString(signatureMetadata, "project_id"), req.ProjectID)
-		selfServeSession = false
 	}
 
 	githubID := strings.TrimSpace(getAttrString(user, "user_github_id"))

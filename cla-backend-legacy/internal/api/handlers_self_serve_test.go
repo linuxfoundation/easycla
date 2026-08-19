@@ -50,6 +50,9 @@ func TestSelfServeSessionMatchesProject(t *testing.T) {
 		{"missing project", map[string]any{"source": "self-serve"}, true},
 		{"blank project", map[string]any{"project_id": "   "}, true},
 		{"nil project", map[string]any{"project_id": nil}, true},
+		{"numeric project", map[string]any{"project_id": 7}, true},
+		{"object project", map[string]any{"project_id": map[string]any{"id": claGroupID}}, true},
+		{"nil metadata", nil, true},
 	}
 
 	for _, test := range tests {

@@ -8,11 +8,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"time"
 
+	goapierrors "github.com/go-openapi/errors"
 	"github.com/go-openapi/strfmt"
 	githubsdk "github.com/google/go-github/v37/github"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
@@ -231,7 +233,10 @@ func (s *service) acceptVerifiedGithubID(ctx context.Context, input *models.Prep
 }
 
 func (s *service) resolveOrCreateUser(ctx context.Context, allowed *my_clas.Identity, currentUsername, fallbackEmail string) (*v1Models.User, bool, error) {
-	userModel := s.resolveUser(ctx, allowed)
+	userModel, err := s.resolveUser(ctx, allowed)
+	if err != nil {
+		return nil, false, err
+	}
 	if userModel != nil {
 		return s.enrichUser(ctx, userModel, allowed), false, nil
 	}
@@ -268,60 +273,96 @@ func (s *service) resolveOrCreateUser(ctx context.Context, allowed *my_clas.Iden
 	return created, true, nil
 }
 
-func (s *service) resolveUser(ctx context.Context, allowed *my_clas.Identity) *v1Models.User {
+func (s *service) resolveUser(ctx context.Context, allowed *my_clas.Identity) (*v1Models.User, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.self_serve_sign.service.resolveUser",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
 
 	for _, githubID := range allowed.GithubIDs {
-		if found, err := s.usersService.GetUserByGitHubID(strconv.FormatInt(githubID, 10)); err == nil && found != nil {
-			return found
+		found, err := s.usersService.GetUserByGitHubID(strconv.FormatInt(githubID, 10))
+		if err != nil && !isUserNotFound(err) {
+			return nil, err
+		}
+		if found != nil {
+			return found, nil
 		}
 	}
 	for _, githubUsername := range allowed.GithubUsernames {
 		found, err := s.usersService.GetUserByGitHubUsername(githubUsername)
-		if err != nil || found == nil {
+		if err != nil && !isUserNotFound(err) {
+			return nil, err
+		}
+		if found == nil {
 			continue
 		}
 		if !idBelongs(found.GithubID, allowed.GithubIDs) {
 			log.WithFields(f).Warnf("skipping user record %s matched on github username %s - stored github id %s is not one of the verified ids %v", found.UserID, githubUsername, found.GithubID, allowed.GithubIDs)
 			continue
 		}
-		return found
+		return found, nil
 	}
 	for _, gitlabID := range allowed.GitlabIDs {
-		if found, err := s.usersService.GetUserByGitlabID(int(gitlabID)); err == nil && found != nil {
-			return found
+		found, err := s.usersService.GetUserByGitlabID(int(gitlabID))
+		if err != nil && !isUserNotFound(err) {
+			return nil, err
+		}
+		if found != nil {
+			return found, nil
 		}
 	}
 	for _, gitlabUsername := range allowed.GitlabUsernames {
 		found, err := s.usersService.GetUserByGitLabUsername(gitlabUsername)
-		if err != nil || found == nil {
+		if err != nil && !isUserNotFound(err) {
+			return nil, err
+		}
+		if found == nil {
 			continue
 		}
 		if !idBelongs(found.GitlabID, allowed.GitlabIDs) {
 			log.WithFields(f).Warnf("skipping user record %s matched on gitlab username %s - stored gitlab id %s is not one of the verified ids %v", found.UserID, gitlabUsername, found.GitlabID, allowed.GitlabIDs)
 			continue
 		}
-		return found
+		return found, nil
 	}
 	for _, lfUsername := range append([]string{allowed.LfUsername}, allowed.GerritUsernames...) {
 		if strings.TrimSpace(lfUsername) == "" {
 			continue
 		}
-		if found, err := s.usersService.GetUserByLFUserName(lfUsername); err == nil && found != nil {
-			return found
+		found, err := s.usersService.GetUserByLFUserName(lfUsername)
+		if err != nil && !isUserNotFound(err) {
+			return nil, err
+		}
+		if found != nil {
+			return found, nil
 		}
 	}
 	for _, email := range allowed.Emails {
-		if found, err := s.usersService.GetUserByEmail(email); err == nil && found != nil {
-			return found
+		found, err := s.usersService.GetUserByEmail(email)
+		if err != nil && !isUserNotFound(err) {
+			return nil, err
+		}
+		if found != nil {
+			return found, nil
 		}
 	}
 
 	log.WithFields(f).Debug("no EasyCLA user record matched the verified identity")
-	return nil
+	return nil, nil
+}
+
+// isUserNotFound tells an empty lookup apart from a failing one - the user getters report a miss as
+// a go-openapi 404, a *utils.UserNotFound or a nil user
+func isUserNotFound(err error) bool {
+	var notFound *utils.UserNotFound
+	if errors.As(err, &notFound) {
+		return true
+	}
+	var apiErr goapierrors.Error
+	if errors.As(err, &apiErr) {
+		return apiErr.Code() == http.StatusNotFound
+	}
+	return false
 }
 
 // enrichUser fills in the verified identity fields the matched record is missing - an existing

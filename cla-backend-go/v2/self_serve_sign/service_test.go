@@ -10,12 +10,14 @@ import (
 	"strings"
 	"testing"
 
+	goapierrors "github.com/go-openapi/errors"
 	"github.com/go-openapi/strfmt"
 	githubsdk "github.com/google/go-github/v37/github"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/linuxfoundation/easycla/cla-backend-go/user"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/my_clas"
 	"github.com/stretchr/testify/assert"
 )
@@ -47,27 +49,29 @@ type fakeUsers struct {
 	created          *v1Models.User
 	updates          map[string]interface{}
 	createErr        error
+	notFound         func() error
+	lookupErr        error
 }
 
 var errNotFound = errors.New("not found")
 
 func (f *fakeUsers) GetUserByGitHubID(gitHubID string) (*v1Models.User, error) {
-	return lookup(f.byGithubID, gitHubID)
+	return lookupIn(f, f.byGithubID, gitHubID)
 }
 func (f *fakeUsers) GetUserByGitHubUsername(gitHubUsername string) (*v1Models.User, error) {
-	return lookup(f.byGithubUsername, gitHubUsername)
+	return lookupIn(f, f.byGithubUsername, gitHubUsername)
 }
 func (f *fakeUsers) GetUserByGitlabID(gitLabID int) (*v1Models.User, error) {
-	return lookup(f.byGitlabID, gitLabID)
+	return lookupIn(f, f.byGitlabID, gitLabID)
 }
 func (f *fakeUsers) GetUserByGitLabUsername(gitLabUsername string) (*v1Models.User, error) {
-	return lookup(f.byGitlabUsername, gitLabUsername)
+	return lookupIn(f, f.byGitlabUsername, gitLabUsername)
 }
 func (f *fakeUsers) GetUserByLFUserName(lfUserName string) (*v1Models.User, error) {
-	return lookup(f.byLFUsername, lfUserName)
+	return lookupIn(f, f.byLFUsername, lfUserName)
 }
 func (f *fakeUsers) GetUserByEmail(userEmail string) (*v1Models.User, error) {
-	return lookup(f.byEmail, userEmail)
+	return lookupIn(f, f.byEmail, userEmail)
 }
 
 func (f *fakeUsers) CreateUser(userModel *v1Models.User, _ *user.CLAUser) (*v1Models.User, error) {
@@ -85,11 +89,17 @@ func (f *fakeUsers) UpdateUser(userID string, updates map[string]interface{}) (*
 	return &v1Models.User{UserID: userID}, nil
 }
 
-func lookup[K comparable](values map[K]*v1Models.User, key K) (*v1Models.User, error) {
+func lookupIn[K comparable](f *fakeUsers, values map[K]*v1Models.User, key K) (*v1Models.User, error) {
+	if f.lookupErr != nil {
+		return nil, f.lookupErr
+	}
 	if found, ok := values[key]; ok {
 		return found, nil
 	}
-	return nil, errNotFound
+	if f.notFound != nil {
+		return nil, f.notFound()
+	}
+	return nil, goapierrors.NotFound("user not found")
 }
 
 type fakeCLAGroups struct {
@@ -451,5 +461,50 @@ func TestPrepareSignRejectsANonHTTPSReturnURL(t *testing.T) {
 		})
 
 		assert.ErrorIs(t, err, ErrReturnURLNotSupported, returnURL)
+	}
+}
+
+func TestPrepareSignDoesNotCreateAUserWhenTheLookupFails(t *testing.T) {
+	users := &fakeUsers{lookupErr: errors.New("dynamodb is unavailable")}
+	svc := newTestService(
+		&fakeMyClas{allowed: &my_clas.Identity{GithubUsernames: []string{"octocat"}}},
+		users, enabledCLAGroup(), &fakeStore{})
+
+	_, err := svc.PrepareSign(context.Background(), "lgryglicki", "l@example.org", false, &models.PrepareSignInput{
+		ClaGroupID:     stringRef(testCLAGroupID),
+		ReturnURL:      uriRef(testReturnURL),
+		GithubUsername: "octocat",
+	})
+
+	assert.Error(t, err)
+	assert.Nil(t, users.created)
+}
+
+func TestPrepareSignTreatsEveryNotFoundShapeAsAMiss(t *testing.T) {
+	shapes := map[string]func() error{
+		"go-openapi not found": func() error { return goapierrors.NotFound("user not found") },
+		"utils.UserNotFound":   func() error { return &utils.UserNotFound{Message: "user not found"} },
+		"nil user":             func() error { return nil },
+	}
+
+	for name, shape := range shapes {
+		t.Run(name, func(t *testing.T) {
+			users := &fakeUsers{notFound: shape, byEmail: map[string]*v1Models.User{"l@example.org": {UserID: "existing-user-id"}}}
+			svc := newTestService(
+				&fakeMyClas{allowed: &my_clas.Identity{GithubUsernames: []string{"octocat"}, Emails: []string{"l@example.org"}}},
+				users, enabledCLAGroup(), &fakeStore{})
+
+			result, err := svc.PrepareSign(context.Background(), "lgryglicki", "l@example.org", false, &models.PrepareSignInput{
+				ClaGroupID:     stringRef(testCLAGroupID),
+				ReturnURL:      uriRef(testReturnURL),
+				GithubUsername: "octocat",
+				Email:          "l@example.org",
+			})
+
+			assert.NoError(t, err)
+			assert.False(t, result.UserCreated)
+			assert.Equal(t, "existing-user-id", result.UserID)
+			assert.Nil(t, users.created)
+		})
 	}
 }
