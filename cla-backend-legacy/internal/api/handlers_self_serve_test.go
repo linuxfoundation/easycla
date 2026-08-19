@@ -36,3 +36,27 @@ func TestAddSelfServeEmployeeSignerToGerritGroupsIsANoOpWithoutDependencies(t *t
 		h.addSelfServeEmployeeSignerToGerritGroups(context.Background(), "project", "user", lfUsername)
 	}
 }
+
+func TestSelfServeSessionMatchesProject(t *testing.T) {
+	const claGroupID = "aa47b3e1-6f9c-4b6a-9f16-0f9d6a2e1c11"
+
+	tests := []struct {
+		name     string
+		metadata map[string]any
+		expected bool
+	}{
+		{"same cla group", map[string]any{"project_id": claGroupID}, true},
+		{"another cla group", map[string]any{"project_id": "62db1b81-6f4a-4b2e-9a4a-0f2d9f0a1b22"}, false},
+		{"missing project", map[string]any{"source": "self-serve"}, true},
+		{"blank project", map[string]any{"project_id": "   "}, true},
+		{"nil project", map[string]any{"project_id": nil}, true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := selfServeSessionMatchesProject(test.metadata, claGroupID); got != test.expected {
+				t.Errorf("selfServeSessionMatchesProject(%v) = %v, expected %v", test.metadata, got, test.expected)
+			}
+		})
+	}
+}

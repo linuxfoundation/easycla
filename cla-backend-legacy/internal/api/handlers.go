@@ -2802,6 +2802,13 @@ func isSelfServeSignatureMetadata(metadata map[string]any) bool {
 	return metadata != nil && strings.EqualFold(metadataString(metadata, "source"), "self-serve")
 }
 
+// selfServeSessionMatchesProject keeps a session prepared for one CLA group from driving the self
+// serve handling of a request for another - a session stored without the key still matches
+func selfServeSessionMatchesProject(metadata map[string]any, projectID string) bool {
+	sessionProjectID := metadataString(metadata, "project_id")
+	return sessionProjectID == "" || sessionProjectID == projectID
+}
+
 func (h *Handlers) computeReturnURLFromActiveSignatureMetadata(ctx context.Context, metadata map[string]any) (string, error) {
 	if metadata == nil {
 		return "", nil
@@ -9296,6 +9303,14 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 		}
 	}
 
+	// The metadata key is single per user, so a later prepare overwrites an earlier console session -
+	// a session belonging to another CLA group is not this request's self serve session
+	selfServeSession := isSelfServeSignatureMetadata(signatureMetadata)
+	if selfServeSession && !selfServeSessionMatchesProject(signatureMetadata, req.ProjectID) {
+		logging.Debugf("request_employee_signature ignoring a self serve signing session prepared for another cla group user=%s session_cla_group=%s request_cla_group=%s", req.UserID, metadataString(signatureMetadata, "project_id"), req.ProjectID)
+		selfServeSession = false
+	}
+
 	githubID := strings.TrimSpace(getAttrString(user, "user_github_id"))
 	if githubID == "" {
 		githubID = strings.TrimSpace(getAttrString(user, "github_id"))
@@ -9343,7 +9358,7 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 
 	// A Self Serve signing session carries no pull or merge request, so the return URL type the
 	// console sends does not identify the signer - take the ACL from the user record instead
-	if isSelfServeSignatureMetadata(signatureMetadata) {
+	if selfServeSession {
 		switch sessionACL := strings.TrimSpace(metadataString(signatureMetadata, "acl")); {
 		case sessionACL != "":
 			aclValue = sessionACL
@@ -9439,7 +9454,7 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 
 		// A Self Serve session reaches this branch even for a Gerrit backed CLA group, so mirror the
 		// gerrit branch's best effort LDAP group add that the return URL type would otherwise skip
-		if isSelfServeSignatureMetadata(signatureMetadata) {
+		if selfServeSession {
 			h.addSelfServeEmployeeSignerToGerritGroups(ctx, req.ProjectID, req.UserID, lfUsername)
 		}
 
@@ -9454,7 +9469,7 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 		// does not require a separate ICLA, and only removes active signature metadata after that side effect succeeds.
 		if av, ok := project["project_ccla_requires_icla_signature"].(*types.AttributeValueMemberBOOL); ok && !av.Value {
 			providerUpdateType := strings.ToLower(returnURLType)
-			if isSelfServeSignatureMetadata(signatureMetadata) {
+			if selfServeSession {
 				logging.Debugf("request_employee_signature skipping the repository provider update for a self serve signing session user=%s", req.UserID)
 				providerUpdateType = ""
 			}

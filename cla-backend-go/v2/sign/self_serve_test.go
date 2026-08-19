@@ -77,25 +77,52 @@ func TestGetIndividualSignatureCallbackURLGitlabSelfServe(t *testing.T) {
 	assert.Equal(t, "https://api.dev.lfx.linuxfoundation.org/v4/signed/self-serve/individual/"+selfServeUserID, callbackURL)
 }
 
-func TestEnvelopeCompleted(t *testing.T) {
-	envelope := func(status string) []byte {
-		return []byte(`<?xml version="1.0" encoding="utf-8"?><DocuSignEnvelopeInformation><EnvelopeStatus><EnvelopeID>e1</EnvelopeID><RecipientStatuses><RecipientStatus><Status>` + status + `</Status><ClientUserId>s1</ClientUserId></RecipientStatus></RecipientStatuses></EnvelopeStatus></DocuSignEnvelopeInformation>`)
-	}
+const envelopeDocumentStatuses = `<DocumentStatuses><DocumentStatus><ID>1</ID></DocumentStatus></DocumentStatuses>`
 
-	completed, err := envelopeCompleted(envelope(DocusignCompleted))
+func envelopeXML(recipientStatuses, documentStatuses string) []byte {
+	return []byte(`<?xml version="1.0" encoding="utf-8"?><DocuSignEnvelopeInformation><EnvelopeStatus><EnvelopeID>e1</EnvelopeID>` +
+		recipientStatuses + documentStatuses + `</EnvelopeStatus></DocuSignEnvelopeInformation>`)
+}
+
+func recipientStatuses(status string) string {
+	return `<RecipientStatuses><RecipientStatus><Status>` + status + `</Status><ClientUserId>s1</ClientUserId></RecipientStatus></RecipientStatuses>`
+}
+
+func TestParseEnvelope(t *testing.T) {
+	info, err := parseEnvelope(envelopeXML(recipientStatuses(DocusignCompleted), envelopeDocumentStatuses))
 	assert.NoError(t, err)
-	assert.True(t, completed)
+	assert.Equal(t, DocusignCompleted, info.EnvelopeStatus.RecipientStatuses[0].Status)
 
-	completed, err = envelopeCompleted(envelope("Sent"))
+	info, err = parseEnvelope(envelopeXML(recipientStatuses("Sent"), envelopeDocumentStatuses))
 	assert.NoError(t, err)
-	assert.False(t, completed)
+	assert.Equal(t, "Sent", info.EnvelopeStatus.RecipientStatuses[0].Status)
 
-	completed, err = envelopeCompleted([]byte(`<?xml version="1.0" encoding="utf-8"?><DocuSignEnvelopeInformation><EnvelopeStatus><EnvelopeID>e1</EnvelopeID></EnvelopeStatus></DocuSignEnvelopeInformation>`))
-	assert.NoError(t, err)
-	assert.False(t, completed)
-
-	_, err = envelopeCompleted([]byte("not xml"))
+	// the shared processing indexes both lists, so neither may be empty
+	_, err = parseEnvelope(envelopeXML("", envelopeDocumentStatuses))
 	assert.Error(t, err)
+
+	_, err = parseEnvelope(envelopeXML(recipientStatuses(DocusignCompleted), ""))
+	assert.Error(t, err)
+
+	_, err = parseEnvelope([]byte(`<?xml version="1.0" encoding="utf-8"?><DocuSignEnvelopeInformation></DocuSignEnvelopeInformation>`))
+	assert.Error(t, err)
+
+	_, err = parseEnvelope([]byte("not xml"))
+	assert.Error(t, err)
+}
+
+func TestSignedIndividualCallbackSelfServeRejectsAnEmptyEnvelope(t *testing.T) {
+	// no collaborators are wired, so reaching the shared processing or the store would panic -
+	// the validation has to happen before either
+	svc := &service{}
+
+	for _, payload := range [][]byte{
+		[]byte("not xml"),
+		envelopeXML("", envelopeDocumentStatuses),
+		envelopeXML(recipientStatuses(DocusignCompleted), ""),
+	} {
+		assert.Error(t, svc.SignedIndividualCallbackSelfServe(context.Background(), payload, selfServeUserID))
+	}
 }
 
 func TestSelfServeSessionMatchesProject(t *testing.T) {

@@ -1120,18 +1120,21 @@ func (s *service) SignedIndividualCallbackSelfServe(ctx context.Context, payload
 		"userID":         userID,
 	}
 
+	// This callback is reachable without a token, and the shared processing indexes the envelope's
+	// recipient and document statuses - reject a payload missing either before delegating
+	info, err := parseEnvelope(payload)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to process the docusign payload")
+		return err
+	}
+
 	if err := s.SignedIndividualCallbackGerrit(ctx, payload, userID); err != nil {
 		return err
 	}
 
 	// The Gerrit callback leaves the session in place because the Gerrit flow never writes one -
 	// a Self Serve session does, so remove it here once the envelope is complete
-	completed, err := envelopeCompleted(payload)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("unable to unmarshal xml payload")
-		return err
-	}
-	if !completed {
+	if info.EnvelopeStatus.RecipientStatuses[0].Status != DocusignCompleted {
 		return nil
 	}
 
@@ -1628,15 +1631,15 @@ func selfServeSessionMatchesProject(metadata map[string]interface{}, projectID s
 	return sessionProjectID == projectID
 }
 
-func envelopeCompleted(payload []byte) (bool, error) {
+func parseEnvelope(payload []byte) (*DocuSignEnvelopeInformation, error) {
 	var info DocuSignEnvelopeInformation
 	if err := xml.Unmarshal(payload, &info); err != nil {
-		return false, err
+		return nil, err
 	}
-	if len(info.EnvelopeStatus.RecipientStatuses) == 0 {
-		return false, nil
+	if len(info.EnvelopeStatus.RecipientStatuses) == 0 || len(info.EnvelopeStatus.DocumentStatuses) == 0 {
+		return nil, errors.New("docusign envelope carries no recipient or document statuses")
 	}
-	return info.EnvelopeStatus.RecipientStatuses[0].Status == DocusignCompleted, nil
+	return &info, nil
 }
 
 // selfServeSignatureACL prefers the identity the session was prepared under and falls back to the
