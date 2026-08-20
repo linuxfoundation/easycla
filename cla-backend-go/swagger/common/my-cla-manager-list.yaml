@@ -1,0 +1,41 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: My CLA Manager List
+description: The CLA managers of the CCLA covering the given ECLA signature
+properties:
+  signatureID:
+    type: string
+    description: ECLA signature ID (UUID)
+  claGroupID:
+    type: string
+    description: CLA Group ID (UUID)
+  claGroupName:
+    type: string
+    description: CLA Group name, omitted when unresolved
+  projectName:
+    type: string
+    description: Salesforce project display name, omitted when unresolved
+  companyID:
+    type: string
+    description: Employer company ID (UUID)
+  companyName:
+    type: string
+    description: Employer company name, omitted when unresolved
+  claManager:
+    type: boolean
+    x-omitempty: false
+    description: True when the resolved user is one of the CLA managers
+  managers:
+    type: array
+    x-omitempty: false
+    description: CLA managers from the CCLA signature ACL - empty when none is currently reachable
+    items:
+      $ref: '#/definitions/my-cla-manager'
+  resultCount:
+    type: integer
+    format: int64
+    x-omitempty: false
+    description: Number of CLA managers returned

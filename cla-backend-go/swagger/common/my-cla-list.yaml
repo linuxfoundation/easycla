@@ -8,24 +8,33 @@ description: The signed ICLAs and ECLAs matching the provided user identity
 properties:
   lfUsername:
     type: string
-    description: The LF username (LFID) the list was resolved for, omitted when none was provided
+    description: Effective LF username (LFID) the list was resolved for - the authenticated principal when the query parameter is omitted, absent only when neither resolved
   userIds:
     type: array
     x-omitempty: false
-    description: The EasyCLA user record IDs (UUIDs) matched from the provided identity
+    description: EasyCLA user record IDs (UUIDs) matched from the provided identity
     items:
       type: string
   skippedIdentities:
     type: array
     x-omitempty: false
-    description: Identity parameters that were not searched because they could not be verified as belonging to the authenticated user, formatted as "<parameter>:<value>"
+    description: Identity parameters not searched because they could not be verified as belonging to the authenticated user, formatted "<parameter>:<value>"
     items:
       type: string
+  sssMode:
+    type: string
+    x-omitempty: false
+    enum: [required, optional, disabled]
+    description: >
+      Sanctions screening mode in effect. required - a live screen is mandatory, so any row with
+      flaggedCheck unavailable is unverified; optional - a live screen is best effort; disabled -
+      no screen was attempted and flagged is the persisted company flag. A screening failure
+      never fails this endpoint
   resultCount:
     type: integer
     format: int64
     x-omitempty: false
-    description: The number of CLA records returned
+    description: Number of CLA records returned
   clas:
     type: array
     x-omitempty: false
