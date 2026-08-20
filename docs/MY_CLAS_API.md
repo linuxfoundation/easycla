@@ -688,8 +688,9 @@ the latency envelope is to be confirmed on dev.
    is logged as a warning and leaves the path disabled — non-admin callers keep having every
    identity verified per request — and never aborts the other lambdas that load this config.
 5. Read-only rollback: revert the ACS sync (or never flip the SS feature flag). The only write
-   these endpoints make is the first-detection sanction stamp on the company row — ordinary
-   company-table data that is safe to leave in place and never needs reverting.
+   these endpoints make is a sanction stamp on the company row at the first live detection of
+   each sanction episode — ordinary company-table data that is safe to leave in place and
+   never needs reverting.
 
 ## Verification performed
 
