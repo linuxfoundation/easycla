@@ -117,11 +117,19 @@ func (f *fakeSignatures) EvaluateUserApproval(_ context.Context, user *v1Models.
 	return f.approvedUserIDs[user.UserID], f.orgLookupFailed, nil
 }
 
+type sanctionWrite struct {
+	companyID  string
+	sanctioned bool
+	origin     string
+}
+
 type fakeCompanies struct {
-	byID    map[string]*v1Models.Company
-	failIDs map[string]bool
-	mu      sync.Mutex
-	calls   int
+	byID     map[string]*v1Models.Company
+	failIDs  map[string]bool
+	mu       sync.Mutex
+	calls    int
+	writes   []sanctionWrite
+	writeErr error
 }
 
 func (f *fakeCompanies) GetCompany(_ context.Context, companyID string) (*v1Models.Company, error) {
@@ -135,6 +143,16 @@ func (f *fakeCompanies) GetCompany(_ context.Context, companyID string) (*v1Mode
 		return companyModel, nil
 	}
 	return nil, &utils.CompanyNotFound{CompanyID: companyID}
+}
+
+func (f *fakeCompanies) UpdateCompanySanctionStatus(_ context.Context, companyID string, sanctioned bool, origin string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.writeErr != nil {
+		return f.writeErr
+	}
+	f.writes = append(f.writes, sanctionWrite{companyID: companyID, sanctioned: sanctioned, origin: origin})
+	return nil
 }
 
 // fakeScreener stands in for the live SSS screen and records how often each employer was screened
@@ -1110,6 +1128,82 @@ func TestGetMyClasLiveSanctionsScreening(t *testing.T) {
 	assert.Equal(t, models.MyClaStatusRevoked, unavailable.Status)
 
 	assert.Equal(t, 1, screener.calls["company-1"], "each distinct employer is screened once per response")
+	assert.Equal(t, []sanctionWrite{{companyID: "company-1", sanctioned: true, origin: sanctionOriginSSS}}, companies.writes,
+		"only the newly detected sanction is persisted - a live clean and an unusable screen write nothing")
+}
+
+func TestGetMyClasPersistsFirstLiveSanction(t *testing.T) {
+	const storedDate = "2024-01-15T10:11:12.000000+0000"
+
+	tests := []struct {
+		name          string
+		company       *v1Models.Company
+		writeErr      error
+		wantWrites    int
+		wantFlaggedAt string
+	}{
+		{
+			name:       "first live detection is persisted",
+			company:    &v1Models.Company{CompanyID: "company-1", CompanyName: "Newly Flagged Corp"},
+			wantWrites: 1,
+		},
+		{
+			name:       "an employer flagged again after a clear is restamped",
+			company:    &v1Models.Company{CompanyID: "company-1", CompanyName: "Repeat Corp", SanctionedDate: storedDate},
+			wantWrites: 1,
+		},
+		{
+			name:          "an already stamped employer is left alone",
+			company:       &v1Models.Company{CompanyID: "company-1", CompanyName: "Known Corp", IsSanctioned: true, SanctionOrigin: sanctionOriginSSS, SanctionedDate: storedDate},
+			wantWrites:    0,
+			wantFlaggedAt: "2024-01-15T10:11:12Z",
+		},
+		{
+			name:       "a failed write still returns the listing",
+			company:    &v1Models.Company{CompanyID: "company-1", CompanyName: "Unwritable Corp"},
+			writeErr:   errors.New("dynamodb unavailable"),
+			wantWrites: 0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
+			companies := &fakeCompanies{
+				byID:     map[string]*v1Models.Company{"company-1": tc.company},
+				writeErr: tc.writeErr,
+			}
+			repo := &fakeRepo{
+				byUserID:     map[string][]*signatures.ItemSignature{"user-a": {ecla("sig-1", "company-1", "2024-01-01T00:00:00Z", true)}},
+				byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+			}
+			signaturesService := &fakeSignatures{
+				cclas:           map[string]*v1Models.Signature{"cla-group-1|company-1": {SignatureID: "ccla-1"}},
+				approvedUserIDs: map[string]bool{"user-a": true},
+			}
+			svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
+			svc.sanctions = &fakeScreener{mode: models.MyClaListSssModeRequired, flagged: map[string]bool{"company-1": true}}
+
+			result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+			require.NoError(t, err, "persisting must never fail the listing")
+			require.Len(t, result.Clas, 1)
+			row := result.Clas[0]
+
+			assert.Len(t, companies.writes, tc.wantWrites)
+			if tc.wantWrites > 0 {
+				assert.Equal(t, sanctionWrite{companyID: "company-1", sanctioned: true, origin: sanctionOriginSSS}, companies.writes[0],
+					"the listing persists through the same SSS-origin write the signing flow uses")
+			}
+			assert.True(t, row.Flagged)
+			assert.Equal(t, models.MyClaFlaggedCheckLive, row.FlaggedCheck)
+			if tc.wantFlaggedAt != "" {
+				assert.Equal(t, tc.wantFlaggedAt, row.FlaggedAt, "the stored date is reported, not the response time")
+			} else {
+				assert.NotEmpty(t, row.FlaggedAt)
+				assert.NotEqual(t, "2024-01-15T10:11:12Z", row.FlaggedAt, "a restamped or unwritten employer reports this observation")
+			}
+		})
+	}
 }
 
 // countingScreener records how many screens run at once and holds the first want of them open,

@@ -45,7 +45,7 @@ Files changed in `easycla`:
 - `cla-backend-go/v2/my_clas/handlers.go` — swagger operation wiring (`Configure`)
 - `cla-backend-go/v2/my_clas/service.go` — ownership enforcement, identity resolution, aggregation, validity evaluation
 - `cla-backend-go/v2/my_clas/prefetch.go` — per-request concurrent prefetch of every distinct external lookup
-- `cla-backend-go/v2/my_clas/sanctions.go` — read-only sanctions screener (live SSS lookup, never persists what it observes)
+- `cla-backend-go/v2/my_clas/sanctions.go` — sanctions screener (live SSS lookup; the screener never writes, the service persists a first detection)
 - `cla-backend-go/v2/my_clas/repository.go` — plural, paginated GSI queries for identity resolution and the user's ICLA/ECLA records, plus the single-scan secondary-email lookup
 - `cla-backend-go/emails/contact_cla_manager_templates.go`, `cla-backend-go/events/event_data.go`, `event_types.go` — the contact-request email and its audit event
 - `cla-backend-go/v2/my_clas/*_test.go` — unit tests
@@ -396,9 +396,12 @@ Sanctions Screening Service for a live answer, and reports how the answer was ob
 The response-level `sssMode` (`required` / `optional` / `disabled`) tells the consumer how
 much weight `unavailable` carries: in `required` mode an unverified row is a real gap, in
 `optional` mode best-effort. **A screening failure never fails this endpoint** in either
-mode — unlike the signing flow, which may fail closed. The screener is also strictly
-read-only: `v2/sign`'s `checkCompanyCompliance` *persists* what it observes, which a GET must
-not do, so the lookup/domain/status logic is duplicated rather than shared.
+mode — unlike the signing flow, which may fail closed. The screener itself only answers the
+question (the lookup/domain/status logic is duplicated from `v2/sign`'s
+`checkCompanyCompliance` rather than shared), but a *first* live detection is persisted —
+`is_sanctioned` plus `sanctioned_date` with origin `sss` — so `flaggedAt` stops moving between
+listings. An employer already carrying the date is never restamped, a failed write only costs
+that employer its stored date, and the listing never clears a flag.
 
 ### Response — `200 my-cla-list`
 
@@ -469,7 +472,7 @@ Field reference (`my-cla` rows):
 | `valid` | bool | Computed as defined above |
 | `status` | `valid` \| `needs_attention` \| `revoked` \| `invalidated` \| `unknown` | Contributor-facing standing, computed independently of `approved`/`valid` (see step 5). New values may be added in a future spec revision (generated clients validate the enum strictly) |
 | `statusReason` | `not_on_approval_list` \| `unknown` | Why the standing is not `valid`; omitted for every other status and on every ICLA |
-| `flagged` / `flaggedAt` | bool / string | ECLA only: the employer is currently flagged by sanctions screening, and the company's stored `sanctioned_date` (the response time when a live screen flags an employer that has none) |
+| `flagged` / `flaggedAt` | bool / string | ECLA only: the employer is currently flagged by sanctions screening, and the company's stored `sanctioned_date` — stamped at the first live detection, so the response time only when no date is stored and stamping it failed |
 | `flaggedCheck` | `live` \| `stored` \| `unavailable` | ECLA only: how `flagged` was obtained (see step 5). `unavailable` means the value is the persisted flag and may be stale |
 | `signedVia` / `signedAs` | string | The platform signed via (`github`, `gitlab`, `gerrit` — the last also covers LF SSO signings identified by email) and the account signed as; omitted when the record carries no such identity |
 | `claManager` | bool | ECLA only: the owning user is a CLA manager of the employer's CCLA for this CLA Group |
