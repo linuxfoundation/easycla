@@ -1109,25 +1109,62 @@ func TestGetMyClasLiveSanctionsScreening(t *testing.T) {
 	assert.Equal(t, 1, screener.calls["company-1"], "each distinct employer is screened once per response")
 }
 
-// gateScreener holds every screen open until the test has seen them all arrive, so the listing
-// can only complete if the employers are screened concurrently
-type gateScreener struct {
-	arrived chan string
-	release chan struct{}
+// countingScreener records how many screens run at once and holds the first want of them open,
+// so the listing can only complete if that many employers are screened concurrently
+type countingScreener struct {
+	calls    map[string]int
+	gate     chan struct{}
+	mu       sync.Mutex
+	want     int
+	arrived  int
+	inFlight int
+	maxSeen  int
+	released bool
 }
 
-func (g *gateScreener) Mode() string {
+func (c *countingScreener) Mode() string {
 	return models.MyClaListSssModeOptional
 }
 
-func (g *gateScreener) ScreenCompany(_ context.Context, company *v1Models.Company) (bool, string) {
-	g.arrived <- company.CompanyID
-	<-g.release
+func (c *countingScreener) release() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.released {
+		c.released = true
+		close(c.gate)
+	}
+}
+
+func (c *countingScreener) ScreenCompany(_ context.Context, company *v1Models.Company) (bool, string) {
+	c.mu.Lock()
+	c.calls[company.CompanyID]++
+	c.arrived++
+	c.inFlight++
+	if c.inFlight > c.maxSeen {
+		c.maxSeen = c.inFlight
+	}
+	hold := c.arrived <= c.want
+	full := c.arrived >= c.want
+	c.mu.Unlock()
+
+	if full {
+		c.release()
+	}
+	if hold {
+		<-c.gate
+	}
+
+	c.mu.Lock()
+	c.inFlight--
+	c.mu.Unlock()
 	return false, models.MyClaFlaggedCheckLive
 }
 
-func TestGetMyClasScreensEmployersConcurrently(t *testing.T) {
-	const employers = 3
+// TestGetMyClasScreensDistinctEmployersInParallel is the 100-ECLAs-over-20-employers case: one
+// screen per distinct employer, wantInFlight of them running at once, results merged. It pins
+// fetchConcurrency deliberately - the in-flight count is a documented guarantee of the endpoint.
+func TestGetMyClasScreensDistinctEmployersInParallel(t *testing.T) {
+	const employers, perEmployer, wantInFlight = 20, 5, 8
 	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
 	companies := &fakeCompanies{byID: map[string]*v1Models.Company{}}
 	cclas := map[string]*v1Models.Signature{}
@@ -1136,7 +1173,9 @@ func TestGetMyClasScreensEmployersConcurrently(t *testing.T) {
 		companyID := fmt.Sprintf("company-%d", i)
 		companies.byID[companyID] = &v1Models.Company{CompanyID: companyID, CompanyName: companyID}
 		cclas["cla-group-1|"+companyID] = &v1Models.Signature{SignatureID: "ccla-" + companyID}
-		userSigs = append(userSigs, ecla(fmt.Sprintf("sig-%d", i), companyID, "2024-01-01T00:00:00Z", true))
+		for j := 1; j <= perEmployer; j++ {
+			userSigs = append(userSigs, ecla(fmt.Sprintf("sig-%d-%d", i, j), companyID, "2024-01-01T00:00:00Z", true))
+		}
 	}
 	repo := &fakeRepo{
 		byUserID:     map[string][]*signatures.ItemSignature{"user-a": userSigs},
@@ -1144,7 +1183,7 @@ func TestGetMyClasScreensEmployersConcurrently(t *testing.T) {
 	}
 	signaturesService := &fakeSignatures{cclas: cclas, approvedUserIDs: map[string]bool{"user-a": true}}
 	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
-	screener := &gateScreener{arrived: make(chan string, employers), release: make(chan struct{})}
+	screener := &countingScreener{calls: map[string]int{}, gate: make(chan struct{}), want: wantInFlight}
 	svc.sanctions = screener
 
 	type outcome struct {
@@ -1157,23 +1196,20 @@ func TestGetMyClasScreensEmployersConcurrently(t *testing.T) {
 		done <- outcome{list: list, err: listErr}
 	}()
 
-	for i := 0; i < employers; i++ {
-		select {
-		case <-screener.arrived:
-		case <-time.After(5 * time.Second):
-			close(screener.release)
-			t.Fatalf("only %d of %d employers were screened concurrently", i, employers)
-		}
-	}
-	close(screener.release)
-
 	select {
 	case result := <-done:
 		require.NoError(t, result.err)
-		require.Len(t, result.list.Clas, employers)
-	case <-time.After(5 * time.Second):
-		t.Fatal("the listing did not complete once every screen was released")
+		require.Len(t, result.list.Clas, employers*perEmployer)
+	case <-time.After(10 * time.Second):
+		screener.release()
+		t.Fatalf("the listing stalled with only %d of %d employers screened concurrently", screener.maxSeen, wantInFlight)
 	}
+
+	assert.Len(t, screener.calls, employers, "every distinct employer is screened")
+	for companyID, calls := range screener.calls {
+		assert.Equal(t, 1, calls, "employer %s is screened exactly once for all %d of its rows", companyID, perEmployer)
+	}
+	assert.Equal(t, wantInFlight, screener.maxSeen, "the screens run fetchConcurrency at a time")
 }
 
 func TestGetMyClaPdfURL(t *testing.T) {
