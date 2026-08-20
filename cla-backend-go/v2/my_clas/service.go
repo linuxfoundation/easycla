@@ -430,11 +430,17 @@ func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller,
 	}
 	selectedUsernames := make([]string, 0, len(recipients))
 	recipientEmails := make([]string, 0, len(recipients))
+	selected := make(map[string]bool, len(recipients))
 	for _, recipient := range recipients {
-		manager, ok := byUsername[strings.ToLower(recipient)]
+		key := strings.ToLower(recipient)
+		manager, ok := byUsername[key]
 		if !ok {
 			return nil, ErrInvalidRecipients
 		}
+		if selected[key] {
+			continue
+		}
+		selected[key] = true
 		selectedUsernames = append(selectedUsernames, manager.LfUsername)
 		if manager.Email != "" {
 			recipientEmails = append(recipientEmails, manager.Email)

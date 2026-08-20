@@ -12,7 +12,6 @@ import (
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
-	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -315,6 +314,20 @@ func TestCreateMyClaManagerRequestRecipientValidation(t *testing.T) {
 	assert.Empty(t, eventsService.logged)
 }
 
+func TestCreateMyClaManagerRequestRecipientDedupe(t *testing.T) {
+	repo, signaturesService, companies := managersFixture()
+	svc, _, sent := newRequestTestService(repo, signaturesService, companies)
+	caller := &Caller{Username: "someone"}
+
+	result, err := svc.CreateMyClaManagerRequest(context.Background(), caller, &Identity{}, "sig-ecla",
+		requestInput("removal", []string{"Manager-One", "manager-one"}, ""))
+	require.NoError(t, err)
+	assert.Equal(t, []string{"manager-one"}, result.Recipients, "case-variant duplicates collapse to one recipient")
+
+	require.Len(t, *sent, 1)
+	assert.Equal(t, []string{"manager-one@corp.example.org"}, (*sent)[0].recipients)
+}
+
 func TestCreateMyClaManagerRequestZeroManagers(t *testing.T) {
 	repo, _, companies := managersFixture()
 	svc, eventsService, sent := newRequestTestService(repo, &fakeSignatures{}, companies)
@@ -384,6 +397,4 @@ func TestSignedIdentityFallbacks(t *testing.T) {
 	assert.False(t, isClaManager(&v1Models.Signature{SignatureACL: []v1Models.User{{LfUsername: "someone"}}}, ""))
 	assert.True(t, isClaManager(&v1Models.Signature{SignatureACL: []v1Models.User{{Username: "SomeOne"}}}, "someone"),
 		"the plain username matches too")
-
-	_ = utils.ClaTypeECLA
 }

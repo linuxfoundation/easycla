@@ -2883,7 +2883,7 @@ paths:
   /my-clas/{signatureID}/cla-manager-requests:
     post:
       summary: Request removal or approval from the CLA managers of an ECLA
-      description: Records a contributor request against their own ECLA and emails it to the selected CLA managers of the covering company CCLA - removal (take me off the CCLA coverage) or approval (add me back to the approval list). Recipients must be a non-empty subset of the managers returned by GET /my-clas/{signatureID}/cla-managers; only when no manager resolves may recipients be empty, the request is then recorded without sending email. No signature state is changed. Unknown, not-owned and ICLA signature IDs return 404. The same identity-ownership enforcement and trusted-caller bearer token verification as GET /my-clas applies
+      description: Records a contributor request against their own ECLA and emails it to the selected CLA managers of the covering company CCLA - removal (take me off the CCLA coverage) or approval (add me back to the approval list). Recipients must be a non-empty subset of the managers returned by GET /my-clas/{signatureID}/cla-managers; only when no manager resolves may recipients be empty, the request is then recorded without sending email. No signature state is changed. Unknown, not-owned and ICLA signature IDs return 404. ECLAs flagged for a sanctioned company are deliberately still accepted - a removal request is a legitimate action there. The same identity-ownership enforcement and trusted-caller bearer token verification as GET /my-clas applies
       operationId: createMyClaManagerRequest
       parameters:
         - $ref: "#/parameters/x-request-id"

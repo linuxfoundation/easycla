@@ -30,6 +30,8 @@ implies is documented under "Known limitations":
 | `GET` | `/v4/my-clas` | List all signed ICLAs/ECLAs matching the provided identity, with computed validity |
 | `GET` | `/v4/my-clas/{signatureID}/pdf` | Time-limited (15 min) presigned S3 URL for a signed ICLA PDF owned by the provided identity |
 | `GET` | `/v4/my-clas/identities` | List the deduplicated `<type>:<value>` identities the authenticated user owns (no query params) |
+| `GET` | `/v4/my-clas/{signatureID}/cla-managers` | List the CLA managers of the CCLA covering an ECLA owned by the provided identity |
+| `POST` | `/v4/my-clas/{signatureID}/cla-manager-requests` | Email a removal/approval request for an owned ECLA to selected CLA managers (M2 additions; details are swagger-documented) |
 
 ## Changed repositories and branches
 
