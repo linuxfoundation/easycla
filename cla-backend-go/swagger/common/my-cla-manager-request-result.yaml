@@ -19,7 +19,7 @@ properties:
   status:
     type: string
     enum: [sent, recorded]
-    description: sent - the notification email was dispatched to the selected CLA managers, recorded - the request was recorded as an audit event but no email was sent, because the CCLA lists no CLA manager or none of the selected managers has a resolvable email
+    description: sent - the notification email was dispatched to those selected CLA managers that have a resolvable email address (at least one had), recorded - the request was recorded as an audit event but no email was sent, because the CCLA lists no CLA manager or none of the selected managers has a resolvable email
   recipients:
     type: array
     x-omitempty: false

@@ -351,10 +351,15 @@ all provided identities.
 
 The endpoint intentionally returns **invalid rows too** (flagged `valid=false`) instead
 of hiding them: story [#1158](https://github.com/linuxfoundation/lfx-self-serve/issues/1158)
-wants ICLAs in *all* statuses, while ECLAs are only *displayed* when valid (FR-002) —
-that final display filter is one line in the consumer (`clas.filter(c => c.claType !==
-'ecla' || c.valid)`), and keeping the data faithful makes the API useful for parity
-sampling (SC-001) and support.
+wants ICLAs in *all* statuses, and keeping the data faithful makes the API useful for
+parity sampling (SC-001) and support.
+
+FR-002's "display ECLAs only when valid" predates the computed `status`, so **do not
+filter on `valid=false`**: `needs_attention` rows are `valid=false` by construction, and
+those are exactly the rows carrying the "Request approval" action
+([#1372](https://github.com/linuxfoundation/lfx-self-serve/issues/1372)); an `unknown`
+row whose coverage could not be determined is `valid=false` too, yet should render as
+covered. Filter, if at all, on `status` (e.g. hide only `invalidated`).
 
 ### Contributor-facing status and sanctions screening (step 5)
 
@@ -629,8 +634,9 @@ with a TODO for the missing lookup endpoint. With this API it collapses to:
   (falling back to `claGroupName` / a default icon when a field is absent — the endpoint
   now supplies the distinct project name + logo, so the old `projectName = claGroupName`
   UUID fallback is retired), the status pill from the computed `status`/`statusReason`
-  (`valid` stays available as the boolean shortcut), drop ECLAs with `valid=false`
-  (FR-002), `pdfAvailable` as-is; identity telemetry from `userIds` and
+  (`valid` stays available as the boolean shortcut, but is **not** the display filter —
+  see "Validity evaluation (step 4)" above), `pdfAvailable` as-is; identity
+  telemetry from `userIds` and
   `skippedIdentities` (`matchedUserIds = userIds.length`, `unmatched = resultCount ===
   0 && userIds.length === 0` — skipped keys are the direct signal for issue
   [#1165](https://github.com/linuxfoundation/lfx-self-serve/issues/1165)'s

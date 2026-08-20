@@ -390,6 +390,26 @@ func TestCreateMyClaManagerRequestManagerWithoutEmail(t *testing.T) {
 	assert.Empty(t, *sent)
 }
 
+func TestCreateMyClaManagerRequestMixedRecipientEmails(t *testing.T) {
+	repo, signaturesService, companies := managersFixture()
+	svc, eventsService, sent := newRequestTestService(repo, signaturesService, companies)
+
+	result, err := svc.CreateMyClaManagerRequest(context.Background(), &Caller{Username: "someone"}, &Identity{}, "sig-ecla",
+		requestInput("removal", []string{"manager-one", "acl-no-lfid"}, ""))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, "sent", result.Status, "one reachable manager is enough for sent")
+	assert.Equal(t, []string{"manager-one", "acl-no-lfid"}, result.Recipients, "recipients are the whole selection, reachable or not")
+
+	require.Len(t, *sent, 1)
+	assert.Equal(t, []string{"manager-one@corp.example.org"}, (*sent)[0].recipients, "only the reachable manager is emailed")
+
+	require.Len(t, eventsService.logged, 1)
+	eventData, ok := eventsService.logged[0].EventData.(*events.ContactCLAManagerRequestCreatedEventData)
+	require.True(t, ok)
+	assert.Equal(t, []string{"manager-one", "acl-no-lfid"}, eventData.Recipients, "the receipt records the whole selection")
+}
+
 func decodeJSON(t *testing.T, payload interface{}) map[string]interface{} {
 	t.Helper()
 	raw, err := json.Marshal(payload)
