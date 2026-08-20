@@ -26,6 +26,7 @@ type DBModel struct {
 	Note              string   `dynamodbav:"note" json:"note"`
 	IsSanctioned      bool     `dynamodbav:"is_sanctioned" json:"is_sanctioned"`
 	SanctionOrigin    string   `dynamodbav:"sanction_origin" json:"sanction_origin,omitempty"`
+	SanctionedDate    string   `dynamodbav:"sanctioned_date" json:"sanctioned_date,omitempty"`
 	Version           string   `dynamodbav:"version" json:"version"`
 }
 
@@ -89,6 +90,7 @@ func (dbCompanyModel *DBModel) toModel() (*models.Company, error) {
 		Note:              dbCompanyModel.Note,
 		IsSanctioned:      dbCompanyModel.IsSanctioned,
 		SanctionOrigin:    dbCompanyModel.SanctionOrigin,
+		SanctionedDate:    dbCompanyModel.SanctionedDate,
 		Version:           dbCompanyModel.Version,
 	}, nil
 }
@@ -151,6 +153,7 @@ func toSwaggerModel(dbCompanyModel *DBModel) (*models.Company, error) {
 		SigningEntityName: dbCompanyModel.SigningEntityName,
 		IsSanctioned:      dbCompanyModel.IsSanctioned,
 		SanctionOrigin:    dbCompanyModel.SanctionOrigin,
+		SanctionedDate:    dbCompanyModel.SanctionedDate,
 		CompanyExternalID: dbCompanyModel.CompanyExternalID,
 		CompanyManagerID:  dbCompanyModel.CompanyManagerID,
 		Created:           strfmt.DateTime(createdDateTime),

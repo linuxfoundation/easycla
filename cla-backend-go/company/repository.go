@@ -787,6 +787,7 @@ func buildCompanyModels(ctx context.Context, results *dynamodb.ScanOutput) ([]mo
 		Created           string   `json:"date_created"`
 		Note              string   `json:"note"`
 		IsSanctioned      bool     `json:"is_sanctioned"`
+		SanctionedDate    string   `json:"sanctioned_date"`
 		Modified          string   `json:"date_modified"`
 	}
 
@@ -829,6 +830,7 @@ func buildCompanyModels(ctx context.Context, results *dynamodb.ScanOutput) ([]mo
 			Created:           strfmt.DateTime(createdDateTime),
 			Note:              dbCompany.Note,
 			IsSanctioned:      dbCompany.IsSanctioned,
+			SanctionedDate:    dbCompany.SanctionedDate,
 			Updated:           strfmt.DateTime(modifiedDateTime),
 		})
 	}
@@ -1284,6 +1286,8 @@ const sanctionOriginSSS = "sss"
 
 // UpdateCompanySanctionStatus sets is_sanctioned and, when origin is non-empty, sanction_origin.
 // Pass origin="sss" when flagging via SSS; pass origin="" for manual admin updates.
+// Setting the flag also stamps sanctioned_date; clearing it leaves that date in place, so it
+// records the last time EasyCLA sanctioned the company.
 func (repo repository) UpdateCompanySanctionStatus(ctx context.Context, companyID string, sanctioned bool, origin string) error {
 	f := logrus.Fields{
 		"functionName":   "company.repository.UpdateCompanySanctionStatus",
@@ -1304,6 +1308,12 @@ func (repo repository) UpdateCompanySanctionStatus(ctx context.Context, companyI
 		":m": {S: aws.String(now)},
 	}
 	updateExpr := "SET #S = :s, #M = :m"
+
+	if sanctioned {
+		names["#D"] = aws.String("sanctioned_date")
+		values[":d"] = &dynamodb.AttributeValue{S: aws.String(now)}
+		updateExpr += ", #D = :d"
+	}
 
 	if origin != "" {
 		names["#O"] = aws.String("sanction_origin")

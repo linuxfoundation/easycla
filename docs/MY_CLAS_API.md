@@ -469,7 +469,7 @@ Field reference (`my-cla` rows):
 | `valid` | bool | Computed as defined above |
 | `status` | `valid` \| `needs_attention` \| `revoked` \| `invalidated` \| `unknown` | Contributor-facing standing, computed independently of `approved`/`valid` (see step 5). New values may be added in a future spec revision (generated clients validate the enum strictly) |
 | `statusReason` | `not_on_approval_list` \| `unknown` | Why the standing is not `valid`; omitted for every other status and on every ICLA |
-| `flagged` / `flaggedAt` | bool / string | ECLA only: the employer is currently flagged by sanctions screening, and when that was observed (response time — no sanction timestamp is stored yet) |
+| `flagged` / `flaggedAt` | bool / string | ECLA only: the employer is currently flagged by sanctions screening, and when EasyCLA set that flag (the company's stored `sanctioned_date`; the response time when a live screen flags an employer carrying no stored date) |
 | `flaggedCheck` | `live` \| `stored` \| `unavailable` | ECLA only: how `flagged` was obtained (see step 5). `unavailable` means the value is the persisted flag and may be stale |
 | `signedVia` / `signedAs` | string | The platform signed via (`github`, `gitlab`, `gerrit` — the last also covers LF SSO signings identified by email) and the account signed as; omitted when the record carries no such identity |
 | `claManager` | bool | ECLA only: the owning user is a CLA manager of the employer's CCLA for this CLA Group |

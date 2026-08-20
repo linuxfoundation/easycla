@@ -143,6 +143,8 @@ func (s *CompaniesStore) DeleteByID(ctx context.Context, companyID string) error
 
 // UpdateCompanySanctionStatus sets is_sanctioned and, when origin is non-empty, sanction_origin.
 // Pass origin="sss" when flagging via SSS; pass origin="" for manual admin updates.
+// Setting the flag also stamps sanctioned_date; clearing it leaves that date in place, so it
+// records the last time EasyCLA sanctioned the company.
 func (s *CompaniesStore) UpdateCompanySanctionStatus(ctx context.Context, companyID string, sanctioned bool, origin string) error {
 	if s == nil || s.client == nil {
 		return nil
@@ -159,6 +161,12 @@ func (s *CompaniesStore) UpdateCompanySanctionStatus(ctx context.Context, compan
 		":m": &types.AttributeValueMemberS{Value: now},
 	}
 	updateExpr := "SET #S = :s, #M = :m"
+
+	if sanctioned {
+		names["#D"] = "sanctioned_date"
+		values[":d"] = &types.AttributeValueMemberS{Value: now}
+		updateExpr += ", #D = :d"
+	}
 
 	if origin != "" {
 		names["#O"] = "sanction_origin"

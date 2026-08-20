@@ -110,7 +110,7 @@ func TestGetMyClasFlaggedAndClaManager(t *testing.T) {
 	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
 	companies := &fakeCompanies{byID: map[string]*v1Models.Company{
 		"company-1": {CompanyID: "company-1", CompanyName: "Good Corp"},
-		"company-2": {CompanyID: "company-2", CompanyName: "Sanctioned Corp", IsSanctioned: true},
+		"company-2": {CompanyID: "company-2", CompanyName: "Sanctioned Corp", IsSanctioned: true, SanctionedDate: "2024-01-15T10:11:12.000000+0000"},
 	}}
 	signaturesService := &fakeSignatures{
 		cclas: map[string]*v1Models.Signature{
@@ -145,7 +145,7 @@ func TestGetMyClasFlaggedAndClaManager(t *testing.T) {
 
 	sanctioned := byID["sig-sanctioned"]
 	assert.True(t, sanctioned.Flagged, "a sanctioned employer flags the ECLA")
-	assert.NotEmpty(t, sanctioned.FlaggedAt)
+	assert.Equal(t, "2024-01-15T10:11:12Z", sanctioned.FlaggedAt, "the stored sanctioned_date is returned in RFC3339, not the response time")
 	assert.Equal(t, models.MyClaStatusRevoked, sanctioned.Status, "the Revoked state is system-set from sanctions")
 	assert.False(t, sanctioned.Valid)
 	assert.False(t, sanctioned.ClaManager, "a sanctioned employer carries no CLA manager action")
@@ -330,6 +330,21 @@ func TestCreateMyClaManagerRequestRecipientDedupe(t *testing.T) {
 
 	require.Len(t, *sent, 1)
 	assert.Equal(t, []string{"manager-one@corp.example.org"}, (*sent)[0].recipients)
+}
+
+func TestCreateMyClaManagerRequestSharedEmailDedupe(t *testing.T) {
+	repo, signaturesService, companies := managersFixture()
+	signaturesService.cclas["cla-group-1|company-1"].SignatureACL[1].Emails = []string{"Manager-One@Corp.Example.org"}
+	svc, _, sent := newRequestTestService(repo, signaturesService, companies)
+
+	result, err := svc.CreateMyClaManagerRequest(context.Background(), &Caller{Username: "someone"}, &Identity{}, "sig-ecla",
+		requestInput("removal", []string{"manager-one", "manager-two"}, ""))
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, []string{"manager-one", "manager-two"}, result.Recipients, "both selected managers are still reported")
+
+	require.Len(t, *sent, 1)
+	assert.Equal(t, []string{"manager-one@corp.example.org"}, (*sent)[0].recipients, "two managers sharing an address are mailed once")
 }
 
 func TestCreateMyClaManagerRequestZeroManagers(t *testing.T) {

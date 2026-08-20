@@ -47,6 +47,10 @@ properties:
     type: string
     description: "Source of the sanction flag (e.g. sss)"
     example: "sss"
+  sanctionedDate:
+    type: string
+    description: "When EasyCLA last set the sanction flag on this company; retained after the flag is cleared"
+    example: "2026-08-20T10:11:12Z"
 
   version:
     type: string

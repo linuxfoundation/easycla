@@ -269,7 +269,13 @@ func (s *service) GetMyClas(ctx context.Context, caller *Caller, requested *Iden
 			row.Flagged = sanction.flagged
 			row.FlaggedCheck = sanction.check
 			if sanction.flagged {
-				_, row.FlaggedAt = utils.CurrentTime()
+				if sanction.date != "" {
+					row.FlaggedAt = utils.FormatTimeString(sanction.date)
+				} else {
+					// A live screen that flags a company EasyCLA has not persisted yet has
+					// no stored date, so report this observation as the time it was seen.
+					_, row.FlaggedAt = utils.CurrentTime()
+				}
 			}
 			coverage := data.coverage(sig, ref.user, sanction.flagged)
 			row.Valid = sig.SignatureApproved && coverage.covered
@@ -411,6 +417,7 @@ func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller,
 	selectedUsernames := make([]string, 0, len(recipients))
 	recipientEmails := make([]string, 0, len(recipients))
 	selected := make(map[string]bool, len(recipients))
+	emailed := make(map[string]bool, len(recipients))
 	for _, recipient := range recipients {
 		key := strings.ToLower(recipient)
 		manager, ok := byUsername[key]
@@ -422,7 +429,10 @@ func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller,
 		}
 		selected[key] = true
 		selectedUsernames = append(selectedUsernames, manager.LfUsername)
-		if manager.Email != "" {
+		// Distinct manager accounts can share an address; mail it once, but report both
+		// as selected recipients.
+		if emailKey := strings.ToLower(manager.Email); emailKey != "" && !emailed[emailKey] {
+			emailed[emailKey] = true
 			recipientEmails = append(recipientEmails, manager.Email)
 		}
 	}
@@ -1056,6 +1066,7 @@ type eclaCoverage struct {
 type sanctionState struct {
 	flagged bool
 	check   string
+	date    string
 }
 
 func (s *service) sanctionsMode() string {
@@ -1071,7 +1082,7 @@ func (s *service) companySanctions(ctx context.Context, companyModel *v1Models.C
 	if companyModel == nil {
 		return sanctionState{check: models.MyClaFlaggedCheckUnavailable}
 	}
-	state := sanctionState{flagged: companyModel.IsSanctioned, check: models.MyClaFlaggedCheckStored}
+	state := sanctionState{flagged: companyModel.IsSanctioned, check: models.MyClaFlaggedCheckStored, date: companyModel.SanctionedDate}
 	if s.sanctions != nil {
 		state.flagged, state.check = s.sanctions.ScreenCompany(ctx, companyModel)
 	}
