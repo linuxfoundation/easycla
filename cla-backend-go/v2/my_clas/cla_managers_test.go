@@ -258,26 +258,11 @@ func TestCreateMyClaManagerRequest(t *testing.T) {
 		requestInput("removal", []string{"Manager-One", "manager-two"}, "please remove me"))
 	require.NoError(t, err)
 	require.NotNil(t, result)
-	assert.Equal(t, "req-1", result.RequestID)
+	assert.NotEmpty(t, result.RequestID)
 	assert.Equal(t, "sig-ecla", result.SignatureID)
 	assert.Equal(t, "removal", result.RequestType)
 	assert.Equal(t, "sent", result.Status)
 	assert.Equal(t, []string{"manager-one", "manager-two"}, result.Recipients, "recipients echo the canonical manager usernames")
-
-	require.Len(t, repo.contactRequests, 1)
-	record := repo.contactRequests[0]
-	assert.Equal(t, "removal", record.RequestType)
-	assert.Equal(t, "sent", record.RequestStatus)
-	assert.Equal(t, "sig-ecla", record.SignatureID)
-	assert.Equal(t, "cla-group-1", record.CLAGroupID)
-	assert.Equal(t, "My CLA Group", record.CLAGroupName)
-	assert.Equal(t, "company-1", record.CompanyID)
-	assert.Equal(t, "Good Corp", record.CompanyName)
-	assert.Equal(t, "user-a", record.UserID)
-	assert.Equal(t, "Some One", record.UserName)
-	assert.Equal(t, []string{"manager-one", "manager-two"}, record.Recipients)
-	assert.Equal(t, []string{"manager-one@corp.example.org", "manager-two@corp.example.org"}, record.RecipientEmails)
-	assert.Equal(t, "please remove me", record.Message)
 
 	require.Len(t, *sent, 1)
 	email := (*sent)[0]
@@ -295,7 +280,7 @@ func TestCreateMyClaManagerRequest(t *testing.T) {
 	assert.Equal(t, "company-1", logged.CompanyID)
 	eventData, ok := logged.EventData.(*events.ContactCLAManagerRequestCreatedEventData)
 	require.True(t, ok)
-	assert.Equal(t, "req-1", eventData.RequestID)
+	assert.Equal(t, result.RequestID, eventData.RequestID)
 	assert.Equal(t, "removal", eventData.RequestType)
 	assert.Equal(t, []string{"manager-one", "manager-two"}, eventData.Recipients)
 }
@@ -326,7 +311,6 @@ func TestCreateMyClaManagerRequestRecipientValidation(t *testing.T) {
 		requestInput("removal", []string{"manager-one", "outsider"}, ""))
 	assert.ErrorIs(t, err, ErrInvalidRecipients, "a recipient outside the resolved managers is rejected")
 
-	assert.Empty(t, repo.contactRequests, "nothing is persisted on validation failure")
 	assert.Empty(t, *sent)
 	assert.Empty(t, eventsService.logged)
 }
@@ -346,8 +330,6 @@ func TestCreateMyClaManagerRequestZeroManagers(t *testing.T) {
 	require.NotNil(t, result)
 	assert.Equal(t, "recorded", result.Status, "the request is recorded without sending email")
 	assert.Empty(t, result.Recipients)
-	require.Len(t, repo.contactRequests, 1)
-	assert.Equal(t, "recorded", repo.contactRequests[0].RequestStatus)
 	assert.Empty(t, *sent)
 	require.Len(t, eventsService.logged, 1, "the audit event is still logged")
 }
@@ -370,25 +352,13 @@ func TestCreateMyClaManagerRequestNotFound(t *testing.T) {
 
 func TestCreateMyClaManagerRequestSendFailure(t *testing.T) {
 	repo, signaturesService, companies := managersFixture()
-	svc, _, _ := newRequestTestService(repo, signaturesService, companies)
+	svc, eventsService, _ := newRequestTestService(repo, signaturesService, companies)
 	svc.sendEmail = func(_, _ string, _ []string) error { return errors.New("SNS unavailable") }
 
 	_, err := svc.CreateMyClaManagerRequest(context.Background(), &Caller{Username: "someone"}, &Identity{}, "sig-ecla",
 		requestInput("removal", []string{"manager-one"}, ""))
 	assert.Error(t, err, "a send failure is surfaced to the caller")
-	assert.Len(t, repo.contactRequests, 1, "the record was already persisted")
-}
-
-func TestCreateMyClaManagerRequestPersistFailure(t *testing.T) {
-	repo, signaturesService, companies := managersFixture()
-	svc, eventsService, sent := newRequestTestService(repo, signaturesService, companies)
-	repo.addRequestErr = errors.New("dynamodb unavailable")
-
-	_, err := svc.CreateMyClaManagerRequest(context.Background(), &Caller{Username: "someone"}, &Identity{}, "sig-ecla",
-		requestInput("removal", []string{"manager-one"}, ""))
-	assert.Error(t, err)
-	assert.Empty(t, *sent, "no email goes out when the record cannot be persisted")
-	assert.Empty(t, eventsService.logged)
+	assert.Empty(t, eventsService.logged, "no audit event is logged when the email fails")
 }
 
 func TestCreateMyClaManagerRequestManagerWithoutEmail(t *testing.T) {

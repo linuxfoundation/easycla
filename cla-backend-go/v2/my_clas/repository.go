@@ -13,7 +13,6 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
 	"github.com/go-openapi/strfmt"
-	"github.com/gofrs/uuid"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
@@ -22,31 +21,9 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-// ContactCLAManagerRequest is the persisted record of a contributor's removal/approval
-// request to the CLA managers covering their ECLA
-type ContactCLAManagerRequest struct {
-	RequestID       string   `json:"request_id"`
-	RequestType     string   `json:"request_type"`
-	RequestStatus   string   `json:"request_status"`
-	SignatureID     string   `json:"signature_id"`
-	CLAGroupID      string   `json:"cla_group_id"`
-	CLAGroupName    string   `json:"cla_group_name,omitempty"`
-	CompanyID       string   `json:"company_id"`
-	CompanyName     string   `json:"company_name,omitempty"`
-	ProjectName     string   `json:"project_name,omitempty"`
-	UserID          string   `json:"user_id"`
-	UserName        string   `json:"user_name,omitempty"`
-	Recipients      []string `json:"recipients,omitempty"`
-	RecipientEmails []string `json:"recipient_emails,omitempty"`
-	Message         string   `json:"message,omitempty"`
-	DateCreated     string   `json:"date_created"`
-	Version         string   `json:"version"`
-}
-
 // Repository interface defines the data access methods for the My CLAs module
 type Repository interface {
 	GetUserCLASignatures(ctx context.Context, userID string) ([]*signatures.ItemSignature, error)
-	AddContactCLAManagerRequest(ctx context.Context, request *ContactCLAManagerRequest) (string, error)
 	GetUsersByLFUsername(ctx context.Context, lfUsername string) ([]*v1Models.User, error)
 	GetUsersByPrimaryEmail(ctx context.Context, email string) ([]*v1Models.User, error)
 	GetUsersByGithubID(ctx context.Context, githubID int64) ([]*v1Models.User, error)
@@ -57,56 +34,18 @@ type Repository interface {
 }
 
 type repository struct {
-	dynamoDBClient           *dynamodb.DynamoDB
-	signatureTableName       string
-	usersTableName           string
-	contactRequestsTableName string
+	dynamoDBClient     *dynamodb.DynamoDB
+	signatureTableName string
+	usersTableName     string
 }
 
 // NewRepository creates a new instance of the My CLAs repository
 func NewRepository(awsSession *session.Session, stage string) Repository {
 	return repository{
-		dynamoDBClient:           dynamodb.New(awsSession),
-		signatureTableName:       fmt.Sprintf("cla-%s-signatures", stage),
-		usersTableName:           fmt.Sprintf("cla-%s-users", stage),
-		contactRequestsTableName: fmt.Sprintf("cla-%s-contact-cla-manager-requests", stage),
+		dynamoDBClient:     dynamodb.New(awsSession),
+		signatureTableName: fmt.Sprintf("cla-%s-signatures", stage),
+		usersTableName:     fmt.Sprintf("cla-%s-users", stage),
 	}
-}
-
-// AddContactCLAManagerRequest persists a contributor's contact-CLA-manager request and
-// returns the generated request ID
-func (repo repository) AddContactCLAManagerRequest(ctx context.Context, request *ContactCLAManagerRequest) (string, error) {
-	f := logrus.Fields{
-		"functionName":   "v2.my_clas.repository.AddContactCLAManagerRequest",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"signatureID":    request.SignatureID,
-		"requestType":    request.RequestType,
-	}
-
-	requestID, err := uuid.NewV4()
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("unable to generate a request ID")
-		return "", err
-	}
-	request.RequestID = requestID.String()
-	_, request.DateCreated = utils.CurrentTime()
-	request.Version = "v1"
-
-	item, err := dynamodbattribute.MarshalMap(request)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("unable to marshal the contact request record")
-		return "", err
-	}
-	_, err = repo.dynamoDBClient.PutItemWithContext(ctx, &dynamodb.PutItemInput{
-		Item:      item,
-		TableName: aws.String(repo.contactRequestsTableName),
-	})
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("unable to persist the contact request record")
-		return "", err
-	}
-
-	return request.RequestID, nil
 }
 
 // GetUserCLASignatures returns all ICLA and ECLA signature records referencing the given EasyCLA user ID

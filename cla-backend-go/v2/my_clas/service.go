@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/gofrs/uuid"
 	"github.com/linuxfoundation/easycla/cla-backend-go/emails"
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
@@ -397,9 +398,10 @@ func (s *service) GetMyClaManagers(ctx context.Context, caller *Caller, requeste
 	}, nil
 }
 
-// CreateMyClaManagerRequest records a removal/approval request against the caller's own ECLA
-// and emails it to the selected CLA managers - a nil result means unknown, not-owned, unsigned
-// or ICLA signature ID; ErrInvalidRecipients means the recipients list failed validation
+// CreateMyClaManagerRequest emails a removal/approval request against the caller's own ECLA to
+// the selected CLA managers and logs an audit event as the persisted receipt - a nil result means
+// unknown, not-owned, unsigned or ICLA signature ID; ErrInvalidRecipients means the recipients
+// list failed validation
 func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller, requested *Identity, signatureID string, input *models.MyClaManagerRequest) (*models.MyClaManagerRequestResult, error) {
 	f := logrus.Fields{
 		"functionName":    "v2.my_clas.service.CreateMyClaManagerRequest",
@@ -468,24 +470,12 @@ func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller,
 		status = models.MyClaManagerRequestResultStatusSent
 	}
 
-	requestID, err := s.repo.AddContactCLAManagerRequest(ctx, &ContactCLAManagerRequest{
-		RequestType:     requestType,
-		RequestStatus:   status,
-		SignatureID:     sig.SignatureID,
-		CLAGroupID:      sig.SignatureProjectID,
-		CLAGroupName:    details.claGroupName,
-		CompanyID:       sig.SignatureUserCompanyID,
-		CompanyName:     details.companyName,
-		ProjectName:     details.projectName,
-		UserID:          userModel.UserID,
-		UserName:        contributorName,
-		Recipients:      selectedUsernames,
-		RecipientEmails: recipientEmails,
-		Message:         strings.TrimSpace(input.Message),
-	})
+	requestUUID, err := uuid.NewV4()
 	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to generate a request ID")
 		return nil, err
 	}
+	requestID := requestUUID.String()
 
 	if len(recipientEmails) > 0 {
 		subject := fmt.Sprintf("EasyCLA: %s request from %s for %s", requestAction(requestType), contributorName, details.companyName)

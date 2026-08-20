@@ -31,17 +31,6 @@ type fakeRepo struct {
 	byGitlabUsername map[string][]*v1Models.User
 	bySecondaryEmail map[string][]*v1Models.User
 	secondaryScans   int
-	contactRequests  []*ContactCLAManagerRequest
-	addRequestErr    error
-}
-
-func (f *fakeRepo) AddContactCLAManagerRequest(_ context.Context, request *ContactCLAManagerRequest) (string, error) {
-	if f.addRequestErr != nil {
-		return "", f.addRequestErr
-	}
-	request.RequestID = fmt.Sprintf("req-%d", len(f.contactRequests)+1)
-	f.contactRequests = append(f.contactRequests, request)
-	return request.RequestID, nil
 }
 
 func (f *fakeRepo) GetUserCLASignatures(_ context.Context, userID string) ([]*signatures.ItemSignature, error) {

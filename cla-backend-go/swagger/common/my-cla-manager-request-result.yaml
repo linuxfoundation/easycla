@@ -4,11 +4,11 @@
 type: object
 x-nullable: false
 title: My CLA Manager Request Result
-description: The persisted receipt of a contact-CLA-manager request
+description: The receipt of a contact-CLA-manager request - recorded as an EasyCLA audit event
 properties:
   requestID:
     type: string
-    description: The persisted request record ID (UUID)
+    description: The request ID (UUID) carried by the audit event
   signatureID:
     type: string
     description: The ECLA signature ID (UUID) the request refers to
@@ -19,7 +19,7 @@ properties:
   status:
     type: string
     enum: [sent, recorded]
-    description: sent - the notification email was dispatched to the selected CLA managers, recorded - the request was persisted but no email was sent because no CLA manager is currently reachable
+    description: sent - the notification email was dispatched to the selected CLA managers, recorded - the request was recorded as an audit event but no email was sent because no CLA manager is currently reachable
   recipients:
     type: array
     description: The LF usernames the notification was sent to
