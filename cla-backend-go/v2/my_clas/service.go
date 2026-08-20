@@ -23,6 +23,7 @@ import (
 	v2ProjectServiceModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/models"
 	platformModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/models"
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -216,92 +217,70 @@ func (s *service) GetMyClas(ctx context.Context, caller *Caller, requested *Iden
 		return nil, err
 	}
 
+	perUser, err := s.userSignatures(ctx, userModels)
+	if err != nil {
+		return nil, err
+	}
+	refs := claRefs(userModels, perUser)
+	data, err := s.prefetch(ctx, refs)
+	if err != nil {
+		return nil, err
+	}
+
 	result := &models.MyClaList{
 		LfUsername:        identity.LfUsername,
 		UserIds:           make([]string, 0, len(userModels)),
 		SkippedIdentities: skipped,
-		Clas:              []models.MyCla{},
+		Clas:              make([]models.MyCla, 0, len(refs)),
 		SssMode:           s.sanctionsMode(),
 	}
-
-	seen := make(map[string]bool)
-	claGroupNames := make(map[string]string)
-	projectInfos := make(map[string]projectInfo)
-	companies := make(map[string]*v1Models.Company)
-	cclas := make(map[string]*v1Models.Signature)
-	approvals := make(map[string]eclaCoverage)
-	sanctions := make(map[string]sanctionState)
-
 	for _, userModel := range userModels {
 		result.UserIds = append(result.UserIds, userModel.UserID)
+	}
 
-		userSignatures, sigErr := s.repo.GetUserCLASignatures(ctx, userModel.UserID)
-		if sigErr != nil {
-			return nil, sigErr
+	for _, ref := range refs {
+		sig := ref.sig
+		project := data.projectInfos[sig.SignatureProjectID]
+		row := models.MyCla{
+			SignatureID:          sig.SignatureID,
+			ClaGroupID:           sig.SignatureProjectID,
+			ClaGroupName:         data.claGroupNames[sig.SignatureProjectID],
+			ProjectName:          project.name,
+			ProjectLogo:          project.logo,
+			UserID:               sig.SignatureReferenceID,
+			SignedOn:             signedOn(sig),
+			Signed:               sig.SignatureSigned,
+			Approved:             sig.SignatureApproved,
+			DocumentMajorVersion: int64(sig.SignatureDocumentMajorVersion),
+			DocumentMinorVersion: int64(sig.SignatureDocumentMinorVersion),
+		}
+		row.SignedVia, row.SignedAs = signedIdentity(sig)
+
+		if sig.SignatureUserCompanyID == "" {
+			row.ClaType = utils.ClaTypeICLA
+			row.Valid = sig.SignatureApproved
+			row.PdfAvailable = true
+			assignMyClaStatus(&row, eclaCoverage{})
+		} else {
+			row.ClaType = utils.ClaTypeECLA
+			row.CompanyID = sig.SignatureUserCompanyID
+			if companyModel := data.companies[sig.SignatureUserCompanyID]; companyModel != nil {
+				row.CompanyName = companyModel.CompanyName
+				row.SigningEntityName = companyModel.SigningEntityName
+			}
+			sanction := data.sanctions[sig.SignatureUserCompanyID]
+			row.Flagged = sanction.flagged
+			row.FlaggedCheck = sanction.check
+			if sanction.flagged {
+				_, row.FlaggedAt = utils.CurrentTime()
+			}
+			coverage := data.coverage(sig, ref.user, sanction.flagged)
+			row.Valid = sig.SignatureApproved && coverage.covered
+			row.ClaManager = data.claManager(sig, identity.LfUsername, sanction.flagged)
+			assignMyClaStatus(&row, coverage)
 		}
 
-		for _, sig := range userSignatures {
-			if !sig.SignatureSigned || seen[sig.SignatureID] {
-				continue
-			}
-			seen[sig.SignatureID] = true
-
-			claGroupName, nameErr := s.claGroupName(ctx, claGroupNames, sig.SignatureProjectID)
-			if nameErr != nil {
-				return nil, nameErr
-			}
-			project, projectErr := s.projectInfo(ctx, projectInfos, sig.SignatureProjectID)
-			if projectErr != nil {
-				return nil, projectErr
-			}
-			row := models.MyCla{
-				SignatureID:          sig.SignatureID,
-				ClaGroupID:           sig.SignatureProjectID,
-				ClaGroupName:         claGroupName,
-				ProjectName:          project.name,
-				ProjectLogo:          project.logo,
-				UserID:               sig.SignatureReferenceID,
-				SignedOn:             signedOn(sig),
-				Signed:               sig.SignatureSigned,
-				Approved:             sig.SignatureApproved,
-				DocumentMajorVersion: int64(sig.SignatureDocumentMajorVersion),
-				DocumentMinorVersion: int64(sig.SignatureDocumentMinorVersion),
-			}
-			row.SignedVia, row.SignedAs = signedIdentity(sig)
-
-			if sig.SignatureUserCompanyID == "" {
-				row.ClaType = utils.ClaTypeICLA
-				row.Valid = sig.SignatureApproved
-				row.PdfAvailable = true
-				assignMyClaStatus(&row, eclaCoverage{})
-			} else {
-				row.ClaType = utils.ClaTypeECLA
-				row.CompanyID = sig.SignatureUserCompanyID
-				companyModel, companyErr := s.company(ctx, companies, sig.SignatureUserCompanyID)
-				if companyErr != nil {
-					log.WithFields(f).WithError(companyErr).Warnf("unable to lookup employer %s - degrading the row", sig.SignatureUserCompanyID)
-					companyModel = nil
-				}
-				if companyModel != nil {
-					row.CompanyName = companyModel.CompanyName
-					row.SigningEntityName = companyModel.SigningEntityName
-				}
-				sanction := s.companySanctions(ctx, sanctions, companyModel)
-				row.Flagged = sanction.flagged
-				row.FlaggedCheck = sanction.check
-				if sanction.flagged {
-					_, row.FlaggedAt = utils.CurrentTime()
-				}
-				coverage := s.eclaCoveredByCurrentApprovalList(ctx, cclas, approvals, userModel, companyModel, sig, sanction.flagged)
-				row.Valid = sig.SignatureApproved && coverage.covered
-				if ccla := cclas[sig.SignatureProjectID+"|"+sig.SignatureUserCompanyID]; isClaManager(ccla, identity.LfUsername) {
-					row.ClaManager = true
-				}
-				assignMyClaStatus(&row, coverage)
-			}
-
-			result.Clas = append(result.Clas, row)
-		}
+		result.Clas = append(result.Clas, row)
 	}
 
 	sort.SliceStable(result.Clas, func(i, j int) bool {
@@ -571,16 +550,35 @@ type managerDetails struct {
 // eclaManagerDetails resolves the CLA Group/project/company context of an ECLA and the CLA
 // managers from the covering CCLA's ACL - no CCLA yields an empty manager list
 func (s *service) eclaManagerDetails(ctx context.Context, identity *Identity, sig *signatures.ItemSignature) (*managerDetails, error) {
-	claGroupName, err := s.claGroupName(ctx, map[string]string{}, sig.SignatureProjectID)
-	if err != nil {
-		return nil, err
-	}
-	project, err := s.projectInfo(ctx, map[string]projectInfo{}, sig.SignatureProjectID)
-	if err != nil {
-		return nil, err
-	}
-	companyModel, err := s.company(ctx, map[string]*v1Models.Company{}, sig.SignatureUserCompanyID)
-	if err != nil {
+	var (
+		claGroupName string
+		project      projectInfo
+		companyModel *v1Models.Company
+		ccla         *v1Models.Signature
+	)
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.Go(func() error {
+		var err error
+		claGroupName, err = s.claGroupName(groupCtx, sig.SignatureProjectID)
+		return err
+	})
+	group.Go(func() error {
+		var err error
+		project, err = s.projectInfo(groupCtx, sig.SignatureProjectID)
+		return err
+	})
+	group.Go(func() error {
+		var err error
+		companyModel, err = s.company(groupCtx, sig.SignatureUserCompanyID)
+		return err
+	})
+	group.Go(func() error {
+		approved, signed := true, true
+		var err error
+		ccla, err = s.signaturesService.GetCorporateSignature(groupCtx, sig.SignatureProjectID, sig.SignatureUserCompanyID, &approved, &signed)
+		return err
+	})
+	if err := group.Wait(); err != nil {
 		return nil, err
 	}
 
@@ -591,12 +589,6 @@ func (s *service) eclaManagerDetails(ctx context.Context, identity *Identity, si
 	}
 	if companyModel != nil {
 		details.companyName = companyModel.CompanyName
-	}
-
-	approved, signed := true, true
-	ccla, err := s.signaturesService.GetCorporateSignature(ctx, sig.SignatureProjectID, sig.SignatureUserCompanyID, &approved, &signed)
-	if err != nil {
-		return nil, err
 	}
 	if ccla == nil {
 		return details, nil
@@ -990,10 +982,56 @@ func (s *service) resolveUsers(ctx context.Context, identity *Identity) ([]*v1Mo
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 	}
 
+	var lookups []userLookup
+	byValue := func(values []string, what string, lookup func(context.Context, string) ([]*v1Models.User, error)) {
+		for _, value := range values {
+			lookups = append(lookups, userLookup{what: what, key: value, run: func(lookupCtx context.Context) ([]*v1Models.User, error) {
+				return lookup(lookupCtx, value)
+			}})
+		}
+	}
+	byID := func(ids []int64, what string, lookup func(context.Context, int64) ([]*v1Models.User, error)) {
+		for _, id := range dedupeIDs(ids) {
+			lookups = append(lookups, userLookup{what: what, key: strconv.FormatInt(id, 10), run: func(lookupCtx context.Context) ([]*v1Models.User, error) {
+				return lookup(lookupCtx, id)
+			}})
+		}
+	}
+
+	byValue(trimAll(append([]string{identity.LfUsername}, identity.GerritUsernames...)), "LF username", s.repo.GetUsersByLFUsername)
+	byValue(normalizeEmails(identity.Emails), "email", s.repo.GetUsersByPrimaryEmail)
+	if secondaryEmails := normalizeEmails(identity.SecondaryEmails); len(secondaryEmails) > 0 {
+		lookups = append(lookups, userLookup{what: "secondary email", key: strings.Join(secondaryEmails, ","), run: func(lookupCtx context.Context) ([]*v1Models.User, error) {
+			return s.repo.GetUsersBySecondaryEmails(lookupCtx, secondaryEmails)
+		}})
+	}
+	byID(identity.GithubIDs, "GitHub ID", s.repo.GetUsersByGithubID)
+	byValue(trimAll(identity.GithubUsernames), "GitHub username", s.repo.GetUsersByGithubUsername)
+	byID(identity.GitlabIDs, "GitLab ID", s.repo.GetUsersByGitlabID)
+	byValue(trimAll(identity.GitlabUsernames), "GitLab username", s.repo.GetUsersByGitlabUsername)
+
+	matches := make([][]*v1Models.User, len(lookups))
+	errs := make([]error, len(lookups))
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(fetchConcurrency)
+	for i, lookup := range lookups {
+		group.Go(func() error {
+			matches[i], errs[i] = lookup.run(groupCtx)
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+
 	var userModels []*v1Models.User
 	seen := make(map[string]bool)
-	add := func(matches ...*v1Models.User) {
-		for _, userModel := range matches {
+	for i, lookup := range lookups {
+		if errs[i] != nil {
+			log.WithFields(f).WithError(errs[i]).Warnf("unable to lookup users by %s: %s", lookup.what, lookup.key)
+			return nil, errs[i]
+		}
+		for _, userModel := range matches[i] {
 			if userModel == nil || userModel.UserID == "" || seen[userModel.UserID] {
 				continue
 			}
@@ -1001,58 +1039,16 @@ func (s *service) resolveUsers(ctx context.Context, identity *Identity) ([]*v1Mo
 			userModels = append(userModels, userModel)
 		}
 	}
-	addByLookup := func(values []string, what string, lookup func(context.Context, string) ([]*v1Models.User, error)) error {
-		for _, value := range values {
-			matches, err := lookup(ctx, value)
-			if err != nil {
-				log.WithFields(f).WithError(err).Warnf("unable to lookup users by %s: %s", what, value)
-				return err
-			}
-			add(matches...)
-		}
-		return nil
-	}
-	addByIDLookup := func(ids []int64, what string, lookup func(context.Context, int64) ([]*v1Models.User, error)) error {
-		for _, id := range dedupeIDs(ids) {
-			matches, err := lookup(ctx, id)
-			if err != nil {
-				log.WithFields(f).WithError(err).Warnf("unable to lookup users by %s: %d", what, id)
-				return err
-			}
-			add(matches...)
-		}
-		return nil
-	}
-
-	lfUsernames := trimAll(append([]string{identity.LfUsername}, identity.GerritUsernames...))
-	if err := addByLookup(lfUsernames, "LF username", s.repo.GetUsersByLFUsername); err != nil {
-		return nil, err
-	}
-	if err := addByLookup(normalizeEmails(identity.Emails), "email", s.repo.GetUsersByPrimaryEmail); err != nil {
-		return nil, err
-	}
-	if secondaryEmails := normalizeEmails(identity.SecondaryEmails); len(secondaryEmails) > 0 {
-		matches, err := s.repo.GetUsersBySecondaryEmails(ctx, secondaryEmails)
-		if err != nil {
-			log.WithFields(f).WithError(err).Warn("unable to lookup users by secondary emails")
-			return nil, err
-		}
-		add(matches...)
-	}
-	if err := addByIDLookup(identity.GithubIDs, "GitHub ID", s.repo.GetUsersByGithubID); err != nil {
-		return nil, err
-	}
-	if err := addByLookup(trimAll(identity.GithubUsernames), "GitHub username", s.repo.GetUsersByGithubUsername); err != nil {
-		return nil, err
-	}
-	if err := addByIDLookup(identity.GitlabIDs, "GitLab ID", s.repo.GetUsersByGitlabID); err != nil {
-		return nil, err
-	}
-	if err := addByLookup(trimAll(identity.GitlabUsernames), "GitLab username", s.repo.GetUsersByGitlabUsername); err != nil {
-		return nil, err
-	}
 
 	return userModels, nil
+}
+
+// userLookup is one pending user-record lookup. They all run concurrently and are merged in
+// declaration order, so the resolved set and the error reported stay the same as a serial walk.
+type userLookup struct {
+	run  func(context.Context) ([]*v1Models.User, error)
+	what string
+	key  string
 }
 
 // eclaCoverage is the coverage outcome of one ECLA. covered drives valid; unevaluable means
@@ -1075,19 +1071,15 @@ func (s *service) sanctionsMode() string {
 	return s.sanctions.Mode()
 }
 
-// companySanctions screens each distinct employer at most once per response
-func (s *service) companySanctions(ctx context.Context, cache map[string]sanctionState, companyModel *v1Models.Company) sanctionState {
+// companySanctions is the sanctions answer for one employer, screened live where possible
+func (s *service) companySanctions(ctx context.Context, companyModel *v1Models.Company) sanctionState {
 	if companyModel == nil {
 		return sanctionState{}
-	}
-	if state, ok := cache[companyModel.CompanyID]; ok {
-		return state
 	}
 	state := sanctionState{flagged: companyModel.IsSanctioned, check: models.MyClaFlaggedCheckStored}
 	if s.sanctions != nil {
 		state.flagged, state.check = s.sanctions.ScreenCompany(ctx, companyModel)
 	}
-	cache[companyModel.CompanyID] = state
 	return state
 }
 
@@ -1112,90 +1104,54 @@ func assignMyClaStatus(row *models.MyCla, coverage eclaCoverage) {
 	}
 }
 
-// eclaCoveredByCurrentApprovalList mirrors the PR gating logic (signatures service
-// ProcessEmployeeSignature/EvaluateUserApproval): the company must not be sanctioned, must
-// hold an approved+signed CCLA for the CLA Group, and the user must match its current
-// approval lists. A lookup that fails degrades this one row instead of the whole list.
-func (s *service) eclaCoveredByCurrentApprovalList(ctx context.Context, cclas map[string]*v1Models.Signature, approvals map[string]eclaCoverage, userModel *v1Models.User, companyModel *v1Models.Company, sig *signatures.ItemSignature, flagged bool) eclaCoverage {
-	f := logrus.Fields{
-		"functionName":   "v2.my_clas.service.eclaCoveredByCurrentApprovalList",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"signatureID":    sig.SignatureID,
-		"claGroupID":     sig.SignatureProjectID,
-		"companyID":      sig.SignatureUserCompanyID,
-	}
-
-	if companyModel == nil || flagged {
+// evaluateApproval mirrors the PR gating logic (signatures service
+// ProcessEmployeeSignature/EvaluateUserApproval): the user must match the current approval lists
+// of the employer's approved+signed CCLA. A check that could not complete is unevaluable, so a
+// false covered never means "no longer approved".
+func (s *service) evaluateApproval(ctx context.Context, userModel *v1Models.User, ccla *v1Models.Signature) eclaCoverage {
+	covered, githubOrgLookupFailed, err := s.signaturesService.EvaluateUserApproval(ctx, userModel, ccla)
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"functionName":   "v2.my_clas.service.evaluateApproval",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"claGroupID":     ccla.ProjectID,
+			"companyID":      ccla.SignatureReferenceID,
+			"userID":         userModel.UserID,
+		}).WithError(err).Warn("unable to evaluate the approval list for the employee acknowledgement")
 		return eclaCoverage{unevaluable: true}
-	}
-
-	cclaKey := sig.SignatureProjectID + "|" + sig.SignatureUserCompanyID
-	ccla, ok := cclas[cclaKey]
-	if !ok {
-		approved, signed := true, true
-		cclaModel, cclaErr := s.signaturesService.GetCorporateSignature(ctx, sig.SignatureProjectID, sig.SignatureUserCompanyID, &approved, &signed)
-		if cclaErr != nil {
-			log.WithFields(f).WithError(cclaErr).Warn("unable to lookup the corporate signature for the employee acknowledgement - degrading the row")
-			cclas[cclaKey] = nil
-			return eclaCoverage{unevaluable: true}
-		}
-		ccla = cclaModel
-		cclas[cclaKey] = ccla
-	}
-	if ccla == nil {
-		return eclaCoverage{unevaluable: true}
-	}
-
-	approvalKey := cclaKey + "|" + userModel.UserID
-	if cached, ok := approvals[approvalKey]; ok {
-		return cached
-	}
-	covered, githubOrgLookupFailed, approvedErr := s.signaturesService.EvaluateUserApproval(ctx, userModel, ccla)
-	coverage := eclaCoverage{covered: covered, unevaluable: githubOrgLookupFailed}
-	if approvedErr != nil {
-		log.WithFields(f).WithError(approvedErr).Warn("unable to evaluate the approval list for the employee acknowledgement")
-		coverage = eclaCoverage{unevaluable: true}
 	}
 	// EvaluateUserApproval cannot evaluate GitLab group membership (it needs per-group OAuth
 	// tokens); defer to the signature_approved flag, which the approval-list
 	// invalidation flow maintains (see docs/MY_CLAS_API.md). Membership was never checked,
 	// so the row stays unevaluable.
-	if !coverage.covered && approvedErr == nil && len(ccla.GitlabOrgApprovalList) > 0 {
-		coverage = eclaCoverage{covered: true, unevaluable: true}
+	if !covered && len(ccla.GitlabOrgApprovalList) > 0 {
+		return eclaCoverage{covered: true, unevaluable: true}
 	}
-	approvals[approvalKey] = coverage
-	return coverage
+	return eclaCoverage{covered: covered, unevaluable: githubOrgLookupFailed}
 }
 
-func (s *service) claGroupName(ctx context.Context, cache map[string]string, claGroupID string) (string, error) {
+func (s *service) claGroupName(ctx context.Context, claGroupID string) (string, error) {
 	if claGroupID == "" {
 		return "", nil
-	}
-	if name, ok := cache[claGroupID]; ok {
-		return name, nil
 	}
 	name, err := s.projectsClaGroupsRepo.GetCLAGroupNameByID(ctx, claGroupID)
 	if err != nil {
 		if !errors.Is(err, projects_cla_groups.ErrCLAGroupDoesNotExist) {
 			return "", err
 		}
-		name = ""
+		return "", nil
 	}
-	cache[claGroupID] = name
 	return name, nil
 }
 
-// projectInfo resolves the Salesforce project display name and logo the CLA Group belongs to,
-// cached per request. The name comes from the projects-cla-groups mapping table; the logo lives
-// only in the project-service and is fetched by project SFID (a foundation-level CLA Group
-// resolves to its foundation). A project-service lookup miss degrades to an empty logo rather
-// than failing the whole listing.
-func (s *service) projectInfo(ctx context.Context, cache map[string]projectInfo, claGroupID string) (projectInfo, error) {
+// projectInfo resolves the Salesforce project display name and logo the CLA Group belongs to.
+// The name comes from the projects-cla-groups mapping table; the logo lives only in the
+// project-service and is fetched by project SFID (a foundation-level CLA Group resolves to its
+// foundation). A project-service lookup miss degrades to an empty logo rather than failing the
+// whole listing.
+func (s *service) projectInfo(ctx context.Context, claGroupID string) (projectInfo, error) {
 	if claGroupID == "" {
 		return projectInfo{}, nil
-	}
-	if info, ok := cache[claGroupID]; ok {
-		return info, nil
 	}
 
 	mappings, err := s.projectsClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, claGroupID)
@@ -1238,7 +1194,6 @@ func (s *service) projectInfo(ctx context.Context, cache map[string]projectInfo,
 		}
 	}
 
-	cache[claGroupID] = info
 	return info, nil
 }
 
@@ -1254,20 +1209,15 @@ func foundationMapping(mappings []*projects_cla_groups.ProjectClaGroup) *project
 	return nil
 }
 
-func (s *service) company(ctx context.Context, cache map[string]*v1Models.Company, companyID string) (*v1Models.Company, error) {
-	if companyModel, ok := cache[companyID]; ok {
-		return companyModel, nil
-	}
+func (s *service) company(ctx context.Context, companyID string) (*v1Models.Company, error) {
 	companyModel, err := s.companyRepo.GetCompany(ctx, companyID)
 	if err != nil {
 		var companyNotFound *utils.CompanyNotFound
 		if !errors.As(err, &companyNotFound) {
-			cache[companyID] = nil
 			return nil, err
 		}
-		companyModel = nil
+		return nil, nil
 	}
-	cache[companyID] = companyModel
 	return companyModel, nil
 }
 

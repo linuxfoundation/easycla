@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
@@ -93,12 +95,15 @@ type fakeSignatures struct {
 	approvedUserIDs   map[string]bool
 	userIsApprovedErr error
 	cclaErr           error
+	mu                sync.Mutex
 	orgLookupFailed   bool
 	cclaCalls         int
 }
 
 func (f *fakeSignatures) GetCorporateSignature(_ context.Context, claGroupID, companyID string, _, _ *bool) (*v1Models.Signature, error) {
+	f.mu.Lock()
 	f.cclaCalls++
+	f.mu.Unlock()
 	if f.cclaErr != nil {
 		return nil, f.cclaErr
 	}
@@ -115,11 +120,14 @@ func (f *fakeSignatures) EvaluateUserApproval(_ context.Context, user *v1Models.
 type fakeCompanies struct {
 	byID    map[string]*v1Models.Company
 	failIDs map[string]bool
+	mu      sync.Mutex
 	calls   int
 }
 
 func (f *fakeCompanies) GetCompany(_ context.Context, companyID string) (*v1Models.Company, error) {
+	f.mu.Lock()
 	f.calls++
+	f.mu.Unlock()
 	if f.failIDs[companyID] {
 		return nil, fmt.Errorf("dynamodb unavailable for company %s", companyID)
 	}
@@ -135,6 +143,7 @@ type fakeScreener struct {
 	flagged map[string]bool
 	checks  map[string]string
 	calls   map[string]int
+	mu      sync.Mutex
 }
 
 func (f *fakeScreener) Mode() string {
@@ -142,6 +151,8 @@ func (f *fakeScreener) Mode() string {
 }
 
 func (f *fakeScreener) ScreenCompany(_ context.Context, company *v1Models.Company) (bool, string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.calls == nil {
 		f.calls = map[string]int{}
 	}
@@ -173,9 +184,12 @@ type fakeProjectService struct {
 	byID  map[string]*v2ProjectServiceModels.ProjectOutputDetailed
 	err   error
 	calls map[string]int
+	mu    sync.Mutex
 }
 
 func (f *fakeProjectService) GetProject(projectSFID string) (*v2ProjectServiceModels.ProjectOutputDetailed, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.calls != nil {
 		f.calls[projectSFID]++
 	}
@@ -1093,6 +1107,73 @@ func TestGetMyClasLiveSanctionsScreening(t *testing.T) {
 	assert.Equal(t, models.MyClaStatusRevoked, unavailable.Status)
 
 	assert.Equal(t, 1, screener.calls["company-1"], "each distinct employer is screened once per response")
+}
+
+// gateScreener holds every screen open until the test has seen them all arrive, so the listing
+// can only complete if the employers are screened concurrently
+type gateScreener struct {
+	arrived chan string
+	release chan struct{}
+}
+
+func (g *gateScreener) Mode() string {
+	return models.MyClaListSssModeOptional
+}
+
+func (g *gateScreener) ScreenCompany(_ context.Context, company *v1Models.Company) (bool, string) {
+	g.arrived <- company.CompanyID
+	<-g.release
+	return false, models.MyClaFlaggedCheckLive
+}
+
+func TestGetMyClasScreensEmployersConcurrently(t *testing.T) {
+	const employers = 3
+	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
+	companies := &fakeCompanies{byID: map[string]*v1Models.Company{}}
+	cclas := map[string]*v1Models.Signature{}
+	var userSigs []*signatures.ItemSignature
+	for i := 1; i <= employers; i++ {
+		companyID := fmt.Sprintf("company-%d", i)
+		companies.byID[companyID] = &v1Models.Company{CompanyID: companyID, CompanyName: companyID}
+		cclas["cla-group-1|"+companyID] = &v1Models.Signature{SignatureID: "ccla-" + companyID}
+		userSigs = append(userSigs, ecla(fmt.Sprintf("sig-%d", i), companyID, "2024-01-01T00:00:00Z", true))
+	}
+	repo := &fakeRepo{
+		byUserID:     map[string][]*signatures.ItemSignature{"user-a": userSigs},
+		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+	}
+	signaturesService := &fakeSignatures{cclas: cclas, approvedUserIDs: map[string]bool{"user-a": true}}
+	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
+	screener := &gateScreener{arrived: make(chan string, employers), release: make(chan struct{})}
+	svc.sanctions = screener
+
+	type outcome struct {
+		list *models.MyClaList
+		err  error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		list, listErr := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+		done <- outcome{list: list, err: listErr}
+	}()
+
+	for i := 0; i < employers; i++ {
+		select {
+		case <-screener.arrived:
+		case <-time.After(5 * time.Second):
+			close(screener.release)
+			t.Fatalf("only %d of %d employers were screened concurrently", i, employers)
+		}
+	}
+	close(screener.release)
+
+	select {
+	case result := <-done:
+		require.NoError(t, result.err)
+		require.Len(t, result.list.Clas, employers)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the listing did not complete once every screen was released")
+	}
 }
 
 func TestGetMyClaPdfURL(t *testing.T) {

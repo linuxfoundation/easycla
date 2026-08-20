@@ -642,7 +642,7 @@ ever still wanted, the `resolveUsers` service function is the ready-made core of
 
 ## Performance notes
 
-Per request, with all caches request-scoped:
+Per request, with every distinct key resolved exactly once:
 
 - one GSI query for the caller's own EasyCLA records (enforcement) + zero, one or two
   platform user-service HTTP calls (profile + paginated identities — loaded lazily,
@@ -660,6 +660,14 @@ Per request, with all caches request-scoped:
 - when sanctions screening is enabled, one organization-service lookup (for the domain)
   plus one SSS call per **distinct employer** — not per row, and none at all for
   administrator-blocked employers or when screening is off.
+
+Those calls are issued **concurrently**, at most 8 in flight per stage: the matched user
+records' signatures load together, then the CLA-group/project, the employer/sanctions and
+the CCLA/approval-list chains run in parallel, and the rows are assembled from the gathered
+results. Latency is ~4 dependent stages deep rather than proportional to the row count, so a
+slow SSS screen overlaps the rest of the work instead of adding to it. One consequence: a
+revoked or unreadable employer may still incur its CCLA and approval-list reads, whose
+results are then discarded.
 
 No table scans except the explicitly opt-in `secondaryEmail` match (a single scan
 covering all provided values — callers should still treat it as a slow path). Each
