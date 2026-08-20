@@ -66,8 +66,8 @@ properties:
       invalidated - the stored approval flag is false, which attributes nothing (an Approved List
       edit, an invalidated ICLA and CLA Group deletion all produce it); needs_attention - a
       completed approval-list check proved the user is no longer covered; unknown - ECLA coverage
-      could not be evaluated; valid otherwise. ICLA is only valid or invalidated. This enum is
-      open to extension, so consumers MUST tolerate unrecognised values rather than failing closed
+      could not be evaluated; valid otherwise. ICLA is only valid or invalidated. New values may
+      be added in future revisions
   statusReason:
     type: string
     enum: [not_on_approval_list, unknown]
@@ -97,10 +97,12 @@ properties:
     description: The account the agreement was signed as - the GitHub/GitLab username (or numeric ID when no username was recorded) or the email for gerrit/LF SSO, omitted when the signature record carries no identity
   claManager:
     type: boolean
-    description: True when the resolved user is a CLA manager of the employer's CCLA for this CLA Group, ECLA only - omitted otherwise
+    x-omitempty: false
+    description: True when the resolved user is a CLA manager of the employer's CCLA for this CLA Group - always present, always false on ICLA rows
   flagged:
     type: boolean
-    description: True when the employer is currently flagged by sanctions screening, ECLA only - omitted otherwise
+    x-omitempty: false
+    description: True when the employer is currently flagged by sanctions screening - always present, always false on ICLA rows
   flaggedAt:
     type: string
     description: The date/time the employer flag was observed - currently the response time, as no sanction timestamp is stored yet, present only when flagged is true

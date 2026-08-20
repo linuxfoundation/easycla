@@ -30,6 +30,7 @@ properties:
     description: True when the resolved user is one of the CLA managers
   managers:
     type: array
+    x-omitempty: false
     description: The CLA managers resolved from the CCLA signature ACL - empty when no manager is currently reachable
     items:
       $ref: '#/definitions/my-cla-manager'

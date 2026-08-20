@@ -146,3 +146,24 @@ func TestCLAGroupUpdatedEventData_GetEventDetailsString(t *testing.T) {
 		})
 	}
 }
+
+func TestContactCLAManagerRequestCreatedEventData(t *testing.T) {
+	eventData := &ContactCLAManagerRequestCreatedEventData{
+		RequestID:   "request-1",
+		RequestType: "removal",
+		SignatureID: "sig-1",
+		Recipients:  []string{"manager-one"},
+	}
+	args := &LogEventArgs{UserName: testUser, CompanyName: "Good Corp", ProjectName: "My Project"}
+
+	details, _ := eventData.GetEventDetailsString(args)
+	assert.NotContains(t, details, "with the message")
+	summary, _ := eventData.GetEventSummaryString(args)
+	assert.NotContains(t, summary, "with a message")
+
+	eventData.Message = "please remove me"
+	details, _ = eventData.GetEventDetailsString(args)
+	assert.Contains(t, details, "with the message: please remove me", "the receipt carries the contributor message")
+	summary, _ = eventData.GetEventSummaryString(args)
+	assert.Contains(t, summary, "with a message")
+}

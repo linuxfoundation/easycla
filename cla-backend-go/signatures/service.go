@@ -1624,7 +1624,8 @@ func (s service) EvaluateUserApproval(ctx context.Context, user *models.User, cc
 
 	if user.LfEmail != "" {
 		log.WithFields(f).Debugf("adding lf email: %s to emails", user.LfEmail)
-		emails = append(emails, string(user.LfEmail))
+		// copy first - the same user record may be evaluated concurrently
+		emails = append(append(make([]string, 0, len(emails)+1), emails...), string(user.LfEmail))
 		// remove duplicates
 		log.WithFields(f).Debug("removing duplicates")
 		emails = utils.RemoveDuplicates(emails)

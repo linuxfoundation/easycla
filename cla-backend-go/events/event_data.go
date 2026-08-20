@@ -232,6 +232,7 @@ type ContactCLAManagerRequestCreatedEventData struct {
 	RequestID   string
 	RequestType string
 	SignatureID string
+	Message     string
 	Recipients  []string
 }
 
@@ -1297,6 +1298,9 @@ func (ed *ContactCLAManagerRequestCreatedEventData) GetEventDetailsString(args *
 		ed.RequestType, args.ProjectName, args.CompanyName, ed.SignatureID, ed.RequestID, strings.Join(ed.Recipients, ","))
 	if args.UserName != "" {
 		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	if ed.Message != "" {
+		data = data + fmt.Sprintf(" with the message: %s", ed.Message)
 	}
 	data = data + "."
 	return data, true
@@ -2402,6 +2406,9 @@ func (ed *ContactCLAManagerRequestCreatedEventData) GetEventSummaryString(args *
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if ed.Message != "" {
+		data = data + " with a message"
 	}
 	data = data + "."
 	return data, true

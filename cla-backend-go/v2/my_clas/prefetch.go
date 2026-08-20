@@ -7,6 +7,7 @@ import (
 	"context"
 
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
@@ -199,6 +200,7 @@ func (s *service) loadEmployers(ctx context.Context, data *claData, companyIDs [
 			companyModel, err := s.company(groupCtx, companyID)
 			if err != nil {
 				log.WithFields(f).WithError(err).Warnf("unable to lookup employer %s - degrading its rows", companyID)
+				states[i] = sanctionState{check: models.MyClaFlaggedCheckUnavailable}
 				return nil
 			}
 			companyModels[i] = companyModel

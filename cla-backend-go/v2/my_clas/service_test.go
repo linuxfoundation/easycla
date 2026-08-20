@@ -1013,6 +1013,9 @@ func TestGetMyClasDegradesFailedLookups(t *testing.T) {
 		assert.Equal(t, models.MyClaStatusUnknown, byID["sig-2"].Status)
 		assert.Equal(t, models.MyClaStatusUnknown, byID["sig-3"].Status)
 		assert.Empty(t, byID["sig-2"].CompanyName)
+		assert.False(t, byID["sig-2"].Flagged)
+		assert.Equal(t, models.MyClaFlaggedCheckUnavailable, byID["sig-2"].FlaggedCheck, "an unreadable employer cannot be screened, so it is never an absent answer")
+		assert.Equal(t, models.MyClaFlaggedCheckStored, byID["sig-1"].FlaggedCheck)
 		assert.Equal(t, 2, companies.calls, "a failed employer lookup is cached, not retried per row")
 	})
 
@@ -1126,6 +1129,12 @@ func (c *countingScreener) Mode() string {
 	return models.MyClaListSssModeOptional
 }
 
+func (c *countingScreener) peakInFlight() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.maxSeen
+}
+
 func (c *countingScreener) release() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -1202,14 +1211,14 @@ func TestGetMyClasScreensDistinctEmployersInParallel(t *testing.T) {
 		require.Len(t, result.list.Clas, employers*perEmployer)
 	case <-time.After(10 * time.Second):
 		screener.release()
-		t.Fatalf("the listing stalled with only %d of %d employers screened concurrently", screener.maxSeen, wantInFlight)
+		t.Fatalf("the listing stalled with only %d of %d employers screened concurrently", screener.peakInFlight(), wantInFlight)
 	}
 
 	assert.Len(t, screener.calls, employers, "every distinct employer is screened")
 	for companyID, calls := range screener.calls {
 		assert.Equal(t, 1, calls, "employer %s is screened exactly once for all %d of its rows", companyID, perEmployer)
 	}
-	assert.Equal(t, wantInFlight, screener.maxSeen, "the screens run fetchConcurrency at a time")
+	assert.Equal(t, wantInFlight, screener.peakInFlight(), "the screens run fetchConcurrency at a time")
 }
 
 func TestGetMyClaPdfURL(t *testing.T) {

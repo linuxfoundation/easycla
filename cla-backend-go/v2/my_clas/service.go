@@ -433,6 +433,7 @@ func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller,
 	}
 
 	requestType := utils.StringValue(input.RequestType)
+	message := strings.TrimSpace(input.Message)
 	contributorName := userModel.Username
 	if contributorName == "" {
 		contributorName = identity.LfUsername
@@ -452,7 +453,7 @@ func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller,
 			CompanyName:         details.companyName,
 			ProjectName:         details.projectName,
 			CLAGroupName:        details.claGroupName,
-			OptionalMessage:     strings.TrimSpace(input.Message),
+			OptionalMessage:     message,
 		})
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn("unable to render the contact CLA manager email")
@@ -492,6 +493,7 @@ func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller,
 				RequestID:   requestID,
 				RequestType: requestType,
 				SignatureID: sig.SignatureID,
+				Message:     message,
 				Recipients:  selectedUsernames,
 			},
 		})
@@ -1071,10 +1073,11 @@ func (s *service) sanctionsMode() string {
 	return s.sanctions.Mode()
 }
 
-// companySanctions is the sanctions answer for one employer, screened live where possible
+// companySanctions is the sanctions answer for one employer, screened live where possible. An
+// employer that could not be read is unavailable, never an absent answer.
 func (s *service) companySanctions(ctx context.Context, companyModel *v1Models.Company) sanctionState {
 	if companyModel == nil {
-		return sanctionState{}
+		return sanctionState{check: models.MyClaFlaggedCheckUnavailable}
 	}
 	state := sanctionState{flagged: companyModel.IsSanctioned, check: models.MyClaFlaggedCheckStored}
 	if s.sanctions != nil {

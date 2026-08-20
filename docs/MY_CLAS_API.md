@@ -10,7 +10,7 @@ EasyCLA → LFX Self Serve integration program
 specs in [`specs/001-easycla-ss-integration-fable/m1-my-cla/`](https://github.com/linuxfoundation/easycla/tree/001-easycla-ss-integration/specs/001-easycla-ss-integration-fable/m1-my-cla)
 on the `001-easycla-ss-integration` branch).
 
-Three new **read-only** EasyCLA v2 endpoints (served under `/v4`, i.e.
+Five EasyCLA v2 endpoints - four read-only plus the M2 contact-request POST (served under `/v4`, i.e.
 `/cla-service/v4/...` through lfx-gateway) let the authenticated user retrieve **all
 their current and historical ICLAs and ECLAs** — matched across their LF username,
 emails and GitHub/GitLab/Gerrit identities, with per-record validity evaluated against
@@ -38,11 +38,11 @@ implies is documented under "Known limitations":
 | Repository | Branch | Change |
 |---|---|---|
 | `easycla` | `unicron-easycla-my-clas-api` | New swagger paths/models, new `cla-backend-go/v2/my_clas` module, wiring in `cmd/server.go`, unit tests, this document |
-| `acs-cli` | `unicron-easycla-my-clas-api` | ACS resource/policy/role registration for the three new paths (`services/11-cla-service.yaml`) — must be `acs-cli sync`'d per environment before the endpoints are reachable through the gateway |
+| `acs-cli` | `unicron-easycla-my-clas-api` | ACS resource/policy/role registration for the five paths (`services/11-cla-service.yaml`; PR #1137 covers the two M2 additions) — must be `acs-cli sync`'d per environment before the endpoints are reachable through the gateway |
 
 Files changed in `easycla`:
 
-- `cla-backend-go/swagger/cla.v2.yaml` — three new paths, eight new shared query parameters, four new definitions
+- `cla-backend-go/swagger/cla.v2.yaml` — five new paths, eight new shared query parameters, eight new definitions
 - `cla-backend-go/swagger/common/my-cla-list.yaml`, `my-cla.yaml`, `my-cla-pdf.yaml`, `my-identity-list.yaml` — new response models
 - `cla-backend-go/v2/my_clas/handlers.go` — swagger operation wiring (`Configure`)
 - `cla-backend-go/v2/my_clas/service.go` — identity ownership enforcement, resolution, aggregation, validity evaluation
@@ -63,7 +63,7 @@ helper methods added to `v2/user-service/client.go`, and one new method
 
 ## Authentication
 
-All three endpoints use the standard v4 `lf-auth` security (base64 `X-ACL` header injected
+All five endpoints use the standard v4 `lf-auth` security (base64 `X-ACL` header injected
 by lfx-gateway), exactly like every other secured v4 endpoint:
 
 1. The caller (LFX Self Serve server) sends `GET /cla-service/v4/my-clas` with a user
@@ -71,8 +71,9 @@ by lfx-gateway), exactly like every other secured v4 endpoint:
    [`docs/easycla-ss-migration/role-mapping-feasibility.md`](https://github.com/linuxfoundation/easycla/blob/001-easycla-ss-integration/docs/easycla-ss-migration/role-mapping-feasibility.md)).
 2. lfx-gateway's `secured` chain validates the JWT (signature + issuer) and asks the
    ACS warden whether the username may access this path/method. With the `acs-cli`
-   change, all three paths are registered `anyRole: true` and attached to the `user` role
-   (`ViewMyClas` policy — resources `my_clas`, `my_clas_pdf`, `my_clas_identities`) —
+   change, all five paths are registered `anyRole: true` and attached to the `user` role
+   (`ViewMyClas` policy — resources `my_clas`, `my_clas_pdf`, `my_clas_identities`,
+   `my_clas_managers`, `my_clas_manager_requests`) —
    mirroring `user_from_token` / `active_signature` — so **any authenticated LF user** is
    authorized. `/v4/my-clas/identities` is registered as its own resource because the
    `/v4/my-clas` path is matched exactly (the PDF route likewise needs its own
@@ -314,7 +315,7 @@ boolean:
   3. the employer **currently holds an approved + signed CCLA** for the CLA group
      (v1 `signatures.Service.GetCorporateSignature`);
   4. the user **still matches that CCLA's current approval lists** — evaluated by
-     reusing v1 `signatures.Service.UserIsApproved`, the *exact* function PR gating
+     reusing v1 `signatures.Service.EvaluateUserApproval`, the *exact* function PR gating
      uses (issue [#1164](https://github.com/linuxfoundation/lfx-self-serve/issues/1164)
      demands the real gating logic, not an approximation):
      - GitHub username approval list — case-insensitive exact match;
@@ -326,7 +327,7 @@ boolean:
      - GitHub org approval list — live lookup of the user's **public** GitHub org
        memberships (transient GitHub API failures are treated as "no match", never as
        an error — same as gating);
-     - GitLab group approval list — `UserIsApproved` cannot evaluate group membership
+     - GitLab group approval list — `EvaluateUserApproval` cannot evaluate group membership
        live (that needs per-group OAuth tokens held by the MR-gating service), so when
        the CCLA carries GitLab group approvals and nothing else matched, the check
        **defers to the `signature_approved` flag** (which the approval-list
@@ -387,6 +388,7 @@ in `flaggedCheck`:
 | Screening disabled or unconfigured | the persisted `is_sanctioned` flag | `stored` |
 | Live screen answered | the live verdict (it overrides a stale persisted flag either way) | `live` |
 | Live screen could not be completed (no company external ID, org lookup failure, unresolvable domain, SSS error/unexpected status) | the persisted `is_sanctioned` flag — possibly stale | `unavailable` |
+| Employer record itself could not be read | `false` (there is no persisted flag to fall back to) | `unavailable` |
 
 The response-level `sssMode` (`required` / `optional` / `disabled`) tells the consumer
 how much weight `unavailable` carries: in `required` mode an unverified row is a real
@@ -661,7 +663,7 @@ Per request, with every distinct key resolved exactly once:
   plus one SSS call per **distinct employer** — not per row, and none at all for
   administrator-blocked employers or when screening is off.
 
-Those calls are issued **concurrently**, at most 8 in flight per stage: the matched user
+Those calls are issued **concurrently**, at most 8 in flight per stage (three parallel chains, so ≤ ~24 total): the matched user
 records' signatures load together, then the CLA-group/project, the employer/sanctions and
 the CCLA/approval-list chains run in parallel, and the rows are assembled from the gathered
 results. Latency is ~4 dependent stages deep rather than proportional to the row count, so a

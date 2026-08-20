@@ -5,6 +5,7 @@ package my_clas
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -282,6 +283,7 @@ func TestCreateMyClaManagerRequest(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, result.RequestID, eventData.RequestID)
 	assert.Equal(t, "removal", eventData.RequestType)
+	assert.Equal(t, "please remove me", eventData.Message, "the audit event is the receipt, so it carries the message")
 	assert.Equal(t, []string{"manager-one", "manager-two"}, eventData.Recipients)
 }
 
@@ -386,6 +388,52 @@ func TestCreateMyClaManagerRequestManagerWithoutEmail(t *testing.T) {
 	assert.Equal(t, "recorded", result.Status, "a selected manager with no email leaves nothing to send")
 	assert.Equal(t, []string{"acl-no-lfid"}, result.Recipients)
 	assert.Empty(t, *sent)
+}
+
+func decodeJSON(t *testing.T, payload interface{}) map[string]interface{} {
+	t.Helper()
+	raw, err := json.Marshal(payload)
+	require.NoError(t, err)
+	decoded := map[string]interface{}{}
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+	return decoded
+}
+
+// TestMyClasJSONContract pins the false and empty values the console keys on - they must appear
+// in the payload rather than being dropped by omitempty
+func TestMyClasJSONContract(t *testing.T) {
+	repo, _, companies := managersFixture()
+	svc, _, _ := newRequestTestService(repo, &fakeSignatures{}, companies)
+	caller := &Caller{Username: "someone"}
+
+	list, err := svc.GetMyClas(context.Background(), caller, &Identity{})
+	require.NoError(t, err)
+	byID := map[string]models.MyCla{}
+	for _, row := range list.Clas {
+		byID[row.SignatureID] = row
+	}
+	for _, signatureID := range []string{"sig-ecla", "sig-icla"} {
+		row := decodeJSON(t, byID[signatureID])
+		for _, field := range []string{"flagged", "claManager"} {
+			require.Contains(t, row, field, "%s must always carry %s", signatureID, field)
+			assert.Equal(t, false, row[field])
+		}
+	}
+
+	managers, err := svc.GetMyClaManagers(context.Background(), caller, &Identity{}, "sig-ecla")
+	require.NoError(t, err)
+	decoded := decodeJSON(t, managers)
+	require.Contains(t, decoded, "managers")
+	assert.NotNil(t, decoded["managers"], "an empty manager list serializes as [], never null")
+	assert.Empty(t, decoded["managers"])
+
+	receipt, err := svc.CreateMyClaManagerRequest(context.Background(), caller, &Identity{}, "sig-ecla",
+		requestInput("removal", nil, ""))
+	require.NoError(t, err)
+	decoded = decodeJSON(t, receipt)
+	require.Contains(t, decoded, "recipients")
+	assert.NotNil(t, decoded["recipients"], "a recorded receipt serializes recipients as []")
+	assert.Empty(t, decoded["recipients"])
 }
 
 func TestSignedIdentityFallbacks(t *testing.T) {

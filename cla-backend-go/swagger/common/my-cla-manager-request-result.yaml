@@ -19,9 +19,10 @@ properties:
   status:
     type: string
     enum: [sent, recorded]
-    description: sent - the notification email was dispatched to the selected CLA managers, recorded - the request was recorded as an audit event but no email was sent because no CLA manager is currently reachable
+    description: sent - the notification email was dispatched to the selected CLA managers, recorded - the request was recorded as an audit event but no email was sent, because the CCLA lists no CLA manager or none of the selected managers has a resolvable email
   recipients:
     type: array
-    description: The LF usernames the notification was sent to
+    x-omitempty: false
+    description: The LF usernames of the selected CLA managers
     items:
       type: string
