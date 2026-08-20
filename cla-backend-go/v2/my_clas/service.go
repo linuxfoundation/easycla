@@ -1104,6 +1104,9 @@ func (s *service) persistLiveSanction(ctx context.Context, companyModel *v1Model
 	}
 	if err := s.companyRepo.UpdateCompanySanctionStatus(ctx, companyModel.CompanyID, true, sanctionOriginSSS); err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to persist the live sanction for company %s - reporting the observation time instead", companyModel.CompanyID)
+		// A retained date belongs to the previous, cleared sanction - drop it rather than
+		// report it as this flag's date.
+		state.date = ""
 		return
 	}
 	log.WithFields(f).Warnf("live screen flagged company %s, persisted the sanction with origin=%s", companyModel.CompanyID, sanctionOriginSSS)

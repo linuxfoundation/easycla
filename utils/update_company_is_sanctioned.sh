@@ -16,12 +16,13 @@ then
   echo "$0: you need to value: true|false"
   exit 2
 fi
-# Setting the flag stamps sanctioned_date, as the backends do; clearing it keeps the stored date.
-upd_expr="SET is_sanctioned = :val"
+# Mirrors the backends' admin path: stamp sanctioned_date on set, keep it on clear, and drop
+# sanction_origin so the manual state is sticky and SSS never auto-clears it.
+upd_expr="SET is_sanctioned = :val REMOVE sanction_origin"
 values="{\":val\":{\"BOOL\":${2}}}"
 if [ "$2" = "true" ]
 then
-  upd_expr="SET is_sanctioned = :val, sanctioned_date = :now"
+  upd_expr="SET is_sanctioned = :val, sanctioned_date = :now REMOVE sanction_origin"
   values="{\":val\":{\"BOOL\":true},\":now\":{\"S\":\"$(date -u '+%Y-%m-%dT%H:%M:%S.%6N+0000')\"}}"
 fi
 if [ ! -z "$DEBUG" ]

@@ -1159,8 +1159,8 @@ func TestGetMyClasPersistsFirstLiveSanction(t *testing.T) {
 			wantFlaggedAt: "2024-01-15T10:11:12Z",
 		},
 		{
-			name:       "a failed write still returns the listing",
-			company:    &v1Models.Company{CompanyID: "company-1", CompanyName: "Unwritable Corp"},
+			name:       "a failed write reports the observation, not the cleared episode's date",
+			company:    &v1Models.Company{CompanyID: "company-1", CompanyName: "Unwritable Corp", SanctionedDate: storedDate},
 			writeErr:   errors.New("dynamodb unavailable"),
 			wantWrites: 0,
 		},

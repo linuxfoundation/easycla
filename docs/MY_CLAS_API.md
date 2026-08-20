@@ -400,8 +400,11 @@ mode — unlike the signing flow, which may fail closed. The screener itself onl
 question (the lookup/domain/status logic is duplicated from `v2/sign`'s
 `checkCompanyCompliance` rather than shared), but a *first* live detection is persisted —
 `is_sanctioned` plus `sanctioned_date` with origin `sss` — so `flaggedAt` stops moving between
-listings. An employer already carrying the date is never restamped, a failed write only costs
-that employer its stored date, and the listing never clears a flag.
+listings. An employer *currently* sanctioned and already carrying the date is never restamped
+by the listing; one that was cleared but retained its date is restamped on the next live
+detection, and the signing and legacy SSS flows restamp on every flagged detection by design.
+A failed write costs that employer only its stored date (the row then reports the observation
+time), and the listing never clears a flag.
 
 ### Response — `200 my-cla-list`
 
@@ -684,8 +687,9 @@ the latency envelope is to be confirmed on dev.
    `ssm delete-parameter` plus the same restart. A read failure other than a missing parameter
    is logged as a warning and leaves the path disabled — non-admin callers keep having every
    identity verified per request — and never aborts the other lambdas that load this config.
-5. Read-only rollback: revert the ACS sync (or never flip the SS feature flag); the endpoints
-   write nothing.
+5. Read-only rollback: revert the ACS sync (or never flip the SS feature flag). The only write
+   these endpoints make is the first-detection sanction stamp on the company row — ordinary
+   company-table data that is safe to leave in place and never needs reverting.
 
 ## Verification performed
 
