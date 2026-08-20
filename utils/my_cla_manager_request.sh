@@ -23,6 +23,11 @@ then
   echo "$0: SIGNATURE_ID (or 1st arg) is required"
   exit 3
 fi
+if ! command -v jq >/dev/null 2>&1
+then
+  echo "$0: jq is required to build the request body"
+  exit 4
+fi
 
 if [ -n "$PRINCIPAL" ] && [ -z "$X_ACL" ]
 then
@@ -71,7 +76,7 @@ add_param() {
   local IFS=,
   for v in $values
   do
-    [ -n "$v" ] && query="${query}${query:+&}${name}=${v}"
+    [ -n "$v" ] && query="${query}${query:+&}${name}=$(jq -rn --arg v "$v" '$v|@uri')"
   done
 }
 add_param lfUsername "$LF_USERNAME"
@@ -88,19 +93,14 @@ URL="${API_URL}/v4/my-clas/${SIGNATURE_ID}/cla-manager-requests${query:+?}${quer
 recipients_json="[]"
 if [ -n "$RECIPIENTS" ]
 then
-  recipients_json="[$(echo "$RECIPIENTS" | sed 's/[^,]*/"&"/g')]"
+  recipients_json="$(printf '%s' "$RECIPIENTS" | jq -Rc 'split(",")|map(select(length>0))')"
 fi
-payload="$(printf '{"requestType":"%s","recipients":%s' "$REQUEST_TYPE" "$recipients_json")"
 if [ -n "$MESSAGE" ]
 then
-  if command -v jq >/dev/null 2>&1
-  then
-    payload="${payload},\"message\":$(printf '%s' "$MESSAGE" | jq -Rs .)"
-  else
-    payload="${payload},\"message\":\"${MESSAGE}\""
-  fi
+  payload="$(jq -nc --arg requestType "$REQUEST_TYPE" --argjson recipients "$recipients_json" --arg message "$MESSAGE" '{requestType:$requestType,recipients:$recipients,message:$message}')"
+else
+  payload="$(jq -nc --arg requestType "$REQUEST_TYPE" --argjson recipients "$recipients_json" '{requestType:$requestType,recipients:$recipients}')"
 fi
-payload="${payload}}"
 
 if [ -n "$DEBUG" ]
 then
