@@ -2834,6 +2834,103 @@ paths:
       tags:
         - my_clas
 
+  /my-clas/{signatureID}/cla-managers:
+    get:
+      summary: Get the CLA managers for an ECLA
+      description: Returns the CLA managers of the company CCLA covering the given ECLA signature, so the contributor can pick whom to contact for a removal or approval request - unknown, not-owned and ICLA signature IDs return 404. The same identity-ownership enforcement and trusted-caller bearer token verification as GET /my-clas applies
+      operationId: getMyClaManagers
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - name: signatureID
+          description: The signature ID (UUID string)
+          in: path
+          type: string
+          required: true
+          pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{12}$' # this is any UUID, not only v4
+        - $ref: "#/parameters/myClasLfUsername"
+        - $ref: "#/parameters/myClasEmail"
+        - $ref: "#/parameters/myClasSecondaryEmail"
+        - $ref: "#/parameters/myClasGithubId"
+        - $ref: "#/parameters/myClasGithubUsername"
+        - $ref: "#/parameters/myClasGitlabId"
+        - $ref: "#/parameters/myClasGitlabUsername"
+        - $ref: "#/parameters/myClasGerritUsername"
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/my-cla-manager-list'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - my_clas
+
+  /my-clas/{signatureID}/cla-manager-requests:
+    post:
+      summary: Request removal or approval from the CLA managers of an ECLA
+      description: Records a contributor request against their own ECLA and emails it to the selected CLA managers of the covering company CCLA - removal (take me off the CCLA coverage) or approval (add me back to the approval list). Recipients must be a non-empty subset of the managers returned by GET /my-clas/{signatureID}/cla-managers; only when no manager resolves may recipients be empty, the request is then recorded without sending email. No signature state is changed. Unknown, not-owned and ICLA signature IDs return 404. The same identity-ownership enforcement and trusted-caller bearer token verification as GET /my-clas applies
+      operationId: createMyClaManagerRequest
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - name: signatureID
+          description: The signature ID (UUID string)
+          in: path
+          type: string
+          required: true
+          pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{12}$' # this is any UUID, not only v4
+        - $ref: "#/parameters/myClasLfUsername"
+        - $ref: "#/parameters/myClasEmail"
+        - $ref: "#/parameters/myClasSecondaryEmail"
+        - $ref: "#/parameters/myClasGithubId"
+        - $ref: "#/parameters/myClasGithubUsername"
+        - $ref: "#/parameters/myClasGitlabId"
+        - $ref: "#/parameters/myClasGitlabUsername"
+        - $ref: "#/parameters/myClasGerritUsername"
+        - name: body
+          in: body
+          required: true
+          schema:
+            $ref: '#/definitions/my-cla-manager-request'
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/my-cla-manager-request-result'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - my_clas
+
   /my-clas/identities:
     get:
       summary: Get My Identities
@@ -5179,6 +5276,18 @@ definitions:
 
   my-cla-pdf:
     $ref: './common/my-cla-pdf.yaml'
+
+  my-cla-manager:
+    $ref: './common/my-cla-manager.yaml'
+
+  my-cla-manager-list:
+    $ref: './common/my-cla-manager-list.yaml'
+
+  my-cla-manager-request:
+    $ref: './common/my-cla-manager-request.yaml'
+
+  my-cla-manager-request-result:
+    $ref: './common/my-cla-manager-request-result.yaml'
 
   my-identity-list:
     $ref: './common/my-identity-list.yaml'

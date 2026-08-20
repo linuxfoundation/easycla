@@ -1,0 +1,27 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: My CLA Manager Request Result
+description: The persisted receipt of a contact-CLA-manager request
+properties:
+  requestID:
+    type: string
+    description: The persisted request record ID (UUID)
+  signatureID:
+    type: string
+    description: The ECLA signature ID (UUID) the request refers to
+  requestType:
+    type: string
+    enum: [removal, approval]
+    description: The request type
+  status:
+    type: string
+    enum: [sent, recorded]
+    description: sent - the notification email was dispatched to the selected CLA managers, recorded - the request was persisted but no email was sent because no CLA manager is currently reachable
+  recipients:
+    type: array
+    description: The LF usernames the notification was sent to
+    items:
+      type: string

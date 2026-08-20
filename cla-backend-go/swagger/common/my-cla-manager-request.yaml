@@ -1,0 +1,23 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: My CLA Manager Request
+description: A contributor request to the CLA managers of the CCLA covering their ECLA - removal or approval - delivered by email, no signature state is changed
+required:
+  - requestType
+properties:
+  requestType:
+    type: string
+    enum: [removal, approval]
+    description: removal - ask to be removed from the CCLA coverage, approval - ask to be (re-)added to the approval list
+  recipients:
+    type: array
+    description: The LF usernames of the CLA managers to notify - must be a non-empty subset of the resolved managers; only when zero managers resolve may it be empty, the request is then recorded without sending email
+    items:
+      type: string
+  message:
+    type: string
+    maxLength: 4096
+    description: An optional message from the contributor included in the notification email

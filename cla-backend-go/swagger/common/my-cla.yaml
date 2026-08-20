@@ -68,3 +68,19 @@ properties:
     type: boolean
     x-omitempty: false
     description: True when the record is a signed ICLA eligible for PDF retrieval - object availability is verified by the PDF endpoint on request
+  signedVia:
+    type: string
+    enum: [github, gitlab, gerrit]
+    description: The platform the agreement was signed via - gerrit also covers LF SSO signings identified by email
+  signedAs:
+    type: string
+    description: The account the agreement was signed as - the GitHub/GitLab username (or numeric ID when no username was recorded) or the email for gerrit/LF SSO, omitted when the signature record carries no identity
+  claManager:
+    type: boolean
+    description: True when the resolved user is a CLA manager of the employer's CCLA for this CLA Group, ECLA only - omitted otherwise
+  flagged:
+    type: boolean
+    description: True when the employer is currently flagged by sanctions screening, ECLA only - omitted otherwise
+  flaggedAt:
+    type: string
+    description: The date/time the employer flag was observed - currently the response time, as no sanction timestamp is stored yet, present only when flagged is true

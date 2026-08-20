@@ -5,6 +5,7 @@ package events
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
@@ -224,6 +225,14 @@ type GitLabOrganizationUpdatedEventData struct {
 // CCLAApprovalListRequestCreatedEventData data model
 type CCLAApprovalListRequestCreatedEventData struct {
 	RequestID string
+}
+
+// ContactCLAManagerRequestCreatedEventData data model
+type ContactCLAManagerRequestCreatedEventData struct {
+	RequestID   string
+	RequestType string
+	SignatureID string
+	Recipients  []string
 }
 
 // CCLAApprovalListRequestApprovedEventData data model
@@ -1275,6 +1284,17 @@ func (ed *CLAApprovalListRemoveGitLabGroupData) GetEventDetailsString(args *LogE
 func (ed *CCLAApprovalListRequestCreatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("The CCLA Approval Request was created for the Project: %s, Company: %s with Request ID: %s",
 		args.ProjectName, args.CompanyName, ed.RequestID)
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventDetailsString returns the details string for this event
+func (ed *ContactCLAManagerRequestCreatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("A CLA manager %s request was created for the Project: %s, Company: %s, Signature: %s with Request ID: %s addressed to: %s",
+		ed.RequestType, args.ProjectName, args.CompanyName, ed.SignatureID, ed.RequestID, strings.Join(ed.Recipients, ","))
 	if args.UserName != "" {
 		data = data + fmt.Sprintf(" by the user %s", args.UserName)
 	}
@@ -2366,6 +2386,22 @@ func (ed *CLAApprovalListRemoveGitLabGroupData) GetEventSummaryString(args *LogE
 	}
 	if args.UserName != "" {
 		data = data + fmt.Sprintf(" by the CLA Manager %s", args.UserName)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventSummaryString returns the summary string for this event
+func (ed *ContactCLAManagerRequestCreatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The user %s asked the CLA managers for %s", args.UserName, ed.RequestType)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
 	}
 	data = data + "."
 	return data, true

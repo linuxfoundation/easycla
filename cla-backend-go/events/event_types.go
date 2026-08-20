@@ -59,6 +59,8 @@ const (
 	CompanyACLRequestApproved = "company_acl.request_approved"
 	CompanyACLRequestDenied   = "company_acl.request_denied"
 
+	ContactCLAManagerRequestCreated = "contact_cla_manager_request.created"
+
 	CCLAApprovalListRequestCreated  = "ccla_approval_list_request.created"
 	CCLAApprovalListRequestApproved = "ccla_approval_list_request.approved"
 	CCLAApprovalListRequestRejected = "ccla_approval_list_request.rejected"

@@ -21,9 +21,36 @@ import (
 )
 
 type fakeService struct {
-	callers []*Caller
-	err     error
-	nilPdf  bool
+	callers           []*Caller
+	err               error
+	nilPdf            bool
+	nilManagers       bool
+	invalidRecipients bool
+}
+
+func (f *fakeService) GetMyClaManagers(_ context.Context, caller *Caller, _ *Identity, _ string) (*models.MyClaManagerList, error) {
+	f.callers = append(f.callers, caller)
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.nilManagers {
+		return nil, nil
+	}
+	return &models.MyClaManagerList{}, nil
+}
+
+func (f *fakeService) CreateMyClaManagerRequest(_ context.Context, caller *Caller, _ *Identity, _ string, _ *models.MyClaManagerRequest) (*models.MyClaManagerRequestResult, error) {
+	f.callers = append(f.callers, caller)
+	if f.invalidRecipients {
+		return nil, ErrInvalidRecipients
+	}
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.nilManagers {
+		return nil, nil
+	}
+	return &models.MyClaManagerRequestResult{}, nil
 }
 
 func (f *fakeService) GetMyClas(_ context.Context, caller *Caller, _ *Identity) (*models.MyClaList, error) {
@@ -126,9 +153,41 @@ func TestHandlersDenyUnverifiedCallers(t *testing.T) {
 		assert.Equal(t, http.StatusUnauthorized, statusOf(t, api.MyClasGetMyClasHandler.Handle(myClasOps.GetMyClasParams{HTTPRequest: req}, authUser)))
 		assert.Equal(t, http.StatusUnauthorized, statusOf(t, api.MyClasGetMyClaPdfHandler.Handle(myClasOps.GetMyClaPdfParams{HTTPRequest: req, SignatureID: "sig-1"}, authUser)))
 		assert.Equal(t, http.StatusUnauthorized, statusOf(t, api.MyClasGetMyIdentitiesHandler.Handle(myClasOps.GetMyIdentitiesParams{HTTPRequest: req}, authUser)))
+		assert.Equal(t, http.StatusUnauthorized, statusOf(t, api.MyClasGetMyClaManagersHandler.Handle(myClasOps.GetMyClaManagersParams{HTTPRequest: req, SignatureID: "sig-1"}, authUser)))
+		assert.Equal(t, http.StatusUnauthorized, statusOf(t, api.MyClasCreateMyClaManagerRequestHandler.Handle(myClasOps.CreateMyClaManagerRequestParams{HTTPRequest: req, SignatureID: "sig-1"}, authUser)))
 	}
 	assert.Empty(t, service.callers, "an unverified caller must never reach the service")
-	assert.Len(t, verifier.seen, 9, "every request must be verified")
+	assert.Len(t, verifier.seen, 15, "every request must be verified")
+}
+
+func TestClaManagerHandlers(t *testing.T) {
+	api, service := configuredAPI(t, nil)
+	authUser := &auth.User{UserName: "someone"}
+	req := request(t, "")
+	requestType := "removal"
+	body := models.MyClaManagerRequest{RequestType: &requestType, Recipients: []string{"manager-one"}}
+
+	assert.Equal(t, http.StatusOK, statusOf(t, api.MyClasGetMyClaManagersHandler.Handle(myClasOps.GetMyClaManagersParams{HTTPRequest: req, SignatureID: "sig-1"}, authUser)))
+	assert.Equal(t, http.StatusOK, statusOf(t, api.MyClasCreateMyClaManagerRequestHandler.Handle(myClasOps.CreateMyClaManagerRequestParams{HTTPRequest: req, SignatureID: "sig-1", Body: body}, authUser)))
+	require.Len(t, service.callers, 2)
+	assert.Equal(t, &Caller{Username: "someone"}, service.callers[0])
+
+	// an unauthenticated caller with no username is denied
+	assert.Equal(t, http.StatusUnauthorized, statusOf(t, api.MyClasGetMyClaManagersHandler.Handle(myClasOps.GetMyClaManagersParams{HTTPRequest: req, SignatureID: "sig-1"}, &auth.User{})))
+	assert.Equal(t, http.StatusUnauthorized, statusOf(t, api.MyClasCreateMyClaManagerRequestHandler.Handle(myClasOps.CreateMyClaManagerRequestParams{HTTPRequest: req, SignatureID: "sig-1", Body: body}, &auth.User{})))
+
+	service.nilManagers = true
+	assert.Equal(t, http.StatusNotFound, statusOf(t, api.MyClasGetMyClaManagersHandler.Handle(myClasOps.GetMyClaManagersParams{HTTPRequest: req, SignatureID: "sig-1"}, authUser)))
+	assert.Equal(t, http.StatusNotFound, statusOf(t, api.MyClasCreateMyClaManagerRequestHandler.Handle(myClasOps.CreateMyClaManagerRequestParams{HTTPRequest: req, SignatureID: "sig-1", Body: body}, authUser)))
+
+	service.nilManagers = false
+	service.invalidRecipients = true
+	assert.Equal(t, http.StatusBadRequest, statusOf(t, api.MyClasCreateMyClaManagerRequestHandler.Handle(myClasOps.CreateMyClaManagerRequestParams{HTTPRequest: req, SignatureID: "sig-1", Body: body}, authUser)))
+
+	service.invalidRecipients = false
+	service.err = errors.New("boom")
+	assert.Equal(t, http.StatusInternalServerError, statusOf(t, api.MyClasGetMyClaManagersHandler.Handle(myClasOps.GetMyClaManagersParams{HTTPRequest: req, SignatureID: "sig-1"}, authUser)))
+	assert.Equal(t, http.StatusInternalServerError, statusOf(t, api.MyClasCreateMyClaManagerRequestHandler.Handle(myClasOps.CreateMyClaManagerRequestParams{HTTPRequest: req, SignatureID: "sig-1", Body: body}, authUser)))
 }
 
 func TestHandlersTrustAllowListedCallers(t *testing.T) {

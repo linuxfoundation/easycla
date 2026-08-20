@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/linuxfoundation/easycla/cla-backend-go/emails"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
@@ -136,12 +138,23 @@ type ProjectService interface {
 	GetProject(projectSFID string) (*v2ProjectServiceModels.ProjectOutputDetailed, error)
 }
 
+// EventsService is the subset of the v1 events service used to audit contact-CLA-manager requests
+type EventsService interface {
+	LogEventWithContext(ctx context.Context, args *events.LogEventArgs)
+}
+
+// ErrInvalidRecipients is returned when the recipients list is not a non-empty subset of the
+// resolved CLA managers - only when no manager resolves may it be empty
+var ErrInvalidRecipients = errors.New("recipients must be a non-empty subset of the CLA managers returned by the cla-managers endpoint - empty only when no CLA manager resolves")
+
 // Service interface defines the My CLAs service methods
 type Service interface {
 	GetMyClas(ctx context.Context, caller *Caller, requested *Identity) (*models.MyClaList, error)
 	GetMyClaPdfURL(ctx context.Context, caller *Caller, requested *Identity, signatureID string) (*models.MyClaPdf, error)
 	GetMyIdentities(ctx context.Context, currentUsername string) (*models.MyIdentityList, error)
 	AuthorizeIdentity(ctx context.Context, currentUsername string, admin bool, requested *Identity) (*Identity, []string, error)
+	GetMyClaManagers(ctx context.Context, caller *Caller, requested *Identity, signatureID string) (*models.MyClaManagerList, error)
+	CreateMyClaManagerRequest(ctx context.Context, caller *Caller, requested *Identity, signatureID string, input *models.MyClaManagerRequest) (*models.MyClaManagerRequestResult, error)
 }
 
 type service struct {
@@ -151,12 +164,14 @@ type service struct {
 	companyRepo           CompanyRepository
 	projectsClaGroupsRepo ProjectsCLAGroupsRepository
 	projectService        ProjectService
+	eventsService         EventsService
 	presign               func(filename string) (string, error)
 	documentExists        func(filename string) (bool, error)
+	sendEmail             func(subject string, body string, recipients []string) error
 }
 
 // NewService creates a new instance of the My CLAs service
-func NewService(repo Repository, platformUsersService PlatformUsersService, signaturesService SignaturesService, companyRepo CompanyRepository, projectsClaGroupsRepo ProjectsCLAGroupsRepository, projectService ProjectService) Service {
+func NewService(repo Repository, platformUsersService PlatformUsersService, signaturesService SignaturesService, companyRepo CompanyRepository, projectsClaGroupsRepo ProjectsCLAGroupsRepository, projectService ProjectService, eventsService EventsService) Service {
 	return &service{
 		repo:                  repo,
 		platformUsersService:  platformUsersService,
@@ -164,8 +179,10 @@ func NewService(repo Repository, platformUsersService PlatformUsersService, sign
 		companyRepo:           companyRepo,
 		projectsClaGroupsRepo: projectsClaGroupsRepo,
 		projectService:        projectService,
+		eventsService:         eventsService,
 		presign:               utils.GetDownloadLink,
 		documentExists:        utils.DocumentExists,
+		sendEmail:             utils.SendEmail,
 	}
 }
 
@@ -245,6 +262,7 @@ func (s *service) GetMyClas(ctx context.Context, caller *Caller, requested *Iden
 				DocumentMajorVersion: int64(sig.SignatureDocumentMajorVersion),
 				DocumentMinorVersion: int64(sig.SignatureDocumentMinorVersion),
 			}
+			row.SignedVia, row.SignedAs = signedIdentity(sig)
 
 			if sig.SignatureUserCompanyID == "" {
 				row.ClaType = utils.ClaTypeICLA
@@ -266,6 +284,13 @@ func (s *service) GetMyClas(ctx context.Context, caller *Caller, requested *Iden
 					return nil, coveredErr
 				}
 				row.Valid = sig.SignatureApproved && covered
+				if companyModel != nil && companyModel.IsSanctioned {
+					row.Flagged = true
+					_, row.FlaggedAt = utils.CurrentTime()
+				}
+				if ccla := cclas[sig.SignatureProjectID+"|"+sig.SignatureUserCompanyID]; isClaManager(ccla, identity.LfUsername) {
+					row.ClaManager = true
+				}
 			}
 
 			result.Clas = append(result.Clas, row)
@@ -344,6 +369,300 @@ func (s *service) GetMyClaPdfURL(ctx context.Context, caller *Caller, requested 
 	}
 
 	return nil, nil
+}
+
+// GetMyClaManagers returns the CLA managers of the company CCLA covering the given ECLA
+// signature - a nil result means unknown, not-owned, unsigned or ICLA signature ID
+func (s *service) GetMyClaManagers(ctx context.Context, caller *Caller, requested *Identity, signatureID string) (*models.MyClaManagerList, error) {
+	identity, sig, _, err := s.findOwnedEcla(ctx, caller, requested, signatureID)
+	if err != nil || sig == nil {
+		return nil, err
+	}
+
+	details, err := s.eclaManagerDetails(ctx, identity, sig)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.MyClaManagerList{
+		SignatureID:  sig.SignatureID,
+		ClaGroupID:   sig.SignatureProjectID,
+		ClaGroupName: details.claGroupName,
+		ProjectName:  details.projectName,
+		CompanyID:    sig.SignatureUserCompanyID,
+		CompanyName:  details.companyName,
+		ClaManager:   details.callerIsManager,
+		Managers:     details.managers,
+		ResultCount:  int64(len(details.managers)),
+	}, nil
+}
+
+// CreateMyClaManagerRequest records a removal/approval request against the caller's own ECLA
+// and emails it to the selected CLA managers - a nil result means unknown, not-owned, unsigned
+// or ICLA signature ID; ErrInvalidRecipients means the recipients list failed validation
+func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller, requested *Identity, signatureID string, input *models.MyClaManagerRequest) (*models.MyClaManagerRequestResult, error) {
+	f := logrus.Fields{
+		"functionName":    "v2.my_clas.service.CreateMyClaManagerRequest",
+		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
+		"currentUsername": callerUsername(caller),
+		"signatureID":     signatureID,
+	}
+
+	identity, sig, userModel, err := s.findOwnedEcla(ctx, caller, requested, signatureID)
+	if err != nil || sig == nil {
+		return nil, err
+	}
+
+	details, err := s.eclaManagerDetails(ctx, identity, sig)
+	if err != nil {
+		return nil, err
+	}
+
+	byUsername := make(map[string]models.MyClaManager, len(details.managers))
+	for _, manager := range details.managers {
+		byUsername[strings.ToLower(manager.LfUsername)] = manager
+	}
+	recipients := trimAll(input.Recipients)
+	if len(details.managers) > 0 && len(recipients) == 0 {
+		return nil, ErrInvalidRecipients
+	}
+	selectedUsernames := make([]string, 0, len(recipients))
+	recipientEmails := make([]string, 0, len(recipients))
+	for _, recipient := range recipients {
+		manager, ok := byUsername[strings.ToLower(recipient)]
+		if !ok {
+			return nil, ErrInvalidRecipients
+		}
+		selectedUsernames = append(selectedUsernames, manager.LfUsername)
+		if manager.Email != "" {
+			recipientEmails = append(recipientEmails, manager.Email)
+		}
+	}
+
+	requestType := utils.StringValue(input.RequestType)
+	contributorName := userModel.Username
+	if contributorName == "" {
+		contributorName = identity.LfUsername
+	}
+	_, contributorIdentity := signedIdentity(sig)
+	if contributorIdentity == "" {
+		contributorIdentity = identity.LfUsername
+	}
+
+	status := models.MyClaManagerRequestResultStatusRecorded
+	body := ""
+	if len(recipientEmails) > 0 {
+		body, err = emails.RenderContactClaManagerTemplate(emails.ContactClaManagerTemplateParams{
+			RequestAction:       requestAction(requestType),
+			ContributorName:     contributorName,
+			ContributorIdentity: contributorIdentity,
+			CompanyName:         details.companyName,
+			ProjectName:         details.projectName,
+			CLAGroupName:        details.claGroupName,
+			OptionalMessage:     strings.TrimSpace(input.Message),
+		})
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("unable to render the contact CLA manager email")
+			return nil, err
+		}
+		status = models.MyClaManagerRequestResultStatusSent
+	}
+
+	requestID, err := s.repo.AddContactCLAManagerRequest(ctx, &ContactCLAManagerRequest{
+		RequestType:     requestType,
+		RequestStatus:   status,
+		SignatureID:     sig.SignatureID,
+		CLAGroupID:      sig.SignatureProjectID,
+		CLAGroupName:    details.claGroupName,
+		CompanyID:       sig.SignatureUserCompanyID,
+		CompanyName:     details.companyName,
+		ProjectName:     details.projectName,
+		UserID:          userModel.UserID,
+		UserName:        contributorName,
+		Recipients:      selectedUsernames,
+		RecipientEmails: recipientEmails,
+		Message:         strings.TrimSpace(input.Message),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(recipientEmails) > 0 {
+		subject := fmt.Sprintf("EasyCLA: %s request from %s for %s", requestAction(requestType), contributorName, details.companyName)
+		if sendErr := s.sendEmail(subject, body, recipientEmails); sendErr != nil {
+			log.WithFields(f).WithError(sendErr).Warn("unable to send the contact CLA manager email")
+			return nil, sendErr
+		}
+	}
+
+	if s.eventsService != nil {
+		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
+			EventType:    events.ContactCLAManagerRequestCreated,
+			UserID:       userModel.UserID,
+			LfUsername:   identity.LfUsername,
+			UserName:     contributorName,
+			CLAGroupID:   sig.SignatureProjectID,
+			CLAGroupName: details.claGroupName,
+			ProjectID:    sig.SignatureProjectID,
+			ProjectName:  details.projectName,
+			CompanyID:    sig.SignatureUserCompanyID,
+			CompanyName:  details.companyName,
+			EventData: &events.ContactCLAManagerRequestCreatedEventData{
+				RequestID:   requestID,
+				RequestType: requestType,
+				SignatureID: sig.SignatureID,
+				Recipients:  selectedUsernames,
+			},
+		})
+	}
+
+	return &models.MyClaManagerRequestResult{
+		RequestID:   requestID,
+		SignatureID: sig.SignatureID,
+		RequestType: requestType,
+		Status:      status,
+		Recipients:  selectedUsernames,
+	}, nil
+}
+
+// findOwnedEcla locates the signed ECLA with the given signature ID among the EasyCLA user
+// records matching the identity - the same ownership boundary GetMyClaPdfURL enforces; a nil
+// signature means unknown, not-owned, unsigned or ICLA
+func (s *service) findOwnedEcla(ctx context.Context, caller *Caller, requested *Identity, signatureID string) (*Identity, *signatures.ItemSignature, *v1Models.User, error) {
+	identity, _, err := s.effectiveIdentity(ctx, caller, requested)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	userModels, err := s.resolveUsers(ctx, identity)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	for _, userModel := range userModels {
+		userSignatures, sigErr := s.repo.GetUserCLASignatures(ctx, userModel.UserID)
+		if sigErr != nil {
+			return nil, nil, nil, sigErr
+		}
+		for _, sig := range userSignatures {
+			if sig.SignatureID != signatureID {
+				continue
+			}
+			if !sig.SignatureSigned || sig.SignatureUserCompanyID == "" {
+				return identity, nil, nil, nil
+			}
+			return identity, sig, userModel, nil
+		}
+	}
+
+	return identity, nil, nil, nil
+}
+
+type managerDetails struct {
+	claGroupName    string
+	projectName     string
+	companyName     string
+	managers        []models.MyClaManager
+	callerIsManager bool
+}
+
+// eclaManagerDetails resolves the CLA Group/project/company context of an ECLA and the CLA
+// managers from the covering CCLA's ACL - no CCLA yields an empty manager list
+func (s *service) eclaManagerDetails(ctx context.Context, identity *Identity, sig *signatures.ItemSignature) (*managerDetails, error) {
+	claGroupName, err := s.claGroupName(ctx, map[string]string{}, sig.SignatureProjectID)
+	if err != nil {
+		return nil, err
+	}
+	project, err := s.projectInfo(ctx, map[string]projectInfo{}, sig.SignatureProjectID)
+	if err != nil {
+		return nil, err
+	}
+	companyModel, err := s.company(ctx, map[string]*v1Models.Company{}, sig.SignatureUserCompanyID)
+	if err != nil {
+		return nil, err
+	}
+
+	details := &managerDetails{
+		claGroupName: claGroupName,
+		projectName:  project.name,
+		managers:     []models.MyClaManager{},
+	}
+	if companyModel != nil {
+		details.companyName = companyModel.CompanyName
+	}
+
+	approved, signed := true, true
+	ccla, err := s.signaturesService.GetCorporateSignature(ctx, sig.SignatureProjectID, sig.SignatureUserCompanyID, &approved, &signed)
+	if err != nil {
+		return nil, err
+	}
+	if ccla == nil {
+		return details, nil
+	}
+
+	for _, aclUser := range ccla.SignatureACL {
+		lfUsername := aclUser.LfUsername
+		if lfUsername == "" {
+			lfUsername = aclUser.Username
+		}
+		if lfUsername == "" {
+			continue
+		}
+		email := string(aclUser.LfEmail)
+		if email == "" && len(aclUser.Emails) > 0 {
+			email = aclUser.Emails[0]
+		}
+		details.managers = append(details.managers, models.MyClaManager{
+			LfUsername: lfUsername,
+			Name:       aclUser.Username,
+			Email:      email,
+		})
+	}
+	details.callerIsManager = isClaManager(ccla, identity.LfUsername)
+
+	return details, nil
+}
+
+func requestAction(requestType string) string {
+	if requestType == models.MyClaManagerRequestRequestTypeRemoval {
+		return "removal from the corporate CLA coverage"
+	}
+	return "approval under the corporate CLA"
+}
+
+func isClaManager(ccla *v1Models.Signature, lfUsername string) bool {
+	if ccla == nil || lfUsername == "" {
+		return false
+	}
+	for _, aclUser := range ccla.SignatureACL {
+		if strings.EqualFold(aclUser.LfUsername, lfUsername) || strings.EqualFold(aclUser.Username, lfUsername) {
+			return true
+		}
+	}
+	return false
+}
+
+// signedIdentity derives the platform and account an agreement was signed via/as from the
+// identity attributes stamped on the signature record
+func signedIdentity(sig *signatures.ItemSignature) (string, string) {
+	switch {
+	case sig.UserGithubUsername != "" || sig.UserGithubID != "":
+		if sig.UserGithubUsername != "" {
+			return models.MyClaSignedViaGithub, sig.UserGithubUsername
+		}
+		return models.MyClaSignedViaGithub, sig.UserGithubID
+	case sig.UserGitlabUsername != "" || sig.UserGitlabID != "":
+		if sig.UserGitlabUsername != "" {
+			return models.MyClaSignedViaGitlab, sig.UserGitlabUsername
+		}
+		return models.MyClaSignedViaGitlab, sig.UserGitlabID
+	case sig.UserEmail != "" || sig.UserLFUsername != "":
+		if sig.UserEmail != "" {
+			return models.MyClaSignedViaGerrit, sig.UserEmail
+		}
+		return models.MyClaSignedViaGerrit, sig.UserLFUsername
+	}
+	return "", ""
 }
 
 // GetMyIdentities returns the deduplicated "<type>:<value>" identities the authenticated user
