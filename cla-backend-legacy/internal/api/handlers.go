@@ -5175,6 +5175,9 @@ func (h *Handlers) PostCompanyV1(w http.ResponseWriter, r *http.Request) {
 		"date_modified":       &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)},
 		"version":             &types.AttributeValueMemberS{Value: "v1"},
 	}
+	if isSanctioned {
+		item["sanctioned_date"] = &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)}
+	}
 
 	if err := h.companies.PutItem(ctx, item); err != nil {
 		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
@@ -5260,6 +5263,7 @@ func (h *Handlers) PutCompanyV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	now := time.Now().UTC()
 	updateStr := ""
 	if req.CompanyName != nil {
 		item["company_name"] = &types.AttributeValueMemberS{Value: *req.CompanyName}
@@ -5280,10 +5284,12 @@ func (h *Handlers) PutCompanyV1(w http.ResponseWriter, r *http.Request) {
 		// Manual/admin sanction change: drop any SSS-set origin so this becomes an
 		// admin-controlled state (sticky when true; never later auto-cleared by SSS).
 		delete(item, "sanction_origin")
+		if *req.IsSanctioned {
+			item["sanctioned_date"] = &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)}
+		}
 		updateStr += fmt.Sprintf("The company is_sanctioned was updated to %t. ", *req.IsSanctioned)
 	}
 
-	now := time.Now().UTC()
 	item["date_modified"] = &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)}
 
 	if err := h.companies.PutItem(ctx, item); err != nil {

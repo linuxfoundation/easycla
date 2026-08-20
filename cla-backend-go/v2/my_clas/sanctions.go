@@ -40,8 +40,8 @@ type sssScreener struct {
 	getOrganization func(ctx context.Context, orgID string) (*orgModels.Organization, error)
 }
 
-// NewSanctionsScreener returns a read-only screener: unlike the signing flow it never persists what
-// it observes, so the listing stays a pure read
+// NewSanctionsScreener returns a read-only screener: it answers the question and never writes.
+// Persisting a first live detection is the caller's job (see service.persistLiveSanction)
 func NewSanctionsScreener(client *sss.Client, enabled, required bool) SanctionsScreener {
 	screener := &sssScreener{
 		enabled:         enabled,

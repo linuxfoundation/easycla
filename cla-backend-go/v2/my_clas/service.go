@@ -123,6 +123,7 @@ type SignaturesService interface {
 // CompanyRepository is the company repository subset used to resolve employers
 type CompanyRepository interface {
 	GetCompany(ctx context.Context, companyID string) (*v1Models.Company, error)
+	UpdateCompanySanctionStatus(ctx context.Context, companyID string, sanctioned bool, origin string) error
 }
 
 // ProjectsCLAGroupsRepository is the projects-cla-groups subset used to resolve CLA Group names
@@ -269,7 +270,12 @@ func (s *service) GetMyClas(ctx context.Context, caller *Caller, requested *Iden
 			row.Flagged = sanction.flagged
 			row.FlaggedCheck = sanction.check
 			if sanction.flagged {
-				_, row.FlaggedAt = utils.CurrentTime()
+				if sanction.date != "" {
+					row.FlaggedAt = utils.FormatTimeString(sanction.date)
+				} else {
+					// Flagged with no stored date and none could be stamped; report when it was seen.
+					_, row.FlaggedAt = utils.CurrentTime()
+				}
 			}
 			coverage := data.coverage(sig, ref.user, sanction.flagged)
 			row.Valid = sig.SignatureApproved && coverage.covered
@@ -411,6 +417,7 @@ func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller,
 	selectedUsernames := make([]string, 0, len(recipients))
 	recipientEmails := make([]string, 0, len(recipients))
 	selected := make(map[string]bool, len(recipients))
+	emailed := make(map[string]bool, len(recipients))
 	for _, recipient := range recipients {
 		key := strings.ToLower(recipient)
 		manager, ok := byUsername[key]
@@ -422,7 +429,9 @@ func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller,
 		}
 		selected[key] = true
 		selectedUsernames = append(selectedUsernames, manager.LfUsername)
-		if manager.Email != "" {
+		// Managers can share an address; mail it once, but report both as recipients.
+		if emailKey := strings.ToLower(manager.Email); emailKey != "" && !emailed[emailKey] {
+			emailed[emailKey] = true
 			recipientEmails = append(recipientEmails, manager.Email)
 		}
 	}
@@ -1056,6 +1065,7 @@ type eclaCoverage struct {
 type sanctionState struct {
 	flagged bool
 	check   string
+	date    string
 }
 
 func (s *service) sanctionsMode() string {
@@ -1071,11 +1081,36 @@ func (s *service) companySanctions(ctx context.Context, companyModel *v1Models.C
 	if companyModel == nil {
 		return sanctionState{check: models.MyClaFlaggedCheckUnavailable}
 	}
-	state := sanctionState{flagged: companyModel.IsSanctioned, check: models.MyClaFlaggedCheckStored}
+	state := sanctionState{flagged: companyModel.IsSanctioned, check: models.MyClaFlaggedCheckStored, date: companyModel.SanctionedDate}
 	if s.sanctions != nil {
 		state.flagged, state.check = s.sanctions.ScreenCompany(ctx, companyModel)
+		s.persistLiveSanction(ctx, companyModel, &state)
 	}
 	return state
+}
+
+// persistLiveSanction stamps sanctioned_date the first time a live screen flags an employer, so
+// the reported date stops moving with every listing. A record already carrying the date is left
+// alone - restamping it here would drift on each page view - and a failed write only costs this
+// employer its stored date, never the listing.
+func (s *service) persistLiveSanction(ctx context.Context, companyModel *v1Models.Company, state *sanctionState) {
+	if !state.flagged || state.check != models.MyClaFlaggedCheckLive || (companyModel.IsSanctioned && companyModel.SanctionedDate != "") {
+		return
+	}
+	f := logrus.Fields{
+		"functionName":   "v2.my_clas.service.persistLiveSanction",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"companyID":      companyModel.CompanyID,
+	}
+	if err := s.companyRepo.UpdateCompanySanctionStatus(ctx, companyModel.CompanyID, true, sanctionOriginSSS); err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to persist the live sanction for company %s - reporting the observation time instead", companyModel.CompanyID)
+		// A retained date belongs to the previous, cleared sanction - drop it rather than
+		// report it as this flag's date.
+		state.date = ""
+		return
+	}
+	log.WithFields(f).Warnf("live screen flagged company %s, persisted the sanction with origin=%s", companyModel.CompanyID, sanctionOriginSSS)
+	_, state.date = utils.CurrentTime()
 }
 
 // assignMyClaStatus sets the contributor-facing status independently of approved/valid. A

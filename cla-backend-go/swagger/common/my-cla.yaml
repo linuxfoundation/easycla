@@ -104,7 +104,7 @@ properties:
     description: True when the employer is currently flagged by sanctions screening - always present, always false on ICLA rows
   flaggedAt:
     type: string
-    description: When the flag was observed - currently the response time, as no sanction timestamp is stored yet; present only when flagged is true
+    description: The employer's stored sanctioned_date, stamped at the first live detection - the response time only when no date is stored and stamping it failed; present only when flagged is true
   flaggedCheck:
     type: string
     enum: [live, stored, unavailable]
