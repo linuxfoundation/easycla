@@ -375,10 +375,10 @@ when it is not `valid`), evaluated in this precedence:
 | `valid` | ICLA that is signed + approved, or an ECLA whose employer's CCLA still covers the user | — |
 | `needs_attention` | A *completed* approval-list check proved the user is no longer covered | `not_on_approval_list` |
 
-ICLAs are only ever `valid` or `invalidated`. `status` is an **open** enum — consumers
-must tolerate unrecognised values rather than failing closed. `not_on_approval_list` is
-the one reason that a "Request approval" action can act on; anything else is
-informational.
+ICLAs are only ever `valid` or `invalidated`. New `status` values may be added in a future
+spec revision (a generated client then needs a spec refresh, since go-swagger validates the
+enum strictly). `not_on_approval_list` is the one reason that a "Request approval" action
+can act on; anything else is informational.
 
 `status` and `valid` can legitimately disagree, and the pair carries more than either
 alone: the GitLab-group deferral (see validity evaluation) returns `valid: true` with
@@ -386,6 +386,15 @@ alone: the GitLab-group deferral (see validity evaluation) returns `valid: true`
 verified. A consumer that wants #1256's three-value column can safely render
 `unknown && valid` as Valid; the reverse (recovering "unverified" from `valid` alone)
 is not possible.
+
+The full #1256 pill derivation: Valid = `valid` (and `unknown`, per above), Needs attention
+= `needs_attention`, Revoked = `revoked` **∪** `invalidated` — #1256 defines Revoked as
+"`approved = false` / invalidated by the system", which is exactly our `invalidated`, while
+`revoked` is the sanctions case it names; the API keeps the two apart so the *cause* stays
+distinguishable until #1370's durable revocation metadata exists. #1256 also calls a
+needs-attention row "still a valid signature": that means still signed and not revoked, not
+that `valid` is `true` — `valid` answers current attribution, so those rows carry
+`valid: false` (see the filtering note in step 4).
 
 `flagged` is not read from the stored company flag alone. When sanctions screening is
 enabled, the listing screens **each distinct employer once per response** against the
@@ -493,7 +502,7 @@ Field reference (`my-cla` rows):
 | `signedOn` | string | Signing/acknowledgement date (fallback: record creation date) |
 | `signed` / `approved` | bool | Raw signature flags |
 | `valid` | bool | Computed as defined above |
-| `status` | `valid` \| `needs_attention` \| `revoked` \| `invalidated` \| `unknown` | Contributor-facing standing, computed independently of `approved`/`valid` (see step 5). **Open enum** — tolerate unrecognised values |
+| `status` | `valid` \| `needs_attention` \| `revoked` \| `invalidated` \| `unknown` | Contributor-facing standing, computed independently of `approved`/`valid` (see step 5). New values may be added in a future spec revision (generated clients validate the enum strictly) |
 | `statusReason` | `not_on_approval_list` \| `unknown` | Why the standing is not `valid`; omitted for every other status and on every ICLA |
 | `flagged` / `flaggedAt` | bool / string | ECLA only: the employer is currently flagged by sanctions screening, and when that was observed (response time — no sanction timestamp is stored yet) |
 | `flaggedCheck` | `live` \| `stored` \| `unavailable` | ECLA only: how `flagged` was obtained (see step 5). `unavailable` means the value is the persisted flag and may be stale |

@@ -101,6 +101,7 @@ func TestGetMyClasSignedIdentity(t *testing.T) {
 	assert.Equal(t, someoneEmail, byID["sig-gerrit"].SignedAs)
 	assert.Equal(t, "gerrit", byID["sig-sso"].SignedVia, "LF SSO signings surface as gerrit")
 	assert.Equal(t, "someone", byID["sig-sso"].SignedAs)
+	require.Contains(t, byID, "sig-anonymous", "the identity-less record is still returned")
 	assert.Empty(t, byID["sig-anonymous"].SignedVia, "no identity on the record leaves both fields omitted")
 	assert.Empty(t, byID["sig-anonymous"].SignedAs)
 }
