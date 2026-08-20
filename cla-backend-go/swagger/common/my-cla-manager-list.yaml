@@ -8,22 +8,22 @@ description: The CLA managers of the CCLA covering the given ECLA signature
 properties:
   signatureID:
     type: string
-    description: The ECLA signature ID (UUID)
+    description: ECLA signature ID (UUID)
   claGroupID:
     type: string
-    description: The CLA Group ID (UUID)
+    description: CLA Group ID (UUID)
   claGroupName:
     type: string
-    description: The CLA Group name, omitted when it could not be resolved
+    description: CLA Group name, omitted when unresolved
   projectName:
     type: string
-    description: The Salesforce project display name, omitted when it could not be resolved
+    description: Salesforce project display name, omitted when unresolved
   companyID:
     type: string
-    description: The employer company ID (UUID)
+    description: Employer company ID (UUID)
   companyName:
     type: string
-    description: The employer company name, omitted when it could not be resolved
+    description: Employer company name, omitted when unresolved
   claManager:
     type: boolean
     x-omitempty: false
@@ -31,11 +31,11 @@ properties:
   managers:
     type: array
     x-omitempty: false
-    description: The CLA managers resolved from the CCLA signature ACL - empty when no manager is currently reachable
+    description: CLA managers from the CCLA signature ACL - empty when none is currently reachable
     items:
       $ref: '#/definitions/my-cla-manager'
   resultCount:
     type: integer
     format: int64
     x-omitempty: false
-    description: The number of CLA managers returned
+    description: Number of CLA managers returned

@@ -4,97 +4,96 @@
 type: object
 x-nullable: false
 title: My CLA
-description: A single signed ICLA or ECLA (employee acknowledgement) belonging to the resolved user identity
+description: A signed ICLA or ECLA (employee acknowledgement) of the resolved user identity
 properties:
   signatureID:
     type: string
-    description: The signature ID (UUID)
+    description: Signature ID (UUID)
   claType:
     type: string
     enum: [icla, ecla]
-    description: icla - individual CLA with a downloadable signed PDF, ecla - employee acknowledgement covered by the company CCLA, no PDF
+    description: icla - individual CLA, PDF downloadable; ecla - employee acknowledgement under the company CCLA, no PDF
   claGroupID:
     type: string
-    description: The CLA Group ID (UUID) the agreement was signed against
+    description: CLA Group ID (UUID) signed against
   claGroupName:
     type: string
-    description: The CLA Group name, omitted when the CLA Group record could not be resolved
+    description: CLA Group name, omitted when unresolved
   projectName:
     type: string
-    description: The Salesforce project display name the CLA Group belongs to (a foundation-level CLA Group resolves to its foundation), omitted when it could not be resolved
+    description: Salesforce project display name (the foundation, for a foundation-level CLA Group), omitted when unresolved
   projectLogo:
     type: string
-    description: The project (or foundation) logo URL, omitted when the project has no logo or could not be resolved
+    description: Project (or foundation) logo URL, omitted when absent or unresolved
   companyID:
     type: string
-    description: The company ID (UUID) of the employer, ECLA only
+    description: Employer company ID (UUID), ECLA only
   companyName:
     type: string
-    description: The company name of the employer, ECLA only
+    description: Employer company name, ECLA only
   signingEntityName:
     type: string
-    description: The company signing entity name of the employer, ECLA only
+    description: Employer signing entity name, ECLA only
   userID:
     type: string
-    description: The EasyCLA user record ID (UUID) owning this signature
+    description: EasyCLA user record ID (UUID) owning this signature
   signedOn:
     type: string
-    description: The date/time the agreement was signed or acknowledged
+    description: Date/time signed or acknowledged
   signed:
     type: boolean
     x-omitempty: false
-    description: The signature_signed flag - always true, unsigned records are not returned
+    description: signature_signed flag - always true, unsigned records are not returned
   approved:
     type: boolean
     x-omitempty: false
-    description: The signature_approved flag - false when the signature was invalidated
+    description: signature_approved flag - false when the signature was invalidated
   valid:
     type: boolean
     x-omitempty: false
     description: >
-      Computed validity. ICLA: signed and approved. ECLA: signed, approved, the employer is
-      not sanctioned, the employer still holds an approved+signed CCLA for the CLA Group, and
-      the user still matches the current CCLA approval lists (email, email domain,
-      GitHub/GitLab username, GitHub organization)
+      Computed validity. ICLA: signed and approved. ECLA: also requires an unsanctioned employer
+      holding a signed+approved CCLA for the CLA Group and the user still matching the current
+      CCLA approval lists (email, email domain, GitHub/GitLab username, GitHub organization)
   status:
     type: string
     x-omitempty: false
     enum: [valid, needs_attention, revoked, invalidated, unknown]
     description: >
-      Contributor-facing standing, independent of approved and valid. revoked - the employer is
-      flagged by sanctions screening (system-set, no user action, see flagged/flaggedAt);
-      invalidated - the stored approval flag is false, which attributes nothing (an Approved List
-      edit, an invalidated ICLA and CLA Group deletion all produce it); needs_attention - a
-      completed approval-list check proved the user is no longer covered; unknown - ECLA coverage
-      could not be evaluated; valid otherwise. ICLA is only valid or invalidated. New values may
-      be added in future revisions
+      Contributor-facing standing, independent of approved and valid. revoked - employer flagged
+      by sanctions screening (system-set, no user action, see flagged/flaggedAt); invalidated -
+      the stored approval flag is false, which attributes nothing (an Approved List edit, an
+      invalidated ICLA and CLA Group deletion all produce it); needs_attention - a completed
+      approval-list check proved the user is no longer covered; unknown - ECLA coverage was not
+      evaluable; valid otherwise. ICLA is only valid or invalidated. New values may be added in
+      future revisions
   statusReason:
     type: string
     enum: [not_on_approval_list, unknown]
     description: >
-      Why the standing is not valid, omitted for every other status and on every ICLA. Keyed on
-      status rather than on the boolean valid field - the two can disagree.
-      not_on_approval_list is a completed Approved List miss (what a Request approval action
-      gates on), unknown is any other unevaluable ECLA coverage outcome
+      Why the standing is not valid; omitted for other statuses and on every ICLA. Keyed on
+      status, not on valid - the two can disagree. not_on_approval_list - a completed Approved
+      List miss (what a Request approval action gates on); unknown - any other unevaluable ECLA
+      coverage outcome
   documentMajorVersion:
     type: integer
     x-omitempty: false
-    description: The major version of the CLA document that was signed
+    description: Major version of the signed CLA document
   documentMinorVersion:
     type: integer
     x-omitempty: false
-    description: The minor version of the CLA document that was signed
+    description: Minor version of the signed CLA document
   pdfAvailable:
     type: boolean
     x-omitempty: false
-    description: True when the record is a signed ICLA eligible for PDF retrieval - object availability is verified by the PDF endpoint on request
+    description: True for a signed ICLA eligible for PDF retrieval - object availability is verified by the PDF endpoint on request
   signedVia:
     type: string
     enum: [github, gitlab, gerrit]
-    description: The platform the agreement was signed via - gerrit also covers LF SSO signings identified by email
+    description: Platform signed via - gerrit also covers LF SSO signings identified by email
   signedAs:
     type: string
-    description: The account the agreement was signed as - the GitHub/GitLab username (or numeric ID when no username was recorded) or the email for gerrit/LF SSO, omitted when the signature record carries no identity
+    description: Account signed as - GitHub/GitLab username (numeric ID when no username was recorded) or email for gerrit/LF SSO, omitted when the signature carries no identity
   claManager:
     type: boolean
     x-omitempty: false
@@ -105,13 +104,12 @@ properties:
     description: True when the employer is currently flagged by sanctions screening - always present, always false on ICLA rows
   flaggedAt:
     type: string
-    description: The date/time the employer flag was observed - currently the response time, as no sanction timestamp is stored yet, present only when flagged is true
+    description: When the flag was observed - currently the response time, as no sanction timestamp is stored yet; present only when flagged is true
   flaggedCheck:
     type: string
     enum: [live, stored, unavailable]
     description: >
-      How the flagged answer was obtained, ECLA only. live - a sanctions screening call answered
-      for this response; stored - the persisted company flag, because screening is disabled or an
-      administrator set the block; unavailable - the screening call could not be completed, so
-      flagged carries the persisted value and may be stale - treat it as unknown, more so when
-      sssMode is required
+      How flagged was obtained, ECLA only. live - a screening call answered for this response;
+      stored - the persisted company flag, because screening is disabled or an administrator set
+      the block; unavailable - the call did not complete, so flagged is the persisted value and
+      may be stale - treat it as unknown, more so when sssMode is required

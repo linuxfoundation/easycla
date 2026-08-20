@@ -31,8 +31,8 @@ type eclaRef struct {
 	companyID  string
 }
 
-// claData is everything the rows need from DynamoDB, the projects service, the organizations
-// service, the sanctions screen and GitHub - resolved once per distinct key, concurrently
+// claData is everything the rows need from DynamoDB, the projects and organizations services, the
+// sanctions screen and GitHub - resolved once per distinct key, concurrently
 type claData struct {
 	claGroupNames map[string]string
 	projectInfos  map[string]projectInfo
@@ -50,8 +50,8 @@ func approvalKey(claGroupID, companyID, userID string) string {
 	return cclaKey(claGroupID, companyID) + "|" + userID
 }
 
-// userSignatures loads every user record's signatures concurrently, keeping the order of
-// userModels so the resulting listing stays deterministic
+// userSignatures loads every user record's signatures concurrently, keeping userModels order so the
+// listing stays deterministic
 func (s *service) userSignatures(ctx context.Context, userModels []*v1Models.User) ([][]*signatures.ItemSignature, error) {
 	perUser := make([][]*signatures.ItemSignature, len(userModels))
 	group, groupCtx := errgroup.WithContext(ctx)
@@ -69,8 +69,7 @@ func (s *service) userSignatures(ctx context.Context, userModels []*v1Models.Use
 	return perUser, group.Wait()
 }
 
-// claRefs flattens the loaded signatures into the rows to return, dropping the unsigned and the
-// duplicates
+// claRefs flattens the loaded signatures into the rows to return, dropping unsigned and duplicates
 func claRefs(userModels []*v1Models.User, perUser [][]*signatures.ItemSignature) []claRef {
 	seen := make(map[string]bool)
 	refs := make([]claRef, 0)
@@ -86,10 +85,10 @@ func claRefs(userModels []*v1Models.User, perUser [][]*signatures.ItemSignature)
 	return refs
 }
 
-// prefetch resolves every external dependency of the given rows up front, running the three
-// independent chains - CLA Group and project details, employer and its sanctions screen,
-// corporate signature and its approval-list evaluation - concurrently. Only the CLA Group chain
-// can fail the listing: an employer, CCLA or approval-list failure degrades its own rows.
+// prefetch resolves every external dependency of the rows up front, running the three independent
+// chains - CLA Group and project details, employer and its sanctions screen, corporate signature
+// and its approval-list evaluation - concurrently. Only the CLA Group chain can fail the listing:
+// an employer, CCLA or approval-list failure degrades its own rows.
 func (s *service) prefetch(ctx context.Context, refs []claRef) (*claData, error) {
 	data := &claData{
 		claGroupNames: make(map[string]string),
@@ -111,8 +110,8 @@ func (s *service) prefetch(ctx context.Context, refs []claRef) (*claData, error)
 	return data, nil
 }
 
-// distinctRefs collects the keys to resolve: one per CLA Group, one per employer and one per
-// (CLA Group, employer) pair carrying the user records that pair must be evaluated for
+// distinctRefs collects the keys to resolve: one per CLA Group, one per employer and one per (CLA
+// Group, employer) pair, carrying the user records that pair must be evaluated for
 func distinctRefs(refs []claRef) ([]string, []string, []eclaRef) {
 	var claGroupIDs, companyIDs []string
 	var eclaRefs []eclaRef
@@ -149,8 +148,8 @@ func distinctRefs(refs []claRef) ([]string, []string, []eclaRef) {
 	return claGroupIDs, companyIDs, eclaRefs
 }
 
-// loadProjects resolves the CLA Group name and the project name and logo of each distinct CLA
-// Group. These failures affect every row alike, so they fail the listing rather than degrade it.
+// loadProjects resolves each distinct CLA Group's name and its project name and logo. These
+// failures affect every row alike, so they fail the listing rather than degrade it.
 func (s *service) loadProjects(ctx context.Context, data *claData, claGroupIDs []string) error {
 	names := make([]string, len(claGroupIDs))
 	infos := make([]projectInfo, len(claGroupIDs))
@@ -218,9 +217,9 @@ func (s *service) loadEmployers(ctx context.Context, data *claData, companyIDs [
 	return nil
 }
 
-// loadCoverage resolves the corporate signature of each distinct (CLA Group, employer) pair and
-// then evaluates its approval lists for every user record holding an ECLA under it. Both stages
-// run concurrently within themselves; a failure degrades the affected rows only.
+// loadCoverage resolves each distinct (CLA Group, employer) pair's corporate signature and then
+// evaluates its approval lists for every user record holding an ECLA under it. Both stages run
+// concurrently within themselves; a failure degrades the affected rows only.
 func (s *service) loadCoverage(ctx context.Context, data *claData, eclaRefs []eclaRef) error {
 	f := logrus.Fields{
 		"functionName":   "v2.my_clas.prefetch.loadCoverage",
@@ -283,9 +282,9 @@ func (s *service) loadCoverage(ctx context.Context, data *claData, eclaRefs []ec
 	return nil
 }
 
-// coverage is the resolved approval-list outcome of one ECLA row. An unreadable employer, a
-// sanctioned employer, a missing or unreadable corporate signature and a failed approval-list
-// check are all unevaluable, so a false covered never means "no longer approved".
+// coverage is one ECLA row's approval-list outcome. An unreadable or sanctioned employer, a missing
+// or unreadable corporate signature and a failed approval-list check are all unevaluable, so a
+// false covered never means "no longer approved".
 func (d *claData) coverage(sig *signatures.ItemSignature, userModel *v1Models.User, flagged bool) eclaCoverage {
 	if flagged || d.companies[sig.SignatureUserCompanyID] == nil {
 		return eclaCoverage{unevaluable: true}
@@ -299,8 +298,8 @@ func (d *claData) coverage(sig *signatures.ItemSignature, userModel *v1Models.Us
 	return eclaCoverage{unevaluable: true}
 }
 
-// claManager reports the caller as a CLA manager of the employer only on rows whose coverage was
-// evaluated: a revoked or unreadable-employer row carries no action
+// claManager reports the caller as a CLA manager only on rows whose coverage was evaluated: a
+// revoked or unreadable-employer row carries no action
 func (d *claData) claManager(sig *signatures.ItemSignature, lfUsername string, flagged bool) bool {
 	if flagged || d.companies[sig.SignatureUserCompanyID] == nil {
 		return false

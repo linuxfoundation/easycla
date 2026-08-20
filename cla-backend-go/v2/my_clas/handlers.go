@@ -259,8 +259,8 @@ func Configure(api *operations.EasyclaAPI, service Service, callerVerifier Calle
 
 // verifyCaller re-verifies the bearer token because /v4 otherwise trusts its invoke path
 // unconditionally: the gateway-injected X-ACL/X-USERNAME headers are decoded but never
-// signature-checked, so anything able to invoke the lambda directly could forge them.
-// Returns (nil, nil) while no allow-list is configured, when no bearer token is required.
+// signature-checked, so anything able to invoke the lambda directly could forge them. Returns
+// (nil, nil) while no allow-list is configured and no bearer token is required.
 func verifyCaller(callerVerifier CallerVerifier, r *http.Request, f logrus.Fields) (*claAuth.TrustedCaller, error) {
 	if callerVerifier == nil || !callerVerifier.Enabled() {
 		return nil, nil

@@ -21,9 +21,9 @@ import (
 
 const sanctionOriginSSS = "sss"
 
-// SanctionsScreener answers the sanctions question for an employer. It never returns an error:
-// a listing must not fail because screening is down, so an unusable screen degrades to the
-// persisted company flag and reports check=unavailable.
+// SanctionsScreener answers the sanctions question for an employer. It never errors: a listing
+// must not fail because screening is down, so an unusable screen degrades to the persisted company
+// flag and reports check=unavailable.
 type SanctionsScreener interface {
 	Mode() string
 	ScreenCompany(ctx context.Context, company *v1Models.Company) (flagged bool, check string)
@@ -40,8 +40,8 @@ type sssScreener struct {
 	getOrganization func(ctx context.Context, orgID string) (*orgModels.Organization, error)
 }
 
-// NewSanctionsScreener returns a read-only screener: unlike the signing flow it never persists
-// what it observes, so the My CLAs listing stays a pure read
+// NewSanctionsScreener returns a read-only screener: unlike the signing flow it never persists what
+// it observes, so the listing stays a pure read
 func NewSanctionsScreener(client *sss.Client, enabled, required bool) SanctionsScreener {
 	screener := &sssScreener{
 		enabled:         enabled,
@@ -84,8 +84,8 @@ func (s *sssScreener) ScreenCompany(ctx context.Context, company *v1Models.Compa
 		"mode":           s.Mode(),
 	}
 
-	// An administrator-set block is authoritative and needs no live screen (mirrors the
-	// same short-circuit in v2/sign checkCompanyCompliance)
+	// An administrator-set block is authoritative and needs no live screen (as in v2/sign
+	// checkCompanyCompliance)
 	if company.IsSanctioned && company.SanctionOrigin != sanctionOriginSSS {
 		return true, models.MyClaFlaggedCheckStored
 	}

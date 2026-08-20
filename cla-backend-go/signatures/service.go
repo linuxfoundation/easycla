@@ -1610,9 +1610,8 @@ func (s service) UserIsApproved(ctx context.Context, user *models.User, cclaSign
 	return approved, err
 }
 
-// EvaluateUserApproval is UserIsApproved plus the one thing the boolean cannot express:
-// whether the GitHub public-orgs lookup failed, so a false result was "could not tell"
-// rather than "not approved". Callers that only gate access use UserIsApproved.
+// EvaluateUserApproval is UserIsApproved plus whether the GitHub public-orgs lookup failed, so a
+// false result was "could not tell" rather than "not approved". Access gating uses UserIsApproved.
 func (s service) EvaluateUserApproval(ctx context.Context, user *models.User, cclaSignature *models.Signature) (bool, bool, error) {
 	// add lf email to emails
 	f := logrus.Fields{

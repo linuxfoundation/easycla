@@ -35,10 +35,8 @@ const (
 )
 
 // Identity holds the caller-provided identity keys used to resolve EasyCLA user records.
-//
-// Taking the identity list from the caller is a transitional mechanism (P3/P9 of the trust-SS
-// decision): at M6 EasyCLA should call lfx.auth-service.user_identity.list itself over NATS and
-// drop both these parameters and the azp allow-list that authorizes them.
+// Caller-supplied keys are transitional (P3/P9 of the trust-SS decision): at M6 EasyCLA should
+// call lfx.auth-service.user_identity.list over NATS itself and drop them with the azp allow-list.
 type Identity struct {
 	LfUsername      string
 	Emails          []string
@@ -57,7 +55,7 @@ func (i *Identity) IsEmpty() bool {
 		!hasValue(i.GitlabUsernames) && !hasValue(i.GerritUsernames)
 }
 
-// Summary renders the identity keys as a compact, length-bounded string for the caller audit log
+// Summary renders the identity keys, length-bounded, for the caller audit log
 func (i *Identity) Summary() string {
 	var parts []string
 	addStrings := func(param string, values []string) {
@@ -109,44 +107,43 @@ func hasValue(values []string) bool {
 	return false
 }
 
-// PlatformUsersService is the subset of the platform user-service client used to verify
-// that identities are connected to the authenticated user's LF account
+// PlatformUsersService is the user-service subset used to verify that identities are connected
+// to the authenticated user's LF account
 type PlatformUsersService interface {
 	GetUserByUsernameContext(ctx context.Context, lfUsername string) (*platformModels.User, error)
 	ListUserIdentities(ctx context.Context, userSFID string) ([]*platformModels.UserIdentity, error)
 }
 
-// SignaturesService is the subset of the v1 signatures service used to evaluate ECLA validity
+// SignaturesService is the v1 signatures subset used to evaluate ECLA validity
 type SignaturesService interface {
 	GetCorporateSignature(ctx context.Context, claGroupID, companyID string, approved, signed *bool) (*v1Models.Signature, error)
 	EvaluateUserApproval(ctx context.Context, user *v1Models.User, cclaSignature *v1Models.Signature) (approved bool, githubOrgLookupFailed bool, err error)
 }
 
-// CompanyRepository is the subset of the company repository used to resolve employers
+// CompanyRepository is the company repository subset used to resolve employers
 type CompanyRepository interface {
 	GetCompany(ctx context.Context, companyID string) (*v1Models.Company, error)
 }
 
-// ProjectsCLAGroupsRepository is the subset of the projects-cla-groups repository used to resolve
-// CLA Group names and the Salesforce project(s) a CLA Group is mapped to
+// ProjectsCLAGroupsRepository is the projects-cla-groups subset used to resolve CLA Group names
+// and their Salesforce project mappings
 type ProjectsCLAGroupsRepository interface {
 	GetCLAGroupNameByID(ctx context.Context, claGroupID string) (string, error)
 	GetProjectsIdsForClaGroup(ctx context.Context, claGroupID string) ([]*projects_cla_groups.ProjectClaGroup, error)
 }
 
-// ProjectService is the subset of the project-service client used to resolve a project's
-// display name and logo from its Salesforce ID
+// ProjectService is the project-service subset used to resolve a project's display name and logo
 type ProjectService interface {
 	GetProject(projectSFID string) (*v2ProjectServiceModels.ProjectOutputDetailed, error)
 }
 
-// EventsService is the subset of the v1 events service used to audit contact-CLA-manager requests
+// EventsService is the v1 events subset used to audit contact-CLA-manager requests
 type EventsService interface {
 	LogEventWithContext(ctx context.Context, args *events.LogEventArgs)
 }
 
-// ErrInvalidRecipients is returned when the recipients list is not a non-empty subset of the
-// resolved CLA managers - only when no manager resolves may it be empty
+// ErrInvalidRecipients is returned when recipients is not a non-empty subset of the resolved CLA
+// managers - empty is valid only when none resolves
 var ErrInvalidRecipients = errors.New("recipients must be a non-empty subset of the CLA managers returned by the cla-managers endpoint - empty only when no CLA manager resolves")
 
 // Service interface defines the My CLAs service methods
@@ -190,14 +187,14 @@ func NewService(repo Repository, platformUsersService PlatformUsersService, sign
 	}
 }
 
-// projectInfo holds the resolved Salesforce project display name and logo for a CLA Group
+// projectInfo is the resolved Salesforce project display name and logo of a CLA Group
 type projectInfo struct {
 	name string
 	logo string
 }
 
-// GetMyClas returns all signed ICLAs and ECLAs of the EasyCLA user records matching the
-// given identity, with validity evaluated against the current CCLA approval lists
+// GetMyClas returns the signed ICLAs and ECLAs of every EasyCLA user record matching the identity,
+// with validity evaluated against the current CCLA approval lists
 func (s *service) GetMyClas(ctx context.Context, caller *Caller, requested *Identity) (*models.MyClaList, error) {
 	f := logrus.Fields{
 		"functionName":    "v2.my_clas.service.GetMyClas",
@@ -292,9 +289,8 @@ func (s *service) GetMyClas(ctx context.Context, caller *Caller, requested *Iden
 	return result, nil
 }
 
-// GetMyClaPdfURL returns a time-limited download URL for the signed ICLA PDF when the
-// signature belongs to one of the EasyCLA user records matching the given identity -
-// a nil result means unknown, not-owned, unsigned or ECLA signature ID
+// GetMyClaPdfURL returns a time-limited download URL for a signed ICLA PDF owned by the identity -
+// nil means unknown, not-owned, unsigned or ECLA signature ID
 func (s *service) GetMyClaPdfURL(ctx context.Context, caller *Caller, requested *Identity, signatureID string) (*models.MyClaPdf, error) {
 	f := logrus.Fields{
 		"functionName":    "v2.my_clas.service.GetMyClaPdfURL",
@@ -357,8 +353,8 @@ func (s *service) GetMyClaPdfURL(ctx context.Context, caller *Caller, requested 
 	return nil, nil
 }
 
-// GetMyClaManagers returns the CLA managers of the company CCLA covering the given ECLA
-// signature - a nil result means unknown, not-owned, unsigned or ICLA signature ID
+// GetMyClaManagers returns the CLA managers of the CCLA covering the given ECLA - nil means
+// unknown, not-owned, unsigned or ICLA signature ID
 func (s *service) GetMyClaManagers(ctx context.Context, caller *Caller, requested *Identity, signatureID string) (*models.MyClaManagerList, error) {
 	identity, sig, _, err := s.findOwnedEcla(ctx, caller, requested, signatureID)
 	if err != nil || sig == nil {
@@ -383,10 +379,9 @@ func (s *service) GetMyClaManagers(ctx context.Context, caller *Caller, requeste
 	}, nil
 }
 
-// CreateMyClaManagerRequest emails a removal/approval request against the caller's own ECLA to
-// the selected CLA managers and logs an audit event as the persisted receipt - a nil result means
-// unknown, not-owned, unsigned or ICLA signature ID; ErrInvalidRecipients means the recipients
-// list failed validation
+// CreateMyClaManagerRequest emails a removal/approval request against the caller's own ECLA to the
+// selected CLA managers and logs the audit event that is its receipt - nil means unknown,
+// not-owned, unsigned or ICLA signature ID, ErrInvalidRecipients an invalid recipients list
 func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller, requested *Identity, signatureID string, input *models.MyClaManagerRequest) (*models.MyClaManagerRequestResult, error) {
 	f := logrus.Fields{
 		"functionName":    "v2.my_clas.service.CreateMyClaManagerRequest",
@@ -508,9 +503,8 @@ func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller,
 	}, nil
 }
 
-// findOwnedEcla locates the signed ECLA with the given signature ID among the EasyCLA user
-// records matching the identity - the same ownership boundary GetMyClaPdfURL enforces; a nil
-// signature means unknown, not-owned, unsigned or ICLA
+// findOwnedEcla locates the signed ECLA with this ID among the identity's EasyCLA user records -
+// the ownership boundary GetMyClaPdfURL enforces; nil means unknown, not-owned, unsigned or ICLA
 func (s *service) findOwnedEcla(ctx context.Context, caller *Caller, requested *Identity, signatureID string) (*Identity, *signatures.ItemSignature, *v1Models.User, error) {
 	identity, _, err := s.effectiveIdentity(ctx, caller, requested)
 	if err != nil {
@@ -549,8 +543,8 @@ type managerDetails struct {
 	callerIsManager bool
 }
 
-// eclaManagerDetails resolves the CLA Group/project/company context of an ECLA and the CLA
-// managers from the covering CCLA's ACL - no CCLA yields an empty manager list
+// eclaManagerDetails resolves an ECLA's CLA Group/project/company context and the CLA managers
+// from the covering CCLA's ACL - no CCLA yields an empty manager list
 func (s *service) eclaManagerDetails(ctx context.Context, identity *Identity, sig *signatures.ItemSignature) (*managerDetails, error) {
 	var (
 		claGroupName string
@@ -638,8 +632,8 @@ func isClaManager(ccla *v1Models.Signature, lfUsername string) bool {
 	return false
 }
 
-// signedIdentity derives the platform and account an agreement was signed via/as from the
-// identity attributes stamped on the signature record
+// signedIdentity derives the platform and account signed via/as from the signature's identity
+// attributes
 func signedIdentity(sig *signatures.ItemSignature) (string, string) {
 	switch {
 	case sig.UserGithubUsername != "" || sig.UserGithubID != "":
@@ -662,8 +656,8 @@ func signedIdentity(sig *signatures.ItemSignature) (string, string) {
 }
 
 // GetMyIdentities returns the deduplicated "<type>:<value>" identities the authenticated user
-// owns - the union of their EasyCLA user records and their platform user-service account, the
-// same two sources authorizeIdentity uses to authorize a non-admin caller's identity keys
+// owns - the union of their EasyCLA records and platform account, the two sources
+// authorizeIdentity checks
 func (s *service) GetMyIdentities(ctx context.Context, currentUsername string) (*models.MyIdentityList, error) {
 	if currentUsername == "" {
 		return nil, errors.New("no username on the authenticated principal")
@@ -722,17 +716,17 @@ func (s *service) GetMyIdentities(ctx context.Context, currentUsername string) (
 	}, nil
 }
 
-// AuthorizeIdentity narrows the requested identity keys to the ones that belong to the
-// authenticated user, reporting the dropped keys - the same boundary GET /my-clas enforces
+// AuthorizeIdentity narrows the requested identity keys to those belonging to the authenticated
+// user and reports the dropped ones - the boundary GET /my-clas enforces
 func (s *service) AuthorizeIdentity(ctx context.Context, currentUsername string, admin bool, requested *Identity) (*Identity, []string, error) {
 	return s.effectiveIdentity(ctx, &Caller{Username: currentUsername, Admin: admin}, requested)
 }
 
-// effectiveIdentity resolves which identity keys the lookup may search. An admin or a trusted
-// LFX Self Serve caller supplies them directly; anyone else has each key verified against their
-// own records first. A trusted caller's list is Auth0-derived and cannot be re-derived here: the
-// historical GitHub-only signers this endpoint serves have no lf_username on their EasyCLA
-// records, so verifying against those records would deny exactly the CLAs they may see.
+// effectiveIdentity resolves which identity keys may be searched. An admin or trusted LFX Self
+// Serve caller supplies them directly: a trusted list is Auth0-derived and not re-derivable here,
+// as the historical GitHub-only signers this endpoint serves carry no lf_username on their EasyCLA
+// records, so verifying against them would deny exactly the CLAs the caller may see. Anyone else
+// has every key verified against their own records first.
 func (s *service) effectiveIdentity(ctx context.Context, caller *Caller, requested *Identity) (*Identity, []string, error) {
 	if caller == nil {
 		return nil, nil, errors.New("no authenticated principal")
@@ -762,11 +756,10 @@ type platformIdentitySet struct {
 	usernames map[string]map[string][]string
 }
 
-// authorizeIdentity verifies each requested identity key against all of the
-// authenticated user's own EasyCLA records and, when not covered there, against the
-// identities connected to their LF account in the platform user-service - unverified
-// keys are dropped from the search and reported back; verified usernames are replaced
-// by their canonical spellings for the exact-match index lookups
+// authorizeIdentity verifies each requested key against all of the authenticated user's own
+// EasyCLA records and, when not covered there, the identities connected to their LF account -
+// unverified keys are dropped and reported; verified usernames become their canonical spellings
+// for the exact-match index lookups
 func (s *service) authorizeIdentity(ctx context.Context, currentUsername string, requested *Identity) (*Identity, []string, error) {
 	f := logrus.Fields{
 		"functionName":    "v2.my_clas.service.authorizeIdentity",
@@ -909,9 +902,8 @@ func appendAllowedUsernames(values []string, param string, canon func(string) []
 	}
 }
 
-// loadPlatformIdentities collects the emails and per-source canonical usernames
-// connected to the LF account - lookup failures yield an empty set, so the affected
-// keys are skipped, never allowed
+// loadPlatformIdentities collects the emails and per-source canonical usernames connected to the
+// LF account - a lookup failure yields an empty set, so affected keys are skipped, never allowed
 func (s *service) loadPlatformIdentities(ctx context.Context, lfUsername string) *platformIdentitySet {
 	f := logrus.Fields{
 		"functionName":   "v2.my_clas.service.loadPlatformIdentities",
@@ -1045,16 +1037,16 @@ func (s *service) resolveUsers(ctx context.Context, identity *Identity) ([]*v1Mo
 	return userModels, nil
 }
 
-// userLookup is one pending user-record lookup. They all run concurrently and are merged in
-// declaration order, so the resolved set and the error reported stay the same as a serial walk.
+// userLookup is one pending user-record lookup. All run concurrently and merge in declaration
+// order, so the resolved set and the reported error match a serial walk.
 type userLookup struct {
 	run  func(context.Context) ([]*v1Models.User, error)
 	what string
 	key  string
 }
 
-// eclaCoverage is the coverage outcome of one ECLA. covered drives valid; unevaluable means
-// the approval-list check did not actually complete, so a false covered proves nothing.
+// eclaCoverage is one ECLA's coverage outcome. covered drives valid; unevaluable means the
+// approval-list check never completed, so a false covered proves nothing.
 type eclaCoverage struct {
 	covered     bool
 	unevaluable bool
@@ -1073,8 +1065,8 @@ func (s *service) sanctionsMode() string {
 	return s.sanctions.Mode()
 }
 
-// companySanctions is the sanctions answer for one employer, screened live where possible. An
-// employer that could not be read is unavailable, never an absent answer.
+// companySanctions screens one employer, live where possible. An unreadable employer is
+// unavailable, never an absent answer.
 func (s *service) companySanctions(ctx context.Context, companyModel *v1Models.Company) sanctionState {
 	if companyModel == nil {
 		return sanctionState{check: models.MyClaFlaggedCheckUnavailable}
@@ -1086,8 +1078,8 @@ func (s *service) companySanctions(ctx context.Context, companyModel *v1Models.C
 	return state
 }
 
-// assignMyClaStatus sets the contributor-facing status independently of approved/valid.
-// A sanctioned employer wins over everything else and carries no user action.
+// assignMyClaStatus sets the contributor-facing status independently of approved/valid. A
+// sanctioned employer wins over everything else and carries no user action.
 func assignMyClaStatus(row *models.MyCla, coverage eclaCoverage) {
 	switch {
 	case row.Flagged:
@@ -1107,10 +1099,9 @@ func assignMyClaStatus(row *models.MyCla, coverage eclaCoverage) {
 	}
 }
 
-// evaluateApproval mirrors the PR gating logic (signatures service
-// ProcessEmployeeSignature/EvaluateUserApproval): the user must match the current approval lists
-// of the employer's approved+signed CCLA. A check that could not complete is unevaluable, so a
-// false covered never means "no longer approved".
+// evaluateApproval mirrors the PR gating logic (signatures EvaluateUserApproval): the user must
+// match the current approval lists of the employer's approved+signed CCLA. A check that could not
+// complete is unevaluable, so a false covered never means "no longer approved".
 func (s *service) evaluateApproval(ctx context.Context, userModel *v1Models.User, ccla *v1Models.Signature) eclaCoverage {
 	covered, githubOrgLookupFailed, err := s.signaturesService.EvaluateUserApproval(ctx, userModel, ccla)
 	if err != nil {
@@ -1124,9 +1115,8 @@ func (s *service) evaluateApproval(ctx context.Context, userModel *v1Models.User
 		return eclaCoverage{unevaluable: true}
 	}
 	// EvaluateUserApproval cannot evaluate GitLab group membership (it needs per-group OAuth
-	// tokens); defer to the signature_approved flag, which the approval-list
-	// invalidation flow maintains (see docs/MY_CLAS_API.md). Membership was never checked,
-	// so the row stays unevaluable.
+	// tokens); defer to signature_approved, which the invalidation flow maintains. Membership was
+	// never checked, so the row stays unevaluable.
 	if !covered && len(ccla.GitlabOrgApprovalList) > 0 {
 		return eclaCoverage{covered: true, unevaluable: true}
 	}
@@ -1147,11 +1137,10 @@ func (s *service) claGroupName(ctx context.Context, claGroupID string) (string, 
 	return name, nil
 }
 
-// projectInfo resolves the Salesforce project display name and logo the CLA Group belongs to.
-// The name comes from the projects-cla-groups mapping table; the logo lives only in the
-// project-service and is fetched by project SFID (a foundation-level CLA Group resolves to its
-// foundation). A project-service lookup miss degrades to an empty logo rather than failing the
-// whole listing.
+// projectInfo resolves the Salesforce project display name and logo of a CLA Group. The name comes
+// from the projects-cla-groups mapping, the logo only from the project-service, fetched by project
+// SFID (a foundation-level CLA Group resolves to its foundation). A lookup miss degrades to an
+// empty logo rather than failing the listing.
 func (s *service) projectInfo(ctx context.Context, claGroupID string) (projectInfo, error) {
 	if claGroupID == "" {
 		return projectInfo{}, nil
@@ -1164,12 +1153,11 @@ func (s *service) projectInfo(ctx context.Context, claGroupID string) (projectIn
 
 	var info projectInfo
 	var projectSFID string
-	// Foundation-level CLA Groups are identified by a mapping whose ProjectSFID == FoundationSFID
-	// (the projects_cla_groups convention used by SignedAtFoundation), NOT by the number of
-	// mappings: such a group resolves to its foundation, and a single project-level mapping
-	// resolves to that project. Multiple project-level mappings with no foundation marker are
-	// left unresolved (empty name/logo, so the consumer falls back to claGroupName) rather than
-	// inventing an association with an arbitrary one of the mapped projects.
+	// A foundation-level CLA Group is marked by a mapping with ProjectSFID == FoundationSFID (the
+	// projects_cla_groups convention used by SignedAtFoundation), not by the mapping count, and
+	// resolves to its foundation; a single project-level mapping resolves to that project. Several
+	// project-level mappings with no foundation marker stay unresolved (empty name/logo, so the
+	// consumer falls back to claGroupName) rather than picking an arbitrary one.
 	switch fm := foundationMapping(mappings); {
 	case fm != nil:
 		projectSFID = fm.FoundationSFID
@@ -1200,9 +1188,8 @@ func (s *service) projectInfo(ctx context.Context, claGroupID string) (projectIn
 	return info, nil
 }
 
-// foundationMapping returns the mapping row that marks a foundation-level CLA Group
-// (ProjectSFID == FoundationSFID, the projects_cla_groups convention used by
-// SignedAtFoundation), or nil when the CLA Group is not foundation-level.
+// foundationMapping returns the mapping marking a foundation-level CLA Group (ProjectSFID ==
+// FoundationSFID, the SignedAtFoundation convention), or nil when it is not foundation-level.
 func foundationMapping(mappings []*projects_cla_groups.ProjectClaGroup) *projects_cla_groups.ProjectClaGroup {
 	for _, m := range mappings {
 		if m.FoundationSFID != "" && m.FoundationSFID == m.ProjectSFID {

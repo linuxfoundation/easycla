@@ -4,26 +4,24 @@ Copyright The Linux Foundation and each contributor to CommunityBridge.
 
 SPDX-License-Identifier: CC-BY-4.0
 
-Backend implementation of the **M1 — Read-only "My CLAs" (Me lens)** milestone of the
-EasyCLA → LFX Self Serve integration program
+Backend for the **M1 — Read-only "My CLAs" (Me lens)** milestone of the EasyCLA → LFX
+Self Serve program
 ([epic linuxfoundation/lfx-self-serve#1157](https://github.com/linuxfoundation/lfx-self-serve/issues/1157),
 specs in [`specs/001-easycla-ss-integration-fable/m1-my-cla/`](https://github.com/linuxfoundation/easycla/tree/001-easycla-ss-integration/specs/001-easycla-ss-integration-fable/m1-my-cla)
 on the `001-easycla-ss-integration` branch).
 
-Five EasyCLA v2 endpoints - four read-only plus the M2 contact-request POST (served under `/v4`, i.e.
-`/cla-service/v4/...` through lfx-gateway) let the authenticated user retrieve **all
-their current and historical ICLAs and ECLAs** — matched across their LF username,
-emails and GitHub/GitLab/Gerrit identities, with per-record validity evaluated against
-the *current* company CCLA approval lists — download their signed ICLA PDFs via
-time-limited links, and list the deduplicated identity set they own (the same set the
-list endpoint authorizes them to search). For non-admin, untrusted callers every provided identity
-key is **verified to belong to the authenticated user** before it is searched (see "Identity
-ownership enforcement" for the admin and trusted-caller exceptions), so the endpoints cannot be
-used to freely enumerate other people's CLA history.
-"Belongs to" means the identity is *currently* attached to the caller's LF account
-(their EasyCLA user record or their platform user-service profile/identities) — the
-accepted product bar for this read-only surface; the recycled-alias trade-off this
-implies is documented under "Known limitations":
+Five EasyCLA v2 endpoints — four read-only plus the M2 contact-request POST — under `/v4`
+(`/cla-service/v4/...` through lfx-gateway). They let the authenticated user list **all
+their current and historical ICLAs and ECLAs** (matched across LF username, emails and
+GitHub/GitLab/Gerrit identities, validity evaluated against the *current* company CCLA
+approval lists), download signed ICLA PDFs via time-limited links, and list the
+deduplicated identity set they own (the set the list endpoint authorizes them to search).
+For non-admin, untrusted callers every identity key is **verified to belong to the
+authenticated user** before it is searched (admin/trusted exceptions below), so the
+endpoints cannot enumerate other people's CLA history. "Belongs to" means *currently*
+attached to the caller's LF account (their EasyCLA user records or their platform
+user-service profile/identities) — the accepted bar for this read-only surface; the
+recycled-alias trade-off is under "Known limitations".
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -31,7 +29,7 @@ implies is documented under "Known limitations":
 | `GET` | `/v4/my-clas/{signatureID}/pdf` | Time-limited (15 min) presigned S3 URL for a signed ICLA PDF owned by the provided identity |
 | `GET` | `/v4/my-clas/identities` | List the deduplicated `<type>:<value>` identities the authenticated user owns (no query params) |
 | `GET` | `/v4/my-clas/{signatureID}/cla-managers` | List the CLA managers of the CCLA covering an ECLA owned by the provided identity |
-| `POST` | `/v4/my-clas/{signatureID}/cla-manager-requests` | Email a removal/approval request for an owned ECLA to selected CLA managers (M2 additions; details are swagger-documented) |
+| `POST` | `/v4/my-clas/{signatureID}/cla-manager-requests` | Email a removal/approval request for an owned ECLA to selected CLA managers (M2; swagger-documented) |
 
 ## Changed repositories and branches
 
@@ -42,66 +40,63 @@ implies is documented under "Known limitations":
 
 Files changed in `easycla`:
 
-- `cla-backend-go/swagger/cla.v2.yaml` — five new paths, eight new shared query parameters, eight new definitions
-- `cla-backend-go/swagger/common/my-cla-list.yaml`, `my-cla.yaml`, `my-cla-pdf.yaml`, `my-identity-list.yaml`, `my-cla-manager.yaml`, `my-cla-manager-list.yaml`, `my-cla-manager-request.yaml`, `my-cla-manager-request-result.yaml` — new request/response models
+- `cla-backend-go/swagger/cla.v2.yaml` — five paths, eight shared query parameters, eight definitions
+- `cla-backend-go/swagger/common/my-cla-list.yaml`, `my-cla.yaml`, `my-cla-pdf.yaml`, `my-identity-list.yaml`, `my-cla-manager.yaml`, `my-cla-manager-list.yaml`, `my-cla-manager-request.yaml`, `my-cla-manager-request-result.yaml` — request/response models
 - `cla-backend-go/v2/my_clas/handlers.go` — swagger operation wiring (`Configure`)
-- `cla-backend-go/v2/my_clas/service.go` — identity ownership enforcement, resolution, aggregation, validity evaluation
-- `cla-backend-go/v2/my_clas/prefetch.go` — the per-request concurrent prefetch of every distinct external lookup
-- `cla-backend-go/v2/my_clas/sanctions.go` — read-only sanctions screener (live SSS lookup that never persists what it observes)
-- `cla-backend-go/v2/my_clas/repository.go` — plural, paginated GSI queries for identity resolution, the user's ICLA/ECLA records query, and the single-scan secondary-email lookup
+- `cla-backend-go/v2/my_clas/service.go` — ownership enforcement, identity resolution, aggregation, validity evaluation
+- `cla-backend-go/v2/my_clas/prefetch.go` — per-request concurrent prefetch of every distinct external lookup
+- `cla-backend-go/v2/my_clas/sanctions.go` — read-only sanctions screener (live SSS lookup, never persists what it observes)
+- `cla-backend-go/v2/my_clas/repository.go` — plural, paginated GSI queries for identity resolution and the user's ICLA/ECLA records, plus the single-scan secondary-email lookup
 - `cla-backend-go/emails/contact_cla_manager_templates.go`, `cla-backend-go/events/event_data.go`, `event_types.go` — the contact-request email and its audit event
 - `cla-backend-go/v2/my_clas/*_test.go` — unit tests
-- `cla-backend-go/v2/user-service/client.go` — two new (additive) context-aware read helpers, `GetUserByUsernameContext` and `ListUserIdentities` (paginated), mirroring the existing `ListUsersByUsername` pattern with bounded HTTP clients; no existing method changed
+- `cla-backend-go/v2/user-service/client.go` — two additive context-aware read helpers, `GetUserByUsernameContext` and `ListUserIdentities` (paginated), mirroring `ListUsersByUsername` with bounded HTTP clients; no existing method changed
 - `cla-backend-go/cmd/server.go` — module registration (three lines)
 - `cla-backend-go/gen/**` is generated by `make swagger` and not committed
 
-The module follows the repo's three-layer v2 module pattern (`handlers.go` /
-`service.go` / `repository.go`) and is **additive and isolated**: no existing
-endpoint, service method, or repository method changes behavior — the shared-code
-touch points are the three registration lines in `cmd/server.go`, the two new
-helper methods added to `v2/user-service/client.go`, and one new method
-(`EvaluateUserApproval`) on the v1 signatures service, with the existing
-`UserIsApproved` reduced to a call through it so the signing flow is unchanged. The one
-other shared file touched is `v2/project-service/client.go`, where a `len()` in a debug
-message was moved under the mutex that already guards the cache — logging only.
+The module follows the repo's three-layer v2 pattern and is **additive**: no existing
+endpoint, service or repository method changes behavior. Shared-code touch points: the
+three registration lines in `cmd/server.go`, the two new helpers in
+`v2/user-service/client.go`, one new method (`EvaluateUserApproval`) on the v1 signatures
+service with `UserIsApproved` reduced to a call through it (signing flow unchanged), and
+`v2/project-service/client.go`, where a `len()` in a debug message moved under the mutex
+that already guards the cache — logging only.
 
 ## Authentication
 
 All five endpoints use the standard v4 `lf-auth` security (base64 `X-ACL` header injected
-by lfx-gateway), exactly like every other secured v4 endpoint:
+by lfx-gateway), like every other secured v4 endpoint:
 
 1. The caller (LFX Self Serve server) sends `GET /cla-service/v4/my-clas` with a user
-   bearer token minted for the api-gw audience (the token model verified in
+   bearer token minted for the api-gw audience (token model verified in
    [`docs/easycla-ss-migration/role-mapping-feasibility.md`](https://github.com/linuxfoundation/easycla/blob/001-easycla-ss-integration/docs/easycla-ss-migration/role-mapping-feasibility.md)).
-2. lfx-gateway's `secured` chain validates the JWT (signature + issuer) and asks the
-   ACS warden whether the username may access this path/method. With the `acs-cli`
-   change, all five paths are registered `anyRole: true` and attached to the `user` role
-   (`ViewMyClas` policy — resources `my_clas`, `my_clas_pdf`, `my_clas_identities` — and
-   the `ContactMyClaManagers` policy — resources `my_clas_managers`,
-   `my_clas_manager_requests`) —
-   mirroring `user_from_token` / `active_signature` — so **any authenticated LF user** is
-   authorized. `/v4/my-clas/identities` is registered as its own resource because the
-   `/v4/my-clas` path is matched exactly (the PDF route likewise needs its own
-   `/v4/my-clas/*/pdf` entry); an unregistered sub-path would be denied by the warden.
-   Without a valid token the gateway returns 401/403 and the request never reaches EasyCLA.
+2. lfx-gateway's `secured` chain validates the JWT (signature + issuer) and asks the ACS
+   warden whether the username may access this path/method. With the `acs-cli` change all
+   five paths are registered `anyRole: true` and attached to the `user` role — the
+   `ViewMyClas` policy (resources `my_clas`, `my_clas_pdf`, `my_clas_identities`) and the
+   `ContactMyClaManagers` policy (resources `my_clas_managers`,
+   `my_clas_manager_requests`) — mirroring `user_from_token` / `active_signature`, so
+   **any authenticated LF user** is authorized. `/v4/my-clas/identities` is its own
+   resource because `/v4/my-clas` is matched exactly (the PDF route likewise needs its own
+   `/v4/my-clas/*/pdf` entry); an unregistered sub-path is denied by the warden. Without a
+   valid token the gateway returns 401/403 and the request never reaches EasyCLA.
 3. The gateway injects `X-ACL`/`X-USERNAME`/`X-EMAIL`; the Lambda decodes them into the
    handler's `authUser` principal.
 
-Note the ACS warden caches authorize responses for ~30 minutes; that only affects the
-first rollout (after `acs-cli sync`), not steady-state behavior.
+The ACS warden caches authorize responses for ~30 minutes; that affects only the first
+rollout (after `acs-cli sync`), not steady state.
 
 ### Trusted Self Serve caller (in-handler JWT verification + `azp` allow-list)
 
 The gateway-injected `X-ACL`/`X-USERNAME` headers are **decoded but never signature
 checked**, so anything able to invoke the Lambda directly could forge them. To make the
-identity-list bypass below safe, the handlers re-verify the request bearer token themselves
-(`cla-backend-go/auth/trusted_caller.go`): the signing algorithm is pinned to the configured
-Auth0 algorithm, the signature is verified against the tenant JWKS by `kid`
-(`https://{cla-auth0-domain}/.well-known/jwks.json`, cached 15 min; a cache miss reloads it
-at most once a minute; a JWKS outage keeps serving the cached key for at most 24 h),
-`exp` must be present and unexpired, and the caller is **trusted** when the token's
-`azp` is listed in the SSM parameter `cla-ss-trusted-client-ids-{stage}` (comma-separated
-Auth0 client IDs).
+identity-list bypass below safe, the handlers re-verify the request bearer token
+themselves (`cla-backend-go/auth/trusted_caller.go`): the signing algorithm is pinned to
+the configured Auth0 algorithm, the signature is verified against the tenant JWKS by `kid`
+(`https://{cla-auth0-domain}/.well-known/jwks.json`, cached 15 min; a cache miss reloads
+at most once a minute; a JWKS outage keeps serving the cached key for at most 24 h), `exp`
+must be present and unexpired, and the caller is **trusted** when the token's `azp` is
+listed in the SSM parameter `cla-ss-trusted-client-ids-{stage}` (comma-separated Auth0
+client IDs).
 
 | Request, once the allow-list is configured | Result |
 |---|---|
@@ -109,21 +104,22 @@ Auth0 client IDs).
 | Verified token, `azp` **on** the allow-list | trusted: the caller-supplied identity list is searched as given, no per-identity verification |
 | Verified token, `azp` **not** on the allow-list (or absent) | untrusted: unchanged behavior — admin bypass or per-identity ownership enforcement |
 
-An absent header is denied exactly like an invalid one: the traefik `aws-lambda` middleware
-drops duplicated headers, so a duplicated `Authorization` header arrives as an absent one.
-`iss` and `aud` are deliberately not re-checked in-handler: the JWKS already binds the token to
-this one tenant, and which audience an SS token carries is still open in the
-[trust-SS decision](https://github.com/linuxfoundation/lfx-self-serve/issues/1216) (session access
-token vs. the P3 api-gw-audience token), so pinning one would 401 the other. A token this tenant
-minted for another API therefore also verifies — accepted because `azp` stays the client signal.
+An absent header is denied exactly like an invalid one: the traefik `aws-lambda`
+middleware drops duplicated headers, so a duplicated `Authorization` header arrives as an
+absent one. `iss` and `aud` are deliberately not re-checked in-handler: the JWKS already
+binds the token to this one tenant, and which audience an SS token carries is still open in
+the [trust-SS decision](https://github.com/linuxfoundation/lfx-self-serve/issues/1216)
+(session access token vs. the P3 api-gw-audience token), so pinning one would 401 the
+other. A token this tenant minted for another API therefore also verifies — accepted
+because `azp` stays the client signal.
 
-While the SSM parameter is unset the verifier is **disabled** — no bearer token is required
-and nothing is trusted, so the endpoints behave exactly as before. A local `./bin/cla` run
-loads the stage's SSM, so once the parameter is set local requests need a real token too
-(`utils/my_clas.sh` sends one; its token-less `PRINCIPAL=...` mode does not). A non-empty
-allow-list without `cla-auth0-domain` panics at startup rather than trusting blindly. Each
-request is logged with `callerClientID` (`azp`), `callerSubject` (`sub`), `trustedCaller`
-and the requested identity list (length-bounded) for anomaly detection.
+While the SSM parameter is unset the verifier is **disabled** — no bearer token is
+required and nothing is trusted, so the endpoints behave exactly as before. A local
+`./bin/cla` run loads the stage's SSM, so once the parameter is set local requests need a
+real token too (`utils/my_clas.sh` sends one; its token-less `PRINCIPAL=...` mode does
+not). A non-empty allow-list without `cla-auth0-domain` panics at startup rather than
+trusting blindly. Each request logs `callerClientID` (`azp`), `callerSubject` (`sub`),
+`trustedCaller` and the requested identity list (length-bounded) for anomaly detection.
 
 ## `GET /v4/my-clas`
 
@@ -131,18 +127,18 @@ and the requested identity list (length-bounded) for anomaly detection.
 
 | Parameter | Type | Repeatable | Meaning |
 |---|---|---|---|
-| `lfUsername` | string | no | LF username (LFID). **When omitted, defaults to the username of the authenticated principal** (from the token via `X-USERNAME`), so a plain `GET /v4/my-clas` returns the caller's own CLAs. For non-admin callers a value different from the token username is never searched (reported in `skippedIdentities`). |
-| `email` | string | yes | Email addresses of the user. Lowercased/trimmed and matched against the EasyCLA user records' primary email (`lf_email` GSI — index-backed). All repeatable parameters are capped (`maxItems: 100`, `secondaryEmail: 20`) and deduplicated server-side. |
-| `secondaryEmail` | string | yes | Email addresses additionally matched against the EasyCLA user records' additional-emails set (`user_emails`). **This match is not index-backed** (the attribute is a DynamoDB string set, which cannot carry a GSI): all provided values (max 20, normalized + deduplicated) are matched in **one single table scan** — never one scan per value, and never for plain `email` values. Use sparingly. |
+| `lfUsername` | string | no | LF username (LFID). **When omitted, defaults to the authenticated principal's username** (from the token via `X-USERNAME`), so a plain `GET /v4/my-clas` returns the caller's own CLAs. For non-admin callers a value different from the token username is never searched (reported in `skippedIdentities`). |
+| `email` | string | yes | Lowercased/trimmed and matched against the EasyCLA user records' primary email (`lf_email` GSI — index-backed). All repeatable parameters are capped (`maxItems: 100`, `secondaryEmail: 20`) and deduplicated server-side. |
+| `secondaryEmail` | string | yes | Matched against the records' additional-emails set (`user_emails`). **Not index-backed** (a DynamoDB string set cannot carry a GSI): all provided values (max 20, normalized + deduplicated) are matched in **one single table scan** — never one scan per value, and never for plain `email` values. Use sparingly. |
 | `githubId` | integer | yes | GitHub numeric user IDs linked to the LF identity (from Auth0 identities). The highest-precision key for pre-LF-login history. |
 | `githubUsername` | string | yes | GitHub usernames (hint only — usernames can be renamed/recycled; prefer `githubId`). |
 | `gitlabId` | integer | yes | GitLab numeric user IDs linked to the LF identity. |
 | `gitlabUsername` | string | yes | GitLab usernames (hint only). |
-| `gerritUsername` | string | yes | Gerrit usernames. Gerrit authenticates via LF SSO, so these are (current or historical) **LF usernames** — matched against the EasyCLA records' `lf_username`. Useful for historical gerrit-era records tied to an older LDAP/LF username connected to the account. |
+| `gerritUsername` | string | yes | Gerrit usernames. Gerrit authenticates via LF SSO, so these are (current or historical) **LF usernames** — matched against the records' `lf_username`. Useful for gerrit-era records tied to an older LDAP/LF username on the account. |
 
-If the token carries no username (and the caller is not an admin), the endpoint
-returns `401`. There is deliberately **no pagination**: a person's CLA set is small
-(typically well under 50 records) and the upstream queries paginate internally.
+If the token carries no username (and the caller is not an admin), the endpoint returns
+`401`. There is deliberately **no pagination**: a person's CLA set is small (typically
+well under 50 records) and the upstream queries paginate internally.
 
 Example (through the gateway):
 
@@ -153,46 +149,44 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ### Identity ownership enforcement (step 0)
 
-Without enforcement, an endpoint of this shape would let any authenticated user list
-anybody's CLA history by guessing an email or GitHub ID. Therefore, for **non-admin**
-callers every provided identity key must be verified to belong to the authenticated
-user (the token's username claim) before it is searched:
+Unenforced, an endpoint of this shape would let any authenticated user list anybody's CLA
+history by guessing an email or GitHub ID. So for **non-admin** callers every identity key
+is verified against the authenticated user (the token's username claim) before it is
+searched:
 
 1. **All** EasyCLA user records matching the token username are fetched
-   (`lf-username-index`, plural + paginated — one person may hold several LFID rows)
-   and their identity fields are merged. A key is allowed when it matches any of
-   them: emails against `lf_email` + `user_emails` (case-insensitive), `githubId`
-   against `user_github_id`, `githubUsername` against `user_github_username`
+   (`lf-username-index`, plural + paginated — one person may hold several LFID rows) and
+   their identity fields merged. A key is allowed when it matches any of them: emails
+   against `lf_email` + `user_emails` (case-insensitive), `githubId` against
+   `user_github_id`, `githubUsername` against `user_github_username`
    (case-insensitive), `gitlabId`/`gitlabUsername` likewise, and
    `gerritUsername`/`lfUsername` against the token username.
-2. Username keys and keys not covered there are checked against the **LF-wide
-   identities** connected to the account in the platform user-service (loaded
-   lazily, at most once per request): `GET /user-service/v1/users?username={lfid}`
-   for the profile (SFID + all non-deleted profile emails) and
-   `GET /user-service/v1/users/{sfid}/identities` for connected identities
-   (paginated — all pages are fetched, so accounts with more than 100 identities are
-   fully covered; identities with a `DataSource` other than `platform` are ignored).
-   Usernames are accepted per source (`github`, `gitlab`, `gerrit` — a Slack
+2. Username keys and keys not covered there are checked against the **LF-wide identities**
+   connected to the account in the platform user-service (loaded lazily, at most once per
+   request): `GET /user-service/v1/users?username={lfid}` for the profile (SFID + all
+   non-deleted profile emails) and `GET /user-service/v1/users/{sfid}/identities` for
+   connected identities (paginated — all pages fetched, so accounts with more than 100
+   identities are fully covered; identities whose `DataSource` is not `platform` are
+   ignored). Usernames are accepted per source (`github`, `gitlab`, `gerrit` — a Slack
    identity never authorizes a GitHub search); identity emails are accepted from any
    platform-sourced identity. Numeric GitHub/GitLab IDs cannot be validated through
    user-service (identities carry usernames, not provider IDs), so they validate only
-   against the EasyCLA LFID records.
-   Because the users-table username indexes are exact-match while verification is
-   case-insensitive, allowed usernames are expanded to their **canonical spellings**
-   (from the EasyCLA records and user-service, plus the requested spelling) before
-   the index lookups — `githubUsername=octocat` finds a record stored as `Octocat`.
-3. Keys verified by neither source are **not searched** and are reported back in the
-   response's `skippedIdentities` array (formatted `"<parameter>:<value>"`, e.g.
-   `"email:bob@corp.com"`). They do not fail the request; the caller can surface or
-   log them (they are also the natural telemetry signal for identity-mapping gaps).
-   A user-service outage degrades the same way: unverifiable keys are skipped and
-   reported, never allowed.
+   against the EasyCLA LFID records. Because the users-table username indexes are
+   exact-match while verification is case-insensitive, allowed usernames are expanded to
+   their **canonical spellings** (from the EasyCLA records and user-service, plus the
+   requested spelling) before the index lookups — `githubUsername=octocat` finds a record
+   stored as `Octocat`.
+3. Keys verified by neither source are **not searched** and are reported in the response's
+   `skippedIdentities` array (formatted `"<parameter>:<value>"`, e.g.
+   `"email:bob@corp.com"`). They do not fail the request; the caller can surface or log
+   them (they are the natural telemetry signal for identity-mapping gaps). A user-service
+   outage degrades the same way: unverifiable keys are skipped and reported, never allowed.
 
-Callers whose gateway-injected `X-ACL` carries the **admin** flag
-(`utils.IsUserAdmin`) bypass enforcement entirely — preserving a support/parity-
-sampling path (e.g. the SC-001 comparison script) without weakening the contributor
-case. The token username is always searched for non-admin callers, so a bare
-`GET /v4/my-clas` works even when every extra key is skipped.
+Callers whose gateway-injected `X-ACL` carries the **admin** flag (`utils.IsUserAdmin`)
+bypass enforcement entirely — preserving a support/parity-sampling path (e.g. the SC-001
+comparison script) without weakening the contributor case. The token username is always
+searched for non-admin callers, so a bare `GET /v4/my-clas` works even when every extra key
+is skipped.
 
 **A trusted Self Serve caller** (see [Trusted Self Serve caller](#trusted-self-serve-caller-in-handler-jwt-verification--azp-allow-list))
 also bypasses enforcement — deliberately, because here it is the *wrong* check: SS derives
@@ -205,18 +199,17 @@ supplying neither a username nor any identity key is a `400`, not an "everyone" 
 ### Identity resolution (step 1)
 
 The allowed keys are resolved to EasyCLA user records — **union of all matches,
-deduplicated by `user_id`, in parameter order**. One person may hold several EasyCLA
-user records (e.g. a pre-LF-login GitHub-derived record without `lf_username` plus a
-console-created record); this is why aggregation happens across all matches
-(spec FR-005). Every lookup is a DynamoDB GSI query on the `cla-{stage}-users` table
-except the explicitly opt-in `secondaryEmail` scan (the existing `/v3/users/search`
-full-scan-per-request pattern is exactly what this avoids, per
-[lfx-self-serve#1161](https://github.com/linuxfoundation/lfx-self-serve/issues/1161)):
+deduplicated by `user_id`, in parameter order**. One person may hold several EasyCLA user
+records (e.g. a pre-LF-login GitHub-derived record without `lf_username` plus a
+console-created one); hence aggregation across all matches (spec FR-005). Every lookup is
+a DynamoDB GSI query on `cla-{stage}-users` except the opt-in `secondaryEmail` scan (the
+existing `/v3/users/search` full-scan-per-request pattern is exactly what this avoids, per
+[lfx-self-serve#1161](https://github.com/linuxfoundation/lfx-self-serve/issues/1161)).
 
-All lookups are **plural and paginated** module-repository queries returning every
-matching record — the legacy singular `users` service helpers were deliberately not
-reused because they return only the first row when a GSI holds several matches for
-the same key (one person with multiple records), which would silently drop history:
+All lookups are **plural and paginated** module-repository queries returning every matching
+record — the legacy singular `users` service helpers were deliberately not reused because
+they return only the first row when a GSI holds several matches for the same key (one
+person with multiple records), which would silently drop history:
 
 | Identity key | Users-table access | Module repository method |
 |---|---|---|
@@ -229,143 +222,134 @@ the same key (one person with multiple records), which would silently drop histo
 | `gitlabId` | `gitlab-id-index` GSI (N-typed key) | `GetUsersByGitlabID` |
 | `gitlabUsername` | `gitlab-username-index` GSI | `GetUsersByGitlabUsername` |
 
-Empty results are simply empty; an EasyCLA repository lookup error during identity
-resolution or signature retrieval fails the request (`500`) — user-service failures
-instead skip and report the affected keys rather than silently returning a partial
-history — an incomplete list would erode user trust (spec: "an incomplete list here
-erodes trust in every later milestone"). A *missing* CLA group or company record
-degrades gracefully (name omitted / ECLA marked invalid), and a **failed company or
-CCLA lookup degrades that single row** — its name is omitted and its `status` becomes
-`unknown` — instead of failing the whole list, so one unreachable company cannot blank
-out a user's entire CLA history (the failure is cached per company, so sibling rows do
-not retry it). Any other data-layer error, including a CLA-group/project mapping
-failure that would affect every row alike, still fails the request. No row is ever
-silently dropped from the list.
+Empty results are simply empty. An EasyCLA repository error during identity resolution or
+signature retrieval fails the request (`500`) rather than returning a partial history —
+user-service failures instead skip and report the affected keys — because "an incomplete
+list here erodes trust in every later milestone" (spec). A *missing* CLA group or company
+record degrades gracefully (name omitted / ECLA marked invalid), and a **failed company or
+CCLA lookup degrades that single row** — name omitted, `status` becomes `unknown` — instead
+of failing the whole list, so one unreachable company cannot blank out a user's entire CLA
+history (the failure is cached per company, so sibling rows do not retry it). Any other
+data-layer error, including a CLA-group/project mapping failure that would affect every row
+alike, still fails the request. No row is ever silently dropped.
 
-On `user_emails` (why `secondaryEmail` is separate): the attribute is a DynamoDB
-string set and **cannot be GSI-indexed**, so matching it requires a table scan. The
-default `email` parameter therefore stays strictly index-backed (`lf_email`), and a
-single scan (matching every provided value at once) runs only when the caller
-explicitly passes `secondaryEmail` values. In practice GitHub/GitLab-derived records
-(the ones whose `user_emails` would matter most) are matched precisely by the numeric
-`githubId`/`gitlabId` keys instead.
+On `user_emails` (why `secondaryEmail` is separate): the attribute is a DynamoDB string set
+and **cannot be GSI-indexed**, so matching it requires a table scan. The default `email`
+parameter therefore stays strictly index-backed (`lf_email`), and a single scan (matching
+every provided value at once) runs only when the caller explicitly passes `secondaryEmail`
+values. In practice GitHub/GitLab-derived records — the ones whose `user_emails` would
+matter most — are matched precisely by the numeric `githubId`/`gitlabId` keys instead.
 
 ### Gerrit support
 
-Gerrit has no separate identity space in EasyCLA: Gerrit instances are LF-hosted and
-contributors authenticate with their **LF SSO account**, and the gerrit user-creation
-path (`POST /v1/user/gerrit`, `cla-backend-legacy/internal/api/handlers.go`
+Gerrit has no separate identity space in EasyCLA: instances are LF-hosted, contributors
+authenticate with their **LF SSO account**, and the gerrit user-creation path
+(`POST /v1/user/gerrit`, `cla-backend-legacy/internal/api/handlers.go`
 `PostOrGetUserGerritV1` → `getOrCreateUser` from the auth token) keys the EasyCLA user
 record on `lf_username`/`lf_email`. Consequently:
 
-- CLAs signed via Gerrit are found automatically through the token username and email
-  keys — nothing extra to pass for the common case.
-- The `gerritUsername` parameter covers the historical case where the account is
-  connected (per user-service `Source=gerrit` identities) to an **older/different LF
-  username** than the current one — those values resolve through the same
-  `lf-username-index`.
-- Gerrit's internal numeric account IDs exist only inside Gerrit itself; neither
-  EasyCLA nor the platform user-service stores them, so there is nothing to look up by
-  — usernames are the supported Gerrit key.
+- CLAs signed via Gerrit are found automatically through the token username and email keys
+  — nothing extra to pass for the common case.
+- `gerritUsername` covers the historical case where the account is connected (per
+  user-service `Source=gerrit` identities) to an **older/different LF username** — those
+  values resolve through the same `lf-username-index`.
+- Gerrit's internal numeric account IDs exist only inside Gerrit; neither EasyCLA nor the
+  platform user-service stores them, so usernames are the supported Gerrit key.
 
 ### Signature retrieval (step 2)
 
-For each matched user record, the module queries the `cla-{stage}-signatures` table on
-the `reference-signature-index` GSI (`signature_reference_id = user_id`), filtered to
-`signature_reference_type = user` and `signature_type IN (cla, ecla)`, and paginates
-until exhausted.
+For each matched user record the module queries `cla-{stage}-signatures` on the
+`reference-signature-index` GSI (`signature_reference_id = user_id`), filtered to
+`signature_reference_type = user` and `signature_type IN (cla, ecla)`, paginating until
+exhausted.
 
-Two facts discovered during implementation (both verified against the dev DynamoDB
-data) shaped this query — a new module-private query was required because **no existing
-endpoint returns a user's ECLAs**:
+Two facts found during implementation (both verified against dev DynamoDB data) shaped this
+query — a module-private query was required because **no existing endpoint returns a user's
+ECLAs**:
 
-- The existing `GET /v4/signatures/user/{userID}` (v1 `signatures` repository
-  `GetUserSignatures`) explicitly filters **out** every record with
-  `signature_user_ccla_company_id` set — i.e. it returns ICLAs only, contrary to what
-  the M1 research doc assumed.
-- ECLA records exist with **two spellings of `signature_type`**: DocuSign-era ECLAs
-  carry `signature_type=cla`, while ECLAs auto-created from approval-list changes
+- `GET /v4/signatures/user/{userID}` (v1 `signatures` repository `GetUserSignatures`)
+  explicitly filters **out** every record with `signature_user_ccla_company_id` set, i.e.
+  it returns ICLAs only, contrary to what the M1 research doc assumed.
+- ECLA records exist with **two spellings of `signature_type`**: DocuSign-era ECLAs carry
+  `signature_type=cla`, ECLAs auto-created from approval-list changes
   (`signatures/repository.go` `CreateOrUpdateEmployeeSignature`) carry
-  `signature_type=ecla`. Dev sample: 177 user-referenced `cla`-typed records with a
-  company ID vs 77 `ecla`-typed; every `ecla`-typed record has a company ID.
+  `signature_type=ecla`. Dev sample: 177 user-referenced `cla`-typed records with a company
+  ID vs. 77 `ecla`-typed; every `ecla`-typed record has a company ID.
 
 ### Classification, filtering, deduplication (step 3)
 
-- Records with `signature_signed = false` (abandoned/incomplete signing ceremonies) are
+- Records with `signature_signed = false` (abandoned/incomplete ceremonies) are
   **excluded** — the milestone lists signed agreements only.
-- **ICLA vs ECLA** is decided by `signature_user_ccla_company_id` presence (absent ⇒
-  ICLA, set ⇒ ECLA) — the same invariant the v1→v2 signature converters and the
-  dynamo-events lambda use, and the one that holds for both `signature_type` spellings.
-  CCLA records (`signature_reference_type=company`) never match the query; corporate
-  data is out of M1 scope.
+- **ICLA vs ECLA** is decided by `signature_user_ccla_company_id` presence (absent ⇒ ICLA,
+  set ⇒ ECLA) — the same invariant the v1→v2 signature converters and the dynamo-events
+  lambda use, and the one that holds for both `signature_type` spellings. CCLA records
+  (`signature_reference_type=company`) never match the query; corporate data is out of M1
+  scope.
 - Results are **deduplicated by `signatureID`** across the matched user records; each
-  distinct signature is a distinct legal record and is shown even when several exist
-  for the same CLA group (per the M1 data-model decision).
-- Rows are sorted by `signedOn` **descending**. `signedOn` mirrors the v1 converter
-  behavior: `signed_on` attribute, falling back to `date_created` for older records.
+  distinct signature is a distinct legal record and is shown even when several exist for the
+  same CLA group (per the M1 data-model decision).
+- Rows are sorted by `signedOn` **descending**. `signedOn` mirrors the v1 converter:
+  `signed_on`, falling back to `date_created` for older records.
 
 ### Validity evaluation (step 4)
 
-Each returned row carries the raw flags (`signed`, `approved`) plus a computed `valid`
-boolean:
+Each row carries the raw flags (`signed`, `approved`) plus a computed `valid`:
 
 - **ICLA**: `valid = signed && approved`. `approved=false` means the signature was
-  invalidated (PM invalidation or approval-criteria removal set
-  `signature_approved=false`; the stored `note` records why).
+  invalidated (PM invalidation or approval-criteria removal set `signature_approved=false`;
+  the stored `note` records why).
 - **ECLA** (employee acknowledgement): `valid` requires **all** of:
   1. `signature_signed && signature_approved`;
-  2. the employer (company record) exists and is **not flagged** by sanctions
-     screening — a live screen when screening is enabled, otherwise the persisted
-     `is_sanctioned` gate `ProcessEmployeeSignature` enforces for PR checks (step 5);
-  3. the employer **currently holds an approved + signed CCLA** for the CLA group
-     (v1 `signatures.Service.GetCorporateSignature`);
-  4. the user **still matches that CCLA's current approval lists** — evaluated by
-     reusing v1 `signatures.Service.EvaluateUserApproval`, the *exact* function PR gating
-     uses (issue [#1164](https://github.com/linuxfoundation/lfx-self-serve/issues/1164)
-     demands the real gating logic, not an approximation):
-     - GitHub username approval list — case-insensitive exact match;
-     - GitLab username approval list — case-insensitive exact match;
-     - email approval list — case-insensitive exact match over the user record's
-       emails (`user_emails` + `lf_email`);
-     - email-domain approval list — regex patterns (`*.corp.com`, `*corp.com`,
-       `.corp.com`, `corp.com` forms);
-     - GitHub org approval list — live lookup of the user's **public** GitHub org
-       memberships (transient GitHub API failures are treated as "no match", never as
-       an error — same as gating);
-     - GitLab group approval list — `EvaluateUserApproval` cannot evaluate group membership
-       live (that needs per-group OAuth tokens held by the MR-gating service), so when
-       the CCLA carries GitLab group approvals and nothing else matched, the check
-       **defers to the `signature_approved` flag** (which the approval-list
-       invalidation flow maintains) instead of wrongly reporting the ECLA invalid.
+  2. the employer (company record) exists and is **not flagged** by sanctions screening — a
+     live screen when screening is enabled, otherwise the persisted `is_sanctioned` gate
+     `ProcessEmployeeSignature` enforces for PR checks (step 5);
+  3. the employer **currently holds an approved + signed CCLA** for the CLA group (v1
+     `signatures.Service.GetCorporateSignature`);
+  4. the user **still matches that CCLA's current approval lists** — evaluated by reusing v1
+     `signatures.Service.EvaluateUserApproval`, the *exact* function PR gating uses (issue
+     [#1164](https://github.com/linuxfoundation/lfx-self-serve/issues/1164) demands the real
+     gating logic, not an approximation):
+     - GitHub username list — case-insensitive exact match;
+     - GitLab username list — case-insensitive exact match;
+     - email list — case-insensitive exact match over the record's emails (`user_emails` +
+       `lf_email`);
+     - email-domain list — regex patterns (`*.corp.com`, `*corp.com`, `.corp.com`,
+       `corp.com` forms);
+     - GitHub org list — live lookup of the user's **public** GitHub org memberships
+       (transient GitHub API failures count as "no match", never as an error — same as
+       gating);
+     - GitLab group list — `EvaluateUserApproval` cannot evaluate group membership live
+       (that needs per-group OAuth tokens held by the MR-gating service), so when the CCLA
+       carries GitLab group approvals and nothing else matched, the check **defers to the
+       `signature_approved` flag** (which the invalidation flow maintains) instead of
+       wrongly reporting the ECLA invalid.
 
-  This is checked **at request time inside the API**, because approval lists change
-  after acknowledgements are recorded. Approval-list edits do synchronously invalidate
-  affected ECLAs (`signature_approved=false` + note), so `approved` usually already
-  reflects removals — the live re-check is the belt-and-braces guarantee the task
-  demands, and it also catches drift (e.g. a user who left the company's GitHub org,
-  or edits where the invalidation pass missed a record).
+  This runs **at request time inside the API** because approval lists change after
+  acknowledgements are recorded. Edits do synchronously invalidate affected ECLAs
+  (`signature_approved=false` + note), so `approved` usually already reflects removals; the
+  live re-check is the guarantee the task demands and catches drift (a user who left the
+  company's GitHub org, or edits the invalidation pass missed).
 
 The user record used for the approval-list check is the record that **owns** the ECLA
-(`signature_reference_id`), matching how gating evaluates that user — not the union of
-all provided identities.
+(`signature_reference_id`), matching how gating evaluates that user — not the union of all
+provided identities.
 
-The endpoint intentionally returns **invalid rows too** (flagged `valid=false`) instead
-of hiding them: story [#1158](https://github.com/linuxfoundation/lfx-self-serve/issues/1158)
-wants ICLAs in *all* statuses, and keeping the data faithful makes the API useful for
-parity sampling (SC-001) and support.
+The endpoint deliberately returns **invalid rows too** (`valid=false`): story
+[#1158](https://github.com/linuxfoundation/lfx-self-serve/issues/1158) wants ICLAs in *all*
+statuses, and faithful data keeps the API useful for parity sampling (SC-001) and support.
 
-FR-002's "display ECLAs only when valid" predates the computed `status`, so **do not
-filter on `valid=false`**: `needs_attention` rows are `valid=false` by construction, and
-those are exactly the rows carrying the "Request approval" action
-([#1372](https://github.com/linuxfoundation/lfx-self-serve/issues/1372)); an `unknown`
-row whose coverage could not be determined is `valid=false` too, yet should render as
-covered. Filter, if at all, on `status` (e.g. hide only `invalidated`).
+FR-002's "display ECLAs only when valid" predates the computed `status`, so **do not filter
+on `valid=false`**: `needs_attention` rows are `valid=false` by construction and are exactly
+the rows carrying the "Request approval" action
+([#1372](https://github.com/linuxfoundation/lfx-self-serve/issues/1372)); an `unknown` row
+whose coverage could not be determined is `valid=false` too, yet should render as covered.
+Filter, if at all, on `status` (e.g. hide only `invalidated`).
 
 ### Contributor-facing status and sanctions screening (step 5)
 
-`valid` answers "does this agreement attribute contributions right now"; the console
-needs the *reason*, so each row also carries a computed `status` (plus `statusReason`
-when it is not `valid`), evaluated in this precedence:
+`valid` answers "does this agreement attribute contributions right now"; the console needs
+the *reason*, so each row also carries a computed `status` (plus `statusReason` when it is
+not `valid`), evaluated in this precedence:
 
 | `status` | When | `statusReason` |
 |---|---|---|
@@ -377,15 +361,14 @@ when it is not `valid`), evaluated in this precedence:
 
 ICLAs are only ever `valid` or `invalidated`. New `status` values may be added in a future
 spec revision (a generated client then needs a spec refresh, since go-swagger validates the
-enum strictly). `not_on_approval_list` is the one reason that a "Request approval" action
-can act on; anything else is informational.
+enum strictly). `not_on_approval_list` is the one reason a "Request approval" action can act
+on; anything else is informational.
 
-`status` and `valid` can legitimately disagree, and the pair carries more than either
-alone: the GitLab-group deferral (see validity evaluation) returns `valid: true` with
-`status: unknown` — displayed as covered, but the coverage was never independently
-verified. A consumer that wants #1256's three-value column can safely render
-`unknown && valid` as Valid; the reverse (recovering "unverified" from `valid` alone)
-is not possible.
+`status` and `valid` can legitimately disagree, and the pair carries more than either alone:
+the GitLab-group deferral (step 4) returns `valid: true` with `status: unknown` — displayed
+as covered, but the coverage was never independently verified. A consumer that wants #1256's
+three-value column can safely render `unknown && valid` as Valid; the reverse (recovering
+"unverified" from `valid` alone) is impossible.
 
 The full #1256 pill derivation: Valid = `valid` (and `unknown`, per above), Needs attention
 = `needs_attention`, Revoked = `revoked` **∪** `invalidated` — #1256 defines Revoked as
@@ -397,9 +380,9 @@ that `valid` is `true` — `valid` answers current attribution, so those rows ca
 `valid: false` (see the filtering note in step 4).
 
 `flagged` is not read from the stored company flag alone. When sanctions screening is
-enabled, the listing screens **each distinct employer once per response** against the
-Sanctions Screening Service for a live answer, and reports how the answer was obtained
-in `flaggedCheck`:
+enabled the listing screens **each distinct employer once per response** against the
+Sanctions Screening Service for a live answer, and reports how the answer was obtained in
+`flaggedCheck`:
 
 | Situation | `flagged` | `flaggedCheck` |
 |---|---|---|
@@ -407,15 +390,14 @@ in `flaggedCheck`:
 | Screening disabled or unconfigured | the persisted `is_sanctioned` flag | `stored` |
 | Live screen answered | the live verdict (it overrides a stale persisted flag either way) | `live` |
 | Live screen could not be completed (no company external ID, org lookup failure, unresolvable domain, SSS error/unexpected status) | the persisted `is_sanctioned` flag — possibly stale | `unavailable` |
-| Employer record itself could not be read | `false` (there is no persisted flag to fall back to) | `unavailable` |
+| Employer record itself could not be read | `false` (no persisted flag to fall back to) | `unavailable` |
 
-The response-level `sssMode` (`required` / `optional` / `disabled`) tells the consumer
-how much weight `unavailable` carries: in `required` mode an unverified row is a real
-gap, in `optional` mode it is best-effort. **A screening failure never fails this
-endpoint** in either mode — unlike the signing flow, which may fail closed. This
-screener is also strictly read-only: `v2/sign`'s `checkCompanyCompliance` *persists*
-what it observes, which a GET must not do, so the lookup/domain/status logic is
-duplicated rather than shared.
+The response-level `sssMode` (`required` / `optional` / `disabled`) tells the consumer how
+much weight `unavailable` carries: in `required` mode an unverified row is a real gap, in
+`optional` mode best-effort. **A screening failure never fails this endpoint** in either
+mode — unlike the signing flow, which may fail closed. The screener is also strictly
+read-only: `v2/sign`'s `checkCompanyCompliance` *persists* what it observes, which a GET must
+not do, so the lookup/domain/status logic is duplicated rather than shared.
 
 ### Response — `200 my-cla-list`
 
@@ -425,7 +407,7 @@ duplicated rather than shared.
   "userIds": ["6e29e1a9-...", "a3b1c2d3-..."],
   "skippedIdentities": [],
   "sssMode": "optional",
-  "resultCount": 3,
+  "resultCount": 2,
   "clas": [
     {
       "signatureID": "3c1e5d7a-...",
@@ -445,7 +427,7 @@ duplicated rather than shared.
       "pdfAvailable": true
     },
     {
-      "signatureID": "9ab2f4c1-...",
+      "signatureID": "207b003b-...",
       "claType": "ecla",
       "claGroupID": "88bc3d21-...",
       "claGroupName": "LF Energy",
@@ -453,30 +435,12 @@ duplicated rather than shared.
       "companyName": "Example Corp",
       "signingEntityName": "Example Corp LLC",
       "userID": "a3b1c2d3-...",
-      "signedOn": "2026-01-18T08:00:00Z",
-      "signed": true,
-      "approved": true,
-      "valid": true,
-      "status": "valid",
-      "flagged": false,
-      "flaggedCheck": "live",
-      "documentMajorVersion": 2,
-      "documentMinorVersion": 0,
-      "pdfAvailable": false
-    },
-    {
-      "signatureID": "207b003b-...",
-      "claType": "ecla",
-      "claGroupID": "01af041c-...",
-      "claGroupName": "CNCF - Kubernetes",
-      "companyID": "f7c7ac9c-...",
-      "companyName": "Example Corp",
-      "userID": "6e29e1a9-...",
       "signedOn": "2024-05-05T09:16:19Z",
       "signed": true,
       "approved": false,
       "valid": false,
       "status": "invalidated",
+      "claManager": false,
       "flagged": false,
       "flaggedCheck": "live",
       "documentMajorVersion": 2,
@@ -494,11 +458,11 @@ Field reference (`my-cla` rows):
 | `signatureID` | string | Signature UUID; input to the PDF endpoint |
 | `claType` | `icla` \| `ecla` | See classification above; the UI renders `ICLA` / `ECLA · <company>` pills |
 | `claGroupID` | string | CLA Group UUID (`signature_project_id`) |
-| `claGroupName` | string | Resolved via `projects_cla_groups` repo (single `GetItem`, cached per request); **omitted from the JSON** (string fields marshal with `omitempty`) if the CLA group record is gone — solves the "payload carries no project display name" gap noted in M1 research R6. No v1 user-service/org-service IDs are exposed (architecture-proposal P9) |
-| `projectName` | string | The Salesforce project display name the CLA Group belongs to (a foundation-level CLA Group — identified by a `projects_cla_groups` mapping whose `project_sfid == foundation_sfid` — resolves to its foundation). Name comes from the `projects_cla_groups` mapping table and is upgraded to the project-service `Name` when available; both cached per request. Rendered as the bold top line of the UI's Project cell (with `claGroupName` as the subtext). Omitted when it could not be resolved |
-| `projectLogo` | string | The project (or foundation) logo URL, fetched from the project-service by project SFID (cached per request). Rendered as the Project cell's logo tile (the consumer supplies a default-icon fallback). A project-service miss degrades to an empty logo without failing the listing; omitted when empty |
-| `companyID` / `companyName` / `signingEntityName` | string | ECLA only; resolved from the companies table (cached per request) |
-| `userID` | string | The owning EasyCLA user record — lets the consumer correlate rows with `userIds` and with other per-user endpoints |
+| `claGroupName` | string | From the `projects_cla_groups` repo (single `GetItem`, cached per request); **omitted from the JSON** (string fields marshal with `omitempty`) when the CLA group record is gone — closes the "payload carries no project display name" gap from M1 research R6. No v1 user-service/org-service IDs are exposed (architecture-proposal P9) |
+| `projectName` | string | Salesforce project display name of the CLA Group (a foundation-level CLA Group — a `projects_cla_groups` mapping whose `project_sfid == foundation_sfid` — resolves to its foundation). From the mapping table, upgraded to the project-service `Name` when available; both cached per request. Bold top line of the UI's Project cell, with `claGroupName` as subtext. Omitted when unresolved |
+| `projectLogo` | string | Project (or foundation) logo URL from the project-service by project SFID (cached per request). The Project cell's logo tile (the consumer supplies the default-icon fallback). A miss degrades to an empty logo without failing the listing; omitted when empty |
+| `companyID` / `companyName` / `signingEntityName` | string | ECLA only; from the companies table (cached per request) |
+| `userID` | string | The owning EasyCLA user record — correlates rows with `userIds` and with other per-user endpoints |
 | `signedOn` | string | Signing/acknowledgement date (fallback: record creation date) |
 | `signed` / `approved` | bool | Raw signature flags |
 | `valid` | bool | Computed as defined above |
@@ -506,31 +470,33 @@ Field reference (`my-cla` rows):
 | `statusReason` | `not_on_approval_list` \| `unknown` | Why the standing is not `valid`; omitted for every other status and on every ICLA |
 | `flagged` / `flaggedAt` | bool / string | ECLA only: the employer is currently flagged by sanctions screening, and when that was observed (response time — no sanction timestamp is stored yet) |
 | `flaggedCheck` | `live` \| `stored` \| `unavailable` | ECLA only: how `flagged` was obtained (see step 5). `unavailable` means the value is the persisted flag and may be stale |
-| `signedVia` / `signedAs` | string | The platform the agreement was signed via (`github`, `gitlab`, `gerrit` — the last also covers LF SSO signings identified by email) and the account it was signed as; omitted when the record carries no such identity |
+| `signedVia` / `signedAs` | string | The platform signed via (`github`, `gitlab`, `gerrit` — the last also covers LF SSO signings identified by email) and the account signed as; omitted when the record carries no such identity |
 | `claManager` | bool | ECLA only: the owning user is a CLA manager of the employer's CCLA for this CLA Group |
-| `documentMajorVersion` / `documentMinorVersion` | int | CLA document version that was signed (display/superseded detection is the consumer's choice) |
-| `pdfAvailable` | bool | `true` when the record is a signed ICLA eligible for PDF retrieval (ECLAs have no signed document — FR-002); invalidated ICLAs stay eligible (it is the user's own signed legal record); actual S3 object availability is verified by the PDF endpoint on request |
+| `documentMajorVersion` / `documentMinorVersion` | int | Signed CLA document version (display/superseded detection is the consumer's choice) |
+| `pdfAvailable` | bool | `true` for a signed ICLA eligible for PDF retrieval (ECLAs have no signed document — FR-002); invalidated ICLAs stay eligible (the user's own signed legal record); actual S3 object availability is verified by the PDF endpoint on request |
 
 List-level fields: `lfUsername` (the effective username the list was resolved for),
 `userIds` (matched EasyCLA user record IDs), `skippedIdentities` (identity parameters
 dropped by the ownership enforcement, `"<parameter>:<value>"` strings, always present —
-`[]` when nothing was skipped), `sssMode` (the sanctions screening mode in effect for
-this response — `required` / `optional` / `disabled`, always present), `resultCount`.
+`[]` when nothing was skipped), `sssMode` (the sanctions screening mode in effect, always
+present), `resultCount`.
 
 Errors: `401` (token carries no username — also returned by the gateway for a
 missing/invalid token before the request reaches EasyCLA), `400` (admin caller with no
-username and no identity keys at all), `403` (ACS deny at the gateway), `500`
-(upstream data-layer failure — no partial results are returned).
+username and no identity keys at all), `403` (ACS deny at the gateway), `500` (a data-layer
+failure that affects the whole list — no partial results are returned). Per-row failures are
+not errors: a company/CCLA lookup or a sanctions screen that fails degrades that row
+(`status: unknown`, or `flaggedCheck: unavailable`) and still returns `200`, as described
+under "Identity resolution (step 1)".
 
-An identity that resolves to zero user records returns `200` with empty
-`userIds`/`clas` (`resultCount: 0`) — that is the Self Serve "unmatched" empty state,
-not an error.
+An identity that resolves to zero user records returns `200` with empty `userIds`/`clas`
+(`resultCount: 0`) — the Self Serve "unmatched" empty state, not an error.
 
 ## `GET /v4/my-clas/{signatureID}/pdf`
 
-Issues the signed-PDF download link for an ICLA **owned by the authenticated user**.
-Takes the **same identity query parameters** as `/v4/my-clas` (same defaulting from
-the token) plus the path parameter:
+Issues the signed-PDF download link for an ICLA **owned by the authenticated user**. Takes
+the **same identity query parameters** as `/v4/my-clas` (same defaulting from the token)
+plus the path parameter:
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
@@ -539,15 +505,15 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 Behavior:
 
-1. Applies the **same identity-ownership enforcement** as the list endpoint (step 0)
-   and resolves the allowed identity to user records — so for a non-admin caller the
-   resolvable set can only ever contain their own records, and a signature ID
-   belonging to somebody else is a guaranteed 404 even if the caller passes that
-   person's email/GitHub keys explicitly (covered by a dedicated unit test).
-2. Verifies the `signatureID` belongs to one of those records **and** is a signed
-   ICLA, then verifies the PDF object actually exists in S3 (`HeadObject`) — a missing
-   document returns 404 instead of a dead presigned URL.
-3. On success, returns a presigned S3 GET URL for
+1. Applies the **same identity-ownership enforcement** as the list endpoint (step 0) and
+   resolves the allowed identity to user records — so for a non-admin caller the resolvable
+   set can only contain their own records, and a signature ID belonging to somebody else is
+   a guaranteed 404 even if the caller passes that person's email/GitHub keys explicitly
+   (covered by a dedicated unit test).
+2. Verifies the `signatureID` belongs to one of those records **and** is a signed ICLA, then
+   verifies the PDF object exists in S3 (`HeadObject`) — a missing document returns 404
+   instead of a dead presigned URL.
+3. On success returns a presigned S3 GET URL for
    `contract-group/{claGroupID}/icla/{userID}/{signatureID}.pdf` in the
    `cla-signature-files-{stage}` bucket, valid for **15 minutes**:
 
@@ -559,54 +525,50 @@ Behavior:
 }
 ```
 
-4. Unknown, not-owned, unsigned, or ECLA signature IDs all return **`404`** (never
-   `403`), so the endpoint is not an existence oracle — matching the M1 SS contract
+4. Unknown, not-owned, unsigned and ECLA signature IDs all return **`404`** (never `403`),
+   so the endpoint is not an existence oracle — matching the M1 SS contract
    (`ss-me-clas-api.md`).
 
-Because the URL TTL is 15 minutes, the consumer must fetch it **on click**, never on
-page load, and hand it straight to the browser (issues
+Because the URL TTL is 15 minutes, the consumer must fetch it **on click**, never on page
+load, and hand it straight to the browser (issues
 [#1166](https://github.com/linuxfoundation/lfx-self-serve/issues/1166),
-[#1167](https://github.com/linuxfoundation/lfx-self-serve/issues/1167) — SS never
-stores documents).
+[#1167](https://github.com/linuxfoundation/lfx-self-serve/issues/1167) — SS never stores
+documents).
 
 ### Why a new PDF endpoint instead of the existing one?
 
-`GET /v4/signatures/{signatureID}/signed-document` already exists, but its access check
+`GET /v4/signatures/{signatureID}/signed-document` exists, but its access check
 (`v2/signatures/handlers.go` `isUserHaveAccessOfSignedSignaturePDF`) requires
-**project-scoped ACL authority** (project manager / project-org scopes). A plain
-contributor holds no such scopes, so the Me-lens flow could not use it. The new
-endpoint is modeled on that implementation — it reuses the very same S3 key layout and
-presign helper (`utils.SignedCLAFilename` + `utils.GetDownloadLink`, 15-minute TTL) and
-the same ECLA exclusion (`v2/signatures/service.go` `GetSignedDocument` rejects
-employee signatures for the same reason: no document exists) — but replaces the
-role-based check with the **token-anchored identity-ownership check** described above,
-which is the right authorization model for "download *my own* signed document".
+**project-scoped ACL authority** (project manager / project-org scopes), which a contributor
+does not hold. The new endpoint reuses that implementation's S3 key layout and presign helper
+(`utils.SignedCLAFilename` + `utils.GetDownloadLink`, 15-minute TTL) and its ECLA exclusion
+(`v2/signatures/service.go` `GetSignedDocument` rejects employee signatures — no document
+exists), replacing the role-based check with the **token-anchored identity-ownership check**
+above: the right model for "download *my own* signed document".
 
 ## `GET /v4/my-clas/identities`
 
-Returns the deduplicated identities the **authenticated user** owns — no query
-parameters, always scoped to the token holder (an admin token returns the admin's own
-identities, not anyone else's). This is the identity-resolution counterpart to
-`lfx-self-serve` issue [#1161](https://github.com/linuxfoundation/lfx-self-serve/issues/1161):
-instead of the Sanctions-Screening/SS side scanning `cla-*-users` client-side to map an
-identity back to an EasyCLA user, it can read the exact identity set EasyCLA already
-associates with the caller.
+Returns the deduplicated identities the **authenticated user** owns — no query parameters,
+always scoped to the token holder (an admin token returns the admin's own identities). This
+is the identity-resolution counterpart to
+[lfx-self-serve#1161](https://github.com/linuxfoundation/lfx-self-serve/issues/1161):
+instead of the SS side scanning `cla-*-users` client-side to map an identity back to an
+EasyCLA user, it can read the exact identity set EasyCLA already associates with the caller.
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" "$GW/cla-service/v4/my-clas/identities"
 ```
 
-The set is the **union of the two sources the list endpoint's ownership enforcement
-(step 0) trusts** — the identities on the caller's EasyCLA user records
-(`GetUsersByLFUsername`) and the identities connected to their LF account in the platform
-user-service (`loadPlatformIdentities`: profile emails + non-deleted connected identities).
-The service method `GetMyIdentities` reuses those same two calls, so this endpoint can
-never surface an identity that `/v4/my-clas` would refuse to search for that caller, and
-the My CLAs / PDF endpoints are left unchanged.
+The set is the **union of the two sources the ownership enforcement (step 0) trusts** — the
+identities on the caller's EasyCLA user records (`GetUsersByLFUsername`) and those connected
+to their LF account in the platform user-service (`loadPlatformIdentities`: profile emails +
+non-deleted connected identities). `GetMyIdentities` reuses those same two calls, so this
+endpoint can never surface an identity that `/v4/my-clas` would refuse to search for that
+caller, and the My CLAs / PDF endpoints are unchanged.
 
-Each entry is `"<type>:<value>"`, deduplicated and sorted; types are `lf-username`,
-`email`, `github-id`, `github-username`, `gitlab-id`, `gitlab-username`,
-`gerrit-username`. Response `200 my-identity-list`:
+Each entry is `"<type>:<value>"`, deduplicated and sorted; types are `lf-username`, `email`,
+`github-id`, `github-username`, `gitlab-id`, `gitlab-username`, `gerrit-username`. Response
+`200 my-identity-list`:
 
 ```json
 {
@@ -624,205 +586,191 @@ A token carrying no username returns `401` (same as the list endpoint).
 
 ## How LFX Self Serve consumes this (M1 mapping)
 
-The SS server slice already on `lfx-self-serve` branch `feat/easycla-my-clas-server`
-resolves identity from the session (LF username via `getEffectiveUsername`, verified
-emails, GitHub numeric IDs from Auth0 identities) and currently unions per-user calls
-with a TODO for the missing lookup endpoint. With this API it collapses to:
+The SS server slice on `lfx-self-serve` branch `feat/easycla-my-clas-server` resolves
+identity from the session (LF username via `getEffectiveUsername`, verified emails, GitHub
+numeric IDs from Auth0 identities) and currently unions per-user calls with a TODO for the
+missing lookup endpoint. With this API it collapses to:
 
-- `GET /api/me/clas` → one upstream call
-  `GET /cla-service/v4/my-clas?email=…&secondaryEmail=…&githubId=…&githubUsername=…&gitlabId=…&gitlabUsername=…&gerritUsername=…`
-  — SS MUST forward **all** available session-derived identity keys: each verified
-  email as both `email` and `secondaryEmail` (they search different attributes), and
-  provider usernames alongside numeric IDs (an ID present only on a detached
-  pre-LFID record cannot be authorized by itself; the verified username recovers
-  it). The same full set goes on the PDF call (server-derived values from the session
-  — EasyCLA **re-verifies** every key against the LF account server-side until SS is
-  allow-listed, after which SS's Auth0-derived list is authoritative). Mapping to
+- `GET /api/me/clas` → one upstream
+  `GET /cla-service/v4/my-clas?email=…&secondaryEmail=…&githubId=…&githubUsername=…&gitlabId=…&gitlabUsername=…&gerritUsername=…`.
+  SS MUST forward **all** session-derived identity keys: each verified email as both `email`
+  and `secondaryEmail` (they search different attributes), and provider usernames alongside
+  numeric IDs (an ID present only on a detached pre-LFID record cannot authorize itself; the
+  verified username recovers it). The same set goes on the PDF call. All values are
+  server-derived from the session; EasyCLA **re-verifies** every key against the LF account
+  until SS is allow-listed, after which SS's Auth0-derived list is authoritative. Mapping to
   `MyClaAgreement`: `kind = claType`, `projectName = projectName` (bold top line of the
-  Project cell) with `claGroupName` as its subtext and `projectLogo` as the logo tile
-  (falling back to `claGroupName` / a default icon when a field is absent — the endpoint
-  now supplies the distinct project name + logo, so the old `projectName = claGroupName`
-  UUID fallback is retired), the status pill from the computed `status`/`statusReason`
-  (`valid` stays available as the boolean shortcut, but is **not** the display filter —
-  see "Validity evaluation (step 4)" above), `pdfAvailable` as-is; identity
-  telemetry from `userIds` and
-  `skippedIdentities` (`matchedUserIds = userIds.length`, `unmatched = resultCount ===
-  0 && userIds.length === 0` — skipped keys are the direct signal for issue
-  [#1165](https://github.com/linuxfoundation/lfx-self-serve/issues/1165)'s
+  Project cell) with `claGroupName` as subtext and `projectLogo` as the logo tile (falling
+  back to `claGroupName` / a default icon when absent — the old
+  `projectName = claGroupName` UUID fallback is retired), the status pill from
+  `status`/`statusReason` (`valid` stays the boolean shortcut but is **not** the display
+  filter — see step 4), `pdfAvailable` as-is; identity telemetry from `userIds` and
+  `skippedIdentities` (`matchedUserIds = userIds.length`, and
+  `unmatched = resultCount === 0 && userIds.length === 0`; skipped keys are the direct signal
+  for [#1165](https://github.com/linuxfoundation/lfx-self-serve/issues/1165)'s
   identity-mapping-gap telemetry).
-- `GET /api/me/clas/:signatureId/pdf-url` → `GET /cla-service/v4/my-clas/{id}/pdf`
-  with the same identity params; upstream 404 maps to SS 404 (never 403).
+- `GET /api/me/clas/:signatureId/pdf-url` → `GET /cla-service/v4/my-clas/{id}/pdf` with the
+  same identity params; upstream 404 maps to SS 404 (never 403).
 
 This also reshapes the originally-contingent `GET /v4/users/by-identity` endpoint
-(issue [#1161](https://github.com/linuxfoundation/lfx-self-serve/issues/1161)): the
-GSI-backed identity→user resolution now runs *inside* EasyCLA where the approval-list
-validity check — impossible to perform from SS, which cannot see approval lists — also
-lives, so SS never needs to scan `cla-*-users` itself. What #1161 actually needs is the
-inverse — the identity set already attached to the caller — and that is served directly
-by `GET /v4/my-clas/identities` (above). If a bare arbitrary identity→user lookup is
-ever still wanted, the `resolveUsers` service function is the ready-made core of it.
+([#1161](https://github.com/linuxfoundation/lfx-self-serve/issues/1161)): the GSI-backed
+identity→user resolution now runs *inside* EasyCLA, where the approval-list validity check —
+impossible from SS, which cannot see approval lists — also lives, so SS never scans
+`cla-*-users` itself. What #1161 actually needs is the inverse, the identity set already
+attached to the caller, served by `GET /v4/my-clas/identities`. For a bare identity→user
+lookup, the `resolveUsers` service function is its ready-made core.
 
 ## Performance notes
 
 Per request, with every distinct key resolved exactly once:
 
 - one GSI query for the caller's own EasyCLA records (enforcement) + zero, one or two
-  platform user-service HTTP calls (profile + paginated identities — loaded lazily,
-  at most once, whenever a username key is present or another key is not covered by
-  the EasyCLA records);
+  platform user-service HTTP calls (profile + paginated identities — loaded lazily, at most
+  once, whenever a username key is present or another key is not covered by the EasyCLA
+  records);
 - one GSI query per allowed identity key (typically 2–4);
 - one paginated GSI query per matched user record (typically 1–2);
 - one `GetItem` per distinct CLA group (name), one per distinct company (ECLAs only);
-- one `projects_cla_groups` GSI query per distinct CLA group (project name/logo resolution)
-  plus, when it resolves to a project/foundation SFID, up to one project-service HTTP call per
-  distinct SFID (both cached per request; a lookup miss degrades to an empty logo);
-- one CCLA query per distinct (CLA group, company) pair and one approval-list
-  evaluation per (pair, user) — ECLAs only; the GitHub-org check may add one GitHub
-  API call per evaluation when the CCLA actually uses org-based approval;
-- when sanctions screening is enabled, one organization-service lookup (for the domain)
-  plus one SSS call per **distinct employer** — not per row, and none at all for
-  administrator-blocked employers or when screening is off.
+- one `projects_cla_groups` GSI query per distinct CLA group (project name/logo) plus, when
+  it resolves to a project/foundation SFID, up to one project-service HTTP call per distinct
+  SFID (both cached per request; a miss degrades to an empty logo);
+- one CCLA query per distinct (CLA group, company) pair and one approval-list evaluation per
+  (pair, user) — ECLAs only; the GitHub-org check may add one GitHub API call per evaluation
+  when the CCLA actually uses org-based approval;
+- when screening is enabled, one organization-service lookup (for the domain) plus one SSS
+  call per **distinct employer** — not per row, and none at all for administrator-blocked
+  employers or when screening is off.
 
-Those calls are issued **concurrently**, at most 8 in flight per stage (three parallel chains, so ≤ ~24 total): the matched user
-records' signatures load together, then the CLA-group/project, the employer/sanctions and
-the CCLA/approval-list chains run in parallel, and the rows are assembled from the gathered
-results. Latency is ~4 dependent stages deep rather than proportional to the row count, so a
-slow SSS screen overlaps the rest of the work instead of adding to it. One consequence: a
-revoked or unreadable employer may still incur its CCLA and approval-list reads, whose
-results are then discarded.
+Those calls are issued **concurrently**, at most 8 in flight per stage (three parallel
+chains, so ≤ ~24 total): the matched records' signatures load together, then the
+CLA-group/project, employer/sanctions and CCLA/approval-list chains run in parallel, and the
+rows are assembled from the results. Latency is ~4 dependent stages deep rather than
+proportional to the row count, so a slow SSS screen overlaps the rest of the work instead of
+adding to it. One consequence: a revoked or unreadable employer may still incur its CCLA and
+approval-list reads, whose results are then discarded.
 
-No table scans except the explicitly opt-in `secondaryEmail` match (a single scan
-covering all provided values — callers should still treat it as a slow path). Each
-logical query above may issue multiple paginated calls; the latency-envelope
-assumption is to be confirmed on dev.
+No table scans except the opt-in `secondaryEmail` match (a single scan covering all provided
+values — still a slow path). Each logical query above may issue multiple paginated calls;
+the latency envelope is to be confirmed on dev.
 
 ## Deployment / rollout
 
 1. Merge the `easycla` branch; the endpoints deploy with the normal v4 Lambda pipeline
    (`gen/` is rebuilt by `make swagger` during the build).
 2. Run `acs-cli sync` with the updated `services/11-cla-service.yaml` against each
-   environment (dev → staging → prod) so the ACS warden allows the paths; until then
-   the gateway returns 403 for them (fail-closed — nothing else can regress).
+   environment (dev → staging → prod) so the ACS warden allows the paths; until then the
+   gateway returns 403 for them (fail-closed — nothing else can regress).
 3. No lfx-gateway deploy is needed.
-4. To switch on the trusted Self Serve caller path, provision the SSM parameter with the ID of a
-   Self Serve client whose tokens are **never returned to a user** — the only infrastructure change
-   the trust-SS hardening needs (the key matches the existing `cla-*` `ssm:GetParameter` grant).
-   The client SS calls with today does not qualify, so this step is on hold; see "Security notes":
+4. To switch on the trusted Self Serve caller path, provision the SSM parameter with the ID
+   of a Self Serve client whose tokens are **never returned to a user** — the only
+   infrastructure change the trust-SS hardening needs (the key matches the existing `cla-*`
+   `ssm:GetParameter` grant). The client SS uses today does not qualify, so this is on hold
+   (see "Known limitations"):
 
    ```bash
    aws --profile lfproduct-dev ssm put-parameter --name cla-ss-trusted-client-ids-dev \
      --type String --value '<ss-client-id>[,<ss-client-id-2>]' --overwrite
    ```
 
-   Both partial states are safe, so deploy order does not matter, but the allow-list is read at
-   cold start only: after `put-parameter`, force a Lambda restart/redeploy, otherwise warm
+   Both partial states are safe, so deploy order does not matter, but the allow-list is read
+   at cold start only: after `put-parameter`, force a Lambda restart/redeploy, otherwise warm
    containers keep the path disabled while fresh ones enable it. Rollback is
    `ssm delete-parameter` plus the same restart. A read failure other than a missing parameter
-   is logged as a warning and leaves the path disabled, i.e. non-admin callers keep having every
-   identity verified per request — it never aborts the other lambdas that load this config.
-5. Read-only rollback: revert the ACS sync (or simply never flip the SS feature flag);
-   the endpoints write nothing.
+   is logged as a warning and leaves the path disabled — non-admin callers keep having every
+   identity verified per request — and never aborts the other lambdas that load this config.
+5. Read-only rollback: revert the ACS sync (or never flip the SS feature flag); the endpoints
+   write nothing.
 
 ## Verification performed
 
-- `make swagger` (v2 spec compiled + validated), `make build-linux`, full `make test`
-  (all packages pass), `make lint` (golangci-lint + license-header check) — all clean.
-- Unit tests (`cla-backend-go/v2/my_clas/service_test.go`): identity union + dedupe +
-  email normalization; no-match empty result; **ownership enforcement** (every foreign
-  identity key skipped + reported while the caller's own record still resolves;
-  validation via the EasyCLA record incl. `user_emails`/GitLab keys; validation via
-  platform user-service identities incl. gerrit usernames and source-scoping — a
-  Slack identity never authorizes a GitHub search; user-service loaded lazily and at
-  most once; admin bypass); `secondaryEmail` scan runs only for explicitly provided
-  values; ICLA validity (approved/invalidated, unsigned exclusion); ECLA validity
-  matrix (covered, sanctioned company, missing CCLA, `approved=false`,
-  not-on-current-approval-list) across both `signature_type` spellings; PDF
-  ownership/eligibility (owned ICLA, ECLA, unsigned, not-owned, cross-user attempts
-  with explicit foreign keys → 404, admin path) and S3 key shape; `Identity.IsEmpty`;
-  not-found error classification; `GetMyIdentities` union/dedupe/sort of the
-  `<type>:<value>` set across EasyCLA records + platform identities (deleted platform
-  emails and non-code sources excluded, empty-username error).
-- Unit tests for the trusted-caller path (`cla-backend-go/auth/trusted_caller_test.go`,
-  `cla-backend-go/config/ssm_test.go`, `cla-backend-go/v2/my_clas/handlers_test.go`,
-  `service_test.go`): allow-list parsing and on/off (incl. a configured allow-list without an
-  Auth0 domain failing startup); missing/blank/`Basic`/`Bearer`-only headers denied without a
-  JWKS lookup; trusted vs. verified-but-not-allow-listed/`azp`-less tokens; rejection of
-  expired, `exp`-less, `nbf`/`iat`-future, `kid`-less, unknown-`kid`, wrong-key and
-  `HS256`/`alg: none` tokens (algorithm pinning); JWKS caching, refresh cooldown, TTL reload,
-  cached-key fallback and its 24 h bound, concurrent use, fetch/decode failure modes and both
-  the `n`+`e` and `x5c` key forms; per-handler 401 on an unverifiable caller (service never
-  reached), trusted caller reaching the service with `Trusted=true` and no username, `400`
-  when it supplies no identity at all, service-error/404 mapping, unchanged behavior with the
-  verifier disabled or absent; service-level trusted bypass (a GitHub-only record with no
-  `lf_username` resolves, its PDF downloads, the platform user-service is never consulted and
-  the requested identity is not mutated) and the bounded identity-summary log line.
-- Read-only checks against the shared **dev** AWS environment: confirmed
-  `reference-signature-index` on `cla-dev-signatures` and all six identity GSIs on
-  `cla-dev-users`; sampled real ICLA/ECLA records to verify the
+- `make swagger` (v2 spec compiled + validated), `make build-linux`, `make test`, `make lint`
+  (golangci-lint + license headers) — all clean.
+- Unit tests (`v2/my_clas/service_test.go`): identity union/dedupe/email normalization;
+  no-match empty result; **ownership enforcement** (foreign keys skipped + reported while the
+  caller's own record still resolves; validation via the EasyCLA record incl.
+  `user_emails`/GitLab keys; validation via platform identities incl. gerrit usernames and
+  source scoping — a Slack identity never authorizes a GitHub search; user-service loaded
+  lazily, at most once; admin bypass); `secondaryEmail` scan only when values are passed;
+  ICLA validity (approved/invalidated, unsigned exclusion); ECLA validity matrix (covered,
+  sanctioned company, missing CCLA, `approved=false`, not-on-current-approval-list) across
+  both `signature_type` spellings; PDF ownership/eligibility (owned ICLA, ECLA, unsigned,
+  not-owned, cross-user attempt with explicit foreign keys → 404, admin path) and S3 key
+  shape; `Identity.IsEmpty`; not-found classification; `GetMyIdentities` union/dedupe/sort of
+  the `<type>:<value>` set (deleted platform emails and non-platform sources excluded,
+  empty-username error).
+- Trusted-caller tests (`auth/trusted_caller_test.go`, `config/ssm_test.go`,
+  `v2/my_clas/handlers_test.go`, `service_test.go`): allow-list parsing and on/off (a
+  configured allow-list without an Auth0 domain fails startup); missing/blank/`Basic`/
+  `Bearer`-only headers denied without a JWKS lookup; trusted vs. verified-but-not-listed and
+  `azp`-less tokens; rejection of expired, `exp`-less, `nbf`/`iat`-future, `kid`-less,
+  unknown-`kid`, wrong-key, `HS256` and `alg: none` tokens (algorithm pinning); JWKS caching,
+  refresh cooldown, TTL reload, cached-key fallback and its 24 h bound, concurrent use,
+  fetch/decode failures, both the `n`+`e` and `x5c` key forms; per-handler 401 on an
+  unverifiable caller (service never reached), trusted caller reaching the service with
+  `Trusted=true` and no username, `400` when it supplies no identity, service-error/404
+  mapping, unchanged behavior with the verifier disabled or absent; trusted bypass (a
+  GitHub-only record with no `lf_username` resolves, its PDF downloads, user-service never
+  consulted, requested identity not mutated) and the bounded identity-summary log line.
+- Read-only **dev** checks: `reference-signature-index` on `cla-dev-signatures` and all six
+  identity GSIs on `cla-dev-users` exist; sampled records confirm the
   `signature_type=cla|ecla` split, that every `ecla`-typed record carries
-  `signature_user_ccla_company_id`, and the `signed_on`/`date_created`/invalidation
-  `note` field semantics.
-- Read-only checks against **prod**: zero signature records carrying a
-  `signature_reference_id` lack `signature_type` or `signature_reference_type`, so the
-  repository's filter cannot drop legacy records (the only attribute-less rows, 9 on
-  dev, are empty stubs with no reference ID and never appear in the queried GSI).
+  `signature_user_ccla_company_id`, and the `signed_on`/`date_created`/invalidation `note`
+  semantics.
+- Read-only **prod** check: no signature record carrying a `signature_reference_id` lacks
+  `signature_type` or `signature_reference_type`, so the repository's filter cannot drop
+  legacy records (the only attribute-less rows, 9 on dev, are stubs with no reference ID,
+  absent from the queried GSI).
 - Not verified here (needs a deployed dev build + ACS sync): end-to-end curl through
-  lfx-gateway. Suggested smoke test afterwards:
-  `curl -H "Authorization: Bearer $TOK" "$GW/cla-service/v4/my-clas"` for a dev user
-  with known ICLA/ECLA fixtures, then the returned `signatureID` through
-  `/my-clas/{id}/pdf` and download the URL (SC-001's ≥99% download check), and
-  `curl -H "Authorization: Bearer $TOK" "$GW/cla-service/v4/my-clas/identities"` to
-  confirm the identity set (`IDENTITIES=1 ./utils/my_clas.sh`).
+  lfx-gateway. Smoke test: `curl -H "Authorization: Bearer $TOK" "$GW/cla-service/v4/my-clas"`
+  for a dev user with known ICLA/ECLA fixtures, the returned `signatureID` through
+  `/my-clas/{id}/pdf` plus a download of that URL (SC-001's ≥99% check), and
+  `/v4/my-clas/identities` (`IDENTITIES=1 ./utils/my_clas.sh`).
 
 ## Known limitations / follow-ups
 
-- **Current possession of an identity grants access to its historical records —
-  accepted product decision.** A verified-as-currently-owned email or SCM username is
-  the bar for surfacing (and downloading) historical CLAs recorded under that
-  identity; a recycled/reassigned alias (e.g. a corporate email handed to a new
-  employee, a renamed GitHub handle re-registered by someone else, both also linked to
-  the new holder's LF account) can therefore surface the previous holder's records.
-  This matches how EasyCLA itself keys pre-LF-login history, keeps the M1 read-only
-  surface simple, and was explicitly chosen over a stable-ID corroboration scheme;
-  numeric `githubId`/`gitlabId` keys are immune (immutable) and remain the preferred
-  high-precision parameters.
-- **GitLab group approval lists** (`gitlab_org_approval_list`) are not re-evaluated
-  live: group membership requires the GitLab group's OAuth token (the MR-gating
-  service holds per-group credentials). When a CCLA uses GitLab group approvals and no
-  other criterion matched, validity defers to the `signature_approved` flag (see
-  validity evaluation above) — so a member removed from the group whose ECLA was not
-  yet invalidated shows `valid=true` (with `status: unknown`, marking the coverage as
-  unverified) until the invalidation flow catches up. A follow-up could add the live
-  group check via the gitlab-activity service.
-- **Secondary emails** (`user_emails`) are matchable only via the opt-in
-  `secondaryEmail` parameter, which costs one table scan for all values (set
-  attribute, not indexable) — the default `email` parameter stays index-backed;
-  numeric GitHub/GitLab IDs remain the preferred high-precision keys.
-- **Numeric GitHub/GitLab IDs can only be verified against the caller's EasyCLA
-  LFID records** — the platform user-service identities carry usernames, not provider
-  IDs. An ID not present on any of those records is skipped even if the matching
-  username would have been allowed; callers should pass the username alongside the ID.
-- **Superseded-document detection** is not computed server-side; the signed document
-  version is exposed (`documentMajorVersion/MinorVersion`) so a consumer can compare
-  against the CLA group's current template version if the product wants a
-  "superseded" badge later (the final mockup dropped the status column).
+- **Current possession of an identity grants access to its historical records — accepted
+  product decision.** A verified-as-currently-owned email or SCM username is the bar for
+  surfacing (and downloading) historical CLAs recorded under it, so a recycled/reassigned
+  alias (a corporate email handed to a new employee, a renamed GitHub handle re-registered by
+  someone else, both linked to the new holder's LF account) can surface the previous holder's
+  records. This matches how EasyCLA itself keys pre-LF-login history and was chosen over a
+  stable-ID corroboration scheme; the immutable `githubId`/`gitlabId` keys are immune and stay
+  the preferred high-precision parameters.
+- **GitLab group approval lists** (`gitlab_org_approval_list`) are not re-evaluated live:
+  membership needs the group's OAuth token, held per group by the MR-gating service. When a
+  CCLA uses group approvals and nothing else matched, validity defers to `signature_approved`
+  (step 4) — a member removed from the group whose ECLA is not yet invalidated shows
+  `valid=true` with `status: unknown` until the invalidation flow catches up. A follow-up
+  could add the live check via the gitlab-activity service.
+- **Secondary emails** (`user_emails`) are matchable only via the opt-in `secondaryEmail`
+  parameter, one table scan for all values (set attribute, not indexable); the default `email`
+  parameter stays index-backed.
+- **Numeric GitHub/GitLab IDs can only be verified against the caller's EasyCLA LFID
+  records** — platform identities carry usernames, not provider IDs. An ID on no such record
+  is skipped even when the matching username would have been allowed, so pass the username
+  alongside the ID.
+- **Superseded-document detection** is not computed server-side; the signed document version
+  is exposed (`documentMajorVersion/MinorVersion`) so a consumer can compare it against the
+  CLA group's current template version if a "superseded" badge is wanted later (the final
+  mockup dropped the status column).
 - **Unmatched-identity telemetry** (an M1 exit criterion) is a Self Serve concern; the
-  response deliberately exposes `userIds`/`resultCount` so SS can emit it.
-- Unlike the existing `GET /v4/signatures/user/{userID}` (which performs no ownership
-  check at all — the upstream-hardening observation from M1 research R3), these
-  endpoints **enforce identity ownership server-side** for non-admin callers. The
-  residual trust decisions are: the token's username claim is the identity anchor
-  (that is the platform-wide model — the gateway/ACS chain keys on the same claim),
-  and admin-flagged principals bypass enforcement (needed for support/parity
-  sampling; remove the `utils.IsUserAdmin` branch in `handlers.go` to revoke it).
-- **The `azp` allow-list is only as sound as no user being able to hold a token that carries an
-  allow-listed `azp`.** Server-side minting with a client secret is not sufficient: the token SS
-  sends here (`req.apiGatewayToken`, a refresh-token exchange on `PCC_AUTH0_CLIENT_ID`) is minted
-  that way and then returned to every logged-in user as `v1Token` by SS's
-  `GET /api/profile/developer` ([lfx-self-serve#1045](https://github.com/linuxfoundation/lfx-self-serve/pull/1045)),
-  and the v2 session token shares that `azp`. Allow-listing that client would therefore let any
-  logged-in user pass any identity — including to the PDF endpoint, whose presigned URL exposes a
-  signed ICLA. So allow-list only a client whose tokens are never surfaced to a user; SS needs a
+  response exposes `userIds`/`resultCount` so SS can emit it.
+- Unlike `GET /v4/signatures/user/{userID}`, which performs no ownership check at all (the
+  upstream-hardening observation from M1 research R3), these endpoints **enforce identity
+  ownership server-side** for non-admin callers. Residual trust decisions: the token's
+  username claim is the identity anchor (the platform-wide model — the gateway/ACS chain keys
+  on the same claim), and admin-flagged principals bypass enforcement (needed for
+  support/parity sampling; remove the `utils.IsUserAdmin` branch in `handlers.go` to revoke
+  it).
+- **The `azp` allow-list is only as sound as no user being able to hold a token carrying an
+  allow-listed `azp`.** Server-side minting with a client secret is not sufficient: the token
+  SS sends here (`req.apiGatewayToken`, a refresh-token exchange on `PCC_AUTH0_CLIENT_ID`) is
+  minted that way and then returned to every logged-in user as `v1Token` by SS's
+  `GET /api/profile/developer`
+  ([lfx-self-serve#1045](https://github.com/linuxfoundation/lfx-self-serve/pull/1045)), and the
+  v2 session token shares that `azp`. Allow-listing that client would let any logged-in user
+  pass any identity — including to the PDF endpoint, whose presigned URL exposes a signed
+  ICLA. So allow-list only a client whose tokens are never surfaced to a user; SS needs a
   dedicated client for this hop first. The same caveat is recorded in code at the `azp` check.
 - **Both the caller-supplied identity list and the `azp` allow-list are transitional (P3/P9
   of the trust-SS decision).** At M6, once EasyCLA runs on K8s, it should call
@@ -830,10 +778,10 @@ assumption is to be confirmed on dev.
   point the `githubId`/`githubUsername`/… parameters, the allow-list and the in-handler JWT
   verification all go away together. `swagger/cla.v2.yaml` carries the same note.
 - **The in-handler verification covers the bearer token, not the gateway's `X-ACL` headers.**
-  Those are still consumed unverified (`lfx-kit/auth.SwaggerAuth`), so what is closed, once the
-  allow-list is configured, is the trust decision that matters here: nothing reaches the handlers
+  Those are still consumed unverified (`lfx-kit/auth.SwaggerAuth`), so what the configured
+  allow-list closes is the trust decision that matters here: nothing reaches the handlers
   without a JWKS-verified tenant token, and nothing can claim to be Self Serve without an
-  allow-listed `azp`. A forged `X-ACL` can still assert a username, or the admin flag that bypasses
-  ownership checks — both pre-existing, both now additionally requiring a valid token. Binding the
-  principal to a token claim belongs to the v4 invoke-path trust work (spike 4); the M6 move removes
-  the header trust entirely.
+  allow-listed `azp`. A forged `X-ACL` can still assert a username, or the admin flag that
+  bypasses ownership checks — both pre-existing, both now additionally requiring a valid
+  token. Binding the principal to a token claim belongs to the v4 invoke-path trust work
+  (spike 4); the M6 move removes the header trust entirely.

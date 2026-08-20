@@ -4,20 +4,20 @@
 type: object
 x-nullable: false
 title: My CLA Manager Request
-description: A contributor request to the CLA managers of the CCLA covering their ECLA - removal or approval - delivered by email, no signature state is changed
+description: A contributor removal or approval request to the CLA managers of the CCLA covering their ECLA, delivered by email - no signature state changes
 required:
   - requestType
 properties:
   requestType:
     type: string
     enum: [removal, approval]
-    description: removal - ask to be removed from the CCLA coverage, approval - ask to be (re-)added to the approval list
+    description: removal - ask to be removed from the CCLA coverage; approval - ask to be (re-)added to the approval list
   recipients:
     type: array
-    description: The LF usernames of the CLA managers to notify - must be a non-empty subset of the resolved managers; only when zero managers resolve may it be empty, the request is then recorded without sending email
+    description: LF usernames of the CLA managers to notify - a non-empty subset of the resolved managers; empty only when zero managers resolve, and the request is then recorded without email
     items:
       type: string
   message:
     type: string
     maxLength: 4096
-    description: An optional message from the contributor included in the notification email
+    description: Optional contributor message included in the notification email

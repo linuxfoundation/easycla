@@ -4,14 +4,14 @@
 type: object
 x-nullable: false
 title: My CLA Manager Request Result
-description: The receipt of a contact-CLA-manager request - recorded as an EasyCLA audit event
+description: Receipt of a contact-CLA-manager request - recorded as an EasyCLA audit event
 properties:
   requestID:
     type: string
-    description: The request ID (UUID) carried by the audit event
+    description: Request ID (UUID) carried by the audit event
   signatureID:
     type: string
-    description: The ECLA signature ID (UUID) the request refers to
+    description: ECLA signature ID (UUID) the request refers to
   requestType:
     type: string
     enum: [removal, approval]
@@ -19,10 +19,10 @@ properties:
   status:
     type: string
     enum: [sent, recorded]
-    description: sent - the notification email was dispatched to those selected CLA managers that have a resolvable email address (at least one had), recorded - the request was recorded as an audit event but no email was sent, because the CCLA lists no CLA manager or none of the selected managers has a resolvable email
+    description: sent - the email was dispatched to the selected CLA managers that have a resolvable email address (at least one had); recorded - the audit event was written but no email was sent, because the CCLA lists no CLA manager or none of the selected ones has a resolvable email
   recipients:
     type: array
     x-omitempty: false
-    description: The LF usernames of the selected CLA managers
+    description: LF usernames of the selected CLA managers
     items:
       type: string
