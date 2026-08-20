@@ -8,7 +8,7 @@ description: The signed ICLAs and ECLAs matching the provided user identity
 properties:
   lfUsername:
     type: string
-    description: LF username (LFID) the list was resolved for, omitted when none was provided
+    description: Effective LF username (LFID) the list was resolved for - the authenticated principal when the query parameter is omitted, absent only when neither resolved
   userIds:
     type: array
     x-omitempty: false

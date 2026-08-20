@@ -1,12 +1,12 @@
-# My CLAs API — EasyCLA backend for LFX Self Serve M1
+# My CLAs API — EasyCLA backend for LFX Self Serve M1/M2
 
 Copyright The Linux Foundation and each contributor to CommunityBridge.
 
 SPDX-License-Identifier: CC-BY-4.0
 
-Backend for the **M1 — Read-only "My CLAs" (Me lens)** milestone of the EasyCLA → LFX
-Self Serve program
-([epic linuxfoundation/lfx-self-serve#1157](https://github.com/linuxfoundation/lfx-self-serve/issues/1157),
+Backend for the **M1 "My CLAs" (Me lens)** and **M2 "My CLAs actions"** milestones of the
+EasyCLA → LFX Self Serve program
+([M1 epic linuxfoundation/lfx-self-serve#1157](https://github.com/linuxfoundation/lfx-self-serve/issues/1157),
 specs in [`specs/001-easycla-ss-integration-fable/m1-my-cla/`](https://github.com/linuxfoundation/easycla/tree/001-easycla-ss-integration/specs/001-easycla-ss-integration-fable/m1-my-cla)
 on the `001-easycla-ss-integration` branch).
 
@@ -127,7 +127,7 @@ trusting blindly. Each request logs `callerClientID` (`azp`), `callerSubject` (`
 
 | Parameter | Type | Repeatable | Meaning |
 |---|---|---|---|
-| `lfUsername` | string | no | LF username (LFID). **When omitted, defaults to the authenticated principal's username** (from the token via `X-USERNAME`), so a plain `GET /v4/my-clas` returns the caller's own CLAs. For non-admin callers a value different from the token username is never searched (reported in `skippedIdentities`). |
+| `lfUsername` | string | no | LF username (LFID). **When omitted, defaults to the authenticated principal's username** (from the token via `X-USERNAME`), so a plain `GET /v4/my-clas` returns the caller's own CLAs. For non-admin, untrusted callers a value different from the token username is never searched (reported in `skippedIdentities`). |
 | `email` | string | yes | Lowercased/trimmed and matched against the EasyCLA user records' primary email (`lf_email` GSI — index-backed). All repeatable parameters are capped (`maxItems: 100`, `secondaryEmail: 20`) and deduplicated server-side. |
 | `secondaryEmail` | string | yes | Matched against the records' additional-emails set (`user_emails`). **Not index-backed** (a DynamoDB string set cannot carry a GSI): all provided values (max 20, normalized + deduplicated) are matched in **one single table scan** — never one scan per value, and never for plain `email` values. Use sparingly. |
 | `githubId` | integer | yes | GitHub numeric user IDs linked to the LF identity (from Auth0 identities). The highest-precision key for pre-LF-login history. |
@@ -136,9 +136,10 @@ trusting blindly. Each request logs `callerClientID` (`azp`), `callerSubject` (`
 | `gitlabUsername` | string | yes | GitLab usernames (hint only). |
 | `gerritUsername` | string | yes | Gerrit usernames. Gerrit authenticates via LF SSO, so these are (current or historical) **LF usernames** — matched against the records' `lf_username`. Useful for gerrit-era records tied to an older LDAP/LF username on the account. |
 
-If the token carries no username (and the caller is not an admin), the endpoint returns
-`401`. There is deliberately **no pagination**: a person's CLA set is small (typically
-well under 50 records) and the upstream queries paginate internally.
+If the token carries no username and the caller is neither an admin nor a trusted Self
+Serve client, the endpoint returns `401`. There is deliberately **no pagination**: a
+person's CLA set is small (typically well under 50 records) and the upstream queries
+paginate internally.
 
 Example (through the gateway):
 
@@ -482,9 +483,9 @@ dropped by the ownership enforcement, `"<parameter>:<value>"` strings, always pr
 present), `resultCount`.
 
 Errors: `401` (token carries no username — also returned by the gateway for a
-missing/invalid token before the request reaches EasyCLA), `400` (admin caller with no
-username and no identity keys at all), `403` (ACS deny at the gateway), `500` (a data-layer
-failure that affects the whole list — no partial results are returned). Per-row failures are
+missing/invalid token before the request reaches EasyCLA), `400` (an admin or trusted
+caller with no username and no identity keys at all), `403` (ACS deny at the gateway),
+`500` (a data-layer failure affecting the whole list — no partial results). Per-row failures are
 not errors: a company/CCLA lookup or a sanctions screen that fails degrades that row
 (`status: unknown`, or `flaggedCheck: unavailable`) and still returns `200`, as described
 under "Identity resolution (step 1)".
@@ -494,9 +495,10 @@ An identity that resolves to zero user records returns `200` with empty `userIds
 
 ## `GET /v4/my-clas/{signatureID}/pdf`
 
-Issues the signed-PDF download link for an ICLA **owned by the authenticated user**. Takes
-the **same identity query parameters** as `/v4/my-clas` (same defaulting from the token)
-plus the path parameter:
+Issues the signed-PDF download link for an ICLA **owned by the resolved identity** — the
+authenticated user's own, unless the caller is an admin or trusted (step 0). Takes the
+**same identity query parameters** as `/v4/my-clas` (same defaulting from the token) plus
+the path parameter:
 
 ```bash
 curl -H "Authorization: Bearer $TOKEN" \
@@ -506,10 +508,10 @@ curl -H "Authorization: Bearer $TOKEN" \
 Behavior:
 
 1. Applies the **same identity-ownership enforcement** as the list endpoint (step 0) and
-   resolves the allowed identity to user records — so for a non-admin caller the resolvable
-   set can only contain their own records, and a signature ID belonging to somebody else is
-   a guaranteed 404 even if the caller passes that person's email/GitHub keys explicitly
-   (covered by a dedicated unit test).
+   resolves the allowed identity to user records — so for a non-admin, untrusted caller the
+   resolvable set can only contain their own records, and a signature ID belonging to
+   somebody else is a guaranteed 404 even if the caller passes that person's email/GitHub
+   keys explicitly (covered by a dedicated unit test).
 2. Verifies the `signatureID` belongs to one of those records **and** is a signed ICLA, then
    verifies the PDF object exists in S3 (`HeadObject`) — a missing document returns 404
    instead of a dead presigned URL.
@@ -582,7 +584,8 @@ Each entry is `"<type>:<value>"`, deduplicated and sorted; types are `lf-usernam
 }
 ```
 
-A token carrying no username returns `401` (same as the list endpoint).
+A token carrying no username returns `401` — unconditionally here, with no admin or
+trusted-caller exemption, since the endpoint is scoped to the token holder.
 
 ## How LFX Self Serve consumes this (M1 mapping)
 
