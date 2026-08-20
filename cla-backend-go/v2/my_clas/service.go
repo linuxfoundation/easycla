@@ -272,8 +272,7 @@ func (s *service) GetMyClas(ctx context.Context, caller *Caller, requested *Iden
 				if sanction.date != "" {
 					row.FlaggedAt = utils.FormatTimeString(sanction.date)
 				} else {
-					// A live screen that flags a company EasyCLA has not persisted yet has
-					// no stored date, so report this observation as the time it was seen.
+					// A live screen flagged a company with no stored date; report when it was seen.
 					_, row.FlaggedAt = utils.CurrentTime()
 				}
 			}
@@ -429,8 +428,7 @@ func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller,
 		}
 		selected[key] = true
 		selectedUsernames = append(selectedUsernames, manager.LfUsername)
-		// Distinct manager accounts can share an address; mail it once, but report both
-		// as selected recipients.
+		// Managers can share an address; mail it once, but report both as recipients.
 		if emailKey := strings.ToLower(manager.Email); emailKey != "" && !emailed[emailKey] {
 			emailed[emailKey] = true
 			recipientEmails = append(recipientEmails, manager.Email)

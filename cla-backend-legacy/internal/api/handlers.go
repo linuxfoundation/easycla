@@ -5284,7 +5284,6 @@ func (h *Handlers) PutCompanyV1(w http.ResponseWriter, r *http.Request) {
 		// Manual/admin sanction change: drop any SSS-set origin so this becomes an
 		// admin-controlled state (sticky when true; never later auto-cleared by SSS).
 		delete(item, "sanction_origin")
-		// Setting the flag stamps sanctioned_date; clearing it keeps the stored date.
 		if *req.IsSanctioned {
 			item["sanctioned_date"] = &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)}
 		}

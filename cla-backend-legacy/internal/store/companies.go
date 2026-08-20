@@ -141,67 +141,82 @@ func (s *CompaniesStore) DeleteByID(ctx context.Context, companyID string) error
 	return err
 }
 
-// UpdateCompanySanctionStatus sets is_sanctioned and, when origin is non-empty, sanction_origin.
-// Pass origin="sss" when flagging via SSS; pass origin="" for manual admin updates.
-// Setting the flag also stamps sanctioned_date; clearing it leaves that date in place, so it
-// records the last time EasyCLA sanctioned the company.
-func (s *CompaniesStore) UpdateCompanySanctionStatus(ctx context.Context, companyID string, sanctioned bool, origin string) error {
-	if s == nil || s.client == nil {
-		return nil
+// sanctionUpdate is the DynamoDB update for one sanction status change.
+type sanctionUpdate struct {
+	expression string
+	condition  *string
+	names      map[string]string
+	values     map[string]types.AttributeValue
+}
+
+// buildSanctionUpdate assembles the update for UpdateCompanySanctionStatus. All SET assignments
+// stay contiguous ahead of any REMOVE, as DynamoDB requires.
+func buildSanctionUpdate(sanctioned bool, origin, now string) sanctionUpdate {
+	update := sanctionUpdate{
+		expression: "SET #S = :s, #M = :m",
+		names: map[string]string{
+			"#S": "is_sanctioned",
+			"#M": "date_modified",
+			"#O": "sanction_origin",
+		},
+		values: map[string]types.AttributeValue{
+			":s": &types.AttributeValueMemberBOOL{Value: sanctioned},
+			":m": &types.AttributeValueMemberS{Value: now},
+		},
 	}
 
-	now := time.Now().UTC().Format("2006-01-02T15:04:05.000000-0700") // Best effort for date_modified parity
-
-	names := map[string]string{
-		"#S": "is_sanctioned",
-		"#M": "date_modified",
-	}
-	values := map[string]types.AttributeValue{
-		":s": &types.AttributeValueMemberBOOL{Value: sanctioned},
-		":m": &types.AttributeValueMemberS{Value: now},
-	}
-	updateExpr := "SET #S = :s, #M = :m"
-
+	// Setting the flag stamps sanctioned_date; clearing it leaves the stored date alone.
 	if sanctioned {
-		names["#D"] = "sanctioned_date"
-		values[":d"] = &types.AttributeValueMemberS{Value: now}
-		updateExpr += ", #D = :d"
+		update.names["#D"] = "sanctioned_date"
+		update.values[":d"] = &types.AttributeValueMemberS{Value: now}
+		update.expression += ", #D = :d"
 	}
 
 	if origin != "" {
-		names["#O"] = "sanction_origin"
-		values[":o"] = &types.AttributeValueMemberS{Value: origin}
-		updateExpr += ", #O = :o"
+		update.values[":o"] = &types.AttributeValueMemberS{Value: origin}
+		update.expression += ", #O = :o"
 	} else {
 		// Manual/admin update: remove any stale SSS-set origin so the record becomes a
 		// sticky admin block (origin absent) that SSS will never auto-clear.
-		names["#O"] = "sanction_origin"
-		updateExpr += " REMOVE #O"
-	}
-
-	input := &dynamodb.UpdateItemInput{
-		TableName: aws.String(s.table),
-		Key: map[string]types.AttributeValue{
-			"company_id": &types.AttributeValueMemberS{Value: companyID},
-		},
-		UpdateExpression:          aws.String(updateExpr),
-		ExpressionAttributeNames:  names,
-		ExpressionAttributeValues: values,
+		update.expression += " REMOVE #O"
 	}
 
 	// When SSS sets a block, never overwrite a manual/admin block (is_sanctioned=true
 	// with absent or non-"sss" origin). Only set the SSS flag when the company is
 	// currently unblocked or already SSS-blocked; a ConditionalCheckFailedException
 	// means a manual/admin block is already present and must be preserved.
-	sssSettingBlock := sanctioned && origin == "sss"
-	if sssSettingBlock {
-		values[":false"] = &types.AttributeValueMemberBOOL{Value: false}
-		input.ConditionExpression = aws.String("attribute_not_exists(#S) OR #S = :false OR #O = :o")
+	if sanctioned && origin == "sss" {
+		update.values[":false"] = &types.AttributeValueMemberBOOL{Value: false}
+		update.condition = aws.String("attribute_not_exists(#S) OR #S = :false OR #O = :o")
+	}
+
+	return update
+}
+
+// UpdateCompanySanctionStatus sets is_sanctioned and, when origin is non-empty, sanction_origin.
+// Pass origin="sss" when flagging via SSS; pass origin="" for manual admin updates.
+func (s *CompaniesStore) UpdateCompanySanctionStatus(ctx context.Context, companyID string, sanctioned bool, origin string) error {
+	if s == nil || s.client == nil {
+		return nil
+	}
+
+	now := time.Now().UTC().Format("2006-01-02T15:04:05.000000-0700") // Best effort for date_modified parity
+	update := buildSanctionUpdate(sanctioned, origin, now)
+
+	input := &dynamodb.UpdateItemInput{
+		TableName: aws.String(s.table),
+		Key: map[string]types.AttributeValue{
+			"company_id": &types.AttributeValueMemberS{Value: companyID},
+		},
+		UpdateExpression:          aws.String(update.expression),
+		ConditionExpression:       update.condition,
+		ExpressionAttributeNames:  update.names,
+		ExpressionAttributeValues: update.values,
 	}
 
 	_, err := s.client.UpdateItem(ctx, input)
 	if err != nil {
-		if sssSettingBlock {
+		if update.condition != nil {
 			var condErr *types.ConditionalCheckFailedException
 			if errors.As(err, &condErr) {
 				return nil // Preserve the existing manual/admin block

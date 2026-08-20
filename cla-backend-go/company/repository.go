@@ -1284,10 +1284,60 @@ func (repo repository) UpdateCompanyAccessList(ctx context.Context, companyID st
 // sanctionOriginSSS is the sanction_origin value written by the Sanctions Screening Service.
 const sanctionOriginSSS = "sss"
 
+// sanctionUpdate is the DynamoDB update for one sanction status change.
+type sanctionUpdate struct {
+	expression string
+	condition  *string
+	names      map[string]*string
+	values     map[string]*dynamodb.AttributeValue
+}
+
+// buildSanctionUpdate assembles the update for UpdateCompanySanctionStatus. All SET assignments
+// stay contiguous ahead of any REMOVE, as DynamoDB requires.
+func buildSanctionUpdate(sanctioned bool, origin, now string) sanctionUpdate {
+	update := sanctionUpdate{
+		expression: "SET #S = :s, #M = :m",
+		names: map[string]*string{
+			"#S": aws.String("is_sanctioned"),
+			"#M": aws.String("date_modified"),
+			"#O": aws.String("sanction_origin"),
+		},
+		values: map[string]*dynamodb.AttributeValue{
+			":s": {BOOL: aws.Bool(sanctioned)},
+			":m": {S: aws.String(now)},
+		},
+	}
+
+	// Setting the flag stamps sanctioned_date; clearing it leaves the stored date alone.
+	if sanctioned {
+		update.names["#D"] = aws.String("sanctioned_date")
+		update.values[":d"] = &dynamodb.AttributeValue{S: aws.String(now)}
+		update.expression += ", #D = :d"
+	}
+
+	if origin != "" {
+		update.values[":o"] = &dynamodb.AttributeValue{S: aws.String(origin)}
+		update.expression += ", #O = :o"
+	} else {
+		// Manual/admin update: remove any stale SSS-set origin so the record becomes a
+		// sticky admin block (origin absent) that SSS will never auto-clear.
+		update.expression += " REMOVE #O"
+	}
+
+	// When SSS sets a block, never overwrite a manual/admin block (is_sanctioned=true
+	// with absent or non-"sss" origin). Only set the SSS flag when the company is
+	// currently unblocked or already SSS-blocked. A ConditionalCheckFailedException
+	// therefore means a manual/admin block is already in place and must be preserved.
+	if sanctioned && origin == sanctionOriginSSS {
+		update.values[":false"] = &dynamodb.AttributeValue{BOOL: aws.Bool(false)}
+		update.condition = aws.String("attribute_not_exists(#S) OR #S = :false OR #O = :o")
+	}
+
+	return update
+}
+
 // UpdateCompanySanctionStatus sets is_sanctioned and, when origin is non-empty, sanction_origin.
 // Pass origin="sss" when flagging via SSS; pass origin="" for manual admin updates.
-// Setting the flag also stamps sanctioned_date; clearing it leaves that date in place, so it
-// records the last time EasyCLA sanctioned the company.
 func (repo repository) UpdateCompanySanctionStatus(ctx context.Context, companyID string, sanctioned bool, origin string) error {
 	f := logrus.Fields{
 		"functionName":   "company.repository.UpdateCompanySanctionStatus",
@@ -1298,56 +1348,21 @@ func (repo repository) UpdateCompanySanctionStatus(ctx context.Context, companyI
 	}
 
 	_, now := utils.CurrentTime()
-
-	names := map[string]*string{
-		"#S": aws.String("is_sanctioned"),
-		"#M": aws.String("date_modified"),
-	}
-	values := map[string]*dynamodb.AttributeValue{
-		":s": {BOOL: aws.Bool(sanctioned)},
-		":m": {S: aws.String(now)},
-	}
-	updateExpr := "SET #S = :s, #M = :m"
-
-	if sanctioned {
-		names["#D"] = aws.String("sanctioned_date")
-		values[":d"] = &dynamodb.AttributeValue{S: aws.String(now)}
-		updateExpr += ", #D = :d"
-	}
-
-	if origin != "" {
-		names["#O"] = aws.String("sanction_origin")
-		values[":o"] = &dynamodb.AttributeValue{S: aws.String(origin)}
-		updateExpr += ", #O = :o"
-	} else {
-		// Manual/admin update: remove any stale SSS-set origin so the record becomes a
-		// sticky admin block (origin absent) that SSS will never auto-clear.
-		names["#O"] = aws.String("sanction_origin")
-		updateExpr += " REMOVE #O"
-	}
+	update := buildSanctionUpdate(sanctioned, origin, now)
 
 	input := &dynamodb.UpdateItemInput{
-		ExpressionAttributeNames:  names,
-		ExpressionAttributeValues: values,
+		ExpressionAttributeNames:  update.names,
+		ExpressionAttributeValues: update.values,
 		TableName:                 aws.String(repo.companyTableName),
 		Key: map[string]*dynamodb.AttributeValue{
 			"company_id": {S: aws.String(companyID)},
 		},
-		UpdateExpression: aws.String(updateExpr),
-	}
-
-	// When SSS sets a block, never overwrite a manual/admin block (is_sanctioned=true
-	// with absent or non-"sss" origin). Only set the SSS flag when the company is
-	// currently unblocked or already SSS-blocked. A ConditionalCheckFailedException
-	// therefore means a manual/admin block is already in place and must be preserved.
-	sssSettingBlock := sanctioned && origin == sanctionOriginSSS
-	if sssSettingBlock {
-		values[":false"] = &dynamodb.AttributeValue{BOOL: aws.Bool(false)}
-		input.ConditionExpression = aws.String("attribute_not_exists(#S) OR #S = :false OR #O = :o")
+		UpdateExpression:    aws.String(update.expression),
+		ConditionExpression: update.condition,
 	}
 
 	if _, err := repo.dynamoDBClient.UpdateItem(input); err != nil {
-		if sssSettingBlock {
+		if update.condition != nil {
 			if aerr, ok := err.(awserr.Error); ok && aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
 				log.WithFields(f).Debugf("company %s already has a manual/admin sanction block; preserving it and not overwriting origin with sss", companyID)
 				return nil

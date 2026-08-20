@@ -104,7 +104,7 @@ properties:
     description: True when the employer is currently flagged by sanctions screening - always present, always false on ICLA rows
   flaggedAt:
     type: string
-    description: When EasyCLA set the sanction flag on the employer (its stored sanctioned_date), falling back to the response time when a live screen flagged an employer that carries no stored date; present only when flagged is true
+    description: The employer's stored sanctioned_date, or the response time when a live screen flagged an employer that has none; present only when flagged is true
   flaggedCheck:
     type: string
     enum: [live, stored, unavailable]
