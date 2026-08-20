@@ -440,8 +440,25 @@ func server(localMode bool) http.Handler {
 	gitlabOrganizationsService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoriesService, v1ProjectClaGroupRepo, storeRepository, usersService, signaturesRepo, v1CompanyRepo)
 	v1SignaturesService := signatures.NewService(signaturesRepo, v1CompanyService, usersService, eventsService, githubOrgValidation, v1RepositoriesService, githubOrganizationsService, v1ProjectService, gitlabApp, configFile.ClaV1ApiURL, configFile.CLALandingPage, configFile.CLALogoURL)
 	v2SignatureService := v2Signatures.NewService(awsSession, configFile.SignatureFilesBucket, v1ProjectService, v1CompanyService, v1SignaturesService, v1ProjectClaGroupRepo, signaturesRepo, usersService, approvalsRepo)
+	// Initialize SSS (Sanctions Screening Service) client if configured.
+	// The sssRequired flag is controlled by the cla-sss-required-{stage} SSM parameter.
+	sssRequired := configFile.SSS.Required
+	sssEnabled := configFile.SSS.Enabled
+	var sssClient *sss.Client
+	sssClient, err = sss.NewClientFromPlatformCredentials(configFile.SSS.BaseURL, configFile.SSS.Audience, configFile.Auth0Platform.URL, configFile.Auth0Platform.ClientID, configFile.Auth0Platform.ClientSecret)
+	if err != nil {
+		if sssEnabled && sssRequired {
+			log.WithFields(f).WithError(err).Fatal("failed to initialize required SSS client")
+		}
+		log.WithFields(f).WithError(err).Warn("failed to initialize optional SSS client, screening will be unavailable")
+		sssClient = nil
+	}
+	if sssEnabled && sssRequired && sssClient == nil {
+		log.WithFields(f).Fatal("SSS is required but not configured")
+	}
+
 	v2ClaSearchService := v2ClaSearch.NewService(v2ClaSearch.NewRepository(awsSession, stage))
-	v2MyClasService := v2MyClas.NewService(v2MyClas.NewRepository(awsSession, stage), user_service.GetClient(), v1SignaturesService, v1CompanyRepo, v1ProjectClaGroupRepo, project_service.GetClient(), eventsService)
+	v2MyClasService := v2MyClas.NewService(v2MyClas.NewRepository(awsSession, stage), user_service.GetClient(), v1SignaturesService, v1CompanyRepo, v1ProjectClaGroupRepo, project_service.GetClient(), eventsService, v2MyClas.NewSanctionsScreener(sssClient, sssEnabled, sssRequired))
 	v2SelfServeSignService := v2SelfServeSign.NewService(v2MyClasService, usersService, v1ProjectService, v1ProjectClaGroupRepo, storeRepository, configFile.CLAContributorv2Base)
 	trustedCallerVerifier, err := auth.NewTrustedCallerVerifier(configFile.Auth0.Domain, configFile.Auth0.Algorithm, configFile.SelfServe.TrustedClientIDs)
 	if err != nil {
@@ -459,23 +476,6 @@ func server(localMode bool) http.Handler {
 	v2GithubActivityService := v2GithubActivity.NewService(gitV1Repository, githubOrganizationsRepo, eventsService, autoEnableService, emailService)
 
 	v2ClaGroupService := cla_groups.NewService(v1ProjectService, templateService, v1ProjectClaGroupRepo, v1ClaManagerService, v1SignaturesService, metricsRepo, gerritService, v1RepositoriesService, eventsService)
-
-	// Initialize SSS (Sanctions Screening Service) client if configured.
-	// The sssRequired flag is controlled by the cla-sss-required-{stage} SSM parameter.
-	sssRequired := configFile.SSS.Required
-	sssEnabled := configFile.SSS.Enabled
-	var sssClient *sss.Client
-	sssClient, err = sss.NewClientFromPlatformCredentials(configFile.SSS.BaseURL, configFile.SSS.Audience, configFile.Auth0Platform.URL, configFile.Auth0Platform.ClientID, configFile.Auth0Platform.ClientSecret)
-	if err != nil {
-		if sssEnabled && sssRequired {
-			log.WithFields(f).WithError(err).Fatal("failed to initialize required SSS client")
-		}
-		log.WithFields(f).WithError(err).Warn("failed to initialize optional SSS client, screening will be unavailable")
-		sssClient = nil
-	}
-	if sssEnabled && sssRequired && sssClient == nil {
-		log.WithFields(f).Fatal("SSS is required but not configured")
-	}
 
 	v2SignService := sign.NewService(configFile.ClaAPIV4Base, configFile.ClaV1ApiURL, v1CompanyRepo, v1CLAGroupRepo, v1ProjectClaGroupRepo, v1CompanyService, v2ClaGroupService, configFile.DocuSignPrivateKey, usersService, v1SignaturesService, storeRepository, v1RepositoriesService, githubOrganizationsService, gitlabOrganizationsService, configFile.CLALandingPage, configFile.CLALogoURL, emailService, eventsService, gitlabActivityService, gitlabApp, gerritService, sssClient, sssRequired, sssEnabled)
 

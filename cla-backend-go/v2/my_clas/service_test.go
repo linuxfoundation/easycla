@@ -92,28 +92,65 @@ type fakeSignatures struct {
 	cclas             map[string]*v1Models.Signature
 	approvedUserIDs   map[string]bool
 	userIsApprovedErr error
+	cclaErr           error
+	orgLookupFailed   bool
+	cclaCalls         int
 }
 
 func (f *fakeSignatures) GetCorporateSignature(_ context.Context, claGroupID, companyID string, _, _ *bool) (*v1Models.Signature, error) {
+	f.cclaCalls++
+	if f.cclaErr != nil {
+		return nil, f.cclaErr
+	}
 	return f.cclas[claGroupID+"|"+companyID], nil
 }
 
-func (f *fakeSignatures) UserIsApproved(_ context.Context, user *v1Models.User, _ *v1Models.Signature) (bool, error) {
+func (f *fakeSignatures) EvaluateUserApproval(_ context.Context, user *v1Models.User, _ *v1Models.Signature) (bool, bool, error) {
 	if f.userIsApprovedErr != nil {
-		return false, f.userIsApprovedErr
+		return false, false, f.userIsApprovedErr
 	}
-	return f.approvedUserIDs[user.UserID], nil
+	return f.approvedUserIDs[user.UserID], f.orgLookupFailed, nil
 }
 
 type fakeCompanies struct {
-	byID map[string]*v1Models.Company
+	byID    map[string]*v1Models.Company
+	failIDs map[string]bool
+	calls   int
 }
 
 func (f *fakeCompanies) GetCompany(_ context.Context, companyID string) (*v1Models.Company, error) {
+	f.calls++
+	if f.failIDs[companyID] {
+		return nil, fmt.Errorf("dynamodb unavailable for company %s", companyID)
+	}
 	if companyModel, ok := f.byID[companyID]; ok {
 		return companyModel, nil
 	}
 	return nil, &utils.CompanyNotFound{CompanyID: companyID}
+}
+
+// fakeScreener stands in for the live SSS screen and records how often each employer was screened
+type fakeScreener struct {
+	mode    string
+	flagged map[string]bool
+	checks  map[string]string
+	calls   map[string]int
+}
+
+func (f *fakeScreener) Mode() string {
+	return f.mode
+}
+
+func (f *fakeScreener) ScreenCompany(_ context.Context, company *v1Models.Company) (bool, string) {
+	if f.calls == nil {
+		f.calls = map[string]int{}
+	}
+	f.calls[company.CompanyID]++
+	check, ok := f.checks[company.CompanyID]
+	if !ok {
+		check = models.MyClaFlaggedCheckLive
+	}
+	return f.flagged[company.CompanyID], check
 }
 
 type fakeClaGroups struct {
@@ -763,9 +800,13 @@ func TestGetMyClasEclaValidity(t *testing.T) {
 	assert.Equal(t, "company-1", covered.CompanyID)
 
 	assert.False(t, byID["sig-2"].Valid, "sanctioned company invalidates the ECLA")
+	assert.Equal(t, models.MyClaStatusRevoked, byID["sig-2"].Status)
 	assert.False(t, byID["sig-3"].Valid, "missing current CCLA invalidates the ECLA")
+	assert.Equal(t, models.MyClaStatusUnknown, byID["sig-3"].Status)
 	assert.False(t, byID["sig-4"].Valid, "signature_approved=false invalidates the ECLA")
+	assert.Equal(t, models.MyClaStatusInvalidated, byID["sig-4"].Status)
 	assert.False(t, byID["sig-5"].Valid, "unknown company invalidates the ECLA")
+	assert.Equal(t, models.MyClaStatusUnknown, byID["sig-5"].Status)
 	assert.Empty(t, byID["sig-5"].CompanyName)
 }
 
@@ -793,6 +834,7 @@ func TestGetMyClasEclaNotOnCurrentApprovalList(t *testing.T) {
 	require.Len(t, result.Clas, 1)
 	assert.True(t, result.Clas[0].Approved)
 	assert.False(t, result.Clas[0].Valid, "ECLA no longer matching the current approval list is invalid")
+	assert.Equal(t, models.MyClaStatusNeedsAttention, result.Clas[0].Status)
 }
 
 func TestGetMyClasEclaGitlabGroupFallback(t *testing.T) {
@@ -818,6 +860,7 @@ func TestGetMyClasEclaGitlabGroupFallback(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, result.Clas, 1)
 	assert.True(t, result.Clas[0].Valid, "GitLab-group-approved ECLAs defer to the signature_approved flag")
+	assert.Equal(t, models.MyClaStatusUnknown, result.Clas[0].Status, "group membership was never evaluated")
 }
 
 func TestGetMyClasEclaApprovalEvaluationError(t *testing.T) {
@@ -843,6 +886,213 @@ func TestGetMyClasEclaApprovalEvaluationError(t *testing.T) {
 	require.NoError(t, err, "approval-list evaluation problems must not fail the listing")
 	require.Len(t, result.Clas, 1)
 	assert.False(t, result.Clas[0].Valid, "evaluation errors leave the ECLA not covered - no GitLab fallback")
+	assert.Equal(t, models.MyClaStatusUnknown, result.Clas[0].Status, "an evaluation error proves nothing about the approval list")
+	assert.Equal(t, models.MyClaStatusReasonUnknown, result.Clas[0].StatusReason)
+}
+
+func TestGetMyClasStatus(t *testing.T) {
+	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
+	companies := &fakeCompanies{byID: map[string]*v1Models.Company{
+		"company-1": {CompanyID: "company-1", CompanyName: "Good Corp"},
+	}}
+	signaturesService := &fakeSignatures{
+		cclas:           map[string]*v1Models.Signature{"cla-group-1|company-1": {SignatureID: "ccla-1"}},
+		approvedUserIDs: map[string]bool{"user-a": true},
+	}
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a": {
+				icla("sig-1", "user-a", "cla-group-1", "2024-01-01T00:00:00Z", true),
+				icla("sig-2", "user-a", "cla-group-1", "2024-02-01T00:00:00Z", false),
+				ecla("sig-3", "company-1", "2024-03-01T00:00:00Z", true),
+				ecla("sig-4", "company-1", "2024-04-01T00:00:00Z", false),
+			},
+		},
+		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+	}
+	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
+
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+	require.NoError(t, err)
+	require.Len(t, result.Clas, 4)
+	assert.Equal(t, models.MyClaListSssModeDisabled, result.SssMode, "no screener configured reports disabled")
+
+	byID := map[string]models.MyCla{}
+	for _, row := range result.Clas {
+		byID[row.SignatureID] = row
+	}
+	assert.Equal(t, models.MyClaStatusValid, byID["sig-1"].Status)
+	assert.Empty(t, byID["sig-1"].StatusReason, "valid rows carry no reason")
+	assert.Equal(t, models.MyClaStatusInvalidated, byID["sig-2"].Status)
+	assert.Empty(t, byID["sig-2"].StatusReason, "invalidated attributes nothing")
+	assert.Equal(t, models.MyClaStatusValid, byID["sig-3"].Status)
+	assert.Equal(t, models.MyClaStatusInvalidated, byID["sig-4"].Status)
+	assert.Equal(t, models.MyClaFlaggedCheckStored, byID["sig-3"].FlaggedCheck)
+	assert.Empty(t, byID["sig-1"].FlaggedCheck, "sanctions are an ECLA concept")
+}
+
+func TestGetMyClasStatusNeedsAttentionAndUnknown(t *testing.T) {
+	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
+	companies := &fakeCompanies{byID: map[string]*v1Models.Company{
+		"company-1": {CompanyID: "company-1", CompanyName: "Good Corp"},
+	}}
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a": {ecla("sig-1", "company-1", "2024-01-01T00:00:00Z", true)},
+		},
+		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+	}
+	ccla := map[string]*v1Models.Signature{"cla-group-1|company-1": {SignatureID: "ccla-1"}}
+
+	t.Run("completed approval-list miss", func(t *testing.T) {
+		svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{cclas: ccla}, companies, &fakeClaGroups{})
+		result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+		require.NoError(t, err)
+		require.Len(t, result.Clas, 1)
+		assert.Equal(t, models.MyClaStatusNeedsAttention, result.Clas[0].Status)
+		assert.Equal(t, models.MyClaStatusReasonNotOnApprovalList, result.Clas[0].StatusReason, "the only reason a Request approval action may gate on")
+	})
+
+	t.Run("github organization lookup failed", func(t *testing.T) {
+		svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{cclas: ccla, orgLookupFailed: true}, companies, &fakeClaGroups{})
+		result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+		require.NoError(t, err)
+		require.Len(t, result.Clas, 1)
+		assert.Equal(t, models.MyClaStatusUnknown, result.Clas[0].Status, "a failed org lookup must not read as an approval-list miss")
+		assert.Equal(t, models.MyClaStatusReasonUnknown, result.Clas[0].StatusReason)
+	})
+}
+
+func TestGetMyClasDegradesFailedLookups(t *testing.T) {
+	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
+
+	t.Run("company lookup failure degrades the row", func(t *testing.T) {
+		companies := &fakeCompanies{
+			byID:    map[string]*v1Models.Company{"company-1": {CompanyID: "company-1", CompanyName: "Good Corp"}},
+			failIDs: map[string]bool{"company-2": true},
+		}
+		signaturesService := &fakeSignatures{
+			cclas:           map[string]*v1Models.Signature{"cla-group-1|company-1": {SignatureID: "ccla-1"}},
+			approvedUserIDs: map[string]bool{"user-a": true},
+		}
+		repo := &fakeRepo{
+			byUserID: map[string][]*signatures.ItemSignature{
+				"user-a": {
+					ecla("sig-1", "company-1", "2024-01-01T00:00:00Z", true),
+					ecla("sig-2", "company-2", "2024-02-01T00:00:00Z", true),
+					ecla("sig-3", "company-2", "2024-03-01T00:00:00Z", true),
+				},
+			},
+			byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+		}
+		svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
+
+		result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+		require.NoError(t, err, "one unresolvable employer must not fail the whole list")
+		require.Len(t, result.Clas, 3)
+
+		byID := map[string]models.MyCla{}
+		for _, row := range result.Clas {
+			byID[row.SignatureID] = row
+		}
+		assert.Equal(t, models.MyClaStatusValid, byID["sig-1"].Status, "healthy rows keep their status")
+		assert.Equal(t, models.MyClaStatusUnknown, byID["sig-2"].Status)
+		assert.Equal(t, models.MyClaStatusUnknown, byID["sig-3"].Status)
+		assert.Empty(t, byID["sig-2"].CompanyName)
+		assert.Equal(t, 2, companies.calls, "a failed employer lookup is cached, not retried per row")
+	})
+
+	t.Run("ccla lookup failure degrades the row", func(t *testing.T) {
+		companies := &fakeCompanies{byID: map[string]*v1Models.Company{
+			"company-1": {CompanyID: "company-1", CompanyName: "Good Corp"},
+		}}
+		signaturesService := &fakeSignatures{cclaErr: fmt.Errorf("dynamodb unavailable")}
+		repo := &fakeRepo{
+			byUserID: map[string][]*signatures.ItemSignature{
+				"user-a": {
+					ecla("sig-1", "company-1", "2024-01-01T00:00:00Z", true),
+					ecla("sig-2", "company-1", "2024-02-01T00:00:00Z", true),
+				},
+			},
+			byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+		}
+		svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
+
+		result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+		require.NoError(t, err, "an unresolvable CCLA must not fail the whole list")
+		require.Len(t, result.Clas, 2)
+		for _, row := range result.Clas {
+			assert.Equal(t, models.MyClaStatusUnknown, row.Status)
+			assert.False(t, row.Valid)
+		}
+		assert.Equal(t, 1, signaturesService.cclaCalls, "a failed CCLA lookup is cached, not retried per row")
+	})
+}
+
+func TestGetMyClasLiveSanctionsScreening(t *testing.T) {
+	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
+	companies := &fakeCompanies{byID: map[string]*v1Models.Company{
+		"company-1": {CompanyID: "company-1", CompanyName: "Live Flagged Corp"},
+		"company-2": {CompanyID: "company-2", CompanyName: "Cleared Corp", IsSanctioned: true, SanctionOrigin: sanctionOriginSSS},
+		"company-3": {CompanyID: "company-3", CompanyName: "Unscreenable Corp", IsSanctioned: true},
+	}}
+	signaturesService := &fakeSignatures{
+		cclas: map[string]*v1Models.Signature{
+			"cla-group-1|company-1": {SignatureID: "ccla-1"},
+			"cla-group-1|company-2": {SignatureID: "ccla-2"},
+			"cla-group-1|company-3": {SignatureID: "ccla-3"},
+		},
+		approvedUserIDs: map[string]bool{"user-a": true},
+	}
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a": {
+				ecla("sig-1", "company-1", "2024-01-01T00:00:00Z", true),
+				ecla("sig-2", "company-2", "2024-02-01T00:00:00Z", true),
+				ecla("sig-3", "company-3", "2024-03-01T00:00:00Z", true),
+				ecla("sig-4", "company-1", "2024-04-01T00:00:00Z", true),
+			},
+		},
+		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+	}
+	screener := &fakeScreener{
+		mode:    models.MyClaListSssModeRequired,
+		flagged: map[string]bool{"company-1": true, "company-3": true},
+		checks:  map[string]string{"company-3": models.MyClaFlaggedCheckUnavailable},
+	}
+	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
+	svc.sanctions = screener
+
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+	require.NoError(t, err, "a screening failure must never fail the listing")
+	require.Len(t, result.Clas, 4)
+	assert.Equal(t, models.MyClaListSssModeRequired, result.SssMode)
+
+	byID := map[string]models.MyCla{}
+	for _, row := range result.Clas {
+		byID[row.SignatureID] = row
+	}
+
+	liveFlagged := byID["sig-1"]
+	assert.True(t, liveFlagged.Flagged, "a live flagged result overrides the stored clean flag")
+	assert.Equal(t, models.MyClaFlaggedCheckLive, liveFlagged.FlaggedCheck)
+	assert.NotEmpty(t, liveFlagged.FlaggedAt)
+	assert.Equal(t, models.MyClaStatusRevoked, liveFlagged.Status)
+	assert.Empty(t, liveFlagged.StatusReason)
+	assert.False(t, liveFlagged.Valid)
+
+	liveClean := byID["sig-2"]
+	assert.False(t, liveClean.Flagged, "a live clean result overrides the stored sanction")
+	assert.Equal(t, models.MyClaFlaggedCheckLive, liveClean.FlaggedCheck)
+	assert.Empty(t, liveClean.FlaggedAt)
+	assert.Equal(t, models.MyClaStatusValid, liveClean.Status)
+
+	unavailable := byID["sig-3"]
+	assert.True(t, unavailable.Flagged, "an unusable screen honors the stored flag")
+	assert.Equal(t, models.MyClaFlaggedCheckUnavailable, unavailable.FlaggedCheck)
+	assert.Equal(t, models.MyClaStatusRevoked, unavailable.Status)
+
+	assert.Equal(t, 1, screener.calls["company-1"], "each distinct employer is screened once per response")
 }
 
 func TestGetMyClaPdfURL(t *testing.T) {

@@ -46,6 +46,7 @@ Files changed in `easycla`:
 - `cla-backend-go/swagger/common/my-cla-list.yaml`, `my-cla.yaml`, `my-cla-pdf.yaml`, `my-identity-list.yaml` — new response models
 - `cla-backend-go/v2/my_clas/handlers.go` — swagger operation wiring (`Configure`)
 - `cla-backend-go/v2/my_clas/service.go` — identity ownership enforcement, resolution, aggregation, validity evaluation
+- `cla-backend-go/v2/my_clas/sanctions.go` — read-only sanctions screener (live SSS lookup that never persists what it observes)
 - `cla-backend-go/v2/my_clas/repository.go` — plural, paginated GSI queries for identity resolution, the user's ICLA/ECLA records query, and the single-scan secondary-email lookup
 - `cla-backend-go/v2/my_clas/service_test.go` — unit tests
 - `cla-backend-go/v2/user-service/client.go` — two new (additive) context-aware read helpers, `GetUserByUsernameContext` and `ListUserIdentities` (paginated), mirroring the existing `ListUsersByUsername` pattern with bounded HTTP clients; no existing method changed
@@ -55,8 +56,10 @@ Files changed in `easycla`:
 The module follows the repo's three-layer v2 module pattern (`handlers.go` /
 `service.go` / `repository.go`) and is **additive and isolated**: no existing
 endpoint, service method, or repository method changes behavior — the shared-code
-touch points are the three registration lines in `cmd/server.go` and the two new
-helper methods added to `v2/user-service/client.go`.
+touch points are the three registration lines in `cmd/server.go`, the two new
+helper methods added to `v2/user-service/client.go`, and one new method
+(`EvaluateUserApproval`) on the v1 signatures service, with the existing
+`UserIsApproved` reduced to a call through it so the signing flow is unchanged.
 
 ## Authentication
 
@@ -220,12 +223,18 @@ the same key (one person with multiple records), which would silently drop histo
 | `gitlabId` | `gitlab-id-index` GSI (N-typed key) | `GetUsersByGitlabID` |
 | `gitlabUsername` | `gitlab-username-index` GSI | `GetUsersByGitlabUsername` |
 
-Empty results are simply empty; any EasyCLA repository lookup error fails the request (`500`) — user-service failures instead skip and report the affected keys rather
-than silently returning a partial history — an incomplete list would erode user
-trust (spec: "an incomplete list here erodes trust in every later milestone"). The
-same rule applies to the display lookups: a *missing* CLA group or company record
-degrades gracefully (name omitted / ECLA marked invalid), while any other data-layer
-error fails the request.
+Empty results are simply empty; an EasyCLA repository lookup error during identity
+resolution or signature retrieval fails the request (`500`) — user-service failures
+instead skip and report the affected keys rather than silently returning a partial
+history — an incomplete list would erode user trust (spec: "an incomplete list here
+erodes trust in every later milestone"). A *missing* CLA group or company record
+degrades gracefully (name omitted / ECLA marked invalid), and a **failed company or
+CCLA lookup degrades that single row** — its name is omitted and its `status` becomes
+`unknown` — instead of failing the whole list, so one unreachable company cannot blank
+out a user's entire CLA history (the failure is cached per company, so sibling rows do
+not retry it). Any other data-layer error, including a CLA-group/project mapping
+failure that would affect every row alike, still fails the request. No row is ever
+silently dropped from the list.
 
 On `user_emails` (why `secondaryEmail` is separate): the attribute is a DynamoDB
 string set and **cannot be GSI-indexed**, so matching it requires a table scan. The
@@ -299,9 +308,9 @@ boolean:
   `signature_approved=false`; the stored `note` records why).
 - **ECLA** (employee acknowledgement): `valid` requires **all** of:
   1. `signature_signed && signature_approved`;
-  2. the employer (company record) exists and is **not sanctioned**
-     (`is_sanctioned` — the same persisted gate `ProcessEmployeeSignature` enforces
-     for PR checks);
+  2. the employer (company record) exists and is **not flagged** by sanctions
+     screening — a live screen when screening is enabled, otherwise the persisted
+     `is_sanctioned` gate `ProcessEmployeeSignature` enforces for PR checks (step 5);
   3. the employer **currently holds an approved + signed CCLA** for the CLA group
      (v1 `signatures.Service.GetCorporateSignature`);
   4. the user **still matches that CCLA's current approval lists** — evaluated by
@@ -341,6 +350,52 @@ that final display filter is one line in the consumer (`clas.filter(c => c.claTy
 'ecla' || c.valid)`), and keeping the data faithful makes the API useful for parity
 sampling (SC-001) and support.
 
+### Contributor-facing status and sanctions screening (step 5)
+
+`valid` answers "does this agreement attribute contributions right now"; the console
+needs the *reason*, so each row also carries a computed `status` (plus `statusReason`
+when it is not `valid`), evaluated in this precedence:
+
+| `status` | When | `statusReason` |
+|---|---|---|
+| `revoked` | The employer is flagged by sanctions screening — system-set, no user action | — |
+| `invalidated` | The stored `approved` flag is `false` (an Approved List edit, an invalidated ICLA, a deleted CLA Group all produce it) | — |
+| `unknown` | ECLA coverage could not be evaluated (company/CCLA record unreadable, the GitHub public-orgs lookup failed, or the GitLab-group fallback applied) | `unknown` |
+| `valid` | ICLA that is signed + approved, or an ECLA whose employer's CCLA still covers the user | — |
+| `needs_attention` | A *completed* approval-list check proved the user is no longer covered | `not_on_approval_list` |
+
+ICLAs are only ever `valid` or `invalidated`. `status` is an **open** enum — consumers
+must tolerate unrecognised values rather than failing closed. `not_on_approval_list` is
+the one reason that a "Request approval" action can act on; anything else is
+informational.
+
+`status` and `valid` can legitimately disagree, and the pair carries more than either
+alone: the GitLab-group deferral (see validity evaluation) returns `valid: true` with
+`status: unknown` — displayed as covered, but the coverage was never independently
+verified. A consumer that wants #1256's three-value column can safely render
+`unknown && valid` as Valid; the reverse (recovering "unverified" from `valid` alone)
+is not possible.
+
+`flagged` is not read from the stored company flag alone. When sanctions screening is
+enabled, the listing screens **each distinct employer once per response** against the
+Sanctions Screening Service for a live answer, and reports how the answer was obtained
+in `flaggedCheck`:
+
+| Situation | `flagged` | `flaggedCheck` |
+|---|---|---|
+| Employer blocked by an administrator (`sanction_origin != sss`) | `true` (authoritative, no call made) | `stored` |
+| Screening disabled or unconfigured | the persisted `is_sanctioned` flag | `stored` |
+| Live screen answered | the live verdict (it overrides a stale persisted flag either way) | `live` |
+| Live screen could not be completed (no company external ID, org lookup failure, unresolvable domain, SSS error/unexpected status) | the persisted `is_sanctioned` flag — possibly stale | `unavailable` |
+
+The response-level `sssMode` (`required` / `optional` / `disabled`) tells the consumer
+how much weight `unavailable` carries: in `required` mode an unverified row is a real
+gap, in `optional` mode it is best-effort. **A screening failure never fails this
+endpoint** in either mode — unlike the signing flow, which may fail closed. This
+screener is also strictly read-only: `v2/sign`'s `checkCompanyCompliance` *persists*
+what it observes, which a GET must not do, so the lookup/domain/status logic is
+duplicated rather than shared.
+
 ### Response — `200 my-cla-list`
 
 ```json
@@ -348,6 +403,7 @@ sampling (SC-001) and support.
   "lfUsername": "jdoe",
   "userIds": ["6e29e1a9-...", "a3b1c2d3-..."],
   "skippedIdentities": [],
+  "sssMode": "optional",
   "resultCount": 3,
   "clas": [
     {
@@ -362,6 +418,7 @@ sampling (SC-001) and support.
       "signed": true,
       "approved": true,
       "valid": true,
+      "status": "valid",
       "documentMajorVersion": 2,
       "documentMinorVersion": 0,
       "pdfAvailable": true
@@ -379,6 +436,9 @@ sampling (SC-001) and support.
       "signed": true,
       "approved": true,
       "valid": true,
+      "status": "valid",
+      "flagged": false,
+      "flaggedCheck": "live",
       "documentMajorVersion": 2,
       "documentMinorVersion": 0,
       "pdfAvailable": false
@@ -395,6 +455,9 @@ sampling (SC-001) and support.
       "signed": true,
       "approved": false,
       "valid": false,
+      "status": "invalidated",
+      "flagged": false,
+      "flaggedCheck": "live",
       "documentMajorVersion": 2,
       "documentMinorVersion": 0,
       "pdfAvailable": false
@@ -418,13 +481,20 @@ Field reference (`my-cla` rows):
 | `signedOn` | string | Signing/acknowledgement date (fallback: record creation date) |
 | `signed` / `approved` | bool | Raw signature flags |
 | `valid` | bool | Computed as defined above |
+| `status` | `valid` \| `needs_attention` \| `revoked` \| `invalidated` \| `unknown` | Contributor-facing standing, computed independently of `approved`/`valid` (see step 5). **Open enum** — tolerate unrecognised values |
+| `statusReason` | `not_on_approval_list` \| `unknown` | Why the standing is not `valid`; omitted for every other status and on every ICLA |
+| `flagged` / `flaggedAt` | bool / string | ECLA only: the employer is currently flagged by sanctions screening, and when that was observed (response time — no sanction timestamp is stored yet) |
+| `flaggedCheck` | `live` \| `stored` \| `unavailable` | ECLA only: how `flagged` was obtained (see step 5). `unavailable` means the value is the persisted flag and may be stale |
+| `signedVia` / `signedAs` | string | The platform the agreement was signed via (`github`, `gitlab`, `gerrit` — the last also covers LF SSO signings identified by email) and the account it was signed as; omitted when the record carries no such identity |
+| `claManager` | bool | ECLA only: the owning user is a CLA manager of the employer's CCLA for this CLA Group |
 | `documentMajorVersion` / `documentMinorVersion` | int | CLA document version that was signed (display/superseded detection is the consumer's choice) |
 | `pdfAvailable` | bool | `true` when the record is a signed ICLA eligible for PDF retrieval (ECLAs have no signed document — FR-002); invalidated ICLAs stay eligible (it is the user's own signed legal record); actual S3 object availability is verified by the PDF endpoint on request |
 
 List-level fields: `lfUsername` (the effective username the list was resolved for),
 `userIds` (matched EasyCLA user record IDs), `skippedIdentities` (identity parameters
 dropped by the ownership enforcement, `"<parameter>:<value>"` strings, always present —
-`[]` when nothing was skipped), `resultCount`.
+`[]` when nothing was skipped), `sssMode` (the sanctions screening mode in effect for
+this response — `required` / `optional` / `disabled`, always present), `resultCount`.
 
 Errors: `401` (token carries no username — also returned by the gateway for a
 missing/invalid token before the request reaches EasyCLA), `400` (admin caller with no
@@ -551,7 +621,8 @@ with a TODO for the missing lookup endpoint. With this API it collapses to:
   Project cell) with `claGroupName` as its subtext and `projectLogo` as the logo tile
   (falling back to `claGroupName` / a default icon when a field is absent — the endpoint
   now supplies the distinct project name + logo, so the old `projectName = claGroupName`
-  UUID fallback is retired), `status` from `valid`, drop ECLAs with `valid=false`
+  UUID fallback is retired), the status pill from the computed `status`/`statusReason`
+  (`valid` stays available as the boolean shortcut), drop ECLAs with `valid=false`
   (FR-002), `pdfAvailable` as-is; identity telemetry from `userIds` and
   `skippedIdentities` (`matchedUserIds = userIds.length`, `unmatched = resultCount ===
   0 && userIds.length === 0` — skipped keys are the direct signal for issue
@@ -585,7 +656,10 @@ Per request, with all caches request-scoped:
   distinct SFID (both cached per request; a lookup miss degrades to an empty logo);
 - one CCLA query per distinct (CLA group, company) pair and one approval-list
   evaluation per (pair, user) — ECLAs only; the GitHub-org check may add one GitHub
-  API call per evaluation when the CCLA actually uses org-based approval.
+  API call per evaluation when the CCLA actually uses org-based approval;
+- when sanctions screening is enabled, one organization-service lookup (for the domain)
+  plus one SSS call per **distinct employer** — not per row, and none at all for
+  administrator-blocked employers or when screening is off.
 
 No table scans except the explicitly opt-in `secondaryEmail` match (a single scan
 covering all provided values — callers should still treat it as a slow path). Each
@@ -687,8 +761,9 @@ assumption is to be confirmed on dev.
   service holds per-group credentials). When a CCLA uses GitLab group approvals and no
   other criterion matched, validity defers to the `signature_approved` flag (see
   validity evaluation above) — so a member removed from the group whose ECLA was not
-  yet invalidated shows `valid=true` until the invalidation flow catches up. A
-  follow-up could add the live group check via the gitlab-activity service.
+  yet invalidated shows `valid=true` (with `status: unknown`, marking the coverage as
+  unverified) until the invalidation flow catches up. A follow-up could add the live
+  group check via the gitlab-activity service.
 - **Secondary emails** (`user_emails`) are matchable only via the opt-in
   `secondaryEmail` parameter, which costs one table scan for all values (set
   attribute, not indexable) — the default `email` parameter stays index-backed;

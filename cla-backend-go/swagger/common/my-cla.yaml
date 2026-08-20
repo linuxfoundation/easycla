@@ -56,6 +56,26 @@ properties:
       not sanctioned, the employer still holds an approved+signed CCLA for the CLA Group, and
       the user still matches the current CCLA approval lists (email, email domain,
       GitHub/GitLab username, GitHub organization)
+  status:
+    type: string
+    x-omitempty: false
+    enum: [valid, needs_attention, revoked, invalidated, unknown]
+    description: >
+      Contributor-facing standing, independent of approved and valid. revoked - the employer is
+      flagged by sanctions screening (system-set, no user action, see flagged/flaggedAt);
+      invalidated - the stored approval flag is false, which attributes nothing (an Approved List
+      edit, an invalidated ICLA and CLA Group deletion all produce it); needs_attention - a
+      completed approval-list check proved the user is no longer covered; unknown - ECLA coverage
+      could not be evaluated; valid otherwise. ICLA is only valid or invalidated. This enum is
+      open to extension, so consumers MUST tolerate unrecognised values rather than failing closed
+  statusReason:
+    type: string
+    enum: [not_on_approval_list, unknown]
+    description: >
+      Why the standing is not valid, omitted for every other status and on every ICLA. Keyed on
+      status rather than on the boolean valid field - the two can disagree.
+      not_on_approval_list is a completed Approved List miss (what a Request approval action
+      gates on), unknown is any other unevaluable ECLA coverage outcome
   documentMajorVersion:
     type: integer
     x-omitempty: false
@@ -84,3 +104,12 @@ properties:
   flaggedAt:
     type: string
     description: The date/time the employer flag was observed - currently the response time, as no sanction timestamp is stored yet, present only when flagged is true
+  flaggedCheck:
+    type: string
+    enum: [live, stored, unavailable]
+    description: >
+      How the flagged answer was obtained, ECLA only. live - a sanctions screening call answered
+      for this response; stored - the persisted company flag, because screening is disabled or an
+      administrator set the block; unavailable - the screening call could not be completed, so
+      flagged carries the persisted value and may be stale - treat it as unknown, more so when
+      sssMode is required

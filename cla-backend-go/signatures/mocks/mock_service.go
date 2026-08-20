@@ -130,6 +130,22 @@ func (mr *MockSignatureServiceMockRecorder) DeleteGithubOrganizationFromApproval
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteGithubOrganizationFromApprovalList", reflect.TypeOf((*MockSignatureService)(nil).DeleteGithubOrganizationFromApprovalList), ctx, signatureID, approvalListParams, githubAccessToken)
 }
 
+// EvaluateUserApproval mocks base method.
+func (m *MockSignatureService) EvaluateUserApproval(ctx context.Context, user *models.User, cclaSignature *models.Signature) (bool, bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "EvaluateUserApproval", ctx, user, cclaSignature)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(bool)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// EvaluateUserApproval indicates an expected call of EvaluateUserApproval.
+func (mr *MockSignatureServiceMockRecorder) EvaluateUserApproval(ctx, user, cclaSignature interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EvaluateUserApproval", reflect.TypeOf((*MockSignatureService)(nil).EvaluateUserApproval), ctx, user, cclaSignature)
+}
+
 // GetCCLASignatures mocks base method.
 func (m *MockSignatureService) GetCCLASignatures(ctx context.Context, signed, approved *bool) ([]*signatures0.ItemSignature, error) {
 	m.ctrl.T.Helper()

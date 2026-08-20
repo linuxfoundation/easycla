@@ -144,6 +144,7 @@ func TestGetMyClasFlaggedAndClaManager(t *testing.T) {
 	sanctioned := byID["sig-sanctioned"]
 	assert.True(t, sanctioned.Flagged, "a sanctioned employer flags the ECLA")
 	assert.NotEmpty(t, sanctioned.FlaggedAt)
+	assert.Equal(t, models.MyClaStatusRevoked, sanctioned.Status, "the Revoked state is system-set from sanctions")
 	assert.False(t, sanctioned.Valid)
 	assert.False(t, sanctioned.ClaManager, "no CCLA is consulted for a sanctioned employer")
 

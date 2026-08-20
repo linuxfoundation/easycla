@@ -21,6 +21,15 @@ properties:
     description: Identity parameters that were not searched because they could not be verified as belonging to the authenticated user, formatted as "<parameter>:<value>"
     items:
       type: string
+  sssMode:
+    type: string
+    x-omitempty: false
+    enum: [required, optional, disabled]
+    description: >
+      The sanctions screening mode in effect for this response. required - a live screen is
+      mandatory, so any row with flaggedCheck unavailable is unverified; optional - a live screen
+      is best effort; disabled - no screen was attempted and flagged reflects the persisted
+      company flag. A screening failure never fails this endpoint
   resultCount:
     type: integer
     format: int64
