@@ -830,7 +830,7 @@ func buildCompanyModels(ctx context.Context, results *dynamodb.ScanOutput) ([]mo
 			Created:           strfmt.DateTime(createdDateTime),
 			Note:              dbCompany.Note,
 			IsSanctioned:      dbCompany.IsSanctioned,
-			SanctionedDate:    dbCompany.SanctionedDate,
+			SanctionedDate:    formatSanctionedDate(dbCompany.SanctionedDate),
 			Updated:           strfmt.DateTime(modifiedDateTime),
 		})
 	}

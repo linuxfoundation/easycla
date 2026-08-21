@@ -57,6 +57,15 @@ type InviteModel struct {
 	Version            string `json:"version"`
 }
 
+// formatSanctionedDate normalizes the stored date - this backend writes RFC3339, the legacy one
+// pynamo format - and leaves an unset value empty rather than warning on it.
+func formatSanctionedDate(dateStr string) string {
+	if dateStr == "" {
+		return ""
+	}
+	return utils.FormatTimeString(dateStr)
+}
+
 // toModel is a helper routine to convert the (internal) database model to a (public) swagger model
 func (dbCompanyModel *DBModel) toModel() (*models.Company, error) {
 	// Convert the "string" date time
@@ -90,7 +99,7 @@ func (dbCompanyModel *DBModel) toModel() (*models.Company, error) {
 		Note:              dbCompanyModel.Note,
 		IsSanctioned:      dbCompanyModel.IsSanctioned,
 		SanctionOrigin:    dbCompanyModel.SanctionOrigin,
-		SanctionedDate:    dbCompanyModel.SanctionedDate,
+		SanctionedDate:    formatSanctionedDate(dbCompanyModel.SanctionedDate),
 		Version:           dbCompanyModel.Version,
 	}, nil
 }
@@ -153,7 +162,7 @@ func toSwaggerModel(dbCompanyModel *DBModel) (*models.Company, error) {
 		SigningEntityName: dbCompanyModel.SigningEntityName,
 		IsSanctioned:      dbCompanyModel.IsSanctioned,
 		SanctionOrigin:    dbCompanyModel.SanctionOrigin,
-		SanctionedDate:    dbCompanyModel.SanctionedDate,
+		SanctionedDate:    formatSanctionedDate(dbCompanyModel.SanctionedDate),
 		CompanyExternalID: dbCompanyModel.CompanyExternalID,
 		CompanyManagerID:  dbCompanyModel.CompanyManagerID,
 		Created:           strfmt.DateTime(createdDateTime),

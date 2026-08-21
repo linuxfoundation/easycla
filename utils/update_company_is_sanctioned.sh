@@ -23,7 +23,7 @@ values="{\":val\":{\"BOOL\":${2}}}"
 if [ "$2" = "true" ]
 then
   upd_expr="SET is_sanctioned = :val, sanctioned_date = :now REMOVE sanction_origin"
-  values="{\":val\":{\"BOOL\":true},\":now\":{\"S\":\"$(date -u '+%Y-%m-%dT%H:%M:%S.%6N+0000')\"}}"
+  values="{\":val\":{\"BOOL\":true},\":now\":{\"S\":\"$(date -u '+%Y-%m-%dT%H:%M:%S').000000+0000\"}}"
 fi
 if [ ! -z "$DEBUG" ]
 then
