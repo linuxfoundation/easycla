@@ -70,6 +70,7 @@ type SignatureRepository interface {
 	DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID, githubOrganizationID string) ([]models.GithubOrg, error)
 	ValidateProjectRecord(ctx context.Context, signatureID, note string) error
 	InvalidateProjectRecord(ctx context.Context, signatureID, note string) error
+	InvalidateProjectRecordWithMetadata(ctx context.Context, signatureID, note string, metadata *InvalidationMetadata) error
 	UpdateEnvelopeDetails(ctx context.Context, signatureID, envelopeID string, signURL *string) (*models.Signature, error)
 	CreateSignature(ctx context.Context, signature *ItemSignature) error
 	UpdateSignature(ctx context.Context, signatureID string, updates map[string]interface{}) error
@@ -2085,6 +2086,13 @@ func (repo repository) ProjectSignatures(ctx context.Context, projectID string) 
 	}, nil
 }
 
+// InvalidationMetadata carries the invalidation attribution stored on the signature record
+type InvalidationMetadata struct {
+	InvalidatedBy string
+	Reason        string
+	Note          string
+}
+
 // InvalidateProjectRecord invalidates the specified project record by setting the signature_approved flag to false
 func (repo repository) InvalidateProjectRecord(ctx context.Context, signatureID, note string) error {
 	f := logrus.Fields{
@@ -2107,6 +2115,79 @@ func (repo repository) InvalidateProjectRecord(ctx context.Context, signatureID,
 	expressionAttributeNames["#S"] = aws.String("note")
 	expressionAttributeValues[":s"] = &dynamodb.AttributeValue{S: aws.String(note)}
 	updateExpression = updateExpression + " #S = :s"
+
+	input := &dynamodb.UpdateItemInput{
+		Key: map[string]*dynamodb.AttributeValue{
+			"signature_id": {
+				S: aws.String(signatureID),
+			},
+		},
+		ExpressionAttributeNames:  expressionAttributeNames,
+		ExpressionAttributeValues: expressionAttributeValues,
+		UpdateExpression:          &updateExpression,
+		TableName:                 aws.String(signatureTableName),
+	}
+
+	_, updateErr := repo.dynamoDBClient.UpdateItem(input)
+	if updateErr != nil {
+		log.WithFields(f).Warnf("error updating signature_approved for signature_id : %s error : %v ", signatureID, updateErr)
+		return updateErr
+	}
+
+	return nil
+}
+
+// InvalidateProjectRecordWithMetadata invalidates the specified project record by setting the
+// signature_approved flag to false and records the invalidation attribution: date_invalidated
+// (kept from the first invalidation), invalidated_by, invalidation_reason, invalidation_note
+func (repo repository) InvalidateProjectRecordWithMetadata(ctx context.Context, signatureID, note string, metadata *InvalidationMetadata) error {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.InvalidateProjectRecordWithMetadata",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"signatureID":    signatureID,
+	}
+
+	signatureTableName := fmt.Sprintf("cla-%s-signatures", repo.stage)
+
+	_, now := utils.CurrentTime()
+
+	expressionAttributeNames := map[string]*string{}
+	expressionAttributeValues := map[string]*dynamodb.AttributeValue{}
+	updateExpression := "SET " // nolint
+
+	expressionAttributeNames["#A"] = aws.String("signature_approved")
+	expressionAttributeValues[":a"] = &dynamodb.AttributeValue{BOOL: aws.Bool(false)}
+	updateExpression = updateExpression + " #A = :a,"
+
+	expressionAttributeNames["#S"] = aws.String("note")
+	expressionAttributeValues[":s"] = &dynamodb.AttributeValue{S: aws.String(note)}
+	updateExpression = updateExpression + " #S = :s,"
+
+	expressionAttributeNames["#DI"] = aws.String("date_invalidated")
+	expressionAttributeValues[":di"] = &dynamodb.AttributeValue{S: aws.String(now)}
+	updateExpression = updateExpression + " #DI = if_not_exists(#DI, :di),"
+
+	if metadata != nil {
+		if metadata.InvalidatedBy != "" {
+			expressionAttributeNames["#IB"] = aws.String("invalidated_by")
+			expressionAttributeValues[":ib"] = &dynamodb.AttributeValue{S: aws.String(metadata.InvalidatedBy)}
+			updateExpression = updateExpression + " #IB = :ib,"
+		}
+		if metadata.Reason != "" {
+			expressionAttributeNames["#IR"] = aws.String("invalidation_reason")
+			expressionAttributeValues[":ir"] = &dynamodb.AttributeValue{S: aws.String(metadata.Reason)}
+			updateExpression = updateExpression + " #IR = :ir,"
+		}
+		if metadata.Note != "" {
+			expressionAttributeNames["#IN"] = aws.String("invalidation_note")
+			expressionAttributeValues[":in"] = &dynamodb.AttributeValue{S: aws.String(metadata.Note)}
+			updateExpression = updateExpression + " #IN = :in,"
+		}
+	}
+
+	expressionAttributeNames["#M"] = aws.String("date_modified")
+	expressionAttributeValues[":m"] = &dynamodb.AttributeValue{S: aws.String(now)}
+	updateExpression = updateExpression + " #M = :m"
 
 	input := &dynamodb.UpdateItemInput{
 		Key: map[string]*dynamodb.AttributeValue{

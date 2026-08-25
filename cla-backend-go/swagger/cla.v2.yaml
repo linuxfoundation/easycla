@@ -2882,8 +2882,8 @@ paths:
 
   /my-clas/{signatureID}/cla-manager-requests:
     post:
-      summary: Request removal or approval from the CLA managers of an ECLA
-      description: Records a contributor request against their own ECLA and emails it to the selected CLA managers of the covering company CCLA - removal (take me off the coverage) or approval (add me back to the approval list). recipients must be a non-empty subset of the managers from GET /my-clas/{signatureID}/cla-managers; empty only when none resolves, and the request is then recorded without email. No signature state changes. Unknown, not-owned and ICLA signature IDs return 404. An ECLA flagged for a sanctioned company is deliberately still accepted - a removal request is legitimate there. Identity-ownership enforcement and trusted-caller token verification are as in GET /my-clas
+      summary: Request removal or approval from, or send a message to, the CLA managers of an ECLA
+      description: Records a contributor request against their own ECLA and emails it to the selected CLA managers of the covering company CCLA - removal (take me off the coverage), approval (add me back to the approval list) or contact (just deliver the contributor's free-form message, required and non-blank for this type, no change requested). recipients must be a non-empty subset of the managers from GET /my-clas/{signatureID}/cla-managers; empty only when none resolves, and the request is then recorded without email. No signature state changes. Unknown, not-owned and ICLA signature IDs return 404. An ECLA flagged for a sanctioned company is deliberately still accepted - a removal request is legitimate there. Identity-ownership enforcement and trusted-caller token verification are as in GET /my-clas
       operationId: createMyClaManagerRequest
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -3801,7 +3801,7 @@ paths:
   /cla-group/{claGroupID}/user/{userID}/icla:
     put:
       summary: Invalidate ICLA record
-      description: Invalidates a given ICLA record for a user
+      description: Invalidates a given ICLA record for a user - also stamps date_invalidated, invalidated_by and the optional invalidation_reason/invalidation_note from the body
       operationId: invalidateICLA
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -3810,6 +3810,11 @@ paths:
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/path-claGroupID"
         - $ref: "#/parameters/path-userID"
+        - name: body
+          in: body
+          required: false
+          schema:
+            $ref: '#/definitions/icla-invalidation-input'
       responses:
         '200':
           description: 'Success'
@@ -5288,6 +5293,9 @@ definitions:
 
   my-cla-manager-request-result:
     $ref: './common/my-cla-manager-request-result.yaml'
+
+  icla-invalidation-input:
+    $ref: './common/icla-invalidation-input.yaml'
 
   my-identity-list:
     $ref: './common/my-identity-list.yaml'

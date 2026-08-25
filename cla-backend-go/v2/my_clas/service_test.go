@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
@@ -1136,11 +1137,12 @@ func TestGetMyClasPersistsFirstLiveSanction(t *testing.T) {
 	const storedDate = "2024-01-15T10:11:12.000000+0000"
 
 	tests := []struct {
-		name          string
-		company       *v1Models.Company
-		writeErr      error
-		wantWrites    int
-		wantFlaggedAt string
+		name            string
+		company         *v1Models.Company
+		writeErr        error
+		wantWrites      int
+		wantFlaggedAt   string
+		wantNoFlaggedAt bool
 	}{
 		{
 			name:       "first live detection is persisted",
@@ -1159,10 +1161,11 @@ func TestGetMyClasPersistsFirstLiveSanction(t *testing.T) {
 			wantFlaggedAt: "2024-01-15T10:11:12Z",
 		},
 		{
-			name:       "a failed write reports the observation, not the cleared episode's date",
-			company:    &v1Models.Company{CompanyID: "company-1", CompanyName: "Unwritable Corp", SanctionedDate: storedDate},
-			writeErr:   errors.New("dynamodb unavailable"),
-			wantWrites: 0,
+			name:            "a failed write reports the flag without a date",
+			company:         &v1Models.Company{CompanyID: "company-1", CompanyName: "Unwritable Corp", SanctionedDate: storedDate},
+			writeErr:        errors.New("dynamodb unavailable"),
+			wantWrites:      0,
+			wantNoFlaggedAt: true,
 		},
 	}
 
@@ -1196,7 +1199,9 @@ func TestGetMyClasPersistsFirstLiveSanction(t *testing.T) {
 			}
 			assert.True(t, row.Flagged)
 			assert.Equal(t, models.MyClaFlaggedCheckLive, row.FlaggedCheck)
-			if tc.wantFlaggedAt != "" {
+			if tc.wantNoFlaggedAt {
+				assert.Empty(t, row.FlaggedAt, "a flag without a trustworthy date is reported without one")
+			} else if tc.wantFlaggedAt != "" {
 				assert.Equal(t, tc.wantFlaggedAt, row.FlaggedAt, "the stored date is reported, not the response time")
 			} else {
 				assert.NotEmpty(t, row.FlaggedAt)
@@ -1429,4 +1434,103 @@ func TestIdentityIsEmpty(t *testing.T) {
 	assert.False(t, (&Identity{GitlabIDs: []int64{1}}).IsEmpty())
 	assert.False(t, (&Identity{GitlabUsernames: []string{"someone"}}).IsEmpty())
 	assert.False(t, (&Identity{GerritUsernames: []string{"someone"}}).IsEmpty())
+}
+func TestGetMyClasEmitsCompanySanctionedEvent(t *testing.T) {
+	const storedDate = "2024-01-15T10:11:12.000000+0000"
+
+	tests := []struct {
+		name       string
+		company    *v1Models.Company
+		writeErr   error
+		wantEvents int
+	}{
+		{
+			name:       "a fresh flag is logged",
+			company:    &v1Models.Company{CompanyID: "company-1", CompanyName: "Newly Flagged Corp"},
+			wantEvents: 1,
+		},
+		{
+			name:       "a re-flag after a clear is logged",
+			company:    &v1Models.Company{CompanyID: "company-1", CompanyName: "Repeat Corp", SanctionedDate: storedDate},
+			wantEvents: 1,
+		},
+		{
+			name:       "an already sanctioned employer is not re-logged",
+			company:    &v1Models.Company{CompanyID: "company-1", CompanyName: "Known Corp", IsSanctioned: true, SanctionedDate: storedDate},
+			wantEvents: 0,
+		},
+		{
+			name:       "a date backfill for a known sanction is not logged",
+			company:    &v1Models.Company{CompanyID: "company-1", CompanyName: "Dateless Corp", IsSanctioned: true},
+			wantEvents: 0,
+		},
+		{
+			name:       "a failed persist is not logged",
+			company:    &v1Models.Company{CompanyID: "company-1", CompanyName: "Unwritable Corp"},
+			writeErr:   errors.New("dynamodb unavailable"),
+			wantEvents: 0,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
+			companies := &fakeCompanies{
+				byID:     map[string]*v1Models.Company{"company-1": tc.company},
+				writeErr: tc.writeErr,
+			}
+			repo := &fakeRepo{
+				byUserID:     map[string][]*signatures.ItemSignature{"user-a": {ecla("sig-1", "company-1", "2024-01-01T00:00:00Z", true)}},
+				byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+			}
+			signaturesService := &fakeSignatures{
+				cclas:           map[string]*v1Models.Signature{"cla-group-1|company-1": {SignatureID: "ccla-1"}},
+				approvedUserIDs: map[string]bool{"user-a": true},
+			}
+			svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
+			svc.sanctions = &fakeScreener{mode: models.MyClaListSssModeRequired, flagged: map[string]bool{"company-1": true}}
+			eventsLog := &fakeEvents{}
+			svc.eventsService = eventsLog
+
+			_, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+			require.NoError(t, err)
+
+			require.Len(t, eventsLog.logged, tc.wantEvents)
+			if tc.wantEvents > 0 {
+				logged := eventsLog.logged[0]
+				assert.Equal(t, events.CompanySanctioned, logged.EventType)
+				assert.Equal(t, "user-a", logged.UserID, "a top-level user identity is required or the events service drops the event")
+				assert.Same(t, tc.company, logged.CompanyModel, "the company model is passed so the events service needs no extra lookup")
+				assert.Same(t, userA, logged.UserModel, "the listing user whose employer was screened is the event actor")
+				_, ok := logged.EventData.(*events.CompanySanctionedEventData)
+				assert.True(t, ok)
+			}
+		})
+	}
+}
+
+func TestGetMyClasInvalidatedAt(t *testing.T) {
+	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
+	invalidated := icla("sig-invalidated", "user-a", "cla-group-1", "2024-01-01T00:00:00Z", false)
+	invalidated.DateInvalidated = "2024-03-04T05:06:07.000000+0000"
+	invalidated.InvalidatedBy = "admin-user"
+	valid := icla("sig-valid", "user-a", "cla-group-1", "2024-02-01T00:00:00Z", true)
+
+	repo := &fakeRepo{
+		byUserID:     map[string][]*signatures.ItemSignature{"user-a": {invalidated, valid}},
+		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+	}
+	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+	require.NoError(t, err)
+	byID := map[string]models.MyCla{}
+	for _, row := range result.Clas {
+		byID[row.SignatureID] = row
+	}
+
+	assert.Equal(t, "2024-03-04T05:06:07Z", byID["sig-invalidated"].InvalidatedAt)
+	assert.Equal(t, models.MyClaStatusInvalidated, byID["sig-invalidated"].Status)
+	assert.Empty(t, byID["sig-valid"].InvalidatedAt)
+	assert.Equal(t, models.MyClaStatusValid, byID["sig-valid"].Status)
 }
