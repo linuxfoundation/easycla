@@ -1,128 +1,98 @@
 # M2 Status Matrix — My CLAs row status
 
-**Parent spec**: FR-010 in `spec.md`, which lands with [easycla#5144](https://github.com/linuxfoundation/easycla/pull/5144) — **not yet on `dev`**, so it sits beside this file only once that PR merges ([read it there](https://github.com/linuxfoundation/easycla/blob/docs/easycla-ss-m2-speckit/specs/001-easycla-ss-integration-fable/m2-sign-cla-handoff/spec.md) meanwhile) | **Tickets**: [lfx-self-serve#1256](https://github.com/linuxfoundation/lfx-self-serve/issues/1256) (status column), [lfx-self-serve#1423](https://github.com/linuxfoundation/lfx-self-serve/issues/1423) (wire status/reason), [lfx-self-serve#1370](https://github.com/linuxfoundation/lfx-self-serve/issues/1370) (revocation metadata), [lfx-self-serve#1732](https://github.com/linuxfoundation/lfx-self-serve/issues/1732) (ICLA invalidation date)
-**Created**: 2026-08-20 | **Last verified against shipped code**: 2026-08-25 | **Status**: ✅ = verified shipped behavior or a closed decision; ⚠️ = proposed or unresolved
+**Parent spec**: FR-010 in `spec.md`, which lands with [easycla#5144](https://github.com/linuxfoundation/easycla/pull/5144) — **not yet on `dev`**, so it sits beside this file only once that PR merges ([read it there](https://github.com/linuxfoundation/easycla/blob/docs/easycla-ss-m2-speckit/specs/001-easycla-ss-integration-fable/m2-sign-cla-handoff/spec.md) meanwhile)
+**Last verified against shipped code**: 2026-08-25
 
-Single source of truth for which status pill a My CLAs row shows and why. **Both halves have now shipped** — the backend status/reason fields ([easycla](https://github.com/linuxfoundation/easycla) `dev`, `assignMyClaStatus`) and the frontend rendering ([lfx-self-serve#1440](https://github.com/linuxfoundation/lfx-self-serve/pull/1440), merged 2026-08-21).
+Single source of truth for the status a My CLAs row shows. Everything below is **shipped in both repos and settled** — the backend status fields (`easycla` `dev`) and the frontend rendering ([lfx-self-serve#1440](https://github.com/linuxfoundation/lfx-self-serve/pull/1440), merged 2026-08-21). Where a future change is intended, it is called out as such so nobody builds to it by mistake.
 
-This document is a **conformance reference**. Rows marked ✅ record **verified shipped behavior** (with `file:line` references under "Verified backend facts") or a **closed decision**; rows and items marked ⚠️ are proposals or open questions, and where one exists the shipped behavior is stated alongside it and is what to implement against today.
+## The five statuses
 
-**As of 2026-08-25 the status model is settled**: every pill, every wire value and every row action below describes behavior that is both shipped and ratified, and all seven decisions are closed — every one of them resolved to *no code change*. The remaining ⚠️ markers flag **known gaps and constraints to respect**, not pending choices; the one open product question is a copy decision noted in decision 6.
-
-## Display states (pills)
-
-| Pill | Applies to | Meaning | Dated? | Row actions |
+| Status | Applies to | What it means | Dated? | What the contributor can do |
 |---|---|---|---|---|
-| **Valid** | ICLA + ECLA | Signed, approved, (ECLA) covered by the company's current approval criteria | no | ICLA: PDF download. ECLA: Request Removal ([#1574](https://github.com/linuxfoundation/lfx-self-serve/issues/1574)) |
-| **Needs attention** | ECLA only | Still `signature_approved=true`, but a **completed** check proved the ECLA does not cover the contributor — either they fell off the approval list (`not_on_approval_list`) or the employer has no active CCLA (`no_active_ccla`, not yet built) | no | Note; Request Removal and Contact CLA Manager always; Request approval ([#1372](https://github.com/linuxfoundation/lfx-self-serve/issues/1372)) on `not_on_approval_list` **only** |
-| **Invalidated** | ICLA + ECLA | `signature_approved=false` — the signature itself was invalidated externally | ⚠️ **Undated today — no path writes an invalidation timestamp.** `InvalidateProjectRecord` writes only `signature_approved` and `note`. A dated `Invalidated · <date>` for PCC ICLA invalidation is proposed in [#1732](https://github.com/linuxfoundation/lfx-self-serve/issues/1732) (**open**); Approved List removal and CLA-group deletion are not in its scope and would stay undated | ICLA: none. ECLA: Request Removal is retained. Contributor remediation is an open legal question — see decisions |
-| **Revoked** | ECLA only | The employer carries `is_sanctioned=true`. That comes from a live SSS screen **or from a manual administrator block** — an admin block (`sanction_origin != "sss"`) is authoritative and short-circuits the live screen entirely, so not every Revoked row is a screening result **No — ships undated** (decided 2026-08-25). The backend sends `flaggedAt`, but it is not trustworthy in every case, so the frontend deliberately does not render it; a date is gated on the backend fix in decision 3 ([#1370](https://github.com/linuxfoundation/lfx-self-serve/issues/1370)) | None — read-only; the producer forces `valid` and `claManager` false |
-| **—** (`unknown`) | ECLA only | Coverage could not be confirmed. **Today this is a catch-all**, not purely a transient fault: it covers an employer or CCLA lookup that did not complete (retry may help), a missing or lapsed CCLA (E7a — a definitive answer, retry will not help), a failed approval-list evaluation, and GitLab group membership, which is never checkable. A failed **sanctions screen** is *not* in this bucket — `ScreenCompany` degrades to the persisted `is_sanctioned` flag (`check=unavailable`), so the row still resolves to Valid/Needs attention or Revoked. Plain text, **not a named pill** | no | Request Removal is retained (it is gated only on "ECLA and not Revoked") |
-| **Superseded** | reserved | An older document version than the CLA group's current. **Not produced today** — the endpoint does not expose the current version; the type and pill exist for forward compatibility | no | — |
+| **Valid** | ICLA + ECLA | Signed and in force. For an ECLA, the employer's agreement covers the contributor. | no | ICLA: download the PDF. ECLA: Request Removal |
+| **Needs attention** | ECLA only | The agreement is intact, but a completed check proved it does **not** cover the contributor — they are no longer on the employer's approved list. | no | Request approval, Contact CLA Manager, Request Removal |
+| **Invalidated** | ICLA + ECLA | The agreement itself was made void — by a CLA manager removing the contributor from an approved list, a project admin invalidating an ICLA, or a CLA group being deleted. | no — see [Known limitations](#known-limitations) | ICLA: nothing. ECLA: Request Removal |
+| **Revoked** | ECLA only | The employer is under a sanctions block, so the agreement cannot be relied on. Set by the system, never by a person in the product. | no — see [Known limitations](#known-limitations) | Nothing — the row is read-only |
+| **—** | ECLA only | Coverage could not be confirmed. Shown as a plain dash, **not** a labelled pill, because this is an absence of information rather than a verdict. | no | Request Removal |
 
-Rows with `signature_signed=false` are **never returned** by `GET /v4/my-clas`. "Canceled"/"Invalid" are banned copy (Mike, 8/13); "Invalidated" was approved by Heather 2026-08-19.
+Three rules that hold across the table:
 
-**Row actions are gated by three independent predicates**, not by the pill (`packages/shared/src/utils/cla-manager-actions.utils.ts`, merged):
+- **Unsigned agreements are never shown.** A row only exists once the contributor has signed.
+- **Invalidated and Revoked must never share wording.** They are different situations: Revoked is about the employer being sanctioned, Invalidated is about the agreement being voided. Conflating them would tell a contributor their company is sanctioned when it is not.
+- **"Canceled" and "Invalid" are banned copy** (Mike, 2026-08-13). "Invalidated" is the approved term (Heather, 2026-08-19).
 
-| Action | Shipped gate |
+### Why Invalidated never names who did it
+
+Three different events produce Invalidated, and the stored record is **identical** for all three — it does not capture which one occurred. So the status deliberately attributes nothing.
+
+This is a constraint, not a copy choice: wording like "your CLA manager removed you" would be wrong whenever the cause was actually a project admin or a deleted CLA group. Naming a cause requires a backend change first.
+
+### Revoked wins over Invalidated
+
+If an agreement is both invalidated *and* the employer is sanctioned, the row shows **Revoked**. The sanction is the more consequential fact and Revoked is the more restrictive status — it offers no actions at all — so it takes precedence.
+
+## Which status a row gets
+
+Read top to bottom; the first matching row wins.
+
+| Condition | Status |
 |---|---|
-| Request approval ([#1372](https://github.com/linuxfoundation/lfx-self-serve/issues/1372)) | ECLA **and** `statusReason === 'not_on_approval_list'` |
-| Request Removal ([#1574](https://github.com/linuxfoundation/lfx-self-serve/issues/1574)) | ECLA **and** `status !== 'revoked'` — so Valid, Needs attention, Invalidated and `unknown` all keep it |
-| Contact CLA Manager | ECLA **and** `status === 'needs_attention'` |
+| Not signed | *row is not shown* |
+| Employer is sanctioned | **Revoked** |
+| The agreement was voided | **Invalidated** |
+| It is an ICLA | **Valid** |
+| Coverage could not be checked | **—** |
+| Coverage confirmed | **Valid** |
+| Coverage checked, contributor not covered | **Needs attention** |
 
-Every ICLA row therefore carries no CLA-manager action, and Revoked is the only ECLA state with none.
+An **ICLA** can therefore only ever be Valid or Invalidated — never Needs attention, Revoked or "—", since all three depend on an employer.
 
-## Input signals
+### What lands in "—"
 
-| Signal | Lives on | Set by |
+The dash covers several situations that share one property: the check did not reach a conclusion.
+
+- The employer or their corporate agreement could not be read.
+- The approved-list check itself failed.
+- The contributor's access comes through a GitLab group, which cannot currently be verified.
+- The employer has **no active corporate agreement**. This one is a definitive answer rather than a failure, and the intended end state is to show it as **Needs attention** with its own explanation, since the remedy is for the company to sign a new agreement. That split is a **later change** — today it shows as "—".
+
+A failed sanctions check does **not** land here. If screening is unavailable the last known answer is used, so the row still resolves normally.
+
+## Actions in detail
+
+Actions are driven by the underlying situation, not by the status label:
+
+| Action | Offered when |
+|---|---|
+| **Request approval** | ECLA, and the contributor is specifically off the approved list |
+| **Request Removal** | Any ECLA except Revoked — so Valid, Needs attention, Invalidated and "—" all keep it |
+| **Contact CLA Manager** | ECLA showing Needs attention |
+
+Consequences worth stating plainly:
+
+- **ICLA rows never offer a CLA-manager action** — there is no employer or manager involved.
+- **Revoked is the only ECLA state with no actions.**
+- **Request approval is deliberately withheld** from a row whose employer has no active agreement. There would be nothing to be approved onto, so the button would send the contributor to a manager who cannot help.
+
+## Known limitations
+
+Current gaps. None blocks the status model; each is worth tracking.
+
+| Limitation | Effect on the contributor | Tracking |
 |---|---|---|
-| `signature_signed` | signature | DocuSign completion |
-| `signature_approved` | signature | `true` at signing; flipped `false` by PCC admin ICLA invalidation, CLA-manager Approved List removal, or CLA-group deletion. Removal invalidates **both ICLAs and ECLAs** of the removed user, but **only for the email, email-domain, GitHub-username and GitHub-org criteria** — GitLab username/org removals flip nothing (see the writers bullet below) |
-| `is_sanctioned` / `sanctioned_date` / `sanction_origin` | **company** | Live SSS screen or a manual admin block. Never written to the signature — sanctions do **not** flip `signature_approved` |
-| Coverage (`covered`, `unevaluable`) | computed live, ECLA only | `EvaluateUserApproval` against the employer's approved+signed CCLA. Distinguishes a *completed* miss from an *unevaluable* check |
+| **No dates on Invalidated or Revoked** | Neither status shows when it happened. For Revoked a date exists but is not reliable in every case, and for Invalidated no date is recorded at all — so showing one risks displaying a wrong date, which is worse than showing none. | [#1370](https://github.com/linuxfoundation/lfx-self-serve/issues/1370) (Revoked), [#1732](https://github.com/linuxfoundation/lfx-self-serve/issues/1732) (Invalidated) |
+| **GitLab approved-list removals have no effect** | A contributor removed from a GitLab approved list is not marked Invalidated. Their row shows Needs attention or "—" instead, and they may still appear covered. A real backend gap — **no ticket yet.** | needs filing |
+| **Invalidated offers no way forward** | The contributor sees the status with no next step and no one to contact. Because the cause is not recorded, no single contact would be right. Open product question: leave as-is, or add one line of static guidance such as *"This agreement is no longer active. To contribute to this project, you may need to sign a new CLA."* | open |
+| **"No active corporate agreement" is not distinguished** | It currently shows as "—" alongside genuine failures, so a contributor cannot tell a definite problem from a temporary one. | later change |
+| **A "Superseded" status exists in the frontend but is unreachable** | Nothing can produce it, because the version of the agreement a contributor signed is not compared against the current one. **Document-version staleness is not handled at all** — do not assume otherwise. | later change |
 
-## Decision table
+⚠️ **If a "sign a new CLA" link is ever added to an Invalidated row**, note that nothing currently prevents signing a fresh, automatically-approved ICLA ([easycla#5154](https://github.com/linuxfoundation/easycla/issues/5154)) — which would silently undo a deliberate invalidation. Static guidance is safe; a working Sign button is not, until that is closed.
 
-**Evaluation order as shipped** (`assignMyClaStatus`, `v2/my_clas/service.go:1118-1136`): `Flagged` (sanctions) → `!Approved` → ICLA → `unevaluable` → `covered` → default.
+## Related tickets
 
-### ICLA (`signature_user_company_id` empty)
-
-| # | `signed` | `approved` | Pill | Wire `status` | Notes |
-|---|---|---|---|---|---|
-| I1 | false | — | *(row not returned)* | — | By design |
-| I2 | true | true | **Valid** | `valid` | PDF download available |
-| I3 | true | false | **Invalidated** | `invalidated` | Causes: PCC admin invalidation, Approved List removal, or CLA-group deletion. Undated today; [#1732](https://github.com/linuxfoundation/lfx-self-serve/issues/1732) would add a date for the PCC path only |
-
-ICLA only ever produces `valid` or `invalidated` — never `needs_attention` or `unknown`.
-
-### ECLA (`signature_user_company_id` set)
-
-| # | `approved` | employer flagged | coverage | Pill | Wire `status` / `statusReason` | Conforms? |
-|---|---|---|---|---|---|---|
-| E1 | *(unsigned)* | — | — | *(row not returned)* | — | ✅ |
-| E2 | true | no | covered | **Valid** | `valid` | ✅ |
-| E3 | true | no | completed miss | **Needs attention** | `needs_attention` / `not_on_approval_list` | ✅ |
-| E4 | true | **yes** | (not reached) | **Revoked** | `revoked` | ✅ |
-| E5 | **false** | no | (not reached) | **Invalidated** | `invalidated` | ✅ |
-| E6 | **false** | **yes** | (not reached) | **Revoked** | `revoked` | ✅ **decided 2026-08-25** — sanction wins; see decision 1 |
-| E7a | true | no | **confirmed** absent: the employer holds no approved+signed CCLA for the CLA group | **—** (`unknown`) | `unknown` / `unknown` | ✅ **deferred post-M2** — ships as `unknown`/"—"; the `needs_attention` / `no_active_ccla` target is in decision 5 |
-| E7b | true | no | unevaluable: company or CCLA record unreadable, approval check failed, or GitLab group membership (never checkable) | **—** | `unknown` / `unknown` | ✅ |
-
-## Decisions
-
-**All seven are closed as of 2026-08-25, and every one resolved to *no code change*** — so the behavior described above is ratified, not a placeholder awaiting a call. They are kept here with their rationale so the reasoning is auditable and so nobody reopens a settled question or "fixes" something that is deliberate.
-
-One product question survives, inside decision 6: an Invalidated CLA shows a pill and **no next step**. That is the M2 behavior; whether to add a line of static guidance is a copy decision, and the reframing in 6 explains why the originally-asked version of that question ("whom does the contributor contact?") cannot be answered by the system as built.
-
-1. ✅ **E6 — Revoked wins over Invalidated. Resolved 2026-08-25 (Michal): no change.** An ECLA that is both invalidated and at a sanctioned employer renders **Revoked**. The shipped `assignMyClaStatus` checks `row.Flagged` before `!row.Approved` (`service.go:1120-1121`), which is now the ratified behavior rather than an accident to be revisited. Rationale: Revoked is the more restrictive pill (no actions at all, vs. Invalidated which retains Request Removal), so the conservative failure mode is preferred; sanctions and `signature_approved` are **independent facts** rather than competing descriptions of one state (sanctions never touch the signature flag — see backend facts), and the employer-level compliance fact is the more consequential one to surface; and the intersection is rare enough that a code change is poor value. The earlier 2026-08-24 proposal to let Invalidated win is **withdrawn**. E5 (not flagged) renders Invalidated, as it should.
-2. ✅ **I3 / E5 — the pill deliberately names no actor. Resolved 2026-08-25 (Michal): no change.** Three paths write `signature_approved=false` — PCC admin ICLA invalidation, CLA-manager Approved List removal, and CLA-group deletion — and the DB write is **identical** in all three, so the record carries no actor information. Attributing a cause in the copy is therefore not a deferred copy decision but information the backend does not have; naming one (e.g. "your CLA manager removed you") would be wrong in two cases out of three. **Do not "fix" the copy to name an actor** without first making the backend record which path fired. The user-facing gap worth attention here is not attribution but the absence of a remediation path — see decision 6.
-3. ✅ **Revoked ships undated. Resolved 2026-08-25 (Michal): no change; do not render `flaggedAt` yet.** The Revoked pill shows no date, which is what [#1440](https://github.com/linuxfoundation/lfx-self-serve/pull/1440) already ships. Rationale: a **wrong** date is worse than no date. An undated administrator block would render today's date and advance every day (see the fallback below), so a contributor citing `Revoked · <date>` in a dispute could be quoting a fabricated value. No date is honest; a moving date is not.
-
-   **Prerequisite if the date is wanted later** (under [#1370](https://github.com/linuxfoundation/lfx-self-serve/issues/1370)): first change the backend to emit `flaggedAt` **only** when it is backed by a stored `sanctioned_date` — omit the field instead of falling back to `CurrentTime()`. That is small, self-contained, and a strict improvement whether or not the date ever renders. Only then wire up the display. Doing it in the other order ships the fabricated-date bug to users.
-
-   Background — `sanctioned_date` is stamped on the company at the first live detection (`persistLiveSanction`) and surfaced as `flaggedAt`; the My CLAs path deliberately does not re-stamp it on later listings, so a stored value stops moving. ⚠️ **But `flaggedAt` is not always a revocation date.** The fallback at `service.go:272-277` is keyed only on "flagged with an empty stored date" — it does not know whether a stamp was attempted — so it reports `CurrentTime()`. That is right for a live detection whose stamp failed, but wrong for a **manual administrator block**, which short-circuits screening at `sanctions.go:89` and therefore never reaches `persistLiveSanction` at all. An undated admin block consequently shows today's date on every listing. Read `flaggedAt` as an *observation time* whenever it is not backed by a stored `sanctioned_date`; `flaggedCheck` (`stored` vs `live`) is the discriminator. A second, separate defect to fix under the same prerequisite: the signing compliance path in `v2/sign` can still **advance** `sanctioned_date` on an already-SSS-flagged company (see the backend facts below), so even a stored date is not guaranteed stable until that is closed.
-4. ~~[#1423](https://github.com/linuxfoundation/lfx-self-serve/issues/1423) must add a `revoked` token.~~ **Resolved and shipped** — the wire enum is `valid` / `needs_attention` / `revoked` / `invalidated` / `unknown`, with reasons `not_on_approval_list` / `unknown`. The ticket's original "sanctioned → `unknown`" mapping was superseded.
-5. ✅ **E7 split — deferred out of M2. Resolved 2026-08-25 (Michal): no change; keep one `unknown` bucket.** The single bucket is conservative rather than wrong — "—" honestly reports "we could not confirm coverage" — and the split costs far more than an enum value (see the implementation notes below: a closed `statusReason` union requiring an ordered two-repo rollout, plus backend surgery to make the coverage evaluation report *why* it could not confirm). This is an **engineering-cost decision, not a product-copy one**, so it does not need product sign-off; it is a post-M2 follow-up. The design below is retained as the agreed shape for whenever it is picked up. Today one `unknown` bucket renders "—" for both a lapsed CCLA and a failed lookup. A missing or lapsed CCLA is a **completed check with a definitive answer** — the ECLA covers nothing and the next PR check *will* fail — while a lookup failure is a transient fault where the answer is genuinely unknown. They split as follows:
-   - **E7a → `needs_attention` / `no_active_ccla`**, note *"{company}'s corporate agreement is no longer active."* (copy pending Heather's sign-off). **Request approval MUST NOT appear** — the remedy is the company signing a new CCLA, not an approval-list edit, so the [#1372](https://github.com/linuxfoundation/lfx-self-serve/issues/1372) action stays gated on `not_on_approval_list` alone. A Request-approval button here would ask a manager to approve someone onto an agreement that does not exist.
-   - **E7b stays `unknown` / `unknown`**, rendered "—". After the split `unknown` means only "we could not check", so a reader of the API knows a retry may change it.
-
-   Implementation notes: `statusReason` gains a third token (`no_active_ccla`). ⚠️ **Do not assume this is safely additive.** The "new values may be added in future revisions" clause is on `status` **only** — `statusReason` carries no such clause, and Self Serve models it as a closed union (`ClaStatusReason`). Adding a token therefore needs a coordinated contract-and-client change, and an exhaustive consumer will break on the unrecognized value. Ship the frontend's handling before or with the backend token, not after. The backend change is deeper than an enum value — the missing-CCLA path and the error paths currently converge on the same `unevaluable` signal, so the coverage evaluation must report **why** it could not confirm coverage. Both repos need it (`swagger/common/my-cla.yaml` + `assignMyClaStatus`, then the SS label/note mapping). Known trade-off accepted: **Needs attention** now carries two meanings — an individual approval-list miss and a company-wide lapse — distinguished by the note and the presence of the action. **Follow-up, not an M2 blocker**; current `unknown` behavior is conservative rather than wrong.
-6. ✅ **Invalidated — ships with no remediation action. Resolved 2026-08-25 (Michal): no change for M2.** One product question remains, but it is **not** the one originally asked.
-
-   **Shipped today:** an Invalidated **ICLA** offers nothing at all (no PDF, no action, no note). An Invalidated **ECLA** offers Request Removal only — `canRequestClaRemoval` gates on `status !== 'revoked'`, so Invalidated passes through incidentally rather than by design — and **Contact CLA Manager is gated to `needs_attention` only**, so an Invalidated ECLA cannot contact anyone. The contributor reaches a dead end.
-
-   **Why "whom do they contact?" cannot be answered as asked:** per decision 2 the record does not identify which of the three paths fired, and the right contact differs by cause — an Approved List removal points at the company's CLA manager, a PCC admin ICLA invalidation points at the project, and a deleted CLA group points at nobody because the agreement no longer exists. Any single action would therefore be wrong in roughly two cases out of three. **Do not add Contact CLA Manager to Invalidated rows** as the tempting one-line fix (`canContactClaManager` already exists): for an admin-invalidated ICLA or a deleted CLA group it routes the contributor to someone with no power to help, which is worse than silence.
-
-   **The open question, reframed for product:** *an invalidated CLA currently shows a pill and no next step — is that acceptable for M2, or do you want a line of static guidance?* If guidance is wanted, the cheap and honest option is copy only — no new action, no routing, no backend change — along the lines of *"This agreement is no longer active. To contribute to this project, you may need to sign a new CLA."* That holds for all three causes.
-
-   ⚠️ **Constraint on any "sign a new CLA" affordance:** nothing currently prevents signing a fresh auto-approved ICLA ([easycla#5154](https://github.com/linuxfoundation/easycla/issues/5154), not M2, deprioritized pending legal), which would silently undo a deliberate invalidation. Static guidance is fine; a **Sign button on an Invalidated row is not**, until that gap closes. Raise this with legal alongside the copy question.
-7. ✅ **`superseded` stays reserved and unreachable. Resolved 2026-08-25 (Michal): no change.** Not a product question — invisible to users either way.
-
-   **Shipped today:** fully wired on the frontend, unreachable from the backend. `ClaStatus` (`cla.interface.ts:31`) includes `superseded`, and `claStatusLabel` / `claStatusSeverity` render a `warn`-severity "Superseded" pill with exhaustive switches and tests. The backend enum (`swagger/common/my-cla.yaml:61`) has **no** `superseded`, so `assignMyClaStatus` cannot emit it: the frontend is a strict superset by exactly one value and that branch is dead code.
-
-   Rationale for leaving it: wiring it up would require the backend to expose the CLA group's current document version and compare per row — real work for a state nobody has asked to see — while dropping it removes about six lines plus two tests and invites re-adding them when version staleness next comes up. Leaving it is the cheapest correct option, and it is **safe** because of the asymmetry below: an extra `status` value costs the frontend nothing.
-
-   **The asymmetry is the durable takeaway.** `ClaStatus` is a *superset* of the backend `status` enum, whereas `ClaStatusReason` (`cla.interface.ts:33`) matches the backend exactly. That is why adding a status value is low-risk while adding a reason value is not — the frontend already tolerates an unrecognized status, but an unrecognized reason has nowhere to land. This is the constraint behind decision 5.
-
-   ⚠️ Keep in mind regardless: a permanently unreachable branch invites the assumption that document-version staleness is handled. **It is not.**
-
-## Verified backend facts (`dev`, 2026-08-25)
-
-All references are `cla-backend-go/`.
-
-- Status assignment: `v2/my_clas/service.go:1118-1136` (`assignMyClaStatus`) — order is `Flagged` → `!Approved` → ICLA → `unevaluable` → `covered` → `needs_attention`. Status is set **independently of** `valid`; the swagger notes the two can legitimately disagree.
-- Row assembly: `service.go:240-284` — `Valid = SignatureApproved && coverage.covered` (ECLA), `Valid = SignatureApproved` + `PdfAvailable` (ICLA). `Flagged`, `FlaggedCheck`, `FlaggedAt` are ECLA-only.
-- Sanctions: `companySanctions` / `persistLiveSanction` `service.go:1080-1113`, screening in `v2/my_clas/sanctions.go`. **An administrator block wins without a screen**: `ScreenCompany` returns `flagged=true, check=stored` immediately when `IsSanctioned && SanctionOrigin != "sss"` (`sanctions.go:87-90`), mirroring `v2/sign`'s `checkCompanyCompliance`. So Revoked means "the company is flagged", not "screening flagged the company". Otherwise: live screen where available, else the stored flag. `sanctioned_date` stamped once at first live detection; `flaggedCheck` reports `live` / `stored` / `unavailable`. Company-level writes only (`company/repository.go:1311-1313`) — no signature attribute is touched.
-- Coverage: `evaluateApproval` `service.go:1140-1160`. `EvaluateUserApproval` returns covered, a GitHub-org-lookup-failed flag, and an error; a failed check is `unevaluable`, so `covered=false` never silently means "no longer approved". GitLab group membership cannot be evaluated (needs per-group OAuth), so when a check comes back `covered=false` **and the current CCLA still carries at least one GitLab-org criterion**, the result is forced to `covered=true, unevaluable=true`. Note `unevaluable` is matched *before* `covered` in `assignMyClaStatus`, so that row's wire status is `unknown` ("—"), not `valid`.
-- Coverage resolution: `prefetch.go:288-299` (`claData.coverage`) — **this is where the E7 split lands**. A missing company record, a missing CCLA (`d.cclas[...] == nil`, `:292`) and an unresolved approval entry all return the same `eclaCoverage{unevaluable: true}`. Note the conflation is twofold: `:292` cannot currently distinguish "the employer has no approved+signed CCLA" (E7a, a definitive answer) from "the CCLA lookup did not complete" (E7b), because the prefetch stores a nil for both. Implementing `no_active_ccla` therefore requires the prefetch to record *why* the CCLA is absent, not just that it is.
-- Wire contract: `swagger/common/my-cla.yaml:58-77` — `status` enum (five values, and **only this one** carries the "new values may be added in future revisions" clause) and `statusReason` enum (`not_on_approval_list`, `unknown`, **no extensibility clause**). The proposed `no_active_ccla` reason (E7a) is **not in the enum yet**, and adding it is a coordinated contract change rather than an additive one — see decision 5.
-- Invalidation writers: `signatures/repository.go` `invalidateSignatures` (Approved List removal; walks the removed user's ICLAs **and** ECLAs → `InvalidateProjectRecord` → `signature_approved=false` + note, no timestamp) and `v2/signatures/service.go` PCC admin ICLA invalidation (same record write, plus contributor email and an `InvalidatedSignature` event that does not carry the signature ID — hence [#1732](https://github.com/linuxfoundation/lfx-self-serve/issues/1732)).
-- **Approved List removal does not cover every criterion.** `verifyUserApprovals` (`signatures/repository.go:4111-4186`) branches only on `EmailDomainCriteria`, `GitHubOrgCriteria`, `GitHubUsernameCriteria` and `EmailCriteria`. Removals under the GitLab username and GitLab organization criteria reach `invalidateSignatures` but match no branch, so `InvalidateProjectRecord` is never called and `signature_approved` stays `true`. A contributor removed from a GitLab approval list therefore does **not** land in I3/E5; their row falls through to the coverage check instead. Where it lands depends on what is left on the **current** CCLA, because the unevaluable fallback keys on `len(ccla.GitlabOrgApprovalList) > 0` at read time: if the removal emptied the GitLab-org list, the check completes `covered=false` → **Needs attention**; if another GitLab-org criterion remains, the fallback fires and the row is `unknown` → **"—"**. Either way the stale `signature_approved=true` means it is never surfaced as Invalidated. Treat this as a backend gap, not as documented behavior.
-- `flaggedAt` fallback: `service.go:272-277` reports `utils.CurrentTime()` for **any** flagged row with an empty stored `sanctioned_date`, regardless of whether a stamp was attempted. An administrator block returns early from `ScreenCompany` (`sanctions.go:87-91`, `check=stored`) and `persistLiveSanction` only runs on `check == Live`, so an undated admin block never gets stamped and re-reports the response time on every listing. Only `flaggedCheck` distinguishes the two.
-- Sanction date stability: the My CLAs path is stable — `persistLiveSanction` returns early when the company already carries `is_sanctioned` **and** a `sanctioned_date`, so listings never move the date. The signing compliance path in `v2/sign` is not guarded the same way: `buildSanctionUpdate` stamps `sanctioned_date` on every sanctioned write and its condition (`attribute_not_exists(#S) OR #S = :false OR #O = :o`) admits an already-SSS-flagged company, so a later flagged screen there can advance the date.
-
-## Frontend conformance ([lfx-self-serve#1440](https://github.com/linuxfoundation/lfx-self-serve/pull/1440), merged)
-
-- `ClaStatus` = `valid | needs_attention | revoked | invalidated | unknown | superseded` (`packages/shared/src/interfaces/cla.interface.ts`).
-- Labels (`cla-view.utils.ts`): Valid / Needs attention / Revoked / Invalidated / "—" / Superseded. The code explicitly documents that Invalidated and Revoked **must never share a label**, matching this table.
-- `unknown` renders as plain text "—", not a named pill — matching E7.
+- [lfx-self-serve#1256](https://github.com/linuxfoundation/lfx-self-serve/issues/1256) — status column
+- [lfx-self-serve#1423](https://github.com/linuxfoundation/lfx-self-serve/issues/1423) — status values on the API
+- [lfx-self-serve#1370](https://github.com/linuxfoundation/lfx-self-serve/issues/1370) — revocation date
+- [lfx-self-serve#1732](https://github.com/linuxfoundation/lfx-self-serve/issues/1732) — invalidation date
+- [lfx-self-serve#1372](https://github.com/linuxfoundation/lfx-self-serve/issues/1372) — Request approval
+- [lfx-self-serve#1574](https://github.com/linuxfoundation/lfx-self-serve/issues/1574) — Request Removal
