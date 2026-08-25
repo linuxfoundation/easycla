@@ -11,13 +11,13 @@ Single source of truth for the status a My CLAs row shows. Everything below is *
 |---|---|---|---|---|
 | **Valid** | ICLA + ECLA | Signed and in force. For an ECLA, the employer's agreement covers the contributor. | no | ICLA: download the PDF. ECLA: Request Removal |
 | **Needs attention** | ECLA only | The agreement is intact, but a completed check proved it does **not** cover the contributor — they are no longer on the employer's approved list. | no | Request approval, Contact CLA Manager, Request Removal |
-| **Invalidated** | ICLA + ECLA | The agreement itself was made void — by a CLA manager removing the contributor from an approved list, a project admin invalidating an ICLA, or a CLA group being deleted. | no — see [Known limitations](#known-limitations) | ICLA: nothing. ECLA: Request Removal |
+| **Invalidated** | ICLA + ECLA | The agreement itself was made void — by a CLA manager removing the contributor from an approved list, a project admin invalidating an ICLA, or a CLA group being deleted. In the data this is `signature_approved = false`. | no — see [Known limitations](#known-limitations) | ICLA: nothing. ECLA: Request Removal |
 | **Revoked** | ECLA only | The employer is under a sanctions block, so the agreement cannot be relied on. Set by the system, never by a person in the product. | no — see [Known limitations](#known-limitations) | Nothing — the row is read-only |
 | **—** | ECLA only | Coverage could not be confirmed. Shown as a plain dash, **not** a labelled pill, because this is an absence of information rather than a verdict. | no | Request Removal |
 
 Three rules that hold across the table:
 
-- **Unsigned agreements are never shown.** A row only exists once the contributor has signed.
+- **Unsigned agreements are never shown.** A row only exists once the contributor has signed — in the data, `signature_signed = true`. Records with `signature_signed = false` are filtered out before any status is worked out, so they have no status at all rather than a hidden one.
 - **Invalidated and Revoked must never share wording.** They are different situations: Revoked is about the employer being sanctioned, Invalidated is about the agreement being voided. Conflating them would tell a contributor their company is sanctioned when it is not.
 - **"Canceled" and "Invalid" are banned copy** (Mike, 2026-08-13). "Invalidated" is the approved term (Heather, 2026-08-19).
 
@@ -35,15 +35,15 @@ If an agreement is both invalidated *and* the employer is sanctioned, the row sh
 
 Read top to bottom; the first matching row wins.
 
-| Condition | Status |
-|---|---|
-| Not signed | *row is not shown* |
-| Employer is sanctioned | **Revoked** |
-| The agreement was voided | **Invalidated** |
-| It is an ICLA | **Valid** |
-| Coverage could not be checked | **—** |
-| Coverage confirmed | **Valid** |
-| Coverage checked, contributor not covered | **Needs attention** |
+| Condition | In the data | Status |
+|---|---|---|
+| Not signed | `signature_signed = false` | *row is not shown* |
+| Employer is sanctioned | company `is_sanctioned = true` | **Revoked** |
+| The agreement was voided | `signature_approved = false` | **Invalidated** |
+| It is an ICLA | no employer on the signature | **Valid** |
+| Coverage could not be checked | — | **—** |
+| Coverage confirmed | — | **Valid** |
+| Coverage checked, contributor not covered | — | **Needs attention** |
 
 An **ICLA** can therefore only ever be Valid or Invalidated — never Needs attention, Revoked or "—", since all three depend on an employer.
 
@@ -53,7 +53,6 @@ The dash covers several situations that share one property: the check did not re
 
 - The employer or their corporate agreement could not be read.
 - The approved-list check itself failed.
-- The contributor's access comes through a GitLab group, which cannot currently be verified.
 - The employer has **no active corporate agreement**. This one is a definitive answer rather than a failure, and the intended end state is to show it as **Needs attention** with its own explanation, since the remedy is for the company to sign a new agreement. That split is a **later change** — today it shows as "—".
 
 A failed sanctions check does **not** land here. If screening is unavailable the last known answer is used, so the row still resolves normally.
