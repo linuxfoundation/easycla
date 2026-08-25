@@ -1421,7 +1421,12 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 		return nil, err
 	}
 	log.WithFields(f).Debugf("found %d signatures for user: %s", len(userSignatures.Signatures), *input.UserID)
-	if hasInvalidatedIcla(userSignatures.Signatures) {
+	blocked, blockErr := s.userHasInvalidatedIcla(ctx, sigParams, input.ProjectID)
+	if blockErr != nil {
+		log.WithFields(f).WithError(blockErr).Warnf("unable to check for an invalidated ICLA for user: %s", *input.UserID)
+		return nil, blockErr
+	}
+	if blocked {
 		log.WithFields(f).Warnf("user %s has an invalidated ICLA for project %s - blocking a new individual signature", *input.UserID, *input.ProjectID)
 		return nil, ErrIclaInvalidated
 	}
@@ -2477,6 +2482,22 @@ func hasInvalidatedIcla(signatures []*v1Models.Signature) bool {
 	return false
 }
 
+// iclaBlockPageSize exhausts a user's ICLA records for the CLA group so the invalidated-ICLA
+// check cannot miss a record beyond the default page of 10.
+const iclaBlockPageSize int64 = 1000
+
+// userHasInvalidatedIcla runs the invalidated-ICLA check on a dedicated exhaustive lookup,
+// leaving the caller's default-sized lookup untouched.
+func (s *service) userHasInvalidatedIcla(ctx context.Context, params sigs.GetUserSignaturesParams, projectID *string) (bool, error) {
+	pageSize := iclaBlockPageSize
+	params.PageSize = &pageSize
+	userSignatures, err := s.signatureService.GetUserSignatures(ctx, params, projectID)
+	if err != nil {
+		return false, err
+	}
+	return hasInvalidatedIcla(userSignatures.Signatures), nil
+}
+
 func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *models.IndividualSignatureInput) (*models.IndividualSignatureOutput, error) {
 	f := logrus.Fields{
 		"functionName":  "sign.RequestIndividualSignatureGerrit",
@@ -2524,7 +2545,12 @@ func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *m
 		return nil, err
 	}
 
-	if hasInvalidatedIcla(userSignatures.Signatures) {
+	blocked, blockErr := s.userHasInvalidatedIcla(ctx, sigParams, input.ProjectID)
+	if blockErr != nil {
+		log.WithFields(f).WithError(blockErr).Warnf("unable to check for an invalidated ICLA for user: %s", *input.UserID)
+		return nil, blockErr
+	}
+	if blocked {
 		log.WithFields(f).Warnf("user %s has an invalidated ICLA for project %s - blocking a new individual signature", *input.UserID, *input.ProjectID)
 		return nil, ErrIclaInvalidated
 	}

@@ -5,12 +5,15 @@ package sign
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/golang/mock/gomock"
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	eventsMock "github.com/linuxfoundation/easycla/cla-backend-go/events/mock"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	sigs "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
+	mock_v1_signatures "github.com/linuxfoundation/easycla/cla-backend-go/signatures/mocks"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -26,6 +29,69 @@ func TestHasInvalidatedIcla(t *testing.T) {
 		{SignatureID: "valid", SignatureSigned: true, SignatureApproved: true},
 		{SignatureID: "invalidated", SignatureSigned: true, SignatureApproved: false},
 	}), "a signed but unapproved ICLA marks an administrator invalidation")
+}
+
+func TestUserHasInvalidatedIclaExhaustiveLookup(t *testing.T) {
+	userName := "contributor"
+	projectID := "cla-group-1"
+	callParams := sigs.GetUserSignaturesParams{UserID: "user-1", UserName: &userName}
+
+	tests := []struct {
+		name        string
+		signatures  []*v1Models.Signature
+		lookupErr   error
+		wantBlocked bool
+		wantErr     bool
+	}{
+		{
+			name: "an invalidated ICLA anywhere in the exhaustive result blocks",
+			signatures: []*v1Models.Signature{
+				{SignatureID: "valid", SignatureSigned: true, SignatureApproved: true},
+				{SignatureID: "invalidated", SignatureSigned: true, SignatureApproved: false},
+			},
+			wantBlocked: true,
+		},
+		{
+			name: "a clean history does not block",
+			signatures: []*v1Models.Signature{
+				{SignatureID: "valid", SignatureSigned: true, SignatureApproved: true},
+			},
+		},
+		{
+			name:      "a failed lookup is propagated",
+			lookupErr: errors.New("dynamodb unavailable"),
+			wantErr:   true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockSignatures := mock_v1_signatures.NewMockSignatureService(ctrl)
+			mockSignatures.EXPECT().GetUserSignatures(gomock.Any(), gomock.Any(), &projectID).DoAndReturn(
+				func(_ context.Context, params sigs.GetUserSignaturesParams, _ *string) (*v1Models.Signatures, error) {
+					if assert.NotNil(t, params.PageSize, "the block check must request an exhaustive page size, not the default of 10") {
+						assert.GreaterOrEqual(t, *params.PageSize, int64(1000))
+					}
+					assert.Equal(t, "user-1", params.UserID)
+					if tc.lookupErr != nil {
+						return nil, tc.lookupErr
+					}
+					return &v1Models.Signatures{Signatures: tc.signatures}, nil
+				})
+
+			svc := &service{signatureService: mockSignatures}
+			blocked, err := svc.userHasInvalidatedIcla(context.Background(), callParams, &projectID)
+			if tc.wantErr {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tc.wantBlocked, blocked)
+			assert.Nil(t, callParams.PageSize, "the caller's default-sized params must stay untouched")
+		})
+	}
 }
 
 func TestLogCompanySanctionedEventIdentity(t *testing.T) {
