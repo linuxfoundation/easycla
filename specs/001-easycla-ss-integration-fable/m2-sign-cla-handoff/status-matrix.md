@@ -10,7 +10,7 @@ Single source of truth for the status a My CLAs row shows. Everything below is *
 | Status | Applies to | What it means | Dated? | What the contributor can do |
 |---|---|---|---|---|
 | **Valid** | ICLA + ECLA | Signed and in force. For an ECLA, the employer's agreement covers the contributor. | no | ICLA: download the PDF. ECLA: Request Removal |
-| **Needs attention** | ECLA only | The agreement is intact, but a completed check proved it does **not** cover the contributor — they are no longer on the employer's approved list. | no | Request approval, Contact CLA Manager, Request Removal |
+| **Needs attention** | ECLA only | The agreement is intact, but a completed check proved it does **not** cover the contributor — they are no longer on the employer's approved list. | no | Request approval, Contact CLA Manager (not working yet), Request Removal |
 | **Invalidated** | ICLA + ECLA | The agreement itself was made void — by a CLA manager removing the contributor from an approved list, a project admin invalidating an ICLA, or a CLA group being deleted. In the data this is `signature_approved = false`. | no — see [Known limitations](#known-limitations) | ICLA: nothing. ECLA: Request Removal |
 | **Revoked** | ECLA only | The employer is under a sanctions block, so the agreement cannot be relied on. Set by the system, never by a person in the product. | no — see [Known limitations](#known-limitations) | Nothing — the row is read-only |
 | **—** | ECLA only | Coverage could not be confirmed. Shown as a plain dash, **not** a labelled pill, because this is an absence of information rather than a verdict. | no | Request Removal |
@@ -65,7 +65,7 @@ Actions are driven by the underlying situation, not by the status label:
 |---|---|
 | **Request approval** | ECLA, and the contributor is specifically off the approved list |
 | **Request Removal** | Any ECLA except Revoked — so Valid, Needs attention, Invalidated and "—" all keep it |
-| **Contact CLA Manager** | ECLA showing Needs attention |
+| **Contact CLA Manager** | ECLA showing Needs attention — but the button does not yet send anything, see [Known limitations](#known-limitations) |
 
 Consequences worth stating plainly:
 
@@ -81,6 +81,7 @@ Current gaps. None blocks the status model; each is worth tracking.
 |---|---|---|
 | **No dates on Invalidated or Revoked** | Neither status shows when it happened. For Revoked a date exists but is not reliable in every case, and for Invalidated no date is recorded at all — so showing one risks displaying a wrong date, which is worse than showing none. | [#1370](https://github.com/linuxfoundation/lfx-self-serve/issues/1370) (Revoked), [#1732](https://github.com/linuxfoundation/lfx-self-serve/issues/1732) (Invalidated) |
 | **GitLab approved-list removals have no effect** | A contributor removed from a GitLab approved list is not marked Invalidated. Their row shows Needs attention or "—" instead, and they may still appear covered. A real backend gap — **no ticket yet.** | needs filing |
+| **Contact CLA Manager does not send a message** | The contributor picks managers, writes a message and clicks Send — and is told *"Message not sent"*. Nothing reaches the manager. A visible dead end on the one status that most needs a human contact path. | later change |
 | **Invalidated offers no way forward** | The contributor sees the status with no next step and no one to contact. Because the cause is not recorded, no single contact would be right. Open product question: leave as-is, or add one line of static guidance such as *"This agreement is no longer active. To contribute to this project, you may need to sign a new CLA."* | open |
 | **"No active corporate agreement" is not distinguished** | It currently shows as "—" alongside genuine failures, so a contributor cannot tell a definite problem from a temporary one. | later change |
 | **A "Superseded" status exists in the frontend but is unreachable** | Nothing can produce it, because the version of the agreement a contributor signed is not compared against the current one. **Document-version staleness is not handled at all** — do not assume otherwise. | later change |
