@@ -34,33 +34,57 @@ func TestHasInvalidatedIcla(t *testing.T) {
 func TestUserHasInvalidatedIclaExhaustiveLookup(t *testing.T) {
 	userName := "contributor"
 	projectID := "cla-group-1"
-	callParams := sigs.GetUserSignaturesParams{UserID: "user-1", UserName: &userName}
+
+	type page struct {
+		signatures     []*v1Models.Signature
+		lastKeyScanned string
+		err            error
+	}
+	valid := &v1Models.Signature{SignatureID: "valid", SignatureSigned: true, SignatureApproved: true}
+	invalidated := &v1Models.Signature{SignatureID: "invalidated", SignatureSigned: true, SignatureApproved: false}
 
 	tests := []struct {
 		name        string
-		signatures  []*v1Models.Signature
-		lookupErr   error
+		pages       []page
 		wantBlocked bool
 		wantErr     bool
 	}{
 		{
-			name: "an invalidated ICLA anywhere in the exhaustive result blocks",
-			signatures: []*v1Models.Signature{
-				{SignatureID: "valid", SignatureSigned: true, SignatureApproved: true},
-				{SignatureID: "invalidated", SignatureSigned: true, SignatureApproved: false},
+			name:        "a hit on the first page blocks without fetching further pages",
+			pages:       []page{{signatures: []*v1Models.Signature{valid, invalidated}, lastKeyScanned: "cursor-1"}},
+			wantBlocked: true,
+		},
+		{
+			name: "an invalidated ICLA beyond the first page still blocks",
+			pages: []page{
+				{signatures: []*v1Models.Signature{valid}, lastKeyScanned: "cursor-1"},
+				{signatures: []*v1Models.Signature{invalidated}},
 			},
 			wantBlocked: true,
 		},
 		{
-			name: "a clean history does not block",
-			signatures: []*v1Models.Signature{
-				{SignatureID: "valid", SignatureSigned: true, SignatureApproved: true},
+			name: "a clean multi-page history does not block",
+			pages: []page{
+				{signatures: []*v1Models.Signature{valid}, lastKeyScanned: "cursor-1"},
+				{signatures: []*v1Models.Signature{valid}},
 			},
 		},
 		{
-			name:      "a failed lookup is propagated",
-			lookupErr: errors.New("dynamodb unavailable"),
-			wantErr:   true,
+			name:  "a clean single page does not block",
+			pages: []page{{signatures: []*v1Models.Signature{valid}}},
+		},
+		{
+			name:    "a failed lookup is propagated",
+			pages:   []page{{err: errors.New("dynamodb unavailable")}},
+			wantErr: true,
+		},
+		{
+			name: "a failure on a later page is propagated",
+			pages: []page{
+				{signatures: []*v1Models.Signature{valid}, lastKeyScanned: "cursor-1"},
+				{err: errors.New("dynamodb unavailable")},
+			},
+			wantErr: true,
 		},
 	}
 	for _, tc := range tests {
@@ -68,28 +92,42 @@ func TestUserHasInvalidatedIclaExhaustiveLookup(t *testing.T) {
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
 
+			callParams := sigs.GetUserSignaturesParams{UserID: "user-1", UserName: &userName}
+			calls := 0
 			mockSignatures := mock_v1_signatures.NewMockSignatureService(ctrl)
 			mockSignatures.EXPECT().GetUserSignatures(gomock.Any(), gomock.Any(), &projectID).DoAndReturn(
 				func(_ context.Context, params sigs.GetUserSignaturesParams, _ *string) (*v1Models.Signatures, error) {
-					if assert.NotNil(t, params.PageSize, "the block check must request an exhaustive page size, not the default of 10") {
-						assert.GreaterOrEqual(t, *params.PageSize, int64(1000))
+					if assert.Less(t, calls, len(tc.pages), "no lookups expected past the last page") {
+						p := tc.pages[calls]
+						calls++
+						if assert.NotNil(t, params.PageSize, "the block check must request an exhaustive page size, not the default of 10") {
+							assert.GreaterOrEqual(t, *params.PageSize, int64(1000))
+						}
+						assert.Equal(t, "user-1", params.UserID)
+						if calls == 1 {
+							assert.Nil(t, params.NextKey)
+						} else if assert.NotNil(t, params.NextKey, "follow-up lookups must carry the pagination cursor") {
+							assert.Equal(t, tc.pages[calls-2].lastKeyScanned, *params.NextKey)
+						}
+						if p.err != nil {
+							return nil, p.err
+						}
+						return &v1Models.Signatures{Signatures: p.signatures, LastKeyScanned: p.lastKeyScanned}, nil
 					}
-					assert.Equal(t, "user-1", params.UserID)
-					if tc.lookupErr != nil {
-						return nil, tc.lookupErr
-					}
-					return &v1Models.Signatures{Signatures: tc.signatures}, nil
-				})
+					return &v1Models.Signatures{}, nil
+				}).Times(len(tc.pages))
 
 			svc := &service{signatureService: mockSignatures}
 			blocked, err := svc.userHasInvalidatedIcla(context.Background(), callParams, &projectID)
 			if tc.wantErr {
 				assert.Error(t, err)
-				return
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.wantBlocked, blocked)
 			}
-			assert.NoError(t, err)
-			assert.Equal(t, tc.wantBlocked, blocked)
+			assert.Equal(t, len(tc.pages), calls, "every prepared page is consumed and none beyond")
 			assert.Nil(t, callParams.PageSize, "the caller's default-sized params must stay untouched")
+			assert.Nil(t, callParams.NextKey, "the caller's cursor must stay untouched")
 		})
 	}
 }

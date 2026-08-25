@@ -2482,20 +2482,29 @@ func hasInvalidatedIcla(signatures []*v1Models.Signature) bool {
 	return false
 }
 
-// iclaBlockPageSize exhausts a user's ICLA records for the CLA group so the invalidated-ICLA
-// check cannot miss a record beyond the default page of 10.
+// iclaBlockPageSize is the per-call cap for the invalidated-ICLA lookup, far above the
+// default page of 10; the helper pages past it when needed.
 const iclaBlockPageSize int64 = 1000
 
-// userHasInvalidatedIcla runs the invalidated-ICLA check on a dedicated exhaustive lookup,
-// leaving the caller's default-sized lookup untouched.
+// userHasInvalidatedIcla runs the invalidated-ICLA check on a dedicated lookup, following the
+// pagination cursor until a hit or exhaustion, leaving the caller's default-sized lookup untouched.
 func (s *service) userHasInvalidatedIcla(ctx context.Context, params sigs.GetUserSignaturesParams, projectID *string) (bool, error) {
 	pageSize := iclaBlockPageSize
 	params.PageSize = &pageSize
-	userSignatures, err := s.signatureService.GetUserSignatures(ctx, params, projectID)
-	if err != nil {
-		return false, err
+	for {
+		userSignatures, err := s.signatureService.GetUserSignatures(ctx, params, projectID)
+		if err != nil {
+			return false, err
+		}
+		if hasInvalidatedIcla(userSignatures.Signatures) {
+			return true, nil
+		}
+		if userSignatures.LastKeyScanned == "" {
+			return false, nil
+		}
+		nextKey := userSignatures.LastKeyScanned
+		params.NextKey = &nextKey
 	}
-	return hasInvalidatedIcla(userSignatures.Signatures), nil
 }
 
 func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *models.IndividualSignatureInput) (*models.IndividualSignatureOutput, error) {
