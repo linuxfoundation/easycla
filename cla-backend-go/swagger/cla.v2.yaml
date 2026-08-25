@@ -2753,7 +2753,7 @@ paths:
   /my-clas:
     get:
       summary: Get My CLAs
-      description: Returns the signed ICLAs and ECLAs (employee acknowledgements) matching the provided identity - LF username, emails and GitHub/GitLab/Gerrit identities - aggregated across all matching EasyCLA user records and deduplicated, with validity evaluated against the current company CCLA approval lists. Unless the caller is an admin, each provided identity must belong to the authenticated user (per their EasyCLA user record or the identities connected to their LF account in the platform user-service) - identities that cannot be verified are not searched and are reported in skippedIdentities
+      description: Returns the signed ICLAs and ECLAs (employee acknowledgements) matching the provided identity - LF username, emails, GitHub/GitLab/Gerrit identities - aggregated across all matching EasyCLA user records, deduplicated, with validity evaluated against the current company CCLA approval lists. Unless the caller is an admin or a trusted LFX Self Serve client, every provided identity must belong to the authenticated user (their EasyCLA user records, or the identities connected to their LF account in the platform user-service); unverifiable ones are not searched and are reported in skippedIdentities. A trusted caller has its Authorization bearer token signature-verified against the Auth0 JWKS in-handler and its azp claim on the configured Self Serve client-ID allow-list; while that allow-list is configured every request needs a verifiable bearer token and a missing or unverifiable one is 401
       operationId: getMyClas
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -2791,7 +2791,7 @@ paths:
   /my-clas/{signatureID}/pdf:
     get:
       summary: Get a signed ICLA PDF download link
-      description: Returns a time-limited download URL for the signed ICLA PDF when the signature belongs to the provided identity - unknown, not-owned and ECLA signature IDs return 404. The same identity-ownership enforcement as GET /my-clas applies, so a non-admin caller can only download their own signed documents
+      description: Returns a time-limited download URL for a signed ICLA PDF owned by the provided identity - unknown, not-owned and ECLA signature IDs return 404. Identity-ownership enforcement and trusted-caller token verification are as in GET /my-clas, so a caller that is neither an admin nor a trusted LFX Self Serve client can only download its own documents
       operationId: getMyClaPdf
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -2834,10 +2834,107 @@ paths:
       tags:
         - my_clas
 
+  /my-clas/{signatureID}/cla-managers:
+    get:
+      summary: Get the CLA managers for an ECLA
+      description: Returns the CLA managers of the company CCLA covering the given ECLA, so the contributor can pick whom to contact for a removal or approval request - unknown, not-owned and ICLA signature IDs return 404. Identity-ownership enforcement and trusted-caller token verification are as in GET /my-clas
+      operationId: getMyClaManagers
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - name: signatureID
+          description: The signature ID (UUID string)
+          in: path
+          type: string
+          required: true
+          pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{12}$' # this is any UUID, not only v4
+        - $ref: "#/parameters/myClasLfUsername"
+        - $ref: "#/parameters/myClasEmail"
+        - $ref: "#/parameters/myClasSecondaryEmail"
+        - $ref: "#/parameters/myClasGithubId"
+        - $ref: "#/parameters/myClasGithubUsername"
+        - $ref: "#/parameters/myClasGitlabId"
+        - $ref: "#/parameters/myClasGitlabUsername"
+        - $ref: "#/parameters/myClasGerritUsername"
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/my-cla-manager-list'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - my_clas
+
+  /my-clas/{signatureID}/cla-manager-requests:
+    post:
+      summary: Request removal or approval from, or send a message to, the CLA managers of an ECLA
+      description: Records a contributor request against their own ECLA and emails it to the selected CLA managers of the covering company CCLA - removal (take me off the coverage), approval (add me back to the approval list) or contact (just deliver the contributor's free-form message, required and non-blank for this type, no change requested). recipients must be a non-empty subset of the managers from GET /my-clas/{signatureID}/cla-managers; empty only when none resolves, and the request is then recorded without email. No signature state changes. Unknown, not-owned and ICLA signature IDs return 404. An ECLA flagged for a sanctioned company is deliberately still accepted - a removal request is legitimate there. Identity-ownership enforcement and trusted-caller token verification are as in GET /my-clas
+      operationId: createMyClaManagerRequest
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - name: signatureID
+          description: The signature ID (UUID string)
+          in: path
+          type: string
+          required: true
+          pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{4}-?[a-fA-F0-9]{12}$' # this is any UUID, not only v4
+        - $ref: "#/parameters/myClasLfUsername"
+        - $ref: "#/parameters/myClasEmail"
+        - $ref: "#/parameters/myClasSecondaryEmail"
+        - $ref: "#/parameters/myClasGithubId"
+        - $ref: "#/parameters/myClasGithubUsername"
+        - $ref: "#/parameters/myClasGitlabId"
+        - $ref: "#/parameters/myClasGitlabUsername"
+        - $ref: "#/parameters/myClasGerritUsername"
+        - name: body
+          in: body
+          required: true
+          schema:
+            $ref: '#/definitions/my-cla-manager-request'
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/my-cla-manager-request-result'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - my_clas
+
   /my-clas/identities:
     get:
       summary: Get My Identities
-      description: Returns the deduplicated identities connected to the authenticated user, each formatted as "<type>:<value>" - the union of the identities on their EasyCLA user records and the identities connected to their LF account in the platform user-service, i.e. exactly the identity set the My CLAs API authorizes a non-admin caller to search
+      description: Returns the deduplicated identities connected to the authenticated user, each formatted "<type>:<value>" - the union of the identities on their EasyCLA user records and those connected to their LF account in the platform user-service, i.e. exactly the set a non-admin, non-trusted caller is authorized to search. Always the authenticated principal's own identities; while the trusted Self Serve client-ID allow-list is configured the request still needs a verifiable Authorization bearer token
       operationId: getMyIdentities
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -2861,6 +2958,77 @@ paths:
           $ref: '#/responses/internal-server-error'
       tags:
         - my_clas
+
+  /self-serve/prepare-sign:
+    post:
+      summary: Prepare Sign
+      description: Prepares a proactive (no pull/merge request) signing session started from LFX Self Serve - verifies that the provided identity belongs to the authenticated user with the same rules as GET /my-clas (their EasyCLA user records first, then the identities connected to their LF account in the platform user-service), creates the EasyCLA user record when the verified identity has none, records the return URL for the signing session, and returns the Contributor Console URL to hand off to so the contributor can choose ICLA or ECLA there
+      operationId: prepareSign
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - name: body
+          in: body
+          required: true
+          schema:
+            $ref: '#/definitions/prepare-sign-input'
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/prepare-sign'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - self_serve_sign
+
+  /cla-group/search:
+    get:
+      summary: Search CLA Groups
+      description: Unscoped search over the CLA Group name, the Salesforce project (or foundation) name, the names of the linked GitHub organizations, GitLab groups and Gerrit instances, and the repository the search term resolves to - a pasted repository URL or a "owner/repo" path is resolved to the CLA Group owning that repository. A URL that names a known repository resolves to that repository's CLA Group only - the owning organization is used as a fallback when no repository record matches - and a URL is matched against the repositories and organizations of the host it names - the forge for a github.com or gitlab.com URL, the host itself for a self-hosted one - while a bare "owner/repo" path matches either forge. Matching is case-insensitive substring matching performed server-side, results are deduplicated by CLA Group and capped at limit. A searchTerm shorter than 3 characters, or a limit outside its bounds, is rejected with a 422; a searchTerm that is shorter than 3 characters only after whitespace trimming is rejected with a 400. The reference data is served from an in-process cache with a short TTL, so a newly added CLA Group, organization or project mapping can take up to the cache TTL (30 minutes by default) to become searchable
+      operationId: searchClaGroups
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/claSearchTerm"
+        - $ref: "#/parameters/claSearchLimit"
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/cla-search-list'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '422':
+          $ref: '#/responses/unprocessable-entity'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - cla_search
 
   /user/{userID}/request-company-admin:
     post:
@@ -3633,7 +3801,7 @@ paths:
   /cla-group/{claGroupID}/user/{userID}/icla:
     put:
       summary: Invalidate ICLA record
-      description: Invalidates a given ICLA record for a user
+      description: Invalidates a given ICLA record for a user - also stamps date_invalidated, invalidated_by and the optional invalidation_reason/invalidation_note from the body
       operationId: invalidateICLA
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -3642,6 +3810,11 @@ paths:
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/path-claGroupID"
         - $ref: "#/parameters/path-userID"
+        - name: body
+          in: body
+          required: false
+          schema:
+            $ref: '#/definitions/icla-invalidation-input'
       responses:
         '200':
           description: 'Success'
@@ -4488,6 +4661,34 @@ paths:
       tags:
         - sign 
     
+  /signed/self-serve/individual/{user_id}:
+    post:
+      summary: Endpoint to receive DocuSign callback for signed documents from LFX Self Serve.
+      description: Receives XML data when an individual signs a document in DocuSign for a signing session started proactively from LFX Self Serve, i.e. with no pull or merge request context.
+      operationId: iclaCallbackSelfServe
+      security: [ ]
+      consumes:
+        - text/xml
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - name: user_id
+          in: path
+          required: true
+          type: string
+        - name: body
+          in: body
+          required: true
+          schema:
+            type: object
+            additionalProperties: true
+      responses:
+        '200':
+          description: Successfully received and processed the Self Serve callback data.
+        '400':
+          description: Invalid request.
+      tags:
+        - sign
+
   /signed/corporate/{project_id}/{company_id}:
     post:
       summary: Endpoint to receive DocuSign callback for signed corporate documents.
@@ -4962,7 +5163,7 @@ parameters:
     required: true
   myClasLfUsername:
     name: lfUsername
-    description: The LF username (LFID) of the user - when omitted, the username of the authenticated principal is used; unless the caller is an admin, a value different from the authenticated principal is not searched and is reported in skippedIdentities
+    description: The LF username (LFID) of the user - when omitted, the authenticated principal's username is used; unless the caller is an admin or a trusted LFX Self Serve client, a different value is not searched and is reported in skippedIdentities. The caller-supplied identity list is transitional - at M6, once EasyCLA runs on the K8s cluster, it should call lfx.auth-service.user_identity.list over NATS itself and drop both the list and the azp allow-list authorizing it
     in: query
     type: string
     required: false
@@ -4978,7 +5179,7 @@ parameters:
     required: false
   myClasSecondaryEmail:
     name: secondaryEmail
-    description: Email addresses of the user - matched case-insensitively against the EasyCLA user records additional-emails set; this match is not index-backed (all provided values are matched in a single table scan) so it runs only when explicitly requested, use sparingly
+    description: Email addresses of the user - matched case-insensitively against the EasyCLA user records additional-emails set; not index-backed (all values are matched in one table scan), so it runs only on request - use sparingly
     in: query
     type: array
     maxItems: 20
@@ -4998,7 +5199,7 @@ parameters:
     required: false
   myClasGithubUsername:
     name: githubUsername
-    description: GitHub usernames of the user - note that GitHub usernames can be renamed/recycled, the numeric githubId is the authoritative key
+    description: GitHub usernames of the user - usernames can be renamed/recycled, the numeric githubId is the authoritative key
     in: query
     type: array
     maxItems: 100
@@ -5018,7 +5219,7 @@ parameters:
     required: false
   myClasGitlabUsername:
     name: gitlabUsername
-    description: GitLab usernames of the user - note that GitLab usernames can be renamed/recycled, the numeric gitlabId is the authoritative key
+    description: GitLab usernames of the user - usernames can be renamed/recycled, the numeric gitlabId is the authoritative key
     in: query
     type: array
     maxItems: 100
@@ -5028,13 +5229,30 @@ parameters:
     required: false
   myClasGerritUsername:
     name: gerritUsername
-    description: Gerrit usernames of the user - Gerrit uses LF SSO accounts, so these are (current or historical) LF usernames and are matched against the EasyCLA user records LF username
+    description: Gerrit usernames of the user - Gerrit uses LF SSO, so these are (current or historical) LF usernames, matched against the EasyCLA user records LF username
     in: query
     type: array
     maxItems: 100
     items:
       type: string
     collectionFormat: multi
+    required: false
+  claSearchTerm:
+    name: searchTerm
+    description: The term to search for - matched case-insensitively as a substring against the CLA Group name, project/foundation name and linked organization names, and resolved as a repository URL or "owner/repo" path
+    in: query
+    type: string
+    minLength: 3
+    maxLength: 255
+    required: true
+  claSearchLimit:
+    name: limit
+    description: The maximum number of CLA Groups to return
+    in: query
+    type: integer
+    minimum: 1
+    maximum: 100
+    default: 20
     required: false
 
 definitions:
@@ -5064,8 +5282,38 @@ definitions:
   my-cla-pdf:
     $ref: './common/my-cla-pdf.yaml'
 
+  my-cla-manager:
+    $ref: './common/my-cla-manager.yaml'
+
+  my-cla-manager-list:
+    $ref: './common/my-cla-manager-list.yaml'
+
+  my-cla-manager-request:
+    $ref: './common/my-cla-manager-request.yaml'
+
+  my-cla-manager-request-result:
+    $ref: './common/my-cla-manager-request-result.yaml'
+
+  icla-invalidation-input:
+    $ref: './common/icla-invalidation-input.yaml'
+
   my-identity-list:
     $ref: './common/my-identity-list.yaml'
+
+  prepare-sign-input:
+    $ref: './common/prepare-sign-input.yaml'
+
+  prepare-sign:
+    $ref: './common/prepare-sign.yaml'
+
+  cla-search-list:
+    $ref: './common/cla-search-list.yaml'
+
+  cla-search-result:
+    $ref: './common/cla-search-result.yaml'
+
+  cla-search-org:
+    $ref: './common/cla-search-org.yaml'
 
   #--------------------------------------
   # Docusign Webhook Payload

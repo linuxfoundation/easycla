@@ -146,3 +146,61 @@ func TestCLAGroupUpdatedEventData_GetEventDetailsString(t *testing.T) {
 		})
 	}
 }
+
+func TestContactCLAManagerRequestCreatedEventData(t *testing.T) {
+	eventData := &ContactCLAManagerRequestCreatedEventData{
+		RequestID:   "request-1",
+		RequestType: "removal",
+		SignatureID: "sig-1",
+		Recipients:  []string{"manager-one"},
+	}
+	args := &LogEventArgs{UserName: testUser, CompanyName: "Good Corp", ProjectName: "My Project"}
+
+	details, _ := eventData.GetEventDetailsString(args)
+	assert.NotContains(t, details, "with the message")
+	summary, _ := eventData.GetEventSummaryString(args)
+	assert.NotContains(t, summary, "with a message")
+
+	eventData.Message = "please remove me"
+	details, _ = eventData.GetEventDetailsString(args)
+	assert.Contains(t, details, "with the message: please remove me", "the receipt carries the contributor message")
+	summary, _ = eventData.GetEventSummaryString(args)
+	assert.Contains(t, summary, "with a message")
+}
+
+func TestSignatureProjectInvalidatedEventDataSingleSignature(t *testing.T) {
+	bulk := &SignatureProjectInvalidatedEventData{InvalidatedCount: 3}
+	args := &LogEventArgs{UserName: testUser, ProjectName: "My Project"}
+
+	details, containsPII := bulk.GetEventDetailsString(args)
+	assert.True(t, containsPII)
+	assert.Contains(t, details, "3 Signatures were invalidated (approved set to false) due to CLA Group/Project: My Project deletion")
+
+	single := &SignatureProjectInvalidatedEventData{
+		SignatureID:      "sig-1",
+		InvalidatedBy:    "admin-user",
+		Reason:           "compliance",
+		InvalidationNote: "per legal review",
+	}
+	details, containsPII = single.GetEventDetailsString(args)
+	assert.True(t, containsPII)
+	assert.Equal(t, "The signature sig-1 was invalidated (approved set to false) for the user john for the project My Project by the administrator admin-user, reason: compliance, note: per legal review.", details)
+	summary, _ := single.GetEventSummaryString(args)
+	assert.Equal(t, "the signature sig-1 was invalidated (approved set to false) for the user john for the project My Project by the administrator admin-user, reason: compliance, note: per legal review.", summary)
+
+	bare := &SignatureProjectInvalidatedEventData{SignatureID: "sig-2"}
+	details, _ = bare.GetEventDetailsString(&LogEventArgs{})
+	assert.Equal(t, "The signature sig-2 was invalidated (approved set to false).", details)
+}
+
+func TestCompanySanctionedEventData(t *testing.T) {
+	eventData := &CompanySanctionedEventData{}
+	args := &LogEventArgs{CompanyName: "Flagged Corp"}
+
+	details, containsPII := eventData.GetEventDetailsString(args)
+	assert.True(t, containsPII)
+	assert.Equal(t, "The company Flagged Corp was flagged as sanctioned by sanctions screening.", details)
+	summary, containsPII := eventData.GetEventSummaryString(args)
+	assert.True(t, containsPII)
+	assert.Equal(t, "The company Flagged Corp was flagged as sanctioned by sanctions screening.", summary)
+}

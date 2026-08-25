@@ -5,6 +5,7 @@ package events
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
@@ -124,6 +125,10 @@ type GitHubProjectDeletedEventData struct {
 // SignatureProjectInvalidatedEventData data model
 type SignatureProjectInvalidatedEventData struct {
 	InvalidatedCount int
+	SignatureID      string
+	InvalidatedBy    string
+	Reason           string
+	InvalidationNote string
 }
 
 // SignatureInvalidatedApprovalRejectionEventData data model
@@ -171,6 +176,9 @@ type CompanyACLRequestDeniedEventData struct {
 type CompanyACLUserAddedEventData struct {
 	UserLFID string
 }
+
+// CompanySanctionedEventData data model
+type CompanySanctionedEventData struct{}
 
 // CLATemplateCreatedEventData data model
 type CLATemplateCreatedEventData struct {
@@ -224,6 +232,15 @@ type GitLabOrganizationUpdatedEventData struct {
 // CCLAApprovalListRequestCreatedEventData data model
 type CCLAApprovalListRequestCreatedEventData struct {
 	RequestID string
+}
+
+// ContactCLAManagerRequestCreatedEventData data model
+type ContactCLAManagerRequestCreatedEventData struct {
+	RequestID   string
+	RequestType string
+	SignatureID string
+	Message     string
+	Recipients  []string
 }
 
 // CCLAApprovalListRequestApprovedEventData data model
@@ -784,6 +801,13 @@ func (ed *CompanyACLUserAddedEventData) GetEventDetailsString(args *LogEventArgs
 }
 
 // GetEventDetailsString returns the details string for this event
+func (ed *CompanySanctionedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The company %s was flagged as sanctioned by sanctions screening", args.CompanyName)
+	data = data + "."
+	return data, true
+}
+
+// GetEventDetailsString returns the details string for this event
 func (ed *CLATemplateCreatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	data := "A CLA Group template was created or updated" // nolint
 	if args.CLAGroupName != "" {
@@ -1283,6 +1307,20 @@ func (ed *CCLAApprovalListRequestCreatedEventData) GetEventDetailsString(args *L
 }
 
 // GetEventDetailsString returns the details string for this event
+func (ed *ContactCLAManagerRequestCreatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("A CLA manager %s request was created for the Project: %s, Company: %s, Signature: %s with Request ID: %s addressed to: %s",
+		ed.RequestType, args.ProjectName, args.CompanyName, ed.SignatureID, ed.RequestID, strings.Join(ed.Recipients, ","))
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" by the user %s", args.UserName)
+	}
+	if ed.Message != "" {
+		data = data + fmt.Sprintf(" with the message: %s", ed.Message)
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventDetailsString returns the details string for this event
 func (ed *ApprovalListGitHubOrganizationAddedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("The GitHub Organization: %s was added to the approval list for the Company %s, Project: %s",
 		ed.GitHubOrganizationName, args.CompanyName, args.ProjectName)
@@ -1451,6 +1489,9 @@ func (ed *GitHubProjectDeletedEventData) GetEventDetailsString(args *LogEventArg
 
 // GetEventDetailsString returns the details string for this event
 func (ed *SignatureProjectInvalidatedEventData) GetEventDetailsString(args *LogEventArgs) (string, bool) {
+	if ed.SignatureID != "" {
+		return ed.singleSignatureText(args, true), true
+	}
 	data := fmt.Sprintf("%d Signatures were invalidated (approved set to false) due to CLA Group/Project: %s deletion",
 		ed.InvalidatedCount, args.ProjectName)
 	if args.UserName != "" {
@@ -1458,6 +1499,32 @@ func (ed *SignatureProjectInvalidatedEventData) GetEventDetailsString(args *LogE
 	}
 	data = data + "."
 	return data, true
+}
+
+// singleSignatureText renders the admin ICLA invalidation wording (SignatureID set) shared by
+// the details and summary strings
+func (ed *SignatureProjectInvalidatedEventData) singleSignatureText(args *LogEventArgs, capitalized bool) string {
+	lead := "the signature"
+	if capitalized {
+		lead = "The signature"
+	}
+	data := fmt.Sprintf("%s %s was invalidated (approved set to false)", lead, ed.SignatureID)
+	if args.UserName != "" {
+		data = data + fmt.Sprintf(" for the user %s", args.UserName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if ed.InvalidatedBy != "" {
+		data = data + fmt.Sprintf(" by the administrator %s", ed.InvalidatedBy)
+	}
+	if ed.Reason != "" {
+		data = data + fmt.Sprintf(", reason: %s", ed.Reason)
+	}
+	if ed.InvalidationNote != "" {
+		data = data + fmt.Sprintf(", note: %s", ed.InvalidationNote)
+	}
+	return data + "."
 }
 
 // GetEventDetailsString returns the details string for this event
@@ -1877,6 +1944,12 @@ func (ed *CompanyACLRequestDeniedEventData) GetEventSummaryString(args *LogEvent
 func (ed *CompanyACLUserAddedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("The user with LF username %s was added to the access list for the company %s by the user %s.",
 		args.LFUser.Name, args.CompanyName, args.UserName)
+	return data, true
+}
+
+// GetEventSummaryString returns the summary string for this event
+func (ed *CompanySanctionedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The company %s was flagged as sanctioned by sanctions screening.", args.CompanyName)
 	return data, true
 }
 
@@ -2372,6 +2445,25 @@ func (ed *CLAApprovalListRemoveGitLabGroupData) GetEventSummaryString(args *LogE
 }
 
 // GetEventSummaryString returns the summary string for this event
+func (ed *ContactCLAManagerRequestCreatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	data := fmt.Sprintf("The user %s asked the CLA managers for %s", args.UserName, ed.RequestType)
+	if args.CLAGroupName != "" {
+		data = data + fmt.Sprintf(" for the CLA Group %s", args.CLAGroupName)
+	}
+	if args.ProjectName != "" {
+		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
+	}
+	if args.CompanyName != "" {
+		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
+	}
+	if ed.Message != "" {
+		data = data + " with a message"
+	}
+	data = data + "."
+	return data, true
+}
+
+// GetEventSummaryString returns the summary string for this event
 func (ed *CCLAApprovalListRequestCreatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
 	data := fmt.Sprintf("The user %s created a CCLA Approval Request", args.UserName)
 	if args.CLAGroupName != "" {
@@ -2608,6 +2700,9 @@ func (ed *GitHubProjectDeletedEventData) GetEventSummaryString(args *LogEventArg
 
 // GetEventSummaryString returns the summary string for this event
 func (ed *SignatureProjectInvalidatedEventData) GetEventSummaryString(args *LogEventArgs) (string, bool) {
+	if ed.SignatureID != "" {
+		return ed.singleSignatureText(args, false), true
+	}
 	data := fmt.Sprintf("%d signatures were invalidated (approved set to false) due to CLA Group/Project %s deletion",
 		ed.InvalidatedCount, args.ProjectName)
 	if args.CLAGroupName != "" {

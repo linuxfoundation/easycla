@@ -4,7 +4,7 @@ module github.com/linuxfoundation/easycla/cla-backend-go
 
 go 1.25.0
 
-toolchain go1.25.11
+toolchain go1.25.13
 
 replace github.com/awslabs/aws-lambda-go-api-proxy => github.com/LF-Engineering/aws-lambda-go-api-proxy v0.3.2
 

@@ -57,7 +57,7 @@ type ServiceInterface interface {
 	GetSignedDocument(ctx context.Context, signatureID string) (*models.SignedDocument, error)
 	GetSignedIclaZipPdf(claGroupID string) (*models.URLObject, error)
 	GetSignedCclaZipPdf(claGroupID string) (*models.URLObject, error)
-	InvalidateICLA(ctx context.Context, claGroupID string, userID string, authUser *auth.User, eventsService events.Service, eventArgs *events.LogEventArgs) error
+	InvalidateICLA(ctx context.Context, claGroupID string, userID string, authUser *auth.User, eventsService events.Service, eventArgs *events.LogEventArgs, input *models.IclaInvalidationInput) error
 	EclaAutoCreate(ctx context.Context, signatureID string, autoCreateECLA bool) error
 	IsUserAuthorized(ctx context.Context, lfid, claGroupId string) (*models.LfidAuthorizedResponse, error)
 }
@@ -351,8 +351,9 @@ func (s *Service) GetClaGroupCorporateContributors(ctx context.Context, params v
 	return &resp, nil
 }
 
-// InvalidateICLA invalidates the specified signature record using the supplied parameters
-func (s *Service) InvalidateICLA(ctx context.Context, claGroupID string, userID string, authUser *auth.User, eventsService events.Service, eventArgs *events.LogEventArgs) error {
+// InvalidateICLA invalidates the specified signature record using the supplied parameters -
+// input optionally carries the invalidation reason and note recorded on the record
+func (s *Service) InvalidateICLA(ctx context.Context, claGroupID string, userID string, authUser *auth.User, eventsService events.Service, eventArgs *events.LogEventArgs, input *models.IclaInvalidationInput) error {
 	f := logrus.Fields{
 		"functionName": "v2.signatures.service.InvalidateICLA",
 		"claGroupID":   claGroupID,
@@ -388,7 +389,14 @@ func (s *Service) InvalidateICLA(ctx context.Context, claGroupID string, userID 
 
 	log.WithFields(f).Debug("invalidating signature record ...")
 	note := fmt.Sprintf("Signature invalidated (approved set to false) by %s for %s ", authUser.UserName, utils.GetBestUsername(user))
-	err := s.v1SignatureRepo.InvalidateProjectRecord(ctx, icla.SignatureID, note)
+	metadata := &signatures.InvalidationMetadata{
+		InvalidatedBy: authUser.UserName,
+	}
+	if input != nil {
+		metadata.Reason = input.Reason
+		metadata.Note = utils.SanitizePlainText(input.Note)
+	}
+	err := s.v1SignatureRepo.InvalidateProjectRecordWithMetadata(ctx, icla.SignatureID, note, metadata)
 	if err != nil {
 		log.WithFields(f).Debug("unable to invalidate icla record")
 		return err
@@ -414,7 +422,14 @@ func (s *Service) InvalidateICLA(ctx context.Context, claGroupID string, userID 
 
 	eventArgs.UserName = utils.GetBestUsername(user)
 	eventArgs.UserModel = user
+	eventArgs.UserID = user.UserID
 	eventArgs.ProjectName = claGroup.ProjectName
+	if eventData, ok := eventArgs.EventData.(*events.SignatureProjectInvalidatedEventData); ok {
+		eventData.SignatureID = icla.SignatureID
+		eventData.InvalidatedBy = authUser.UserName
+		eventData.Reason = metadata.Reason
+		eventData.InvalidationNote = metadata.Note
+	}
 
 	// Log event
 	eventsService.LogEventWithContext(ctx, eventArgs)

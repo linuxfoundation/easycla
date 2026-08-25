@@ -1269,7 +1269,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 				InvalidatedCount: 1,
 			},
 		}
-		err := v2SignatureService.InvalidateICLA(ctx, params.ClaGroupID, params.UserID, authUser, eventsService, eventArgs)
+		err := v2SignatureService.InvalidateICLA(ctx, params.ClaGroupID, params.UserID, authUser, eventsService, eventArgs, &params.Body)
 		if err != nil {
 			msg := "unable to invalidate icla"
 			log.WithFields(f).Warn(msg)

@@ -72,6 +72,7 @@ var (
 	ErrCCLANotEnabled        = errors.New("corporate license agreement is not enabled with this project")
 	ErrTemplateNotConfigured = errors.New("cla template not configured for this project")
 	ErrNotInOrg              error
+	ErrIclaInvalidated       = errors.New("an individual CLA for this CLA Group was invalidated by an administrator - signing a new individual CLA for this CLA Group is not permitted")
 )
 
 // ProjectRepo contains project repo methods
@@ -96,6 +97,7 @@ type Service interface {
 	SignedIndividualCallbackGithub(ctx context.Context, payload []byte, installationID, changeRequestID, repositoryID string) error
 	SignedIndividualCallbackGitlab(ctx context.Context, payload []byte, userID, organizationID, repositoryID, mergeRequestID string) error
 	SignedIndividualCallbackGerrit(ctx context.Context, payload []byte, userID string) error
+	SignedIndividualCallbackSelfServe(ctx context.Context, payload []byte, userID string) error
 	SignedCorporateCallback(ctx context.Context, payload []byte, companyID, projectID string) error
 	GetUserActiveSignature(ctx context.Context, userID string) (*models.UserActiveSignature, error)
 }
@@ -271,12 +273,16 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		return nil, fmt.Errorf("company not found")
 	}
 
+	wasSanctioned := comp.IsSanctioned
 	sanctioned, sanctionErr := s.checkCompanyCompliance(ctx, comp)
 	if sanctionErr != nil {
 		log.WithFields(f).WithError(sanctionErr).Error("failed to check company compliance")
 		return nil, sanctionErr
 	}
 	if sanctioned {
+		if !wasSanctioned {
+			s.logCompanySanctionedEvent(ctx, comp, nil, lfUsername)
+		}
 		if input.CompanySfid != nil {
 			err = fmt.Errorf("company %s requires further review for trade compliance", *input.CompanySfid)
 		} else {
@@ -1109,6 +1115,42 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 	return nil
 }
 
+// SignedIndividualCallbackSelfServe handles the DocuSign callback of an individual signature
+// started proactively from LFX Self Serve - it carries no pull/merge request context, which is
+// exactly the Gerrit callback's shape
+func (s *service) SignedIndividualCallbackSelfServe(ctx context.Context, payload []byte, userID string) error {
+	f := logrus.Fields{
+		"functionName":   "sign.SignedIndividualCallbackSelfServe",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"userID":         userID,
+	}
+
+	// This callback is reachable without a token, and the shared processing indexes the envelope's
+	// recipient and document statuses - reject a payload missing either before delegating
+	info, err := parseEnvelope(payload)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to process the docusign payload")
+		return err
+	}
+
+	if err := s.SignedIndividualCallbackGerrit(ctx, payload, userID); err != nil {
+		return err
+	}
+
+	// The Gerrit callback leaves the session in place because the Gerrit flow never writes one -
+	// a Self Serve session does, so remove it here once the envelope is complete
+	if info.EnvelopeStatus.RecipientStatuses[0].Status != DocusignCompleted {
+		return nil
+	}
+
+	log.WithFields(f).Debugf("removing active signature metadata for user: %s", userID)
+	if err := s.storeRepository.DeleteActiveSignatureMetaData(ctx, fmt.Sprintf("active_signature:%s", userID)); err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to remove active signature metadata for user: %s", userID)
+		return err
+	}
+	return nil
+}
+
 func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, companyID, projectID string) error {
 	f := logrus.Fields{
 		"functionName":   "sign.SignedCorporateCallback",
@@ -1222,10 +1264,14 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 		// Sanctions gate: re-screen the company before finalizing the CCLA. A company can
 		// become blocked (manual/admin or SSS) between the DocuSign request and this
 		// completion callback; do not finalize a corporate CLA for a sanctioned company.
+		wasSanctioned := companyModel.IsSanctioned
 		if sanctioned, complianceErr := s.checkCompanyCompliance(ctx, companyModel); complianceErr != nil {
 			log.WithFields(f).WithError(complianceErr).Warnf("company compliance check failed in corporate callback for company %s; not finalizing CCLA", companyID)
 			return complianceErr
 		} else if sanctioned {
+			if !wasSanctioned {
+				s.logCompanySanctionedEvent(ctx, companyModel, user, "")
+			}
 			log.WithFields(f).Warnf("company %s requires further review for trade compliance; refusing to finalize corporate CLA in callback", companyID)
 			return fmt.Errorf("company %s requires further review for trade compliance; corporate CLA cannot be finalized", companyID)
 		}
@@ -1375,6 +1421,15 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 		return nil, err
 	}
 	log.WithFields(f).Debugf("found %d signatures for user: %s", len(userSignatures.Signatures), *input.UserID)
+	blocked, blockErr := s.userHasInvalidatedIcla(ctx, sigParams, input.ProjectID)
+	if blockErr != nil {
+		log.WithFields(f).WithError(blockErr).Warnf("unable to check for an invalidated ICLA for user: %s", *input.UserID)
+		return nil, blockErr
+	}
+	if blocked {
+		log.WithFields(f).Warnf("user %s has an invalidated ICLA for project %s - blocking a new individual signature", *input.UserID, *input.ProjectID)
+		return nil, ErrIclaInvalidated
+	}
 	latestSignature := getLatestSignature(userSignatures.Signatures)
 
 	// loading latest document
@@ -1433,6 +1488,14 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 		acl = fmt.Sprintf("%s:%s", strings.ToLower(input.ReturnURLType), user.GithubID)
 	} else if strings.ToLower(input.ReturnURLType) == "gitlab" {
 		acl = fmt.Sprintf("%s:%s", strings.ToLower(input.ReturnURLType), user.GitlabID)
+	}
+
+	if utils.IsSelfServeActiveSignature(activeSignatureMetadata) {
+		if !selfServeSessionMatchesProject(activeSignatureMetadata, *input.ProjectID) {
+			log.WithFields(f).Warnf("self serve signing session does not belong to cla group: %s", *input.ProjectID)
+			return nil, errors.New("the active signing session belongs to a different cla group")
+		}
+		acl = selfServeSignatureACL(activeSignatureMetadata, user)
 	}
 
 	log.WithFields(f).Debugf("acl: %s", acl)
@@ -1576,6 +1639,44 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 	}, nil
 }
 
+// selfServeSessionMatchesProject keeps a session prepared for one CLA group from driving a signing
+// request for another - the request endpoint carries no token of its own
+func selfServeSessionMatchesProject(metadata map[string]interface{}, projectID string) bool {
+	sessionProjectID, ok := metadata["project_id"].(string)
+	if !ok || strings.TrimSpace(sessionProjectID) == "" {
+		return true
+	}
+	return sessionProjectID == projectID
+}
+
+func parseEnvelope(payload []byte) (*DocuSignEnvelopeInformation, error) {
+	var info DocuSignEnvelopeInformation
+	if err := xml.Unmarshal(payload, &info); err != nil {
+		return nil, err
+	}
+	if len(info.EnvelopeStatus.RecipientStatuses) == 0 || len(info.EnvelopeStatus.DocumentStatuses) == 0 {
+		return nil, errors.New("docusign envelope carries no recipient or document statuses")
+	}
+	return &info, nil
+}
+
+// selfServeSignatureACL prefers the identity the session was prepared under and falls back to the
+// user record - a Self Serve session carries no pull or merge request, so the return URL type the
+// console sends does not identify the signer
+func selfServeSignatureACL(metadata map[string]interface{}, user *v1Models.User) string {
+	if acl, ok := metadata["acl"].(string); ok && strings.TrimSpace(acl) != "" {
+		return strings.TrimSpace(acl)
+	}
+	switch {
+	case user.GithubID != "":
+		return fmt.Sprintf("github:%s", user.GithubID)
+	case user.GitlabID != "":
+		return fmt.Sprintf("gitlab:%s", user.GitlabID)
+	default:
+		return user.LfUsername
+	}
+}
+
 func getUserName(user *v1Models.User) string {
 
 	if user.Username != "" {
@@ -1627,6 +1728,11 @@ func (s *service) getIndividualSignatureCallbackURLGitlab(ctx context.Context, u
 			log.WithFields(f).WithError(err).Warnf("unable to get active signature meta data for user: %s", userID)
 			return "", err
 		}
+	}
+
+	if utils.IsSelfServeActiveSignature(metadata) {
+		log.WithFields(f).Debug("self serve signing session - using the no merge request callback")
+		return fmt.Sprintf("%s/v4/signed/self-serve/individual/%s", s.ClaV4ApiURL, userID), nil
 	}
 
 	repositoryID, err = metadataStringValue(metadata, "repository_id")
@@ -1685,6 +1791,11 @@ func (s *service) getIndividualSignatureCallbackURL(ctx context.Context, userID 
 			log.WithFields(f).WithError(err).Warnf("unable to get active signature meta data for user: %s", userID)
 			return "", err
 		}
+	}
+
+	if utils.IsSelfServeActiveSignature(metadata) {
+		log.WithFields(f).Debug("self serve signing session - using the no pull request callback")
+		return fmt.Sprintf("%s/v4/signed/self-serve/individual/%s", s.ClaV4ApiURL, userID), nil
 	}
 
 	repositoryID, err = metadataStringValue(metadata, "repository_id")
@@ -2362,6 +2473,40 @@ func getLatestSignature(signatures []*v1Models.Signature) *v1Models.Signature {
 	return latestSignature
 }
 
+func hasInvalidatedIcla(signatures []*v1Models.Signature) bool {
+	for _, signature := range signatures {
+		if signature != nil && signature.SignatureSigned && !signature.SignatureApproved {
+			return true
+		}
+	}
+	return false
+}
+
+// iclaBlockPageSize is the per-call cap for the invalidated-ICLA lookup, far above the
+// default page of 10; the helper pages past it when needed.
+const iclaBlockPageSize int64 = 1000
+
+// userHasInvalidatedIcla runs the invalidated-ICLA check on a dedicated lookup, following the
+// pagination cursor until a hit or exhaustion, leaving the caller's default-sized lookup untouched.
+func (s *service) userHasInvalidatedIcla(ctx context.Context, params sigs.GetUserSignaturesParams, projectID *string) (bool, error) {
+	pageSize := iclaBlockPageSize
+	params.PageSize = &pageSize
+	for {
+		userSignatures, err := s.signatureService.GetUserSignatures(ctx, params, projectID)
+		if err != nil {
+			return false, err
+		}
+		if hasInvalidatedIcla(userSignatures.Signatures) {
+			return true, nil
+		}
+		if userSignatures.LastKeyScanned == "" {
+			return false, nil
+		}
+		nextKey := userSignatures.LastKeyScanned
+		params.NextKey = &nextKey
+	}
+}
+
 func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *models.IndividualSignatureInput) (*models.IndividualSignatureOutput, error) {
 	f := logrus.Fields{
 		"functionName":  "sign.RequestIndividualSignatureGerrit",
@@ -2407,6 +2552,16 @@ func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *m
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to lookup user signatures by user ID: %s", *input.UserID)
 		return nil, err
+	}
+
+	blocked, blockErr := s.userHasInvalidatedIcla(ctx, sigParams, input.ProjectID)
+	if blockErr != nil {
+		log.WithFields(f).WithError(blockErr).Warnf("unable to check for an invalidated ICLA for user: %s", *input.UserID)
+		return nil, blockErr
+	}
+	if blocked {
+		log.WithFields(f).Warnf("user %s has an invalidated ICLA for project %s - blocking a new individual signature", *input.UserID, *input.ProjectID)
+		return nil, ErrIclaInvalidated
 	}
 
 	latestSignature := getLatestSignature(userSignatures.Signatures)
@@ -2879,6 +3034,13 @@ func (s *service) getActiveSignatureReturnURL(ctx context.Context, userID string
 	var repositoryID int64
 	var installationID int64
 
+	if utils.IsSelfServeActiveSignature(metadata) {
+		if selfServeReturnURL, ok := metadata["return_url"].(string); ok {
+			returnURL = selfServeReturnURL
+		}
+		return returnURL, nil
+	}
+
 	if found, ok := metadata["pull_request_id"]; ok && found != nil {
 		prId := fmt.Sprintf("%v", found)
 		pullRequestID, err2 = strconv.Atoi(prId)
@@ -3130,6 +3292,28 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 
 	s.setComplianceCache(cacheKey, sanctioned)
 	return sanctioned, nil
+}
+
+// logCompanySanctionedEvent records the audit event for a company newly flagged as sanctioned
+func (s *service) logCompanySanctionedEvent(ctx context.Context, comp *v1Models.Company, userModel *v1Models.User, lfUsername string) {
+	if s.eventsService == nil || comp == nil || (userModel == nil && lfUsername == "") {
+		return
+	}
+	args := &events.LogEventArgs{
+		EventType:    events.CompanySanctioned,
+		UserModel:    userModel,
+		LfUsername:   lfUsername,
+		CompanyModel: comp,
+		EventData:    &events.CompanySanctionedEventData{},
+	}
+	// LogEventWithContext requires a top-level UserID or LfUsername before it consults UserModel.
+	if userModel != nil {
+		args.UserID = userModel.UserID
+		if args.LfUsername == "" {
+			args.LfUsername = userModel.LfUsername
+		}
+	}
+	s.eventsService.LogEventWithContext(ctx, args)
 }
 
 // complianceUnavailable returns the screening decision for a path that could not

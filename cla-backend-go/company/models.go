@@ -26,6 +26,7 @@ type DBModel struct {
 	Note              string   `dynamodbav:"note" json:"note"`
 	IsSanctioned      bool     `dynamodbav:"is_sanctioned" json:"is_sanctioned"`
 	SanctionOrigin    string   `dynamodbav:"sanction_origin" json:"sanction_origin,omitempty"`
+	SanctionedDate    string   `dynamodbav:"sanctioned_date" json:"sanctioned_date,omitempty"`
 	Version           string   `dynamodbav:"version" json:"version"`
 }
 
@@ -54,6 +55,15 @@ type InviteModel struct {
 	Updated            string `json:"date_modified"`
 	Note               string `json:"note"`
 	Version            string `json:"version"`
+}
+
+// formatSanctionedDate normalizes the stored date - this backend writes RFC3339, the legacy one
+// pynamo format - and leaves an unset value empty rather than warning on it.
+func formatSanctionedDate(dateStr string) string {
+	if dateStr == "" {
+		return ""
+	}
+	return utils.FormatTimeString(dateStr)
 }
 
 // toModel is a helper routine to convert the (internal) database model to a (public) swagger model
@@ -89,6 +99,7 @@ func (dbCompanyModel *DBModel) toModel() (*models.Company, error) {
 		Note:              dbCompanyModel.Note,
 		IsSanctioned:      dbCompanyModel.IsSanctioned,
 		SanctionOrigin:    dbCompanyModel.SanctionOrigin,
+		SanctionedDate:    formatSanctionedDate(dbCompanyModel.SanctionedDate),
 		Version:           dbCompanyModel.Version,
 	}, nil
 }
@@ -151,6 +162,7 @@ func toSwaggerModel(dbCompanyModel *DBModel) (*models.Company, error) {
 		SigningEntityName: dbCompanyModel.SigningEntityName,
 		IsSanctioned:      dbCompanyModel.IsSanctioned,
 		SanctionOrigin:    dbCompanyModel.SanctionOrigin,
+		SanctionedDate:    formatSanctionedDate(dbCompanyModel.SanctionedDate),
 		CompanyExternalID: dbCompanyModel.CompanyExternalID,
 		CompanyManagerID:  dbCompanyModel.CompanyManagerID,
 		Created:           strfmt.DateTime(createdDateTime),

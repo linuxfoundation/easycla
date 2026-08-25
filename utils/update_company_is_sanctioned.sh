@@ -16,8 +16,17 @@ then
   echo "$0: you need to value: true|false"
   exit 2
 fi
+# Mirrors the backends' admin path: stamp sanctioned_date on set, keep it on clear, and drop
+# sanction_origin so the manual state is sticky and SSS never auto-clears it.
+upd_expr="SET is_sanctioned = :val REMOVE sanction_origin"
+values="{\":val\":{\"BOOL\":${2}}}"
+if [ "$2" = "true" ]
+then
+  upd_expr="SET is_sanctioned = :val, sanctioned_date = :now REMOVE sanction_origin"
+  values="{\":val\":{\"BOOL\":true},\":now\":{\"S\":\"$(date -u '+%Y-%m-%dT%H:%M:%S').000000+0000\"}}"
+fi
 if [ ! -z "$DEBUG" ]
 then
-  echo aws --profile "lfproduct-$STAGE" dynamodb update-item --table-name "cla-${STAGE}-companies" --key "{\"company_id\":{\"S\":\"${1}\"}}" --update-expression '"SET is_sanctioned = :val"' --expression-attribute-values "{\":val\":{\"BOOL\":${2}}}"
+  echo aws --profile "lfproduct-$STAGE" dynamodb update-item --table-name "cla-${STAGE}-companies" --key "{\"company_id\":{\"S\":\"${1}\"}}" --update-expression "\"${upd_expr}\"" --expression-attribute-values "$values"
 fi
-aws --profile "lfproduct-$STAGE" dynamodb update-item --table-name "cla-${STAGE}-companies" --key "{\"company_id\":{\"S\":\"${1}\"}}" --update-expression "SET is_sanctioned = :val" --expression-attribute-values "{\":val\":{\"BOOL\":${2}}}"
+aws --profile "lfproduct-$STAGE" dynamodb update-item --table-name "cla-${STAGE}-companies" --key "{\"company_id\":{\"S\":\"${1}\"}}" --update-expression "$upd_expr" --expression-attribute-values "$values"

@@ -47,6 +47,10 @@ properties:
     type: string
     description: "Source of the sanction flag (e.g. sss)"
     example: "sss"
+  sanctionedDate:
+    type: string
+    description: "When the sanction flag was last set; kept after it is cleared"
+    example: "2026-08-20T10:11:12Z"
 
   version:
     type: string
