@@ -98,11 +98,11 @@ func (s *service) prefetch(ctx context.Context, refs []claRef) (*claData, error)
 		cclas:         make(map[string]*v1Models.Signature),
 		approvals:     make(map[string]eclaCoverage),
 	}
-	claGroupIDs, companyIDs, eclaRefs := distinctRefs(refs)
+	claGroupIDs, companyIDs, companyActors, eclaRefs := distinctRefs(refs)
 
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.Go(func() error { return s.loadProjects(groupCtx, data, claGroupIDs) })
-	group.Go(func() error { return s.loadEmployers(groupCtx, data, companyIDs) })
+	group.Go(func() error { return s.loadEmployers(groupCtx, data, companyIDs, companyActors) })
 	group.Go(func() error { return s.loadCoverage(groupCtx, data, eclaRefs) })
 	if err := group.Wait(); err != nil {
 		return nil, err
@@ -110,11 +110,13 @@ func (s *service) prefetch(ctx context.Context, refs []claRef) (*claData, error)
 	return data, nil
 }
 
-// distinctRefs collects the keys to resolve: one per CLA Group, one per employer and one per (CLA
-// Group, employer) pair, carrying the user records that pair must be evaluated for
-func distinctRefs(refs []claRef) ([]string, []string, []eclaRef) {
+// distinctRefs collects the keys to resolve: one per CLA Group, one per employer (with the first
+// referencing user as the audit actor) and one per (CLA Group, employer) pair, carrying the user
+// records that pair must be evaluated for
+func distinctRefs(refs []claRef) ([]string, []string, map[string]*v1Models.User, []eclaRef) {
 	var claGroupIDs, companyIDs []string
 	var eclaRefs []eclaRef
+	companyActors := make(map[string]*v1Models.User)
 	seenClaGroup := make(map[string]bool)
 	seenCompany := make(map[string]bool)
 	seenEcla := make(map[string]int)
@@ -132,6 +134,7 @@ func distinctRefs(refs []claRef) ([]string, []string, []eclaRef) {
 		if !seenCompany[companyID] {
 			seenCompany[companyID] = true
 			companyIDs = append(companyIDs, companyID)
+			companyActors[companyID] = ref.user
 		}
 		key := cclaKey(claGroupID, companyID)
 		index, ok := seenEcla[key]
@@ -145,7 +148,7 @@ func distinctRefs(refs []claRef) ([]string, []string, []eclaRef) {
 			eclaRefs[index].users = append(eclaRefs[index].users, ref.user)
 		}
 	}
-	return claGroupIDs, companyIDs, eclaRefs
+	return claGroupIDs, companyIDs, companyActors, eclaRefs
 }
 
 // loadProjects resolves each distinct CLA Group's name and its project name and logo. These
@@ -185,7 +188,7 @@ func (s *service) loadProjects(ctx context.Context, data *claData, claGroupIDs [
 
 // loadEmployers looks up each distinct employer and screens it for sanctions in the same chain,
 // so a slow screen never delays another employer. A failed lookup degrades that employer's rows.
-func (s *service) loadEmployers(ctx context.Context, data *claData, companyIDs []string) error {
+func (s *service) loadEmployers(ctx context.Context, data *claData, companyIDs []string, companyActors map[string]*v1Models.User) error {
 	f := logrus.Fields{
 		"functionName":   "v2.my_clas.prefetch.loadEmployers",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -203,7 +206,7 @@ func (s *service) loadEmployers(ctx context.Context, data *claData, companyIDs [
 				return nil
 			}
 			companyModels[i] = companyModel
-			states[i] = s.companySanctions(groupCtx, companyModel)
+			states[i] = s.companySanctions(groupCtx, companyModel, companyActors[companyID])
 			return nil
 		})
 	}

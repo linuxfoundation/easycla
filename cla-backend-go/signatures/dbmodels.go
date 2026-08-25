@@ -46,6 +46,10 @@ type ItemSignature struct {
 	UserDocusignDateSigned        string   `json:"user_docusign_date_signed,omitempty"`
 	AutoCreateECLA                bool     `json:"auto_create_ecla,omitempty"`
 	UserDocusignRawXML            string   `json:"user_docusign_raw_xml,omitempty"`
+	DateInvalidated               string   `json:"date_invalidated,omitempty"`
+	InvalidatedBy                 string   `json:"invalidated_by,omitempty"`
+	InvalidationReason            string   `json:"invalidation_reason,omitempty"`
+	InvalidationNote              string   `json:"invalidation_note,omitempty"`
 }
 
 // DBManagersModel is a database model for only the ACL/Manager column

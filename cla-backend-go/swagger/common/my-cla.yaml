@@ -48,6 +48,9 @@ properties:
     type: boolean
     x-omitempty: false
     description: signature_approved flag - false when the signature was invalidated
+  invalidatedAt:
+    type: string
+    description: Stored date_invalidated, stamped at the first invalidation - only present on records invalidated after this field was introduced
   valid:
     type: boolean
     x-omitempty: false
@@ -104,7 +107,7 @@ properties:
     description: True when the employer is currently flagged by sanctions screening - always present, always false on ICLA rows
   flaggedAt:
     type: string
-    description: The employer's stored sanctioned_date, stamped at the first live detection - the response time only when no date is stored and stamping it failed; present only when flagged is true
+    description: The employer's stored sanctioned_date (the revocation date), stamped at the first live detection and refreshed when a cleared employer is flagged again; present only when flagged is true and a stored date exists
   flaggedCheck:
     type: string
     enum: [live, stored, unavailable]

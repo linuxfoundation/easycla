@@ -206,8 +206,8 @@ func Configure(api *operations.EasyclaAPI, service Service, callerVerifier Calle
 
 			result, err := service.CreateMyClaManagerRequest(ctx, &Caller{Username: currentUsername, Admin: admin, Trusted: trusted}, requested, params.SignatureID, &params.Body)
 			if err != nil {
-				if errors.Is(err, ErrInvalidRecipients) {
-					log.WithFields(f).WithError(err).Warn("invalid recipients")
+				if errors.Is(err, ErrInvalidRecipients) || errors.Is(err, ErrMissingMessage) {
+					log.WithFields(f).WithError(err).Warn("invalid CLA manager request input")
 					return myClasOps.NewCreateMyClaManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, err.Error()))
 				}
 				msg := "unable to create the CLA manager request"

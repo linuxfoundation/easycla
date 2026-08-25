@@ -29,7 +29,7 @@ recycled-alias trade-off is under "Known limitations".
 | `GET` | `/v4/my-clas/{signatureID}/pdf` | Time-limited (15 min) presigned S3 URL for a signed ICLA PDF owned by the provided identity |
 | `GET` | `/v4/my-clas/identities` | List the deduplicated `<type>:<value>` identities the authenticated user owns (no query params) |
 | `GET` | `/v4/my-clas/{signatureID}/cla-managers` | List the CLA managers of the CCLA covering an ECLA owned by the provided identity |
-| `POST` | `/v4/my-clas/{signatureID}/cla-manager-requests` | Email a removal/approval request for an owned ECLA to selected CLA managers (M2; swagger-documented) |
+| `POST` | `/v4/my-clas/{signatureID}/cla-manager-requests` | Email a removal/approval request or a contact-only message for an owned ECLA to selected CLA managers (M2; swagger-documented; `requestType=contact` requires a non-blank `message`) |
 
 ## Changed repositories and branches
 
@@ -403,8 +403,9 @@ question (the lookup/domain/status logic is duplicated from `v2/sign`'s
 listings. An employer *currently* sanctioned and already carrying the date is never restamped
 by the listing; one that was cleared but retained its date is restamped on the next live
 detection, and the signing and legacy SSS flows restamp on every flagged detection by design.
-A failed write costs that employer only its stored date (the row then reports the observation
-time), and the listing never clears a flag.
+A failed write costs that employer only its stored date (the flag is then reported without a
+date), and the listing never clears a flag. The first persist of a new sanction also logs a
+`company.sanctioned` event.
 
 ### Response — `200 my-cla-list`
 
@@ -475,7 +476,8 @@ Field reference (`my-cla` rows):
 | `valid` | bool | Computed as defined above |
 | `status` | `valid` \| `needs_attention` \| `revoked` \| `invalidated` \| `unknown` | Contributor-facing standing, computed independently of `approved`/`valid` (see step 5). New values may be added in a future spec revision (generated clients validate the enum strictly) |
 | `statusReason` | `not_on_approval_list` \| `unknown` | Why the standing is not `valid`; omitted for every other status and on every ICLA |
-| `flagged` / `flaggedAt` | bool / string | ECLA only: the employer is currently flagged by sanctions screening, and the company's stored `sanctioned_date` — stamped at the first live detection, so the response time only when no date is stored and stamping it failed |
+| `flagged` / `flaggedAt` | bool / string | ECLA only: the employer is currently flagged by sanctions screening, and the company's stored `sanctioned_date` — stamped at the first live detection; `flaggedAt` is omitted when no stored date exists (issue #1370: the revocation date) |
+| `invalidatedAt` | string | The record's `date_invalidated` — stamped by the PCC admin ICLA invalidation (kept from the first invalidation); omitted for records invalidated before the field existed (issue #1732) |
 | `flaggedCheck` | `live` \| `stored` \| `unavailable` | ECLA only: how `flagged` was obtained (see step 5). `unavailable` means the value is the persisted flag and may be stale |
 | `signedVia` / `signedAs` | string | The platform signed via (`github`, `gitlab`, `gerrit` — the last also covers LF SSO signings identified by email) and the account signed as; omitted when the record carries no such identity |
 | `claManager` | bool | ECLA only: the owning user is a CLA manager of the employer's CCLA for this CLA Group |

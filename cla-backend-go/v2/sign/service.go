@@ -72,6 +72,7 @@ var (
 	ErrCCLANotEnabled        = errors.New("corporate license agreement is not enabled with this project")
 	ErrTemplateNotConfigured = errors.New("cla template not configured for this project")
 	ErrNotInOrg              error
+	ErrIclaInvalidated       = errors.New("an individual CLA for this CLA Group was invalidated by an administrator - signing a new individual CLA for this CLA Group is not permitted")
 )
 
 // ProjectRepo contains project repo methods
@@ -272,12 +273,16 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		return nil, fmt.Errorf("company not found")
 	}
 
+	wasSanctioned := comp.IsSanctioned
 	sanctioned, sanctionErr := s.checkCompanyCompliance(ctx, comp)
 	if sanctionErr != nil {
 		log.WithFields(f).WithError(sanctionErr).Error("failed to check company compliance")
 		return nil, sanctionErr
 	}
 	if sanctioned {
+		if !wasSanctioned {
+			s.logCompanySanctionedEvent(ctx, comp, nil, lfUsername)
+		}
 		if input.CompanySfid != nil {
 			err = fmt.Errorf("company %s requires further review for trade compliance", *input.CompanySfid)
 		} else {
@@ -1259,10 +1264,14 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 		// Sanctions gate: re-screen the company before finalizing the CCLA. A company can
 		// become blocked (manual/admin or SSS) between the DocuSign request and this
 		// completion callback; do not finalize a corporate CLA for a sanctioned company.
+		wasSanctioned := companyModel.IsSanctioned
 		if sanctioned, complianceErr := s.checkCompanyCompliance(ctx, companyModel); complianceErr != nil {
 			log.WithFields(f).WithError(complianceErr).Warnf("company compliance check failed in corporate callback for company %s; not finalizing CCLA", companyID)
 			return complianceErr
 		} else if sanctioned {
+			if !wasSanctioned {
+				s.logCompanySanctionedEvent(ctx, companyModel, user, "")
+			}
 			log.WithFields(f).Warnf("company %s requires further review for trade compliance; refusing to finalize corporate CLA in callback", companyID)
 			return fmt.Errorf("company %s requires further review for trade compliance; corporate CLA cannot be finalized", companyID)
 		}
@@ -1412,6 +1421,15 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 		return nil, err
 	}
 	log.WithFields(f).Debugf("found %d signatures for user: %s", len(userSignatures.Signatures), *input.UserID)
+	blocked, blockErr := s.userHasInvalidatedIcla(ctx, sigParams, input.ProjectID)
+	if blockErr != nil {
+		log.WithFields(f).WithError(blockErr).Warnf("unable to check for an invalidated ICLA for user: %s", *input.UserID)
+		return nil, blockErr
+	}
+	if blocked {
+		log.WithFields(f).Warnf("user %s has an invalidated ICLA for project %s - blocking a new individual signature", *input.UserID, *input.ProjectID)
+		return nil, ErrIclaInvalidated
+	}
 	latestSignature := getLatestSignature(userSignatures.Signatures)
 
 	// loading latest document
@@ -2455,6 +2473,40 @@ func getLatestSignature(signatures []*v1Models.Signature) *v1Models.Signature {
 	return latestSignature
 }
 
+func hasInvalidatedIcla(signatures []*v1Models.Signature) bool {
+	for _, signature := range signatures {
+		if signature != nil && signature.SignatureSigned && !signature.SignatureApproved {
+			return true
+		}
+	}
+	return false
+}
+
+// iclaBlockPageSize is the per-call cap for the invalidated-ICLA lookup, far above the
+// default page of 10; the helper pages past it when needed.
+const iclaBlockPageSize int64 = 1000
+
+// userHasInvalidatedIcla runs the invalidated-ICLA check on a dedicated lookup, following the
+// pagination cursor until a hit or exhaustion, leaving the caller's default-sized lookup untouched.
+func (s *service) userHasInvalidatedIcla(ctx context.Context, params sigs.GetUserSignaturesParams, projectID *string) (bool, error) {
+	pageSize := iclaBlockPageSize
+	params.PageSize = &pageSize
+	for {
+		userSignatures, err := s.signatureService.GetUserSignatures(ctx, params, projectID)
+		if err != nil {
+			return false, err
+		}
+		if hasInvalidatedIcla(userSignatures.Signatures) {
+			return true, nil
+		}
+		if userSignatures.LastKeyScanned == "" {
+			return false, nil
+		}
+		nextKey := userSignatures.LastKeyScanned
+		params.NextKey = &nextKey
+	}
+}
+
 func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *models.IndividualSignatureInput) (*models.IndividualSignatureOutput, error) {
 	f := logrus.Fields{
 		"functionName":  "sign.RequestIndividualSignatureGerrit",
@@ -2500,6 +2552,16 @@ func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *m
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to lookup user signatures by user ID: %s", *input.UserID)
 		return nil, err
+	}
+
+	blocked, blockErr := s.userHasInvalidatedIcla(ctx, sigParams, input.ProjectID)
+	if blockErr != nil {
+		log.WithFields(f).WithError(blockErr).Warnf("unable to check for an invalidated ICLA for user: %s", *input.UserID)
+		return nil, blockErr
+	}
+	if blocked {
+		log.WithFields(f).Warnf("user %s has an invalidated ICLA for project %s - blocking a new individual signature", *input.UserID, *input.ProjectID)
+		return nil, ErrIclaInvalidated
 	}
 
 	latestSignature := getLatestSignature(userSignatures.Signatures)
@@ -3230,6 +3292,28 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 
 	s.setComplianceCache(cacheKey, sanctioned)
 	return sanctioned, nil
+}
+
+// logCompanySanctionedEvent records the audit event for a company newly flagged as sanctioned
+func (s *service) logCompanySanctionedEvent(ctx context.Context, comp *v1Models.Company, userModel *v1Models.User, lfUsername string) {
+	if s.eventsService == nil || comp == nil || (userModel == nil && lfUsername == "") {
+		return
+	}
+	args := &events.LogEventArgs{
+		EventType:    events.CompanySanctioned,
+		UserModel:    userModel,
+		LfUsername:   lfUsername,
+		CompanyModel: comp,
+		EventData:    &events.CompanySanctionedEventData{},
+	}
+	// LogEventWithContext requires a top-level UserID or LfUsername before it consults UserModel.
+	if userModel != nil {
+		args.UserID = userModel.UserID
+		if args.LfUsername == "" {
+			args.LfUsername = userModel.LfUsername
+		}
+	}
+	s.eventsService.LogEventWithContext(ctx, args)
 }
 
 // complianceUnavailable returns the screening decision for a path that could not

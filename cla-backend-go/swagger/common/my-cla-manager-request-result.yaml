@@ -14,7 +14,7 @@ properties:
     description: ECLA signature ID (UUID) the request refers to
   requestType:
     type: string
-    enum: [removal, approval]
+    enum: [removal, approval, contact]
     description: The request type
   status:
     type: string

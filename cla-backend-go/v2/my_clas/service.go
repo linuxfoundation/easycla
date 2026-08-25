@@ -147,6 +147,9 @@ type EventsService interface {
 // managers - empty is valid only when none resolves
 var ErrInvalidRecipients = errors.New("recipients must be a non-empty subset of the CLA managers returned by the cla-managers endpoint - empty only when no CLA manager resolves")
 
+// ErrMissingMessage is returned when a contact request carries no (non-blank) message
+var ErrMissingMessage = errors.New("message is required for a contact request and must not be blank")
+
 // Service interface defines the My CLAs service methods
 type Service interface {
 	GetMyClas(ctx context.Context, caller *Caller, requested *Identity) (*models.MyClaList, error)
@@ -253,6 +256,9 @@ func (s *service) GetMyClas(ctx context.Context, caller *Caller, requested *Iden
 			DocumentMinorVersion: int64(sig.SignatureDocumentMinorVersion),
 		}
 		row.SignedVia, row.SignedAs = signedIdentity(sig)
+		if sig.DateInvalidated != "" {
+			row.InvalidatedAt = utils.FormatTimeString(sig.DateInvalidated)
+		}
 
 		if sig.SignatureUserCompanyID == "" {
 			row.ClaType = utils.ClaTypeICLA
@@ -269,13 +275,8 @@ func (s *service) GetMyClas(ctx context.Context, caller *Caller, requested *Iden
 			sanction := data.sanctions[sig.SignatureUserCompanyID]
 			row.Flagged = sanction.flagged
 			row.FlaggedCheck = sanction.check
-			if sanction.flagged {
-				if sanction.date != "" {
-					row.FlaggedAt = utils.FormatTimeString(sanction.date)
-				} else {
-					// Flagged with no stored date and none could be stamped; report when it was seen.
-					_, row.FlaggedAt = utils.CurrentTime()
-				}
+			if sanction.flagged && sanction.date != "" {
+				row.FlaggedAt = utils.FormatTimeString(sanction.date)
 			}
 			coverage := data.coverage(sig, ref.user, sanction.flagged)
 			row.Valid = sig.SignatureApproved && coverage.covered
@@ -385,9 +386,10 @@ func (s *service) GetMyClaManagers(ctx context.Context, caller *Caller, requeste
 	}, nil
 }
 
-// CreateMyClaManagerRequest emails a removal/approval request against the caller's own ECLA to the
-// selected CLA managers and logs the audit event that is its receipt - nil means unknown,
-// not-owned, unsigned or ICLA signature ID, ErrInvalidRecipients an invalid recipients list
+// CreateMyClaManagerRequest emails a removal/approval/contact request against the caller's own
+// ECLA to the selected CLA managers and logs the audit event that is its receipt - nil means
+// unknown, not-owned, unsigned or ICLA signature ID, ErrInvalidRecipients an invalid recipients
+// list, ErrMissingMessage a contact request without a message
 func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller, requested *Identity, signatureID string, input *models.MyClaManagerRequest) (*models.MyClaManagerRequestResult, error) {
 	f := logrus.Fields{
 		"functionName":    "v2.my_clas.service.CreateMyClaManagerRequest",
@@ -437,7 +439,10 @@ func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller,
 	}
 
 	requestType := utils.StringValue(input.RequestType)
-	message := strings.TrimSpace(input.Message)
+	message := utils.SanitizePlainText(input.Message)
+	if requestType == models.MyClaManagerRequestRequestTypeContact && message == "" {
+		return nil, ErrMissingMessage
+	}
 	contributorName := userModel.Username
 	if contributorName == "" {
 		contributorName = identity.LfUsername
@@ -454,10 +459,12 @@ func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller,
 			RequestAction:       requestAction(requestType),
 			ContributorName:     contributorName,
 			ContributorIdentity: contributorIdentity,
+			ContributorEmail:    utils.GetBestEmail(userModel),
 			CompanyName:         details.companyName,
 			ProjectName:         details.projectName,
 			CLAGroupName:        details.claGroupName,
 			OptionalMessage:     message,
+			ContactOnly:         requestType == models.MyClaManagerRequestRequestTypeContact,
 		})
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn("unable to render the contact CLA manager email")
@@ -474,7 +481,7 @@ func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller,
 	requestID := requestUUID.String()
 
 	if len(recipientEmails) > 0 {
-		subject := fmt.Sprintf("EasyCLA: %s request from %s for %s", requestAction(requestType), contributorName, details.companyName)
+		subject := utils.SanitizeSingleLine(requestSubject(requestType, contributorName, details.companyName))
 		if sendErr := s.sendEmail(subject, body, recipientEmails); sendErr != nil {
 			log.WithFields(f).WithError(sendErr).Warn("unable to send the contact CLA manager email")
 			return nil, sendErr
@@ -627,6 +634,13 @@ func requestAction(requestType string) string {
 		return "removal from the corporate CLA coverage"
 	}
 	return "approval under the corporate CLA"
+}
+
+func requestSubject(requestType, contributorName, companyName string) string {
+	if requestType == models.MyClaManagerRequestRequestTypeContact {
+		return fmt.Sprintf("EasyCLA: Message from %s regarding %s", contributorName, companyName)
+	}
+	return fmt.Sprintf("EasyCLA: %s request from %s for %s", requestAction(requestType), contributorName, companyName)
 }
 
 func isClaManager(ccla *v1Models.Signature, lfUsername string) bool {
@@ -1077,14 +1091,14 @@ func (s *service) sanctionsMode() string {
 
 // companySanctions screens one employer, live where possible. An unreadable employer is
 // unavailable, never an absent answer.
-func (s *service) companySanctions(ctx context.Context, companyModel *v1Models.Company) sanctionState {
+func (s *service) companySanctions(ctx context.Context, companyModel *v1Models.Company, actor *v1Models.User) sanctionState {
 	if companyModel == nil {
 		return sanctionState{check: models.MyClaFlaggedCheckUnavailable}
 	}
 	state := sanctionState{flagged: companyModel.IsSanctioned, check: models.MyClaFlaggedCheckStored, date: companyModel.SanctionedDate}
 	if s.sanctions != nil {
 		state.flagged, state.check = s.sanctions.ScreenCompany(ctx, companyModel)
-		s.persistLiveSanction(ctx, companyModel, &state)
+		s.persistLiveSanction(ctx, companyModel, &state, actor)
 	}
 	return state
 }
@@ -1093,7 +1107,7 @@ func (s *service) companySanctions(ctx context.Context, companyModel *v1Models.C
 // the reported date stops moving with every listing. A record already carrying the date is left
 // alone - restamping it here would drift on each page view - and a failed write only costs this
 // employer its stored date, never the listing.
-func (s *service) persistLiveSanction(ctx context.Context, companyModel *v1Models.Company, state *sanctionState) {
+func (s *service) persistLiveSanction(ctx context.Context, companyModel *v1Models.Company, state *sanctionState, actor *v1Models.User) {
 	if !state.flagged || state.check != models.MyClaFlaggedCheckLive || (companyModel.IsSanctioned && companyModel.SanctionedDate != "") {
 		return
 	}
@@ -1102,8 +1116,9 @@ func (s *service) persistLiveSanction(ctx context.Context, companyModel *v1Model
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyID":      companyModel.CompanyID,
 	}
+	newSanction := !companyModel.IsSanctioned
 	if err := s.companyRepo.UpdateCompanySanctionStatus(ctx, companyModel.CompanyID, true, sanctionOriginSSS); err != nil {
-		log.WithFields(f).WithError(err).Warnf("unable to persist the live sanction for company %s - reporting the observation time instead", companyModel.CompanyID)
+		log.WithFields(f).WithError(err).Warnf("unable to persist the live sanction for company %s - reporting the flag without a date", companyModel.CompanyID)
 		// A retained date belongs to the previous, cleared sanction - drop it rather than
 		// report it as this flag's date.
 		state.date = ""
@@ -1111,6 +1126,16 @@ func (s *service) persistLiveSanction(ctx context.Context, companyModel *v1Model
 	}
 	log.WithFields(f).Warnf("live screen flagged company %s, persisted the sanction with origin=%s", companyModel.CompanyID, sanctionOriginSSS)
 	_, state.date = utils.CurrentTime()
+	if newSanction && s.eventsService != nil && actor != nil {
+		s.eventsService.LogEventWithContext(ctx, &events.LogEventArgs{
+			EventType:    events.CompanySanctioned,
+			UserID:       actor.UserID,
+			LfUsername:   actor.LfUsername,
+			UserModel:    actor,
+			CompanyModel: companyModel,
+			EventData:    &events.CompanySanctionedEventData{},
+		})
+	}
 }
 
 // assignMyClaStatus sets the contributor-facing status independently of approved/valid. A

@@ -24,6 +24,11 @@ type fakeEvents struct {
 }
 
 func (f *fakeEvents) LogEventWithContext(_ context.Context, args *events.LogEventArgs) {
+	// Mirror the identity gate in events.service.LogEventWithContext: events without a
+	// top-level UserID or LfUsername are dropped in production.
+	if args == nil || args.EventType == "" || args.EventData == nil || (args.UserID == "" && args.LfUsername == "") {
+		return
+	}
 	f.logged = append(f.logged, args)
 }
 
@@ -482,4 +487,63 @@ func TestSignedIdentityFallbacks(t *testing.T) {
 	assert.False(t, isClaManager(&v1Models.Signature{SignatureACL: []v1Models.User{{LfUsername: "someone"}}}, ""))
 	assert.True(t, isClaManager(&v1Models.Signature{SignatureACL: []v1Models.User{{Username: "SomeOne"}}}, "someone"),
 		"the plain username matches too")
+}
+
+func TestCreateMyClaManagerRequestContact(t *testing.T) {
+	repo, signaturesService, companies := managersFixture()
+	repo.byLFUsername["someone"][0].LfEmail = someoneEmail
+	svc, eventsService, sent := newRequestTestService(repo, signaturesService, companies)
+
+	result, err := svc.CreateMyClaManagerRequest(context.Background(), &Caller{Username: "someone"}, &Identity{}, "sig-ecla",
+		requestInput("contact", []string{"manager-one"}, "Hi <b>there</b>,\r\nplease advise.\x07"))
+	require.NoError(t, err)
+	assert.Equal(t, "contact", result.RequestType)
+	assert.Equal(t, "sent", result.Status)
+
+	require.Len(t, *sent, 1)
+	email := (*sent)[0]
+	assert.Equal(t, "EasyCLA: Message from Some One regarding Good Corp", email.subject)
+	assert.Contains(t, email.body, "Hi &lt;b&gt;there&lt;/b&gt;,\nplease advise.", "the message is HTML-escaped, CRLF-normalized and stripped of control characters")
+	assert.NotContains(t, email.body, "<b>there</b>")
+	assert.Contains(t, email.body, "You can reply to the contributor at "+someoneEmail)
+	assert.Contains(t, email.body, "This is a message only - no change was requested and none has been made")
+	assert.NotContains(t, email.body, "has requested")
+
+	require.Len(t, eventsService.logged, 1)
+	eventData, ok := eventsService.logged[0].EventData.(*events.ContactCLAManagerRequestCreatedEventData)
+	require.True(t, ok)
+	assert.Equal(t, "contact", eventData.RequestType)
+	assert.Equal(t, "Hi <b>there</b>,\nplease advise.", eventData.Message)
+}
+
+func TestCreateMyClaManagerRequestContactRequiresMessage(t *testing.T) {
+	repo, signaturesService, companies := managersFixture()
+	svc, eventsService, sent := newRequestTestService(repo, signaturesService, companies)
+	caller := &Caller{Username: "someone"}
+
+	_, err := svc.CreateMyClaManagerRequest(context.Background(), caller, &Identity{}, "sig-ecla",
+		requestInput("contact", []string{"manager-one"}, ""))
+	assert.ErrorIs(t, err, ErrMissingMessage)
+
+	_, err = svc.CreateMyClaManagerRequest(context.Background(), caller, &Identity{}, "sig-ecla",
+		requestInput("contact", []string{"manager-one"}, " \r\n \x07\x1b "))
+	assert.ErrorIs(t, err, ErrMissingMessage, "a message that sanitizes to nothing cannot be sent")
+
+	assert.Empty(t, *sent)
+	assert.Empty(t, eventsService.logged)
+}
+
+func TestCreateMyClaManagerRequestSubjectStaysSingleLine(t *testing.T) {
+	repo, signaturesService, companies := managersFixture()
+	repo.byLFUsername["someone"][0].Username = "Evil\r\nBcc: victim@example.org"
+	svc, _, sent := newRequestTestService(repo, signaturesService, companies)
+
+	_, err := svc.CreateMyClaManagerRequest(context.Background(), &Caller{Username: "someone"}, &Identity{}, "sig-ecla",
+		requestInput("removal", []string{"manager-one"}, ""))
+	require.NoError(t, err)
+	require.Len(t, *sent, 1)
+	subject := (*sent)[0].subject
+	assert.NotContains(t, subject, "\n")
+	assert.NotContains(t, subject, "\r")
+	assert.Contains(t, subject, "request from EvilBcc: victim@example.org for Good Corp")
 }
