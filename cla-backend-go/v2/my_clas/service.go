@@ -191,10 +191,12 @@ func NewService(repo Repository, platformUsersService PlatformUsersService, sign
 	}
 }
 
-// projectInfo is the resolved Salesforce project display name and logo of a CLA Group
+// projectInfo is the resolved Salesforce project display name, logo, and ids of a CLA Group
 type projectInfo struct {
-	name string
-	logo string
+	name           string
+	logo           string
+	projectSFID    string
+	foundationSFID string
 }
 
 // GetMyClas returns the signed ICLAs and ECLAs of every EasyCLA user record matching the identity,
@@ -248,6 +250,8 @@ func (s *service) GetMyClas(ctx context.Context, caller *Caller, requested *Iden
 			ClaGroupName:         data.claGroupNames[sig.SignatureProjectID],
 			ProjectName:          project.name,
 			ProjectLogo:          project.logo,
+			ProjectSFID:          project.projectSFID,
+			FoundationSFID:       project.foundationSFID,
 			UserID:               sig.SignatureReferenceID,
 			SignedOn:             signedOn(sig),
 			Signed:               sig.SignatureSigned,
@@ -1197,10 +1201,11 @@ func (s *service) claGroupName(ctx context.Context, claGroupID string) (string, 
 	return name, nil
 }
 
-// projectInfo resolves the Salesforce project display name and logo of a CLA Group. The name comes
-// from the projects-cla-groups mapping, the logo only from the project-service, fetched by project
-// SFID (a foundation-level CLA Group resolves to its foundation). A lookup miss degrades to an
-// empty logo rather than failing the listing.
+// projectInfo resolves the Salesforce project display name, logo, and ids of a CLA Group. The
+// name comes from the projects-cla-groups mapping, the logo only from the project-service,
+// fetched by project SFID (a foundation-level CLA Group resolves to its foundation). A lookup
+// miss degrades to an empty logo rather than failing the listing. The ids are the ones the
+// Corporate Console path needs; they are omitted when the mapping is unresolved.
 func (s *service) projectInfo(ctx context.Context, claGroupID string) (projectInfo, error) {
 	if claGroupID == "" {
 		return projectInfo{}, nil
@@ -1212,29 +1217,32 @@ func (s *service) projectInfo(ctx context.Context, claGroupID string) (projectIn
 	}
 
 	var info projectInfo
-	var projectSFID string
+	var lookupSFID string
 	// A foundation-level CLA Group is marked by a mapping with ProjectSFID == FoundationSFID (the
 	// projects_cla_groups convention used by SignedAtFoundation), not by the mapping count, and
 	// resolves to its foundation; a single project-level mapping resolves to that project. Several
-	// project-level mappings with no foundation marker stay unresolved (empty name/logo, so the
+	// project-level mappings with no foundation marker stay unresolved (empty name/logo/ids, so the
 	// consumer falls back to claGroupName) rather than picking an arbitrary one.
 	switch fm := foundationMapping(mappings); {
 	case fm != nil:
-		projectSFID = fm.FoundationSFID
+		lookupSFID = fm.FoundationSFID
+		info.foundationSFID = fm.FoundationSFID
 		info.name = fm.FoundationName
 	case len(mappings) == 1:
-		projectSFID = mappings[0].ProjectSFID
+		lookupSFID = mappings[0].ProjectSFID
+		info.projectSFID = mappings[0].ProjectSFID
+		info.foundationSFID = mappings[0].FoundationSFID
 		info.name = mappings[0].ProjectName
 	}
 
-	if projectSFID != "" && s.projectService != nil {
+	if lookupSFID != "" && s.projectService != nil {
 		f := logrus.Fields{
 			"functionName":   "v2.my_clas.service.projectInfo",
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"claGroupID":     claGroupID,
-			"projectSFID":    projectSFID,
+			"lookupSFID":     lookupSFID,
 		}
-		project, projectErr := s.projectService.GetProject(projectSFID)
+		project, projectErr := s.projectService.GetProject(lookupSFID)
 		if projectErr != nil {
 			log.WithFields(f).WithError(projectErr).Warn("unable to load the project details for the CLA group - leaving the logo empty")
 		} else if project != nil {

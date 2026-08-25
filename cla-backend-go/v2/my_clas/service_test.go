@@ -300,8 +300,8 @@ func TestGetMyClasProjectNameAndLogo(t *testing.T) {
 	claGroups := &fakeClaGroups{
 		names: map[string]string{"cla-group-1": "Kubernetes CLA Group", "cla-group-2": "CNCF CLA Group"},
 		mappings: map[string][]*projects_cla_groups.ProjectClaGroup{
-			// single-project CLA Group -> resolves to the project SFID
-			"cla-group-1": {{ClaGroupID: "cla-group-1", ProjectSFID: "proj-sfid-1", ProjectName: "Kubernetes"}},
+			// single-project CLA Group -> resolves to the project SFID and its parent foundation
+			"cla-group-1": {{ClaGroupID: "cla-group-1", ProjectSFID: "proj-sfid-1", FoundationSFID: "found-parent", ProjectName: "Kubernetes"}},
 			// foundation-level CLA Group -> identified by the marker row (ProjectSFID == FoundationSFID)
 			// and resolves to the foundation SFID
 			"cla-group-2": {
@@ -329,11 +329,15 @@ func TestGetMyClasProjectNameAndLogo(t *testing.T) {
 	assert.Equal(t, "Kubernetes CLA Group", single.ClaGroupName, "the CLA group name is the subtext")
 	assert.Equal(t, "Kubernetes", single.ProjectName, "the project-service name wins over the mapping-table name")
 	assert.Equal(t, "https://logos.example.org/k8s.png", single.ProjectLogo)
+	assert.Equal(t, "proj-sfid-1", single.ProjectSFID)
+	assert.Equal(t, "found-parent", single.FoundationSFID)
 
 	foundation := byID["sig-foundation"]
 	assert.Equal(t, "CNCF CLA Group", foundation.ClaGroupName)
 	assert.Equal(t, "Cloud Native Computing Foundation", foundation.ProjectName, "a foundation-level CLA group resolves to its foundation")
 	assert.Equal(t, "https://logos.example.org/cncf.png", foundation.ProjectLogo)
+	assert.Equal(t, "found-sfid", foundation.FoundationSFID)
+	assert.Empty(t, foundation.ProjectSFID, "a foundation-level CLA group does not pick a child project")
 }
 
 func TestGetMyClasProjectLookupDegradesGracefully(t *testing.T) {
@@ -348,7 +352,7 @@ func TestGetMyClasProjectLookupDegradesGracefully(t *testing.T) {
 	claGroups := &fakeClaGroups{
 		names: map[string]string{"cla-group-1": "Kubernetes CLA Group"},
 		mappings: map[string][]*projects_cla_groups.ProjectClaGroup{
-			"cla-group-1": {{ClaGroupID: "cla-group-1", ProjectSFID: "proj-sfid-1", ProjectName: "Kubernetes"}},
+			"cla-group-1": {{ClaGroupID: "cla-group-1", ProjectSFID: "proj-sfid-1", FoundationSFID: "found-parent", ProjectName: "Kubernetes"}},
 		},
 	}
 	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, claGroups)
@@ -359,6 +363,8 @@ func TestGetMyClasProjectLookupDegradesGracefully(t *testing.T) {
 	require.Len(t, result.Clas, 1)
 	assert.Equal(t, "Kubernetes", result.Clas[0].ProjectName, "the mapping-table name is kept when the project-service has no record")
 	assert.Empty(t, result.Clas[0].ProjectLogo, "a missing project logo degrades to empty")
+	assert.Equal(t, "proj-sfid-1", result.Clas[0].ProjectSFID, "the ids come from the mapping table, so a project-service miss does not drop them")
+	assert.Equal(t, "found-parent", result.Clas[0].FoundationSFID, "the ids come from the mapping table, so a project-service miss does not drop them")
 }
 
 // A CLA Group mapped to several projects with no foundation-marker row (no mapping where
@@ -392,6 +398,8 @@ func TestGetMyClasMultiProjectNonFoundation(t *testing.T) {
 	require.Len(t, result.Clas, 1)
 	assert.Empty(t, result.Clas[0].ProjectName, "an ambiguous multi-project non-foundation group invents no project name")
 	assert.Empty(t, result.Clas[0].ProjectLogo, "an ambiguous multi-project non-foundation group invents no project logo")
+	assert.Empty(t, result.Clas[0].ProjectSFID)
+	assert.Empty(t, result.Clas[0].FoundationSFID)
 	assert.Equal(t, "Multi CLA Group", result.Clas[0].ClaGroupName, "the consumer falls back to claGroupName")
 }
 

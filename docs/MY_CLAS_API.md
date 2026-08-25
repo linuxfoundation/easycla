@@ -424,6 +424,8 @@ date), and the listing never clears a flag. The first persist of a new sanction 
       "claGroupName": "CNCF - Kubernetes",
       "projectName": "Kubernetes",
       "projectLogo": "https://.../kubernetes.svg",
+      "projectSFID": "a09P000000DsCE6IAN",
+      "foundationSFID": "a09P000000DsCE5IAN",
       "userID": "6e29e1a9-...",
       "signedOn": "2025-11-03T10:22:00Z",
       "signed": true,
@@ -469,6 +471,8 @@ Field reference (`my-cla` rows):
 | `claGroupName` | string | From the `projects_cla_groups` repo (single `GetItem`, cached per request); **omitted from the JSON** (string fields marshal with `omitempty`) when the CLA group record is gone — closes the "payload carries no project display name" gap from M1 research R6. No v1 user-service/org-service IDs are exposed (architecture-proposal P9) |
 | `projectName` | string | Salesforce project display name of the CLA Group (a foundation-level CLA Group — a `projects_cla_groups` mapping whose `project_sfid == foundation_sfid` — resolves to its foundation). From the mapping table, upgraded to the project-service `Name` when available; both cached per request. Bold top line of the UI's Project cell, with `claGroupName` as subtext. Omitted when unresolved |
 | `projectLogo` | string | Project (or foundation) logo URL from the project-service by project SFID (cached per request). The Project cell's logo tile (the consumer supplies the default-icon fallback). A miss degrades to an empty logo without failing the listing; omitted when empty |
+| `projectSFID` | string | Salesforce project id of the single `projects_cla_groups` mapping. Omitted on a foundation-level CLA Group, on a multi-project group with no foundation marker, and when unresolved |
+| `foundationSFID` | string | Salesforce foundation id — the marker row's `foundation_sfid` on a foundation-level CLA Group, otherwise the single mapping's parent foundation. Omitted when unresolved. **Branch on which of the two ids is present rather than concatenating them**: both ⇒ project-level (`/foundation/{foundationSFID}/project/{projectSFID}/cla`), `foundationSFID` alone ⇒ foundation-level (`/foundation/{foundationSFID}/cla`), neither ⇒ unresolved, so the consumer has no addressable Corporate Console route |
 | `companyID` / `companyName` / `signingEntityName` | string | ECLA only; from the companies table (cached per request) |
 | `userID` | string | The owning EasyCLA user record — correlates rows with `userIds` and with other per-user endpoints |
 | `signedOn` | string | Signing/acknowledgement date (fallback: record creation date) |
@@ -613,7 +617,11 @@ missing lookup endpoint. With this API it collapses to:
   `MyClaAgreement`: `kind = claType`, `projectName = projectName` (bold top line of the
   Project cell) with `claGroupName` as subtext and `projectLogo` as the logo tile (falling
   back to `claGroupName` / a default icon when absent — the old
-  `projectName = claGroupName` UUID fallback is retired), the status pill from
+  `projectName = claGroupName` UUID fallback is retired), `projectSfid = projectSFID` and
+  `foundationSfid = foundationSFID` (the Corporate CLA Console deep link behind My CLAs'
+  "Manage in CCLA Console" kebab item —
+  [#1575](https://github.com/linuxfoundation/lfx-self-serve/issues/1575) — which falls back to
+  the company dashboard when no `foundationSFID` arrives), the status pill from
   `status`/`statusReason` (`valid` stays the boolean shortcut but is **not** the display
   filter — see step 4), `pdfAvailable` as-is; identity telemetry from `userIds` and
   `skippedIdentities` (`matchedUserIds = userIds.length`, and
