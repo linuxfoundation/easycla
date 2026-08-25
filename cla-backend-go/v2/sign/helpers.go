@@ -152,12 +152,16 @@ func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID
 		}
 
 		// Check if company is sanctioned before allowing ECLA acknowledgement
+		wasSanctioned := companyModel.IsSanctioned
 		sanctioned, sanctionErr := s.checkCompanyCompliance(ctx, companyModel)
 		if sanctionErr != nil {
 			log.WithFields(f).WithError(sanctionErr).Warnf("failed to check company compliance for company: %s", companyID)
 			return &hasSigned, &companyAffiliation, sanctionErr
 		}
 		if sanctioned {
+			if !wasSanctioned {
+				s.logCompanySanctionedEvent(ctx, companyModel, user, "")
+			}
 			sanctionedErr := fmt.Errorf("company %s is sanctioned", companyID)
 			log.WithFields(f).WithError(sanctionedErr).Error("company is sanctioned")
 			return &hasSigned, &companyAffiliation, sanctionedErr

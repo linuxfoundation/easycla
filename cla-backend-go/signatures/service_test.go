@@ -243,6 +243,74 @@ func TestUserIsApproved_GithubOrgApprovalList(t *testing.T) {
 	}
 }
 
+// TestEvaluateUserApproval covers the one thing the UserIsApproved boolean cannot express:
+// a false result caused by a failed GitHub public-orgs lookup ("could not tell") rather than
+// by a genuine approval-list miss. Callers that must not present a guess to the user - the
+// My CLAs listing - key off this second return value.
+func TestEvaluateUserApproval(t *testing.T) {
+	ctx := context.Background()
+
+	cases := []struct {
+		name             string
+		user             *v1Models.User
+		ccla             *v1Models.Signature
+		userOrgs         []string
+		listErr          error
+		wantApproved     bool
+		wantLookupFailed bool
+	}{
+		{
+			name:         "org match",
+			user:         &v1Models.User{GithubUsername: "alice"},
+			ccla:         &v1Models.Signature{GithubOrgApprovalList: []string{"acme"}},
+			userOrgs:     []string{"acme"},
+			wantApproved: true,
+		},
+		{
+			name:     "no overlap is a genuine miss",
+			user:     &v1Models.User{GithubUsername: "eve"},
+			ccla:     &v1Models.Signature{GithubOrgApprovalList: []string{"acme"}},
+			userOrgs: []string{"contoso"},
+		},
+		{
+			name:             "lookup failure is unevaluable, not a miss",
+			user:             &v1Models.User{GithubUsername: "grace"},
+			ccla:             &v1Models.Signature{GithubOrgApprovalList: []string{"acme"}},
+			listErr:          errors.New("simulated 502 from github"),
+			wantLookupFailed: true,
+		},
+		{
+			name:         "approved by email before github is consulted",
+			user:         &v1Models.User{GithubUsername: "heidi", Emails: []string{"heidi@acme.org"}},
+			ccla:         &v1Models.Signature{EmailApprovalList: []string{"heidi@acme.org"}, GithubOrgApprovalList: []string{"acme"}},
+			listErr:      errors.New("would fail if reached"),
+			wantApproved: true,
+		},
+		{
+			name: "no approval list at all",
+			user: &v1Models.User{GithubUsername: "ivan"},
+			ccla: &v1Models.Signature{},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			stubListUserPublicOrgs(t, tc.userOrgs, tc.listErr)
+			svc := NewService(nil, nil, nil, nil, false, nil, nil, nil, nil, "", "", "")
+
+			approved, lookupFailed, err := svc.EvaluateUserApproval(ctx, tc.user, tc.ccla)
+			assert.NoError(t, err)
+			assert.Equal(t, tc.wantApproved, approved)
+			assert.Equal(t, tc.wantLookupFailed, lookupFailed)
+
+			// UserIsApproved must stay byte-identical for the signing flow
+			legacyApproved, legacyErr := svc.UserIsApproved(ctx, tc.user, tc.ccla)
+			assert.NoError(t, legacyErr)
+			assert.Equal(t, approved, legacyApproved)
+		})
+	}
+}
+
 // TestListUserPublicOrgs_RejectsEmptyUser guards the public helper itself:
 // go-github routes an empty user string to GET /user/orgs (the authenticated
 // bot's own orgs), so an empty argument must never silently succeed.

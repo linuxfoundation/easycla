@@ -103,10 +103,12 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/template"
 	"github.com/linuxfoundation/easycla/cla-backend-go/user"
 	v2ClaManager "github.com/linuxfoundation/easycla/cla-backend-go/v2/cla_manager"
+	v2ClaSearch "github.com/linuxfoundation/easycla/cla-backend-go/v2/cla_search"
 	v2Company "github.com/linuxfoundation/easycla/cla-backend-go/v2/company"
 	v2CurrentUser "github.com/linuxfoundation/easycla/cla-backend-go/v2/current_user"
 	v2Health "github.com/linuxfoundation/easycla/cla-backend-go/v2/health"
 	v2MyClas "github.com/linuxfoundation/easycla/cla-backend-go/v2/my_clas"
+	v2SelfServeSign "github.com/linuxfoundation/easycla/cla-backend-go/v2/self_serve_sign"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/store"
 	v2Template "github.com/linuxfoundation/easycla/cla-backend-go/v2/template"
 
@@ -438,20 +440,6 @@ func server(localMode bool) http.Handler {
 	gitlabOrganizationsService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoriesService, v1ProjectClaGroupRepo, storeRepository, usersService, signaturesRepo, v1CompanyRepo)
 	v1SignaturesService := signatures.NewService(signaturesRepo, v1CompanyService, usersService, eventsService, githubOrgValidation, v1RepositoriesService, githubOrganizationsService, v1ProjectService, gitlabApp, configFile.ClaV1ApiURL, configFile.CLALandingPage, configFile.CLALogoURL)
 	v2SignatureService := v2Signatures.NewService(awsSession, configFile.SignatureFilesBucket, v1ProjectService, v1CompanyService, v1SignaturesService, v1ProjectClaGroupRepo, signaturesRepo, usersService, approvalsRepo)
-	v2MyClasService := v2MyClas.NewService(v2MyClas.NewRepository(awsSession, stage), user_service.GetClient(), v1SignaturesService, v1CompanyRepo, v1ProjectClaGroupRepo, project_service.GetClient())
-	v1ClaManagerService := cla_manager.NewService(claManagerReqRepo, v1ProjectClaGroupRepo, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService, configFile.CorporateConsoleV2URL)
-	v2ClaManagerService := v2ClaManager.NewService(emailTemplateService, v1CompanyService, v1ProjectService, v1ClaManagerService, usersService, v1RepositoriesService, v2CompanyService, eventsService, v1ProjectClaGroupRepo)
-	v1ApprovalListService := approval_list.NewService(approvalListRepo, v1ProjectClaGroupRepo, v1ProjectService, usersRepo, v1CompanyRepo, v1CLAGroupRepo, signaturesRepo, emailTemplateService, configFile.CorporateConsoleV2URL, http.DefaultClient)
-	authorizer := auth.NewAuthorizer(authValidator, userRepo)
-	v2MetricsService := metrics.NewService(metricsRepo, v1ProjectClaGroupRepo)
-	gitlabActivityService := gitlab_activity.NewService(gitV1Repository, gitV2Repository, usersRepo, signaturesRepo, v1ProjectClaGroupRepo, v1CompanyRepo, signaturesRepo, gitlabOrganizationsService)
-	gitlabSignService := gitlab_sign.NewService(v2RepositoriesService, usersService, storeRepository, gitlabApp, gitlabOrganizationsService)
-	v2GithubOrganizationsService := v2GithubOrganizations.NewService(githubOrganizationsRepo, gitV1Repository, v1ProjectClaGroupRepo, githubOrganizationsService)
-	autoEnableService := dynamo_events.NewAutoEnableService(v1RepositoriesService, gitV1Repository, githubOrganizationsRepo, v1ProjectClaGroupRepo, v1ProjectService)
-	v2GithubActivityService := v2GithubActivity.NewService(gitV1Repository, githubOrganizationsRepo, eventsService, autoEnableService, emailService)
-
-	v2ClaGroupService := cla_groups.NewService(v1ProjectService, templateService, v1ProjectClaGroupRepo, v1ClaManagerService, v1SignaturesService, metricsRepo, gerritService, v1RepositoriesService, eventsService)
-
 	// Initialize SSS (Sanctions Screening Service) client if configured.
 	// The sssRequired flag is controlled by the cla-sss-required-{stage} SSM parameter.
 	sssRequired := configFile.SSS.Required
@@ -468,6 +456,26 @@ func server(localMode bool) http.Handler {
 	if sssEnabled && sssRequired && sssClient == nil {
 		log.WithFields(f).Fatal("SSS is required but not configured")
 	}
+
+	v2ClaSearchService := v2ClaSearch.NewService(v2ClaSearch.NewRepository(awsSession, stage))
+	v2MyClasService := v2MyClas.NewService(v2MyClas.NewRepository(awsSession, stage), user_service.GetClient(), v1SignaturesService, v1CompanyRepo, v1ProjectClaGroupRepo, project_service.GetClient(), eventsService, v2MyClas.NewSanctionsScreener(sssClient, sssEnabled, sssRequired))
+	v2SelfServeSignService := v2SelfServeSign.NewService(v2MyClasService, usersService, v1ProjectService, v1ProjectClaGroupRepo, storeRepository, configFile.CLAContributorv2Base)
+	trustedCallerVerifier, err := auth.NewTrustedCallerVerifier(configFile.Auth0.Domain, configFile.Auth0.Algorithm, configFile.SelfServe.TrustedClientIDs)
+	if err != nil {
+		logrus.Panic(err)
+	}
+	v1ClaManagerService := cla_manager.NewService(claManagerReqRepo, v1ProjectClaGroupRepo, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService, configFile.CorporateConsoleV2URL)
+	v2ClaManagerService := v2ClaManager.NewService(emailTemplateService, v1CompanyService, v1ProjectService, v1ClaManagerService, usersService, v1RepositoriesService, v2CompanyService, eventsService, v1ProjectClaGroupRepo)
+	v1ApprovalListService := approval_list.NewService(approvalListRepo, v1ProjectClaGroupRepo, v1ProjectService, usersRepo, v1CompanyRepo, v1CLAGroupRepo, signaturesRepo, emailTemplateService, configFile.CorporateConsoleV2URL, http.DefaultClient)
+	authorizer := auth.NewAuthorizer(authValidator, userRepo)
+	v2MetricsService := metrics.NewService(metricsRepo, v1ProjectClaGroupRepo)
+	gitlabActivityService := gitlab_activity.NewService(gitV1Repository, gitV2Repository, usersRepo, signaturesRepo, v1ProjectClaGroupRepo, v1CompanyRepo, signaturesRepo, gitlabOrganizationsService)
+	gitlabSignService := gitlab_sign.NewService(v2RepositoriesService, usersService, storeRepository, gitlabApp, gitlabOrganizationsService)
+	v2GithubOrganizationsService := v2GithubOrganizations.NewService(githubOrganizationsRepo, gitV1Repository, v1ProjectClaGroupRepo, githubOrganizationsService)
+	autoEnableService := dynamo_events.NewAutoEnableService(v1RepositoriesService, gitV1Repository, githubOrganizationsRepo, v1ProjectClaGroupRepo, v1ProjectService)
+	v2GithubActivityService := v2GithubActivity.NewService(gitV1Repository, githubOrganizationsRepo, eventsService, autoEnableService, emailService)
+
+	v2ClaGroupService := cla_groups.NewService(v1ProjectService, templateService, v1ProjectClaGroupRepo, v1ClaManagerService, v1SignaturesService, metricsRepo, gerritService, v1RepositoriesService, eventsService)
 
 	v2SignService := sign.NewService(configFile.ClaAPIV4Base, configFile.ClaV1ApiURL, v1CompanyRepo, v1CLAGroupRepo, v1ProjectClaGroupRepo, v1CompanyService, v2ClaGroupService, configFile.DocuSignPrivateKey, usersService, v1SignaturesService, storeRepository, v1RepositoriesService, githubOrganizationsService, gitlabOrganizationsService, configFile.CLALandingPage, configFile.CLALogoURL, emailService, eventsService, gitlabActivityService, gitlabApp, gerritService, sssClient, sssRequired, sssEnabled)
 
@@ -513,7 +521,9 @@ func server(localMode bool) http.Handler {
 	v2Gerrits.Configure(v2API, gerritService, v1ProjectService, eventsService, v1ProjectClaGroupRepo)
 	v2Company.Configure(v2API, v2CompanyService, v1ProjectClaGroupRepo, configFile.LFXPortalURL)
 	v2CurrentUser.Configure(v2API, v2CurrentUserService)
-	v2MyClas.Configure(v2API, v2MyClasService)
+	v2SelfServeSign.Configure(v2API, v2SelfServeSignService)
+	v2ClaSearch.Configure(v2API, v2ClaSearchService)
+	v2MyClas.Configure(v2API, v2MyClasService, trustedCallerVerifier)
 	cla_manager.Configure(api, v1ClaManagerService, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService)
 	v2ClaManager.Configure(v2API, v2ClaManagerService, v1CompanyService, configFile.LFXPortalURL, configFile.CorporateConsoleV2URL, v1ProjectClaGroupRepo, userRepo)
 	cla_groups.Configure(v2API, v2ClaGroupService, v1ProjectService, v1ProjectClaGroupRepo, eventsService)
@@ -524,6 +534,7 @@ func server(localMode bool) http.Handler {
 	v2API.AddMiddlewareFor("POST", "/signed/corporate/{project_id}/{company_id}", sign.CCLADocusignMiddleware)
 	v2API.AddMiddlewareFor("POST", "/signed/gitlab/individual/{user_id}/{organization_id}/{gitlab_repository_id}/{merge_request_id}", sign.DocusignMiddleware)
 	v2API.AddMiddlewareFor("POST", "/signed/gerrit/individual/{user_id}", sign.DocusignMiddleware)
+	v2API.AddMiddlewareFor("POST", "/signed/self-serve/individual/{user_id}", sign.DocusignMiddleware)
 
 	userCreaterMiddleware := func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

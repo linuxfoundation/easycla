@@ -3,7 +3,10 @@
 
 package utils
 
-import "strings"
+import (
+	"strings"
+	"unicode"
+)
 
 // TrimRemoveTrailingComma trims the whitespace on the specified string and removes the trailing comma
 func TrimRemoveTrailingComma(input string) string {
@@ -39,4 +42,30 @@ func GetFirstAndLastName(firstAndLastName string) (string, string) {
 	}
 
 	return strings.TrimSpace(userFirstName), strings.TrimSpace(userLastName)
+}
+
+// SanitizePlainText normalizes user-supplied free text: CR/LF variants become newlines, other
+// control characters are dropped, the result is trimmed (HTML escaping is the renderer's job)
+func SanitizePlainText(text string) string {
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	var builder strings.Builder
+	builder.Grow(len(text))
+	for _, r := range text {
+		if r == '\n' || r == '\t' || !unicode.IsControl(r) {
+			builder.WriteRune(r)
+		}
+	}
+	return strings.TrimSpace(builder.String())
+}
+
+// SanitizeSingleLine strips every control character so user-influenced values cannot inject
+// email header separators
+func SanitizeSingleLine(value string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, value)
 }

@@ -1,0 +1,28 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: My CLA Manager Request Result
+description: Receipt of a contact-CLA-manager request - recorded as an EasyCLA audit event
+properties:
+  requestID:
+    type: string
+    description: Request ID (UUID) carried by the audit event
+  signatureID:
+    type: string
+    description: ECLA signature ID (UUID) the request refers to
+  requestType:
+    type: string
+    enum: [removal, approval, contact]
+    description: The request type
+  status:
+    type: string
+    enum: [sent, recorded]
+    description: sent - the email was dispatched to the selected CLA managers that have a resolvable email address (at least one had); recorded - the audit event was written but no email was sent, because the CCLA lists no CLA manager or none of the selected ones has a resolvable email
+  recipients:
+    type: array
+    x-omitempty: false
+    description: LF usernames of the selected CLA managers
+    items:
+      type: string

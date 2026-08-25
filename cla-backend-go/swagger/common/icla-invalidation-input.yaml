@@ -1,0 +1,16 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: ICLA Invalidation Input
+description: Optional invalidation metadata recorded on the signature - omitting the body preserves the previous behavior
+properties:
+  reason:
+    type: string
+    enum: [signed-in-error, should-be-corporate, compliance, other]
+    description: Stored as invalidation_reason on the signature record
+  note:
+    type: string
+    maxLength: 2048
+    description: Free-text note stored as invalidation_note, separate from the general-purpose note audit trail
