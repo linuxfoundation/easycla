@@ -25,6 +25,21 @@ properties:
   projectLogo:
     type: string
     description: Project (or foundation) logo URL, omitted when absent or unresolved
+  projectSFID:
+    type: string
+    description: >
+      Salesforce project id the CLA Group maps to. Omitted when the group is foundation-level
+      (use foundationSFID), when several project-level mappings have no foundation marker, or
+      when unresolved. Branch on which of the two ids is present rather than concatenating
+      them - both means project-level, /foundation/{foundationSFID}/project/{projectSFID}/cla;
+      foundationSFID alone means foundation-level; neither means unresolved, with no
+      addressable Corporate Console route
+  foundationSFID:
+    type: string
+    description: >
+      Salesforce foundation id. For a foundation-level CLA Group this is the Corporate Console
+      path /foundation/{foundationSFID}/cla. For a single project-level mapping it is the parent
+      foundation when the mapping table has one. Omitted when unresolved
   companyID:
     type: string
     description: Employer company ID (UUID), ECLA only
