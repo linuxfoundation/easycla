@@ -9,7 +9,7 @@ Single source of truth for the status a My CLAs row shows. The status model is *
 
 | Status | Applies to | What it means | Dated? | What the contributor can do |
 |---|---|---|---|---|
-| **Valid** | ICLA + ECLA | Signed and in force. For an ECLA, the employer's agreement covers the contributor. | no | ICLA: download the PDF. ECLA: Request Removal |
+| **Valid** | ICLA + ECLA | Signed and in force. For an ECLA, the employer's agreement covers the contributor. | no | ICLA: download the PDF. ECLA: Contact CLA Manager, Request Removal |
 | **Needs attention** | ECLA only | The agreement is intact, but a completed check proved it does **not** cover the contributor — they are no longer on the employer's approved list. | no | Request approval, Contact CLA Manager, Request Removal |
 | **Invalidated** | ICLA + ECLA | The agreement itself was made void — by a CLA manager removing the contributor from an approved list, a project admin invalidating an ICLA, or a CLA group being deleted. In the data this is `signature_approved = false`. | yes — *Invalidated · date* | ICLA: nothing. ECLA: Request Removal |
 | **Revoked** | ECLA only | The employer is under a sanctions block, so the agreement cannot be relied on. Set by the system, never by a person in the product. | yes — *Revoked · date* | Nothing — the row is read-only |
@@ -66,13 +66,15 @@ Actions are driven by the underlying situation, not by the status label:
 |---|---|
 | **Request approval** | ECLA, and the contributor is specifically off the approved list |
 | **Request Removal** | Any ECLA except Revoked — so Valid, Needs attention, Invalidated and "—" all keep it |
-| **Contact CLA Manager** | ECLA showing Needs attention. Sends a free-form message to the chosen managers and changes nothing — the email says so explicitly |
+| **Contact CLA Manager** | ECLA showing **Valid or Needs attention**. Sends a free-form message to the chosen managers and changes nothing — the email says so explicitly |
 
 Consequences worth stating plainly:
 
 - **ICLA rows never offer a CLA-manager action** — there is no employer or manager involved.
 - **Revoked is the only ECLA state with no actions.**
 - **Request approval is deliberately withheld** from a row whose employer has no active agreement. There would be nothing to be approved onto, so the button would send the contributor to a manager who cannot help.
+
+Contact is offered only where a manager could actually help. A **Valid** row has nothing wrong, but the contributor may still have a question (a team change, an acquisition, another project) — a message-only action fits that. It is withheld from **Invalidated**, because a manager's only lever is the approved list and removal from it produces Needs attention, not Invalidated; and from **"—"**, because the system could not work out what is wrong, and where no company or corporate agreement exists no managers resolve at all.
 
 ## Not yet implemented
 
@@ -84,6 +86,7 @@ Everything above describes the intended behavior. These parts are not live for a
 |---|---|---|
 | **Dates are not displayed** | Invalidated and Revoked render without a date, even where one was recorded. | Done — `invalidatedAt` and `flaggedAt` are on every row ([easycla#5156](https://github.com/linuxfoundation/easycla/pull/5156)). The console's row model carries neither field. |
 | **Contact CLA Manager does not send** | The contributor picks managers, writes a message, clicks Send — and is told *"Message not sent"*. | Done — `requestType: contact` delivers a message-only email that states no change was requested. The console still treats contact as a no-op. |
+| **Contact CLA Manager is missing on Valid rows** | It appears only on Needs attention, so a contributor with a working agreement has no way to reach their manager. | Done — the gate is frontend-only (`canContactClaManager`), which today requires Needs attention. |
 
 **Still open:**
 
