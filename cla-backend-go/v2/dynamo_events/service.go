@@ -136,6 +136,9 @@ func NewService(stage string,
 	s.registerCallback(signaturesTable, Modify, s.SignatureAddSigTypeSignedApprovedID)
 	s.registerCallback(signaturesTable, Insert, s.SignatureAddSigTypeSignedApprovedID)
 	s.registerCallback(signaturesTable, Insert, s.SignatureAddUsersDetails)
+	// Modify events self-heal records whose identity attributes were missed at insert or dropped
+	// by a full-row rewrite - the handler is a no-op when the attributes are already present
+	s.registerCallback(signaturesTable, Modify, s.SignatureAddUsersDetails)
 	// Add or Remove any CLA Permissions
 	s.registerCallback(signaturesTable, Modify, s.UpdateCLAPermissions)
 
