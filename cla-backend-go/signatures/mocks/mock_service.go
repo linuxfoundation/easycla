@@ -312,6 +312,21 @@ func (mr *MockSignatureServiceMockRecorder) GetIndividualSignatures(ctx, claGrou
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIndividualSignatures", reflect.TypeOf((*MockSignatureService)(nil).GetIndividualSignatures), ctx, claGroupID, userID, approved, signed)
 }
 
+// GetItemSignature mocks base method.
+func (m *MockSignatureService) GetItemSignature(ctx context.Context, signatureID string) (*signatures0.ItemSignature, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetItemSignature", ctx, signatureID)
+	ret0, _ := ret[0].(*signatures0.ItemSignature)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetItemSignature indicates an expected call of GetItemSignature.
+func (mr *MockSignatureServiceMockRecorder) GetItemSignature(ctx, signatureID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetItemSignature", reflect.TypeOf((*MockSignatureService)(nil).GetItemSignature), ctx, signatureID)
+}
+
 // GetProjectCompanyEmployeeSignatures mocks base method.
 func (m *MockSignatureService) GetProjectCompanyEmployeeSignatures(ctx context.Context, params signatures.GetProjectCompanyEmployeeSignaturesParams, criteria *signatures0.ApprovalCriteria) (*models.Signatures, error) {
 	m.ctrl.T.Helper()

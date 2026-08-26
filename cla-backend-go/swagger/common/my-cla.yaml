@@ -108,10 +108,10 @@ properties:
   signedVia:
     type: string
     enum: [github, gitlab, gerrit]
-    description: Platform signed via - gerrit also covers LF SSO signings identified by email
+    description: Platform signed via - gerrit also covers LF SSO signings identified by email; the platform-prefixed signature ACL entry picks the platform first (authoritative, incl. Self Serve signings), then the signature's recorded return URL type, resolved against the signature's identity attributes and then the owning user record (covering legacy rows stamped partially or not at all), else a fixed github > gitlab > gerrit precedence
   signedAs:
     type: string
-    description: Account signed as - GitHub/GitLab username (numeric ID when no username was recorded) or email for gerrit/LF SSO, omitted when the signature carries no identity
+    description: Account signed as - GitHub/GitLab username (numeric ID when no username was recorded) or email for gerrit/LF SSO; resolved for the signedVia platform from the signature's identity attributes and then the owning user record, omitted when neither carries an identity
   claManager:
     type: boolean
     x-omitempty: false

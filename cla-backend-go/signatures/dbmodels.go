@@ -50,6 +50,23 @@ type ItemSignature struct {
 	InvalidatedBy                 string   `json:"invalidated_by,omitempty"`
 	InvalidationReason            string   `json:"invalidation_reason,omitempty"`
 	InvalidationNote              string   `json:"invalidation_note,omitempty"`
+	// Attributes below are written by other flows - the auto-create ECLA path (SignatureDynamoDB
+	// in repository.CreateSignature), PCC invalidation notes, and python-era records/migrations.
+	// They are carried here so full-record rewrites (SaveOrUpdateSignature is a PutItem) round-trip
+	// them instead of silently dropping them; all are omitted when empty, so records written from
+	// freshly built structs are unchanged. Note this strictly holds for string attributes only:
+	// boolean/int attributes stored as false/0 still marshal to attribute-removal on rewrite
+	// (identical to the pre-existing behavior of every write through this struct)
+	ProjectID               string `json:"project_id,omitempty"`
+	ProjectName             string `json:"project_name,omitempty"`
+	ProjectSFID             string `json:"project_sfid,omitempty"`
+	CompanyID               string `json:"company_id,omitempty"`
+	CompanyName             string `json:"company_name,omitempty"`
+	CompanySFID             string `json:"company_sfid,omitempty"`
+	SigTypeSignedApprovedID string `json:"sig_type_signed_approved_id,omitempty"` // auto-ECLA variant - distinct from the sigtype_signed_approved_id GSI sort key above
+	Note                    string `json:"note,omitempty"`
+	Version                 string `json:"version,omitempty"`
+	ApproxDateCreated       string `json:"approx_date_created,omitempty"`
 }
 
 // DBManagersModel is a database model for only the ACL/Manager column
