@@ -1555,18 +1555,72 @@ func TestSignedIdentityFallsBackToUserRecord(t *testing.T) {
 	}{
 		{"github flow with github username", githubURLType, &v1Models.User{GithubUsername: octocatGithub, GithubID: "42", LfUsername: "someone"}, models.MyClaSignedViaGithub, octocatGithub},
 		{"github flow falls back to numeric id", githubURLType, &v1Models.User{GithubID: "42"}, models.MyClaSignedViaGithub, "42"},
-		{"gitlab flow with gitlab username", "Gitlab", &v1Models.User{GitlabUsername: "glcat", GithubUsername: octocatGithub}, models.MyClaSignedViaGitlab, "glcat"},
+		{"gitlab flow with gitlab username", "Gitlab", &v1Models.User{GitlabUsername: glcatGitlab, GithubUsername: octocatGithub}, models.MyClaSignedViaGitlab, glcatGitlab},
 		{"gerrit flow prefers lf email", "Gerrit", &v1Models.User{LfEmail: "someone@example.org", LfUsername: "someone", GithubUsername: octocatGithub}, models.MyClaSignedViaGerrit, "someone@example.org"},
 		{"gerrit flow falls back to lf username", "Gerrit", &v1Models.User{LfUsername: "someone"}, models.MyClaSignedViaGerrit, "someone"},
 		{"github flow without github identity uses precedence", githubURLType, &v1Models.User{LfUsername: "someone"}, models.MyClaSignedViaGerrit, "someone"},
-		{"no return url type uses precedence", "", &v1Models.User{GitlabUsername: "glcat", LfUsername: "someone"}, models.MyClaSignedViaGitlab, "glcat"},
+		{"no return url type uses precedence", "", &v1Models.User{GitlabUsername: glcatGitlab, LfUsername: "someone"}, models.MyClaSignedViaGitlab, glcatGitlab},
 		{"identity-less user record yields nothing", githubURLType, &v1Models.User{UserID: "user-a"}, "", ""},
 		{"nil user yields nothing", githubURLType, nil, "", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			sig := &signatures.ItemSignature{SignatureReturnURLType: tc.returnURLType}
-			via, as := signedIdentityFromUser(sig, tc.user)
+			via, as := resolveSignedIdentity(sig, tc.user)
+			assert.Equal(t, tc.expectedVia, via)
+			assert.Equal(t, tc.expectedAs, as)
+		})
+	}
+}
+
+// the platform hint ladder: a platform-prefixed ACL entry is authoritative (Self Serve signings
+// carry no PR/MR, so their return URL type does not identify the signer), the recorded return URL
+// type covers the PR/MR/Gerrit flows, hinted platforms missing on the row resolve through the
+// owning user record (the legacy back-fill stamped only email/LF attributes, mislabeling every
+// partially stamped GitLab row as gerrit), and bare ACL entries yield no hint at all
+func TestResolveSignedIdentityHintLadder(t *testing.T) {
+	gitlabUser := &v1Models.User{GitlabUsername: glcatGitlab, GitlabID: "43", GithubUsername: octocatGithub, LfUsername: "someone"}
+	cases := []struct {
+		name        string
+		sig         *signatures.ItemSignature
+		user        *v1Models.User
+		expectedVia string
+		expectedAs  string
+	}{
+		{
+			"legacy gitlab row stamped with email and lf only resolves through the user record",
+			&signatures.ItemSignature{UserEmail: someoneEmail, UserLFUsername: "someone", SignatureReturnURLType: "Gitlab"},
+			gitlabUser,
+			models.MyClaSignedViaGitlab, glcatGitlab,
+		},
+		{
+			"platform-prefixed acl entry beats the return url type",
+			&signatures.ItemSignature{SignatureACL: []string{"gitlab:77"}, SignatureReturnURLType: githubURLType, UserGithubUsername: octocatGithub, UserGitlabUsername: glcatGitlab},
+			nil,
+			models.MyClaSignedViaGitlab, glcatGitlab,
+		},
+		{
+			"bare acl entry is no hint - precedence over the row applies",
+			&signatures.ItemSignature{SignatureACL: []string{"someone"}, UserEmail: someoneEmail, UserGithubUsername: octocatGithub},
+			gitlabUser,
+			models.MyClaSignedViaGithub, octocatGithub,
+		},
+		{
+			"row identity for the hinted platform wins over the user record",
+			&signatures.ItemSignature{SignatureACL: []string{"gitlab:77"}, UserGitlabUsername: "recorded-glcat"},
+			gitlabUser,
+			models.MyClaSignedViaGitlab, "recorded-glcat",
+		},
+		{
+			"hint missing everywhere falls back to precedence over the row",
+			&signatures.ItemSignature{SignatureReturnURLType: githubURLType, UserEmail: someoneEmail},
+			&v1Models.User{LfUsername: "someone"},
+			models.MyClaSignedViaGerrit, someoneEmail,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			via, as := resolveSignedIdentity(tc.sig, tc.user)
 			assert.Equal(t, tc.expectedVia, via)
 			assert.Equal(t, tc.expectedAs, as)
 		})

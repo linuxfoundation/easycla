@@ -259,13 +259,7 @@ func (s *service) GetMyClas(ctx context.Context, caller *Caller, requested *Iden
 			DocumentMajorVersion: int64(sig.SignatureDocumentMajorVersion),
 			DocumentMinorVersion: int64(sig.SignatureDocumentMinorVersion),
 		}
-		row.SignedVia, row.SignedAs = signedIdentity(sig)
-		if row.SignedAs == "" {
-			// legacy rows may carry no identity attributes - stamped late by an asynchronous
-			// back-fill and historically dropped again by full-row sign-URL rewrites - so fall
-			// back to the user record the listing resolved the signature through
-			row.SignedVia, row.SignedAs = signedIdentityFromUser(sig, ref.user)
-		}
+		row.SignedVia, row.SignedAs = resolveSignedIdentity(sig, ref.user)
 		if sig.DateInvalidated != "" {
 			row.InvalidatedAt = utils.FormatTimeString(sig.DateInvalidated)
 		}
@@ -457,7 +451,7 @@ func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller,
 	if contributorName == "" {
 		contributorName = identity.LfUsername
 	}
-	_, contributorIdentity := signedIdentity(sig)
+	_, contributorIdentity := resolveSignedIdentity(sig, userModel)
 	if contributorIdentity == "" {
 		contributorIdentity = identity.LfUsername
 	}
@@ -665,55 +659,100 @@ func isClaManager(ccla *v1Models.Signature, lfUsername string) bool {
 	return false
 }
 
-// signedIdentity derives the platform and account signed via/as from the signature's identity
+// resolveSignedIdentity derives the platform and account a signature was signed via/as. The
+// platform hint - the platform-prefixed ACL entry first, else the recorded return URL type - is
+// resolved against the signature's own identity attributes and then the owning user record,
+// which fixes legacy rows whose asynchronous back-fill stamped only email/LF attributes (every
+// pre-fix GitLab-signed row otherwise displays gerrit). Without a usable hint the fixed
+// github > gitlab > gerrit precedence applies, over the row first and the user record last, so
+// hint-less rows keep resolving exactly as before. Strictly read-only - nothing is written back
+func resolveSignedIdentity(sig *signatures.ItemSignature, user *v1Models.User) (string, string) {
+	rowGithub, rowGitlab, rowGerrit := rowIdentities(sig)
+	userGithub, userGitlab, userGerrit := userIdentities(user)
+	if hint := platformHint(sig); hint != "" {
+		if via, as := hintedIdentity(hint, rowGithub, rowGitlab, rowGerrit); as != "" {
+			return via, as
+		}
+		if via, as := hintedIdentity(hint, userGithub, userGitlab, userGerrit); as != "" {
+			return via, as
+		}
+	}
+	if via, as := precedenceIdentity(rowGithub, rowGitlab, rowGerrit); as != "" {
+		return via, as
+	}
+	return precedenceIdentity(userGithub, userGitlab, userGerrit)
+}
+
+// platformHint returns the platform a signature was prepared under. A platform-prefixed ACL
+// entry (github:<id> / gitlab:<id>, written by the PR/MR and Self Serve sign flows) is
+// authoritative - a Self Serve session carries no pull or merge request, so the return URL type
+// does not identify the signer there - with the recorded return URL type as the fallback for the
+// PR/MR/Gerrit flows, where it is meaningful. Bare ACL entries are ambiguous (Gerrit LFIDs,
+// LF-only fallbacks, legacy formats) and yield no hint, keeping such rows resolving as before.
+// Known residue: the sign-URL regenerate flow rewrites both markers with the current flow, so a
+// post-sign cross-platform regenerate can transiently shift the hint until the row is re-signed
+func platformHint(sig *signatures.ItemSignature) string {
+	for _, entry := range sig.SignatureACL {
+		switch lower := strings.ToLower(strings.TrimSpace(entry)); {
+		case strings.HasPrefix(lower, "github:"):
+			return models.MyClaSignedViaGithub
+		case strings.HasPrefix(lower, "gitlab:"):
+			return models.MyClaSignedViaGitlab
+		}
+	}
+	switch hint := strings.ToLower(sig.SignatureReturnURLType); hint {
+	case models.MyClaSignedViaGithub, models.MyClaSignedViaGitlab, models.MyClaSignedViaGerrit:
+		return hint
+	}
+	return ""
+}
+
+// rowIdentities extracts the per-platform signed-as candidates from the signature's own identity
 // attributes
-func signedIdentity(sig *signatures.ItemSignature) (string, string) {
-	githubAs := sig.UserGithubUsername
+func rowIdentities(sig *signatures.ItemSignature) (githubAs, gitlabAs, gerritAs string) {
+	githubAs = sig.UserGithubUsername
 	if githubAs == "" {
 		githubAs = sig.UserGithubID
 	}
-	gitlabAs := sig.UserGitlabUsername
+	gitlabAs = sig.UserGitlabUsername
 	if gitlabAs == "" {
 		gitlabAs = sig.UserGitlabID
 	}
-	gerritAs := sig.UserEmail
+	gerritAs = sig.UserEmail
 	if gerritAs == "" {
 		gerritAs = sig.UserLFUsername
 	}
-	return pickSignedIdentity(sig.SignatureReturnURLType, githubAs, gitlabAs, gerritAs)
+	return githubAs, gitlabAs, gerritAs
 }
 
-// signedIdentityFromUser derives the signed via/as from the user record the signature belongs to -
-// the display fallback for rows whose own identity attributes were never stamped at insert or were
-// dropped by legacy full-row sign-URL rewrites. The return URL type recorded on the signature
-// picks the platform when the user record carries identities on several
-func signedIdentityFromUser(sig *signatures.ItemSignature, user *v1Models.User) (string, string) {
+// userIdentities extracts the per-platform signed-as candidates from the user record the
+// signature belongs to - the display fallback for rows whose own identity attributes were never
+// stamped at insert, were stamped partially by the legacy back-fill, or were dropped by legacy
+// full-row sign-URL rewrites
+func userIdentities(user *v1Models.User) (githubAs, gitlabAs, gerritAs string) {
 	if user == nil {
-		return "", ""
+		return "", "", ""
 	}
-	githubAs := user.GithubUsername
+	githubAs = user.GithubUsername
 	if githubAs == "" {
 		githubAs = user.GithubID
 	}
-	gitlabAs := user.GitlabUsername
+	gitlabAs = user.GitlabUsername
 	if gitlabAs == "" {
 		gitlabAs = user.GitlabID
 	}
-	gerritAs := ""
 	if user.LfEmail != "" {
 		gerritAs = user.LfEmail.String()
 	} else if user.LfUsername != "" {
 		gerritAs = user.LfUsername
 	}
-	return pickSignedIdentity(sig.SignatureReturnURLType, githubAs, gitlabAs, gerritAs)
+	return githubAs, gitlabAs, gerritAs
 }
 
-// pickSignedIdentity resolves the signed via/as pair from per-platform candidates: the return URL
-// type recorded on the signature picks the platform when identities exist for several (rows now
-// carry all of the signer's linked identities), falling back to a fixed github > gitlab > gerrit
-// precedence when the recorded platform carries no identity or none was recorded
-func pickSignedIdentity(returnURLType, githubAs, gitlabAs, gerritAs string) (string, string) {
-	switch strings.ToLower(returnURLType) {
+// hintedIdentity returns the signed via/as pair for the hinted platform, or nothing when that
+// platform carries no identity in the given candidates
+func hintedIdentity(hint, githubAs, gitlabAs, gerritAs string) (string, string) {
+	switch hint {
 	case models.MyClaSignedViaGithub:
 		if githubAs != "" {
 			return models.MyClaSignedViaGithub, githubAs
@@ -727,6 +766,12 @@ func pickSignedIdentity(returnURLType, githubAs, gitlabAs, gerritAs string) (str
 			return models.MyClaSignedViaGerrit, gerritAs
 		}
 	}
+	return "", ""
+}
+
+// precedenceIdentity resolves the signed via/as pair by the fixed github > gitlab > gerrit
+// precedence
+func precedenceIdentity(githubAs, gitlabAs, gerritAs string) (string, string) {
 	switch {
 	case githubAs != "":
 		return models.MyClaSignedViaGithub, githubAs

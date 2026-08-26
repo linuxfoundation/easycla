@@ -19,9 +19,11 @@ import (
 
 const (
 	someoneEmail = "someone@example.org"
-	// octocatGithub / githubURLType exist to satisfy goconst in the test package
+	// octocatGithub / githubURLType / glcatGitlab exist to satisfy goconst in the test package
 	octocatGithub = "octocat"
 	githubURLType = "Github"
+	glcatGitlab   = "glcat"
+	someoneLF     = "someone"
 )
 
 type fakeEvents struct {
@@ -85,7 +87,7 @@ func TestGetMyClasSignedIdentity(t *testing.T) {
 	gerrit := icla("sig-gerrit", "user-a", "cla-group-1", "2024-04-01T00:00:00Z", true)
 	gerrit.UserEmail = someoneEmail
 	sso := icla("sig-sso", "user-a", "cla-group-1", "2024-05-01T00:00:00Z", true)
-	sso.UserLFUsername = "someone"
+	sso.UserLFUsername = someoneLF
 	anonymous := icla("sig-anonymous", "user-a", "cla-group-1", "2024-06-01T00:00:00Z", true)
 	// fully-stamped rows carry every linked identity - the recorded return URL type must pick
 	// the platform actually signed through, not the github > gitlab > gerrit precedence
@@ -96,10 +98,30 @@ func TestGetMyClasSignedIdentity(t *testing.T) {
 	hintMissing := icla("sig-hint-missing", "user-a", "cla-group-1", "2024-08-01T00:00:00Z", true)
 	hintMissing.UserEmail = someoneEmail
 	hintMissing.SignatureReturnURLType = githubURLType
+	// the legacy back-fill stamped only email/LF attributes - the hinted platform must resolve
+	// through the owning user record instead of mislabeling the row as gerrit
+	userB := &v1Models.User{UserID: "user-b", LfUsername: "someone", GitlabUsername: glcatGitlab, GitlabID: "43"}
+	legacyGitlab := icla("sig-legacy-gitlab", "user-b", "cla-group-1", "2024-09-01T00:00:00Z", true)
+	legacyGitlab.UserEmail = someoneEmail
+	legacyGitlab.UserLFUsername = someoneLF
+	legacyGitlab.SignatureReturnURLType = "Gitlab"
+	// a platform-prefixed ACL entry is the authoritative hint - Self Serve signings carry no
+	// PR/MR, so their return URL type does not identify the signer
+	aclHint := icla("sig-acl-hint", "user-b", "cla-group-1", "2024-10-01T00:00:00Z", true)
+	aclHint.SignatureACL = []string{"gitlab:43"}
+	aclHint.SignatureReturnURLType = githubURLType
+	aclHint.UserGithubUsername = octocatGithub
+	aclHint.UserGitlabUsername = glcatGitlab
+	bareACL := icla("sig-bare-acl", "user-b", "cla-group-1", "2024-11-01T00:00:00Z", true)
+	bareACL.SignatureACL = []string{"someone"}
+	bareACL.UserEmail = someoneEmail
 
 	repo := &fakeRepo{
-		byUserID:     map[string][]*signatures.ItemSignature{"user-a": {github, githubIDOnly, gitlab, gerrit, sso, anonymous, crossGerrit, hintMissing}},
-		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a": {github, githubIDOnly, gitlab, gerrit, sso, anonymous, crossGerrit, hintMissing},
+			"user-b": {legacyGitlab, aclHint, bareACL},
+		},
+		byLFUsername: map[string][]*v1Models.User{"someone": {userA, userB}},
 	}
 	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
@@ -127,6 +149,12 @@ func TestGetMyClasSignedIdentity(t *testing.T) {
 	assert.Equal(t, someoneEmail, byID["sig-cross-gerrit"].SignedAs)
 	assert.Equal(t, "gerrit", byID["sig-hint-missing"].SignedVia, "a hint without a matching identity falls back to precedence")
 	assert.Equal(t, someoneEmail, byID["sig-hint-missing"].SignedAs)
+	assert.Equal(t, models.MyClaSignedViaGitlab, byID["sig-legacy-gitlab"].SignedVia, "a hinted platform missing on the row resolves through the owning user record")
+	assert.Equal(t, glcatGitlab, byID["sig-legacy-gitlab"].SignedAs)
+	assert.Equal(t, models.MyClaSignedViaGitlab, byID["sig-acl-hint"].SignedVia, "the platform-prefixed ACL entry beats the recorded return URL type")
+	assert.Equal(t, glcatGitlab, byID["sig-acl-hint"].SignedAs)
+	assert.Equal(t, models.MyClaSignedViaGerrit, byID["sig-bare-acl"].SignedVia, "a bare ACL entry is no hint - the row resolves by precedence without consulting the user record")
+	assert.Equal(t, someoneEmail, byID["sig-bare-acl"].SignedAs)
 }
 
 func TestGetMyClasFlaggedAndClaManager(t *testing.T) {
@@ -497,7 +525,7 @@ func TestMyClasJSONContract(t *testing.T) {
 
 func TestSignedIdentityFallbacks(t *testing.T) {
 	gitlabIDOnly := &signatures.ItemSignature{UserGitlabID: "42"}
-	via, as := signedIdentity(gitlabIDOnly)
+	via, as := resolveSignedIdentity(gitlabIDOnly, nil)
 	assert.Equal(t, "gitlab", via)
 	assert.Equal(t, "42", as)
 
