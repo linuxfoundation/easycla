@@ -108,10 +108,10 @@ properties:
   signedVia:
     type: string
     enum: [github, gitlab, gerrit]
-    description: Platform signed via - gerrit also covers LF SSO signings identified by email; derived from the signature's identity attributes, falling back to the owning user record (guided by the signature's return URL type) for legacy rows missing them
+    description: Platform signed via - gerrit also covers LF SSO signings identified by email; derived from the signature's identity attributes (the signature's recorded return URL type picks the platform when identities exist for several), falling back to the owning user record for legacy rows missing them
   signedAs:
     type: string
-    description: Account signed as - GitHub/GitLab username (numeric ID when no username was recorded) or email for gerrit/LF SSO; derived from the signature's identity attributes, falling back to the owning user record for legacy rows missing them, omitted when neither carries an identity
+    description: Account signed as - GitHub/GitLab username (numeric ID when no username was recorded) or email for gerrit/LF SSO; derived from the signature's identity attributes for the signedVia platform, falling back to the owning user record for legacy rows missing them, omitted when neither carries an identity
   claManager:
     type: boolean
     x-omitempty: false

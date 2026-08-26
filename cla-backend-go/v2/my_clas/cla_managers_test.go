@@ -17,7 +17,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-const someoneEmail = "someone@example.org"
+const (
+	someoneEmail = "someone@example.org"
+	// octocatGithub / githubURLType exist to satisfy goconst in the test package
+	octocatGithub = "octocat"
+	githubURLType = "Github"
+)
 
 type fakeEvents struct {
 	logged []*events.LogEventArgs
@@ -71,7 +76,7 @@ func managersFixture() (*fakeRepo, *fakeSignatures, *fakeCompanies) {
 func TestGetMyClasSignedIdentity(t *testing.T) {
 	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
 	github := icla("sig-github", "user-a", "cla-group-1", "2024-01-01T00:00:00Z", true)
-	github.UserGithubUsername = "octocat"
+	github.UserGithubUsername = octocatGithub
 	github.UserGithubID = "999"
 	githubIDOnly := icla("sig-github-id", "user-a", "cla-group-1", "2024-02-01T00:00:00Z", true)
 	githubIDOnly.UserGithubID = "999"
@@ -82,9 +87,18 @@ func TestGetMyClasSignedIdentity(t *testing.T) {
 	sso := icla("sig-sso", "user-a", "cla-group-1", "2024-05-01T00:00:00Z", true)
 	sso.UserLFUsername = "someone"
 	anonymous := icla("sig-anonymous", "user-a", "cla-group-1", "2024-06-01T00:00:00Z", true)
+	// fully-stamped rows carry every linked identity - the recorded return URL type must pick
+	// the platform actually signed through, not the github > gitlab > gerrit precedence
+	crossGerrit := icla("sig-cross-gerrit", "user-a", "cla-group-1", "2024-07-01T00:00:00Z", true)
+	crossGerrit.UserGithubUsername = octocatGithub
+	crossGerrit.UserEmail = someoneEmail
+	crossGerrit.SignatureReturnURLType = "Gerrit"
+	hintMissing := icla("sig-hint-missing", "user-a", "cla-group-1", "2024-08-01T00:00:00Z", true)
+	hintMissing.UserEmail = someoneEmail
+	hintMissing.SignatureReturnURLType = githubURLType
 
 	repo := &fakeRepo{
-		byUserID:     map[string][]*signatures.ItemSignature{"user-a": {github, githubIDOnly, gitlab, gerrit, sso, anonymous}},
+		byUserID:     map[string][]*signatures.ItemSignature{"user-a": {github, githubIDOnly, gitlab, gerrit, sso, anonymous, crossGerrit, hintMissing}},
 		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
 	}
 	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
@@ -97,7 +111,7 @@ func TestGetMyClasSignedIdentity(t *testing.T) {
 	}
 
 	assert.Equal(t, "github", byID["sig-github"].SignedVia)
-	assert.Equal(t, "octocat", byID["sig-github"].SignedAs, "the username wins over the numeric ID")
+	assert.Equal(t, octocatGithub, byID["sig-github"].SignedAs, "the username wins over the numeric ID")
 	assert.Equal(t, "github", byID["sig-github-id"].SignedVia)
 	assert.Equal(t, "999", byID["sig-github-id"].SignedAs, "the numeric ID is the fallback account")
 	assert.Equal(t, "gitlab", byID["sig-gitlab"].SignedVia)
@@ -109,6 +123,10 @@ func TestGetMyClasSignedIdentity(t *testing.T) {
 	require.Contains(t, byID, "sig-anonymous", "the identity-less record is still returned")
 	assert.Equal(t, "gerrit", byID["sig-anonymous"].SignedVia, "identity-less records fall back to the owning user record")
 	assert.Equal(t, "someone", byID["sig-anonymous"].SignedAs)
+	assert.Equal(t, "gerrit", byID["sig-cross-gerrit"].SignedVia, "the recorded return URL type wins over the github > gitlab > gerrit precedence")
+	assert.Equal(t, someoneEmail, byID["sig-cross-gerrit"].SignedAs)
+	assert.Equal(t, "gerrit", byID["sig-hint-missing"].SignedVia, "a hint without a matching identity falls back to precedence")
+	assert.Equal(t, someoneEmail, byID["sig-hint-missing"].SignedAs)
 }
 
 func TestGetMyClasFlaggedAndClaManager(t *testing.T) {

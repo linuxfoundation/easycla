@@ -4,10 +4,14 @@
 package sign
 
 import (
+	"context"
+	"errors"
 	"testing"
 
+	"github.com/golang/mock/gomock"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
+	mock_v1_signatures "github.com/linuxfoundation/easycla/cla-backend-go/signatures/mocks"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -65,9 +69,115 @@ func TestStampUserIdentityNilSafe(t *testing.T) {
 	assert.Equal(t, signatures.ItemSignature{}, *item)
 }
 
-func TestBestUserEmail(t *testing.T) {
-	assert.Equal(t, "", bestUserEmail(nil))
-	assert.Equal(t, "lf@example.org", bestUserEmail(&v1Models.User{LfEmail: "lf@example.org", Emails: []string{"other@example.org"}}))
-	assert.Equal(t, "real@example.org", bestUserEmail(&v1Models.User{Emails: []string{"", "12345+octocat@users.noreply.github.com", "real@example.org"}}))
-	assert.Equal(t, "", bestUserEmail(&v1Models.User{}))
+// the linchpin of the lossless-regenerate fix: the stored row must survive the full-record
+// rewrite, with only the fields a regenerate legitimately changes overwritten
+func TestRegeneratedItemSignaturePreservesStoredRow(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockSig := mock_v1_signatures.NewMockSignatureService(ctrl)
+	svc := &service{signatureService: mockSig}
+
+	stored := &signatures.ItemSignature{
+		SignatureID:                   "sig-1",
+		DateCreated:                   "2024-01-01T00:00:00Z",
+		DateModified:                  "2024-02-01T00:00:00Z",
+		SignatureReferenceType:        "user",
+		SignatureType:                 "cla",
+		SignatureReferenceID:          "user-1",
+		SignatureProjectID:            "cla-group-1",
+		SignatureApproved:             true,
+		SignatureSigned:               true,
+		SignedOn:                      "2024-01-01T00:00:00Z",
+		SignatureEnvelopeID:           "envelope-1",
+		UserGithubUsername:            "octocat",
+		UserEmail:                     "someone@example.org",
+		UserDocusignName:              "Some One",
+		UserDocusignDateSigned:        "2024-01-01T00:00:00Z",
+		Note:                          "invalidated once upon a time",
+		SignatureReturnURL:            "https://old.example.org",
+		SignatureReturnURLType:        "Github",
+		SignatureCallbackURL:          "https://old.example.org/callback",
+		SignatureACL:                  []string{"old-acl"},
+		SignatureDocumentMajorVersion: 1,
+		SignatureDocumentMinorVersion: 0,
+	}
+	mockSig.EXPECT().GetItemSignature(gomock.Any(), "sig-1").Return(stored, nil)
+
+	latest := &v1Models.Signature{SignatureID: "sig-1", SignatureCreated: "2024-01-01T00:00:00Z"}
+	item := svc.regeneratedItemSignature(context.Background(), latest, "https://new.example.org", "Gerrit", "https://new.example.org/callback", []string{"new-acl"}, 2, 1)
+
+	// preserved from the stored row
+	assert.Equal(t, "2024-01-01T00:00:00Z", item.DateCreated)
+	assert.True(t, item.SignatureSigned)
+	assert.True(t, item.SignatureApproved)
+	assert.Equal(t, "2024-01-01T00:00:00Z", item.SignedOn)
+	assert.Equal(t, "envelope-1", item.SignatureEnvelopeID)
+	assert.Equal(t, "octocat", item.UserGithubUsername)
+	assert.Equal(t, "someone@example.org", item.UserEmail)
+	assert.Equal(t, "Some One", item.UserDocusignName)
+	assert.Equal(t, "2024-01-01T00:00:00Z", item.UserDocusignDateSigned)
+	assert.Equal(t, "invalidated once upon a time", item.Note)
+	// overwritten by the regenerate
+	assert.Equal(t, "https://new.example.org", item.SignatureReturnURL)
+	assert.Equal(t, "Gerrit", item.SignatureReturnURLType)
+	assert.Equal(t, "https://new.example.org/callback", item.SignatureCallbackURL)
+	assert.Equal(t, []string{"new-acl"}, item.SignatureACL)
+	assert.Equal(t, 2, item.SignatureDocumentMajorVersion)
+	assert.Equal(t, 1, item.SignatureDocumentMinorVersion)
+	assert.True(t, item.SignatureEmbargoAcked)
+	assert.NotEmpty(t, item.DateModified)
+	assert.NotEqual(t, "2024-02-01T00:00:00Z", item.DateModified)
+}
+
+func TestRegeneratedItemSignatureFallsBackWhenRowUnavailable(t *testing.T) {
+	latest := &v1Models.Signature{
+		SignatureID:                   "sig-1",
+		SignatureCreated:              "2024-01-01T00:00:00Z",
+		SignatureReferenceType:        "user",
+		SignatureType:                 "cla",
+		SignatureReferenceID:          "user-1",
+		ProjectID:                     "cla-group-1",
+		SignatureApproved:             true,
+		SignatureSigned:               true,
+		SignedOn:                      "2024-01-01T00:00:00Z",
+		SignatureEnvelopeID:           "envelope-1",
+		SignatureReferenceName:        "Some One",
+		SignatureReferenceNameLower:   "some one",
+		SignatureDocumentMajorVersion: "1",
+		SignatureDocumentMinorVersion: "0",
+	}
+	for name, result := range map[string]struct {
+		row *signatures.ItemSignature
+		err error
+	}{
+		"load error":    {nil, errors.New("dynamo down")},
+		"row not found": {nil, nil},
+	} {
+		t.Run(name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			mockSig := mock_v1_signatures.NewMockSignatureService(ctrl)
+			mockSig.EXPECT().GetItemSignature(gomock.Any(), "sig-1").Return(result.row, result.err)
+			svc := &service{signatureService: mockSig}
+
+			item := svc.regeneratedItemSignature(context.Background(), latest, "https://new.example.org", "Gerrit", "https://new.example.org/callback", []string{"new-acl"}, 2, 1)
+
+			// reconstructed from the API model, incl. the previously dropped creation date
+			assert.Equal(t, "sig-1", item.SignatureID)
+			assert.Equal(t, "2024-01-01T00:00:00Z", item.DateCreated)
+			assert.Equal(t, "user", item.SignatureReferenceType)
+			assert.Equal(t, "cla", item.SignatureType)
+			assert.Equal(t, "user-1", item.SignatureReferenceID)
+			assert.Equal(t, "cla-group-1", item.SignatureProjectID)
+			assert.True(t, item.SignatureApproved)
+			assert.True(t, item.SignatureSigned)
+			assert.True(t, item.SignatureEmbargoAcked)
+			assert.Equal(t, "envelope-1", item.SignatureEnvelopeID)
+			assert.Equal(t, "https://new.example.org", item.SignatureReturnURL)
+			assert.Equal(t, "Gerrit", item.SignatureReturnURLType)
+			assert.Equal(t, []string{"new-acl"}, item.SignatureACL)
+			assert.Equal(t, 2, item.SignatureDocumentMajorVersion)
+			assert.Equal(t, 1, item.SignatureDocumentMinorVersion)
+		})
+	}
 }

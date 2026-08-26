@@ -1687,27 +1687,10 @@ func stampUserIdentity(item *signatures.ItemSignature, user *v1Models.User) {
 		}
 	}
 	if item.UserEmail == "" {
-		if email := bestUserEmail(user); email != "" {
+		if email := utils.GetBestEmail(user); email != "" {
 			item.UserEmail = email
 		}
 	}
-}
-
-// bestUserEmail returns the user's LF email or the first usable address - the same preference the
-// dynamo-events back-fill applies
-func bestUserEmail(user *v1Models.User) string {
-	if user == nil {
-		return ""
-	}
-	if user.LfEmail != "" {
-		return user.LfEmail.String()
-	}
-	for _, email := range user.Emails {
-		if email != "" && !strings.Contains(email, "noreply.github.com") {
-			return email
-		}
-	}
-	return ""
 }
 
 // regeneratedItemSignature rebuilds the signature row backing a regenerated sign URL. The save
@@ -1746,7 +1729,9 @@ func (s *service) regeneratedItemSignature(ctx context.Context, latestSignature 
 	}
 	if rawSignature, rawErr := s.signatureService.GetItemSignature(ctx, latestSignature.SignatureID); rawErr != nil {
 		log.WithFields(f).WithError(rawErr).Warnf("unable to load the stored signature record: %s - regenerating from the API model", latestSignature.SignatureID)
-	} else if rawSignature != nil {
+	} else if rawSignature == nil {
+		log.WithFields(f).Warnf("stored signature record not found: %s - regenerating from the API model (lossy rewrite)", latestSignature.SignatureID)
+	} else {
 		rawSignature.DateModified = currentTime
 		rawSignature.SignatureReturnURL = returnURL
 		rawSignature.SignatureReturnURLType = returnURLType

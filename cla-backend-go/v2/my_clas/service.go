@@ -668,24 +668,19 @@ func isClaManager(ccla *v1Models.Signature, lfUsername string) bool {
 // signedIdentity derives the platform and account signed via/as from the signature's identity
 // attributes
 func signedIdentity(sig *signatures.ItemSignature) (string, string) {
-	switch {
-	case sig.UserGithubUsername != "" || sig.UserGithubID != "":
-		if sig.UserGithubUsername != "" {
-			return models.MyClaSignedViaGithub, sig.UserGithubUsername
-		}
-		return models.MyClaSignedViaGithub, sig.UserGithubID
-	case sig.UserGitlabUsername != "" || sig.UserGitlabID != "":
-		if sig.UserGitlabUsername != "" {
-			return models.MyClaSignedViaGitlab, sig.UserGitlabUsername
-		}
-		return models.MyClaSignedViaGitlab, sig.UserGitlabID
-	case sig.UserEmail != "" || sig.UserLFUsername != "":
-		if sig.UserEmail != "" {
-			return models.MyClaSignedViaGerrit, sig.UserEmail
-		}
-		return models.MyClaSignedViaGerrit, sig.UserLFUsername
+	githubAs := sig.UserGithubUsername
+	if githubAs == "" {
+		githubAs = sig.UserGithubID
 	}
-	return "", ""
+	gitlabAs := sig.UserGitlabUsername
+	if gitlabAs == "" {
+		gitlabAs = sig.UserGitlabID
+	}
+	gerritAs := sig.UserEmail
+	if gerritAs == "" {
+		gerritAs = sig.UserLFUsername
+	}
+	return pickSignedIdentity(sig.SignatureReturnURLType, githubAs, gitlabAs, gerritAs)
 }
 
 // signedIdentityFromUser derives the signed via/as from the user record the signature belongs to -
@@ -710,7 +705,15 @@ func signedIdentityFromUser(sig *signatures.ItemSignature, user *v1Models.User) 
 	} else if user.LfUsername != "" {
 		gerritAs = user.LfUsername
 	}
-	switch strings.ToLower(sig.SignatureReturnURLType) {
+	return pickSignedIdentity(sig.SignatureReturnURLType, githubAs, gitlabAs, gerritAs)
+}
+
+// pickSignedIdentity resolves the signed via/as pair from per-platform candidates: the return URL
+// type recorded on the signature picks the platform when identities exist for several (rows now
+// carry all of the signer's linked identities), falling back to a fixed github > gitlab > gerrit
+// precedence when the recorded platform carries no identity or none was recorded
+func pickSignedIdentity(returnURLType, githubAs, gitlabAs, gerritAs string) (string, string) {
+	switch strings.ToLower(returnURLType) {
 	case models.MyClaSignedViaGithub:
 		if githubAs != "" {
 			return models.MyClaSignedViaGithub, githubAs

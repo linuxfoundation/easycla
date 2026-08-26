@@ -1553,15 +1553,15 @@ func TestSignedIdentityFallsBackToUserRecord(t *testing.T) {
 		expectedVia   string
 		expectedAs    string
 	}{
-		{"github flow with github username", "Github", &v1Models.User{GithubUsername: "octocat", GithubID: "42", LfUsername: "someone"}, models.MyClaSignedViaGithub, "octocat"},
-		{"github flow falls back to numeric id", "Github", &v1Models.User{GithubID: "42"}, models.MyClaSignedViaGithub, "42"},
-		{"gitlab flow with gitlab username", "Gitlab", &v1Models.User{GitlabUsername: "glcat", GithubUsername: "octocat"}, models.MyClaSignedViaGitlab, "glcat"},
-		{"gerrit flow prefers lf email", "Gerrit", &v1Models.User{LfEmail: "someone@example.org", LfUsername: "someone", GithubUsername: "octocat"}, models.MyClaSignedViaGerrit, "someone@example.org"},
+		{"github flow with github username", githubURLType, &v1Models.User{GithubUsername: octocatGithub, GithubID: "42", LfUsername: "someone"}, models.MyClaSignedViaGithub, octocatGithub},
+		{"github flow falls back to numeric id", githubURLType, &v1Models.User{GithubID: "42"}, models.MyClaSignedViaGithub, "42"},
+		{"gitlab flow with gitlab username", "Gitlab", &v1Models.User{GitlabUsername: "glcat", GithubUsername: octocatGithub}, models.MyClaSignedViaGitlab, "glcat"},
+		{"gerrit flow prefers lf email", "Gerrit", &v1Models.User{LfEmail: "someone@example.org", LfUsername: "someone", GithubUsername: octocatGithub}, models.MyClaSignedViaGerrit, "someone@example.org"},
 		{"gerrit flow falls back to lf username", "Gerrit", &v1Models.User{LfUsername: "someone"}, models.MyClaSignedViaGerrit, "someone"},
-		{"github flow without github identity uses precedence", "Github", &v1Models.User{LfUsername: "someone"}, models.MyClaSignedViaGerrit, "someone"},
+		{"github flow without github identity uses precedence", githubURLType, &v1Models.User{LfUsername: "someone"}, models.MyClaSignedViaGerrit, "someone"},
 		{"no return url type uses precedence", "", &v1Models.User{GitlabUsername: "glcat", LfUsername: "someone"}, models.MyClaSignedViaGitlab, "glcat"},
-		{"identity-less user record yields nothing", "Github", &v1Models.User{UserID: "user-a"}, "", ""},
-		{"nil user yields nothing", "Github", nil, "", ""},
+		{"identity-less user record yields nothing", githubURLType, &v1Models.User{UserID: "user-a"}, "", ""},
+		{"nil user yields nothing", githubURLType, nil, "", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1574,11 +1574,11 @@ func TestSignedIdentityFallsBackToUserRecord(t *testing.T) {
 }
 
 func TestGetMyClasSignedAsFallsBackToUserRecord(t *testing.T) {
-	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone", GithubUsername: "octocat"}
+	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone", GithubUsername: octocatGithub}
 	stamped := icla("sig-stamped", "user-a", "cla-group-1", "2024-02-01T00:00:00Z", true)
 	stamped.UserGithubUsername = "recorded-octocat"
 	bare := icla("sig-bare", "user-a", "cla-group-1", "2024-01-01T00:00:00Z", true)
-	bare.SignatureReturnURLType = "Github"
+	bare.SignatureReturnURLType = githubURLType
 
 	repo := &fakeRepo{
 		byUserID:     map[string][]*signatures.ItemSignature{"user-a": {stamped, bare}},
@@ -1597,6 +1597,6 @@ func TestGetMyClasSignedAsFallsBackToUserRecord(t *testing.T) {
 	assert.Equal(t, "recorded-octocat", byID["sig-stamped"].SignedAs)
 	assert.Equal(t, models.MyClaSignedViaGithub, byID["sig-stamped"].SignedVia)
 	// bare rows fall back to the owning user record
-	assert.Equal(t, "octocat", byID["sig-bare"].SignedAs)
+	assert.Equal(t, octocatGithub, byID["sig-bare"].SignedAs)
 	assert.Equal(t, models.MyClaSignedViaGithub, byID["sig-bare"].SignedVia)
 }

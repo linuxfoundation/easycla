@@ -54,7 +54,9 @@ type ItemSignature struct {
 	// in repository.CreateSignature), PCC invalidation notes, and python-era records/migrations.
 	// They are carried here so full-record rewrites (SaveOrUpdateSignature is a PutItem) round-trip
 	// them instead of silently dropping them; all are omitted when empty, so records written from
-	// freshly built structs are unchanged
+	// freshly built structs are unchanged. Note this strictly holds for string attributes only:
+	// boolean/int attributes stored as false/0 still marshal to attribute-removal on rewrite
+	// (identical to the pre-existing behavior of every write through this struct)
 	ProjectID               string `json:"project_id,omitempty"`
 	ProjectName             string `json:"project_name,omitempty"`
 	ProjectSFID             string `json:"project_sfid,omitempty"`
