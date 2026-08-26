@@ -1522,28 +1522,8 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 
 			// Regenerate and set the signing URL - This will update the signature record
 			log.WithFields(f).Debugf("regenerating signing URL for user: %s", *input.UserID)
-			_, currentTime := utils.CurrentTime()
-			itemSignature := signatures.ItemSignature{
-				SignatureID:                   latestSignature.SignatureID,
-				DateModified:                  currentTime,
-				SignatureReferenceType:        latestSignature.SignatureReferenceType,
-				SignatureEnvelopeID:           latestSignature.SignatureEnvelopeID,
-				SignatureType:                 latestSignature.SignatureType,
-				SignatureReferenceID:          latestSignature.SignatureReferenceID,
-				SignatureProjectID:            latestSignature.ProjectID,
-				SignatureApproved:             latestSignature.SignatureApproved,
-				SignatureSigned:               latestSignature.SignatureSigned,
-				SignatureEmbargoAcked:         true,
-				SignatureReferenceName:        latestSignature.SignatureReferenceName,
-				SignatureReferenceNameLower:   latestSignature.SignatureReferenceNameLower,
-				SignedOn:                      latestSignature.SignedOn,
-				SignatureReturnURL:            string(input.ReturnURL),
-				SignatureReturnURLType:        input.ReturnURLType,
-				SignatureCallbackURL:          callBackURL,
-				SignatureACL:                  []string{acl},
-				SignatureDocumentMajorVersion: majorVersion,
-				SignatureDocumentMinorVersion: minorVersion,
-			}
+			itemSignature := s.regeneratedItemSignature(ctx, latestSignature, string(input.ReturnURL), input.ReturnURLType, callBackURL, []string{acl}, majorVersion, minorVersion)
+			stampUserIdentity(&itemSignature, user)
 			signErr := s.populateSignURL(ctx, &itemSignature, callBackURL, "", "", false, "", "", defaultValues, preferredEmail)
 			if signErr != nil {
 				log.WithFields(f).WithError(err).Warnf("unable to populate sign url for user: %s", *input.UserID)
@@ -1620,6 +1600,7 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 		SignatureACL:                  []string{acl},
 		SignatureReferenceNameLower:   strings.ToLower(getUserName(user)),
 	}
+	stampUserIdentity(&itemSignature, user)
 
 	// 10. Populate sign url
 	log.WithFields(f).Debugf("populating sign url...")
@@ -1675,6 +1656,108 @@ func selfServeSignatureACL(metadata map[string]interface{}, user *v1Models.User)
 	default:
 		return user.LfUsername
 	}
+}
+
+// stampUserIdentity copies the user record's platform identities onto a signature row, filling
+// only attributes the row does not already carry - MyCLAs and the PDF flows read the identity
+// from the signature itself, so relying on the async dynamo-events back-fill alone leaves rows
+// without a "signed as" identity whenever that lambda misses the insert
+func stampUserIdentity(item *signatures.ItemSignature, user *v1Models.User) {
+	if item == nil || user == nil {
+		return
+	}
+	if item.UserGithubUsername == "" && user.GithubUsername != "" {
+		item.UserGithubUsername = user.GithubUsername
+	}
+	if item.UserGithubID == "" && user.GithubID != "" {
+		item.UserGithubID = user.GithubID
+	}
+	if item.UserGitlabUsername == "" && user.GitlabUsername != "" {
+		item.UserGitlabUsername = user.GitlabUsername
+	}
+	if item.UserGitlabID == "" && user.GitlabID != "" {
+		item.UserGitlabID = user.GitlabID
+	}
+	if item.UserLFUsername == "" && user.LfUsername != "" {
+		item.UserLFUsername = user.LfUsername
+	}
+	if item.UserName == "" {
+		if name := getUserName(user); name != "" {
+			item.UserName = name
+		}
+	}
+	if item.UserEmail == "" {
+		if email := bestUserEmail(user); email != "" {
+			item.UserEmail = email
+		}
+	}
+}
+
+// bestUserEmail returns the user's LF email or the first usable address - the same preference the
+// dynamo-events back-fill applies
+func bestUserEmail(user *v1Models.User) string {
+	if user == nil {
+		return ""
+	}
+	if user.LfEmail != "" {
+		return user.LfEmail.String()
+	}
+	for _, email := range user.Emails {
+		if email != "" && !strings.Contains(email, "noreply.github.com") {
+			return email
+		}
+	}
+	return ""
+}
+
+// regeneratedItemSignature rebuilds the signature row backing a regenerated sign URL. The save
+// that follows rewrites the whole record, so it prefers the stored row - keeping every attribute
+// the API model does not carry (identity, DocuSign audit trail, invalidation details), whose loss
+// historically produced ICLAs without a "signed as" identity - and only falls back to the
+// attributes exposed by the API model when the stored row cannot be loaded
+func (s *service) regeneratedItemSignature(ctx context.Context, latestSignature *v1Models.Signature, returnURL, returnURLType, callbackURL string, acl []string, majorVersion, minorVersion int) signatures.ItemSignature {
+	f := logrus.Fields{
+		"functionName":   "sign.regeneratedItemSignature",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"signatureID":    latestSignature.SignatureID,
+	}
+	_, currentTime := utils.CurrentTime()
+	itemSignature := signatures.ItemSignature{
+		SignatureID:                   latestSignature.SignatureID,
+		DateCreated:                   latestSignature.SignatureCreated,
+		DateModified:                  currentTime,
+		SignatureReferenceType:        latestSignature.SignatureReferenceType,
+		SignatureEnvelopeID:           latestSignature.SignatureEnvelopeID,
+		SignatureType:                 latestSignature.SignatureType,
+		SignatureReferenceID:          latestSignature.SignatureReferenceID,
+		SignatureProjectID:            latestSignature.ProjectID,
+		SignatureApproved:             latestSignature.SignatureApproved,
+		SignatureSigned:               latestSignature.SignatureSigned,
+		SignatureEmbargoAcked:         true,
+		SignatureReferenceName:        latestSignature.SignatureReferenceName,
+		SignatureReferenceNameLower:   latestSignature.SignatureReferenceNameLower,
+		SignedOn:                      latestSignature.SignedOn,
+		SignatureReturnURL:            returnURL,
+		SignatureReturnURLType:        returnURLType,
+		SignatureCallbackURL:          callbackURL,
+		SignatureACL:                  acl,
+		SignatureDocumentMajorVersion: majorVersion,
+		SignatureDocumentMinorVersion: minorVersion,
+	}
+	if rawSignature, rawErr := s.signatureService.GetItemSignature(ctx, latestSignature.SignatureID); rawErr != nil {
+		log.WithFields(f).WithError(rawErr).Warnf("unable to load the stored signature record: %s - regenerating from the API model", latestSignature.SignatureID)
+	} else if rawSignature != nil {
+		rawSignature.DateModified = currentTime
+		rawSignature.SignatureReturnURL = returnURL
+		rawSignature.SignatureReturnURLType = returnURLType
+		rawSignature.SignatureCallbackURL = callbackURL
+		rawSignature.SignatureACL = acl
+		rawSignature.SignatureDocumentMajorVersion = majorVersion
+		rawSignature.SignatureDocumentMinorVersion = minorVersion
+		rawSignature.SignatureEmbargoAcked = true
+		itemSignature = *rawSignature
+	}
+	return itemSignature
 }
 
 func getUserName(user *v1Models.User) string {
@@ -2617,28 +2700,8 @@ func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *m
 
 			// Regenerate and set the signing URL - This will update the signature record
 			log.WithFields(f).Debugf("regenerating signing URL for user: %s", *input.UserID)
-			_, currentTime := utils.CurrentTime()
-			itemSignature := signatures.ItemSignature{
-				SignatureID:                   latestSignature.SignatureID,
-				DateModified:                  currentTime,
-				SignatureReferenceType:        latestSignature.SignatureReferenceType,
-				SignatureEnvelopeID:           latestSignature.SignatureEnvelopeID,
-				SignatureType:                 latestSignature.SignatureType,
-				SignatureReferenceID:          latestSignature.SignatureReferenceID,
-				SignatureProjectID:            latestSignature.ProjectID,
-				SignatureApproved:             latestSignature.SignatureApproved,
-				SignatureSigned:               latestSignature.SignatureSigned,
-				SignatureEmbargoAcked:         true,
-				SignatureReferenceName:        latestSignature.SignatureReferenceName,
-				SignatureReferenceNameLower:   latestSignature.SignatureReferenceNameLower,
-				SignedOn:                      latestSignature.SignedOn,
-				SignatureReturnURL:            string(returnURL),
-				SignatureReturnURLType:        input.ReturnURLType,
-				SignatureCallbackURL:          callbackURL,
-				SignatureACL:                  []string{user.LfUsername},
-				SignatureDocumentMajorVersion: majorVersion,
-				SignatureDocumentMinorVersion: minorVersion,
-			}
+			itemSignature := s.regeneratedItemSignature(ctx, latestSignature, string(returnURL), input.ReturnURLType, callbackURL, []string{user.LfUsername}, majorVersion, minorVersion)
+			stampUserIdentity(&itemSignature, user)
 			signErr := s.populateSignURL(ctx, &itemSignature, callbackURL, "", "", false, "", "", defaultValues, preferredEmail)
 			if signErr != nil {
 				log.WithFields(f).WithError(err).Warnf("unable to populate sign url for user: %s", *input.UserID)
@@ -2679,6 +2742,7 @@ func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *m
 		SignatureDocumentMinorVersion: minorVersion,
 		SignatureReferenceNameLower:   strings.ToLower(getUserName(user)),
 	}
+	stampUserIdentity(&itemSignature, user)
 
 	log.WithFields(f).Debugf("populating sign url for user: %s...", *input.UserID)
 

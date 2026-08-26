@@ -107,8 +107,8 @@ func TestGetMyClasSignedIdentity(t *testing.T) {
 	assert.Equal(t, "gerrit", byID["sig-sso"].SignedVia, "LF SSO signings surface as gerrit")
 	assert.Equal(t, "someone", byID["sig-sso"].SignedAs)
 	require.Contains(t, byID, "sig-anonymous", "the identity-less record is still returned")
-	assert.Empty(t, byID["sig-anonymous"].SignedVia, "no identity on the record leaves both fields omitted")
-	assert.Empty(t, byID["sig-anonymous"].SignedAs)
+	assert.Equal(t, "gerrit", byID["sig-anonymous"].SignedVia, "identity-less records fall back to the owning user record")
+	assert.Equal(t, "someone", byID["sig-anonymous"].SignedAs)
 }
 
 func TestGetMyClasFlaggedAndClaManager(t *testing.T) {

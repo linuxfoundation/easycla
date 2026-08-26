@@ -260,6 +260,12 @@ func (s *service) GetMyClas(ctx context.Context, caller *Caller, requested *Iden
 			DocumentMinorVersion: int64(sig.SignatureDocumentMinorVersion),
 		}
 		row.SignedVia, row.SignedAs = signedIdentity(sig)
+		if row.SignedAs == "" {
+			// legacy rows may carry no identity attributes - stamped late by an asynchronous
+			// back-fill and historically dropped again by full-row sign-URL rewrites - so fall
+			// back to the user record the listing resolved the signature through
+			row.SignedVia, row.SignedAs = signedIdentityFromUser(sig, ref.user)
+		}
 		if sig.DateInvalidated != "" {
 			row.InvalidatedAt = utils.FormatTimeString(sig.DateInvalidated)
 		}
@@ -678,6 +684,53 @@ func signedIdentity(sig *signatures.ItemSignature) (string, string) {
 			return models.MyClaSignedViaGerrit, sig.UserEmail
 		}
 		return models.MyClaSignedViaGerrit, sig.UserLFUsername
+	}
+	return "", ""
+}
+
+// signedIdentityFromUser derives the signed via/as from the user record the signature belongs to -
+// the display fallback for rows whose own identity attributes were never stamped at insert or were
+// dropped by legacy full-row sign-URL rewrites. The return URL type recorded on the signature
+// picks the platform when the user record carries identities on several
+func signedIdentityFromUser(sig *signatures.ItemSignature, user *v1Models.User) (string, string) {
+	if user == nil {
+		return "", ""
+	}
+	githubAs := user.GithubUsername
+	if githubAs == "" {
+		githubAs = user.GithubID
+	}
+	gitlabAs := user.GitlabUsername
+	if gitlabAs == "" {
+		gitlabAs = user.GitlabID
+	}
+	gerritAs := ""
+	if user.LfEmail != "" {
+		gerritAs = user.LfEmail.String()
+	} else if user.LfUsername != "" {
+		gerritAs = user.LfUsername
+	}
+	switch strings.ToLower(sig.SignatureReturnURLType) {
+	case models.MyClaSignedViaGithub:
+		if githubAs != "" {
+			return models.MyClaSignedViaGithub, githubAs
+		}
+	case models.MyClaSignedViaGitlab:
+		if gitlabAs != "" {
+			return models.MyClaSignedViaGitlab, gitlabAs
+		}
+	case models.MyClaSignedViaGerrit:
+		if gerritAs != "" {
+			return models.MyClaSignedViaGerrit, gerritAs
+		}
+	}
+	switch {
+	case githubAs != "":
+		return models.MyClaSignedViaGithub, githubAs
+	case gitlabAs != "":
+		return models.MyClaSignedViaGitlab, gitlabAs
+	case gerritAs != "":
+		return models.MyClaSignedViaGerrit, gerritAs
 	}
 	return "", ""
 }

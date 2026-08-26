@@ -4370,6 +4370,19 @@ func (repo repository) AddUsersDetails(ctx context.Context, signatureID string, 
 		}
 	}
 
+	// Only add attributes the record is missing - besides avoiding pointless writes, running from
+	// a Modify stream event would otherwise re-trigger itself forever for users whose record can
+	// never satisfy the caller's emptiness check (for example GitLab-only identities)
+	item, itemErr := repo.GetItemSignature(ctx, signatureID)
+	if itemErr != nil {
+		log.WithFields(f).WithError(itemErr).Warnf("unable to load signature record: %s", signatureID)
+		return itemErr
+	}
+	if item == nil {
+		log.WithFields(f).Warnf("signature record not found: %s", signatureID)
+		return fmt.Errorf("signature not found : %s", signatureID)
+	}
+
 	input := &dynamodb.UpdateItemInput{
 		TableName: aws.String(repo.signatureTableName),
 		Key: map[string]*dynamodb.AttributeValue{
@@ -4378,21 +4391,38 @@ func (repo repository) AddUsersDetails(ctx context.Context, signatureID string, 
 			},
 		},
 	}
+	setGhUsername := userModel.GithubUsername != "" && item.UserGithubUsername == ""
+	setGhID := userModel.GithubID != "" && item.UserGithubID == ""
+	setGlUsername := userModel.GitlabUsername != "" && item.UserGitlabUsername == ""
+	setGlID := userModel.GitlabID != "" && item.UserGitlabID == ""
+	setLfUsername := userModel.LfUsername != "" && item.UserLFUsername == ""
+	setName := userModel.Username != "" && item.UserName == ""
+	setEmail := email != "" && item.UserEmail == ""
+
 	ue := utils.NewDynamoUpdateExpression()
-	ue.AddAttributeName("#gh_username", SignatureUserGitHubUsername, userModel.GithubUsername != "")
-	ue.AddAttributeName("#lf_username", "user_lf_username", userModel.LfUsername != "")
-	ue.AddAttributeName("#name", "user_name", userModel.Username != "")
-	ue.AddAttributeName("#email", "user_email", email != "")
+	ue.AddAttributeName("#gh_username", SignatureUserGitHubUsername, setGhUsername)
+	ue.AddAttributeName("#gh_id", "user_github_id", setGhID)
+	ue.AddAttributeName("#gl_username", "user_gitlab_username", setGlUsername)
+	ue.AddAttributeName("#gl_id", "user_gitlab_id", setGlID)
+	ue.AddAttributeName("#lf_username", "user_lf_username", setLfUsername)
+	ue.AddAttributeName("#name", "user_name", setName)
+	ue.AddAttributeName("#email", "user_email", setEmail)
 
-	ue.AddAttributeValue(":gh_username", &dynamodb.AttributeValue{S: aws.String(userModel.GithubUsername)}, userModel.GithubUsername != "")
-	ue.AddAttributeValue(":lf_username", &dynamodb.AttributeValue{S: aws.String(userModel.LfUsername)}, userModel.LfUsername != "")
-	ue.AddAttributeValue(":name", &dynamodb.AttributeValue{S: aws.String(userModel.Username)}, userModel.Username != "")
-	ue.AddAttributeValue(":email", &dynamodb.AttributeValue{S: aws.String(email)}, email != "")
+	ue.AddAttributeValue(":gh_username", &dynamodb.AttributeValue{S: aws.String(userModel.GithubUsername)}, setGhUsername)
+	ue.AddAttributeValue(":gh_id", &dynamodb.AttributeValue{S: aws.String(userModel.GithubID)}, setGhID)
+	ue.AddAttributeValue(":gl_username", &dynamodb.AttributeValue{S: aws.String(userModel.GitlabUsername)}, setGlUsername)
+	ue.AddAttributeValue(":gl_id", &dynamodb.AttributeValue{S: aws.String(userModel.GitlabID)}, setGlID)
+	ue.AddAttributeValue(":lf_username", &dynamodb.AttributeValue{S: aws.String(userModel.LfUsername)}, setLfUsername)
+	ue.AddAttributeValue(":name", &dynamodb.AttributeValue{S: aws.String(userModel.Username)}, setName)
+	ue.AddAttributeValue(":email", &dynamodb.AttributeValue{S: aws.String(email)}, setEmail)
 
-	ue.AddUpdateExpression("#gh_username = :gh_username", userModel.GithubUsername != "")
-	ue.AddUpdateExpression("#lf_username = :lf_username", userModel.LfUsername != "")
-	ue.AddUpdateExpression("#name = :name", userModel.Username != "")
-	ue.AddUpdateExpression("#email = :email", email != "")
+	ue.AddUpdateExpression("#gh_username = :gh_username", setGhUsername)
+	ue.AddUpdateExpression("#gh_id = :gh_id", setGhID)
+	ue.AddUpdateExpression("#gl_username = :gl_username", setGlUsername)
+	ue.AddUpdateExpression("#gl_id = :gl_id", setGlID)
+	ue.AddUpdateExpression("#lf_username = :lf_username", setLfUsername)
+	ue.AddUpdateExpression("#name = :name", setName)
+	ue.AddUpdateExpression("#email = :email", setEmail)
 	if ue.Expression == "" {
 		// nothing to update
 		log.WithFields(f).Debug("no fields to update")

@@ -42,6 +42,7 @@ import (
 // SignatureService interface
 type SignatureService interface {
 	GetSignature(ctx context.Context, signatureID string) (*models.Signature, error)
+	GetItemSignature(ctx context.Context, signatureID string) (*ItemSignature, error)
 	GetIndividualSignature(ctx context.Context, claGroupID, userID string, approved, signed *bool) (*models.Signature, error)
 	GetIndividualSignatures(ctx context.Context, claGroupID, userID string, approved, signed *bool) ([]*models.Signature, error)
 	GetCorporateSignature(ctx context.Context, claGroupID, companyID string, approved, signed *bool) (*models.Signature, error)
@@ -130,6 +131,12 @@ func NewService(repo SignatureRepository, companyService company.IService, users
 // GetSignature returns the signature associated with the specified signature ID
 func (s service) GetSignature(ctx context.Context, signatureID string) (*models.Signature, error) {
 	return s.repo.GetSignature(ctx, signatureID)
+}
+
+// GetItemSignature returns the raw database row for the specified signature ID - used by flows
+// that must rewrite a full record without dropping attributes the API model does not carry
+func (s service) GetItemSignature(ctx context.Context, signatureID string) (*ItemSignature, error) {
+	return s.repo.GetItemSignature(ctx, signatureID)
 }
 
 // SaveOrUpdateSignature saves or updates the specified signature
