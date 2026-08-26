@@ -104,7 +104,8 @@ func TestRegeneratedItemSignaturePreservesStoredRow(t *testing.T) {
 	mockSig.EXPECT().GetItemSignature(gomock.Any(), "sig-1").Return(stored, nil)
 
 	latest := &v1Models.Signature{SignatureID: "sig-1", SignatureCreated: "2024-01-01T00:00:00Z"}
-	item := svc.regeneratedItemSignature(context.Background(), latest, "https://new.example.org", "Gerrit", "https://new.example.org/callback", []string{"new-acl"}, 2, 1)
+	item, err := svc.regeneratedItemSignature(context.Background(), latest, "https://new.example.org", "Gerrit", "https://new.example.org/callback", []string{"new-acl"}, 2, 1)
+	assert.NoError(t, err)
 
 	// preserved from the stored row
 	assert.Equal(t, "2024-01-01T00:00:00Z", item.DateCreated)
@@ -129,7 +130,7 @@ func TestRegeneratedItemSignaturePreservesStoredRow(t *testing.T) {
 	assert.NotEqual(t, "2024-02-01T00:00:00Z", item.DateModified)
 }
 
-func TestRegeneratedItemSignatureFallsBackWhenRowUnavailable(t *testing.T) {
+func TestRegeneratedItemSignatureFallsBackWhenRowNotFound(t *testing.T) {
 	latest := &v1Models.Signature{
 		SignatureID:                   "sig-1",
 		SignatureCreated:              "2024-01-01T00:00:00Z",
@@ -146,38 +147,46 @@ func TestRegeneratedItemSignatureFallsBackWhenRowUnavailable(t *testing.T) {
 		SignatureDocumentMajorVersion: "1",
 		SignatureDocumentMinorVersion: "0",
 	}
-	for name, result := range map[string]struct {
-		row *signatures.ItemSignature
-		err error
-	}{
-		"load error":    {nil, errors.New("dynamo down")},
-		"row not found": {nil, nil},
-	} {
-		t.Run(name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
-			mockSig := mock_v1_signatures.NewMockSignatureService(ctrl)
-			mockSig.EXPECT().GetItemSignature(gomock.Any(), "sig-1").Return(result.row, result.err)
-			svc := &service{signatureService: mockSig}
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockSig := mock_v1_signatures.NewMockSignatureService(ctrl)
+	// a genuine not-found (nil, nil) is the only case allowed to rebuild from the API model
+	mockSig.EXPECT().GetItemSignature(gomock.Any(), "sig-1").Return(nil, nil)
+	svc := &service{signatureService: mockSig}
 
-			item := svc.regeneratedItemSignature(context.Background(), latest, "https://new.example.org", "Gerrit", "https://new.example.org/callback", []string{"new-acl"}, 2, 1)
+	item, err := svc.regeneratedItemSignature(context.Background(), latest, "https://new.example.org", "Gerrit", "https://new.example.org/callback", []string{"new-acl"}, 2, 1)
+	assert.NoError(t, err)
 
-			// reconstructed from the API model, incl. the previously dropped creation date
-			assert.Equal(t, "sig-1", item.SignatureID)
-			assert.Equal(t, "2024-01-01T00:00:00Z", item.DateCreated)
-			assert.Equal(t, "user", item.SignatureReferenceType)
-			assert.Equal(t, "cla", item.SignatureType)
-			assert.Equal(t, "user-1", item.SignatureReferenceID)
-			assert.Equal(t, "cla-group-1", item.SignatureProjectID)
-			assert.True(t, item.SignatureApproved)
-			assert.True(t, item.SignatureSigned)
-			assert.True(t, item.SignatureEmbargoAcked)
-			assert.Equal(t, "envelope-1", item.SignatureEnvelopeID)
-			assert.Equal(t, "https://new.example.org", item.SignatureReturnURL)
-			assert.Equal(t, "Gerrit", item.SignatureReturnURLType)
-			assert.Equal(t, []string{"new-acl"}, item.SignatureACL)
-			assert.Equal(t, 2, item.SignatureDocumentMajorVersion)
-			assert.Equal(t, 1, item.SignatureDocumentMinorVersion)
-		})
-	}
+	// reconstructed from the API model, incl. the previously dropped creation date
+	assert.Equal(t, "sig-1", item.SignatureID)
+	assert.Equal(t, "2024-01-01T00:00:00Z", item.DateCreated)
+	assert.Equal(t, "user", item.SignatureReferenceType)
+	assert.Equal(t, "cla", item.SignatureType)
+	assert.Equal(t, "user-1", item.SignatureReferenceID)
+	assert.Equal(t, "cla-group-1", item.SignatureProjectID)
+	assert.True(t, item.SignatureApproved)
+	assert.True(t, item.SignatureSigned)
+	assert.True(t, item.SignatureEmbargoAcked)
+	assert.Equal(t, "envelope-1", item.SignatureEnvelopeID)
+	assert.Equal(t, "https://new.example.org", item.SignatureReturnURL)
+	assert.Equal(t, "Gerrit", item.SignatureReturnURLType)
+	assert.Equal(t, []string{"new-acl"}, item.SignatureACL)
+	assert.Equal(t, 2, item.SignatureDocumentMajorVersion)
+	assert.Equal(t, 1, item.SignatureDocumentMinorVersion)
+}
+
+// a transient read error must abort the regenerate instead of rewriting the row from the lossy
+// API model - the caller fails the request and the user simply retries
+func TestRegeneratedItemSignaturePropagatesLoadError(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockSig := mock_v1_signatures.NewMockSignatureService(ctrl)
+	loadErr := errors.New("dynamo down")
+	mockSig.EXPECT().GetItemSignature(gomock.Any(), "sig-1").Return(nil, loadErr)
+	svc := &service{signatureService: mockSig}
+
+	latest := &v1Models.Signature{SignatureID: "sig-1", SignatureCreated: "2024-01-01T00:00:00Z"}
+	item, err := svc.regeneratedItemSignature(context.Background(), latest, "https://new.example.org", "Gerrit", "https://new.example.org/callback", []string{"new-acl"}, 2, 1)
+	assert.ErrorIs(t, err, loadErr)
+	assert.Equal(t, signatures.ItemSignature{}, item)
 }

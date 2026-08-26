@@ -1522,20 +1522,7 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 
 			// Regenerate and set the signing URL - This will update the signature record
 			log.WithFields(f).Debugf("regenerating signing URL for user: %s", *input.UserID)
-			itemSignature := s.regeneratedItemSignature(ctx, latestSignature, string(input.ReturnURL), input.ReturnURLType, callBackURL, []string{acl}, majorVersion, minorVersion)
-			stampUserIdentity(&itemSignature, user)
-			signErr := s.populateSignURL(ctx, &itemSignature, callBackURL, "", "", false, "", "", defaultValues, preferredEmail)
-			if signErr != nil {
-				log.WithFields(f).WithError(err).Warnf("unable to populate sign url for user: %s", *input.UserID)
-				return nil, signErr
-			}
-
-			return &models.IndividualSignatureOutput{
-				SignURL:     itemSignature.SignatureSignURL,
-				SignatureID: latestSignature.SignatureID,
-				UserID:      latestSignature.SignatureReferenceID,
-				ProjectID:   *input.ProjectID,
-			}, nil
+			return s.regenerateSignURL(ctx, f, latestSignature, user, string(input.ReturnURL), input.ReturnURLType, callBackURL, []string{acl}, majorVersion, minorVersion, defaultValues, preferredEmail, *input.ProjectID)
 		} else {
 			log.WithFields(f).Debugf("user does NOT have a signature with this project : %s", *input.ProjectID)
 		}
@@ -1696,9 +1683,10 @@ func stampUserIdentity(item *signatures.ItemSignature, user *v1Models.User) {
 // regeneratedItemSignature rebuilds the signature row backing a regenerated sign URL. The save
 // that follows rewrites the whole record, so it prefers the stored row - keeping every attribute
 // the API model does not carry (identity, DocuSign audit trail, invalidation details), whose loss
-// historically produced ICLAs without a "signed as" identity - and only falls back to the
-// attributes exposed by the API model when the stored row cannot be loaded
-func (s *service) regeneratedItemSignature(ctx context.Context, latestSignature *v1Models.Signature, returnURL, returnURLType, callbackURL string, acl []string, majorVersion, minorVersion int) signatures.ItemSignature {
+// historically produced ICLAs without a "signed as" identity. A transient read error is
+// propagated (failing the request beats silently corrupting the stored row); only when the row
+// genuinely does not exist does it fall back to the attributes exposed by the API model
+func (s *service) regeneratedItemSignature(ctx context.Context, latestSignature *v1Models.Signature, returnURL, returnURLType, callbackURL string, acl []string, majorVersion, minorVersion int) (signatures.ItemSignature, error) {
 	f := logrus.Fields{
 		"functionName":   "sign.regeneratedItemSignature",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -1728,7 +1716,8 @@ func (s *service) regeneratedItemSignature(ctx context.Context, latestSignature 
 		SignatureDocumentMinorVersion: minorVersion,
 	}
 	if rawSignature, rawErr := s.signatureService.GetItemSignature(ctx, latestSignature.SignatureID); rawErr != nil {
-		log.WithFields(f).WithError(rawErr).Warnf("unable to load the stored signature record: %s - regenerating from the API model", latestSignature.SignatureID)
+		log.WithFields(f).WithError(rawErr).Warnf("unable to load the stored signature record: %s - aborting regeneration to avoid a lossy rewrite", latestSignature.SignatureID)
+		return signatures.ItemSignature{}, rawErr
 	} else if rawSignature == nil {
 		log.WithFields(f).Warnf("stored signature record not found: %s - regenerating from the API model (lossy rewrite)", latestSignature.SignatureID)
 	} else {
@@ -1742,7 +1731,31 @@ func (s *service) regeneratedItemSignature(ctx context.Context, latestSignature 
 		rawSignature.SignatureEmbargoAcked = true
 		itemSignature = *rawSignature
 	}
-	return itemSignature
+	return itemSignature, nil
+}
+
+// regenerateSignURL is the shared regenerate flow for GitHub/GitLab and Gerrit ICLAs when the
+// user already holds a signature for the current document major version: rebuild the stored row
+// losslessly, re-stamp the signer identity, request a fresh DocuSign sign URL and build the API
+// output. A row-load error aborts the request rather than risking a lossy rewrite
+func (s *service) regenerateSignURL(ctx context.Context, f logrus.Fields, latestSignature *v1Models.Signature, user *v1Models.User, returnURL, returnURLType, callbackURL string, acl []string, majorVersion, minorVersion int, defaultValues map[string]interface{}, preferredEmail, projectID string) (*models.IndividualSignatureOutput, error) {
+	itemSignature, regenErr := s.regeneratedItemSignature(ctx, latestSignature, returnURL, returnURLType, callbackURL, acl, majorVersion, minorVersion)
+	if regenErr != nil {
+		log.WithFields(f).WithError(regenErr).Warnf("unable to regenerate the signature record: %s", latestSignature.SignatureID)
+		return nil, regenErr
+	}
+	stampUserIdentity(&itemSignature, user)
+	if signErr := s.populateSignURL(ctx, &itemSignature, callbackURL, "", "", false, "", "", defaultValues, preferredEmail); signErr != nil {
+		log.WithFields(f).WithError(signErr).Warnf("unable to populate sign url for signature: %s", latestSignature.SignatureID)
+		return nil, signErr
+	}
+
+	return &models.IndividualSignatureOutput{
+		SignURL:     itemSignature.SignatureSignURL,
+		SignatureID: latestSignature.SignatureID,
+		UserID:      latestSignature.SignatureReferenceID,
+		ProjectID:   projectID,
+	}, nil
 }
 
 func getUserName(user *v1Models.User) string {
@@ -2685,20 +2698,7 @@ func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *m
 
 			// Regenerate and set the signing URL - This will update the signature record
 			log.WithFields(f).Debugf("regenerating signing URL for user: %s", *input.UserID)
-			itemSignature := s.regeneratedItemSignature(ctx, latestSignature, string(returnURL), input.ReturnURLType, callbackURL, []string{user.LfUsername}, majorVersion, minorVersion)
-			stampUserIdentity(&itemSignature, user)
-			signErr := s.populateSignURL(ctx, &itemSignature, callbackURL, "", "", false, "", "", defaultValues, preferredEmail)
-			if signErr != nil {
-				log.WithFields(f).WithError(err).Warnf("unable to populate sign url for user: %s", *input.UserID)
-				return nil, signErr
-			}
-
-			return &models.IndividualSignatureOutput{
-				SignURL:     itemSignature.SignatureSignURL,
-				SignatureID: latestSignature.SignatureID,
-				UserID:      latestSignature.SignatureReferenceID,
-				ProjectID:   *input.ProjectID,
-			}, nil
+			return s.regenerateSignURL(ctx, f, latestSignature, user, string(returnURL), input.ReturnURLType, callbackURL, []string{user.LfUsername}, majorVersion, minorVersion, defaultValues, preferredEmail, *input.ProjectID)
 		} else {
 			log.WithFields(f).Debugf("user does NOT have a signature with this project : %s", *input.ProjectID)
 		}
