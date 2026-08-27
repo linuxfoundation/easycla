@@ -364,6 +364,36 @@ func TestService_InvalidateICLA(t *testing.T) {
 	}
 }
 
+func TestService_InvalidateICLANoActiveICLA(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	awsSession, err := ini.GetAWSSession()
+	if err != nil {
+		assert.Fail(t, "unable to create AWS session")
+	}
+
+	ctx := context.Background()
+	approved, signed := true, true
+
+	// The repository contract returns (nil, nil) when no approved+signed ICLA matches
+	// (e.g. double-invalidate); the service must error out instead of panicking.
+	mockSignatureService := mock_v1_signatures.NewMockSignatureService(ctrl)
+	mockSignatureService.EXPECT().GetIndividualSignature(ctx, "cla-group-1", "user-1", &approved, &signed).
+		Return(nil, nil)
+
+	service := NewService(awsSession, "", nil, nil, mockSignatureService, nil, nil, nil, nil)
+
+	eventArgs := &events.LogEventArgs{
+		EventType: events.InvalidatedSignature,
+		EventData: &events.SignatureProjectInvalidatedEventData{InvalidatedCount: 1},
+	}
+	err = service.InvalidateICLA(ctx, "cla-group-1", "user-1", &auth.User{UserName: "admin-user"}, nil, eventArgs, nil)
+	if assert.Error(t, err) {
+		assert.Contains(t, err.Error(), "no active ICLA signature found for user user-1 in CLA group cla-group-1")
+	}
+}
+
 func TestService_InvalidateICLAWithoutBody(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
