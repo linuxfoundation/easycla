@@ -367,6 +367,12 @@ func (s *Service) InvalidateICLA(ctx context.Context, claGroupID string, userID 
 		log.WithFields(f).Debug("unable to get individual signature")
 		return iclaErr
 	}
+	// The lookup returns (nil, nil) when no approved+signed ICLA matches - e.g. it was already
+	// invalidated. Guard it so we fail with a 400 instead of a nil-pointer panic (502).
+	if icla == nil {
+		log.WithFields(f).Debug("no active ICLA signature found for user in CLA group")
+		return fmt.Errorf("no active ICLA signature found for user %s in CLA group %s", userID, claGroupID)
+	}
 
 	// Get cla Group
 	log.WithFields(f).Debug("getting clGroup...")
