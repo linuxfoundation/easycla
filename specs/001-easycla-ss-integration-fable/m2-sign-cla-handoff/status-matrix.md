@@ -1,7 +1,7 @@
 # M2 Status Matrix — My CLAs row status
 
 **Parent spec**: FR-010 in `spec.md`, which lands with [easycla#5144](https://github.com/linuxfoundation/easycla/pull/5144) — **not yet on `dev`**, so it sits beside this file only once that PR merges ([read it there](https://github.com/linuxfoundation/easycla/blob/docs/easycla-ss-m2-speckit/specs/001-easycla-ss-integration-fable/m2-sign-cla-handoff/spec.md) meanwhile)
-**Last verified against shipped code**: 2026-08-25
+**Last verified against shipped code**: 2026-08-27
 
 Single source of truth for the status a My CLAs row shows. The status model is **shipped and settled** — the backend status fields (`easycla` `dev`, including [easycla#5156](https://github.com/linuxfoundation/easycla/pull/5156)) and the frontend rendering ([lfx-self-serve#1440](https://github.com/linuxfoundation/lfx-self-serve/pull/1440), merged 2026-08-21). [Not yet implemented](#not-yet-implemented) lists everything a contributor cannot do or see today, so nobody builds to it by mistake.
 
@@ -12,15 +12,16 @@ Single source of truth for the status a My CLAs row shows. The status model is *
 | **Valid** | ICLA + ECLA | Signed and in force. For an ECLA, the employer's agreement covers the contributor. | no | ICLA: download the PDF. ECLA: Contact CLA Manager, Request Removal |
 | **Needs attention** | ECLA only | The agreement is intact, but a completed check proved it does **not** cover the contributor — they are no longer on the employer's approved list. | no | Request approval, Contact CLA Manager, Request Removal |
 | **Invalidated** | ICLA + ECLA | The agreement itself was made void — by a CLA manager removing the contributor from an approved list, a project admin invalidating an ICLA, or a CLA group being deleted. In the data this is `signature_approved = false`. | yes — *Invalidated · date* | ICLA: nothing. ECLA: Request Removal |
-| **Revoked** | ECLA only | The employer is under a sanctions block, so the agreement cannot be relied on. Set by the system, never by a person in the product. | yes — *Revoked · date* | Nothing — the row is read-only |
+| **Revoked** | ECLA only | The employer is under a sanctions block, so the agreement cannot be relied on. Set by the system, never by a person in the product. | not yet — see the date rules below | Nothing — the row is read-only |
 | **—** | ECLA only | Coverage could not be confirmed. Shown as a plain dash, **not** a labelled pill, because this is an absence of information rather than a verdict. | no | Request Removal |
 
-Three rules that hold across the table:
+Rules that hold across the table:
 
 - **Unsigned agreements are never shown.** A row only exists once the contributor has signed — in the data, `signature_signed = true`. Records with `signature_signed = false` are filtered out before any status is worked out, so they have no status at all rather than a hidden one.
 - **Invalidated and Revoked must never share wording.** They are different situations: Revoked is about the employer being sanctioned, Invalidated is about the agreement being voided. Conflating them would tell a contributor their company is sanctioned when it is not.
 - **"Canceled" and "Invalid" are banned copy.** "Invalidated" is the approved term.
-- **A date is shown only when a real one was recorded.** Invalidated reads its date from `invalidatedAt`, Revoked from `flaggedAt`. Neither is ever invented: agreements invalidated, and employers sanctioned, before those fields existed have no date, and their rows show the status on its own. A wrong date is worse than none.
+- **A date is shown only when a real one was recorded.** Invalidated reads its date from `invalidatedAt` — the stored `date_invalidated`, absent on records invalidated before the field existed, so those rows show the status on its own. A wrong date is worse than none.
+- **Revoked cannot be dated from `flaggedAt` as it stands.** `flaggedAt` is stamped with the current time the first time a live screen flags an employer (`persistLiveSanction`), so it means *when EasyCLA first noticed*, not when the employer was sanctioned. An employer already on a sanctions list before that code shipped gets the date of the first screen after deploy, and nothing on the wire distinguishes that from a genuine one. Presenting it as *Revoked · date* would state a revocation date the system does not hold. Either relabel the sub-line to what the value means, or leave Revoked undated — a product call, not an implementation detail.
 
 ### Why Invalidated never names who did it
 
@@ -84,9 +85,7 @@ Everything above describes the intended behavior. These parts are not live for a
 
 | Gap | What the contributor sees today | Backend status |
 |---|---|---|
-| **Dates are not displayed** | Invalidated and Revoked render without a date, even where one was recorded. | Done — `invalidatedAt` and `flaggedAt` are on every row ([easycla#5156](https://github.com/linuxfoundation/easycla/pull/5156)). The console's row model carries neither field. |
-| **Contact CLA Manager does not send** | The contributor picks managers, writes a message, clicks Send — and is told *"Message not sent"*. | Done — `requestType: contact` delivers a message-only email that states no change was requested. The console still treats contact as a no-op. |
-| **Contact CLA Manager is missing on Valid rows** | It appears only on Needs attention, so a contributor with a working agreement has no way to reach their manager. | Done — the gate is frontend-only (`canContactClaManager`), which today requires Needs attention. |
+| **The Invalidated date is not displayed** | Invalidated renders without a date, even where one was recorded. | Done — `invalidatedAt` is on the row ([easycla#5156](https://github.com/linuxfoundation/easycla/pull/5156)); the console's row model does not carry it. Revoked is a separate case and is **not** waiting on the frontend — see the date rules above. |
 
 **Still open:**
 
@@ -94,7 +93,7 @@ Everything above describes the intended behavior. These parts are not live for a
 |---|---|---|
 | **GitLab approved-list removals do not invalidate** | A contributor removed from a GitLab approved list keeps a covered-looking row instead of Invalidated. GitLab group membership cannot be checked without per-group tokens, so the row stays unevaluable. | needs filing |
 | **"No active corporate agreement" is not distinguished** | It shows as "—" alongside genuine check failures, so a contributor cannot tell a definite problem from a temporary one. It should be **Needs attention** with its own explanation, since the remedy is for the company to sign. | later change |
-| **Invalidated offers no way forward** | The contributor sees the status with no suggested next step. The cause is not recorded, so no single contact would be right for every case. Signing a replacement ICLA is now correctly blocked, so any guidance must not imply otherwise. | open product question |
+| **Invalidated offers no way forward** | The contributor sees the status with no suggested next step. The cause is not recorded, so no single contact would be right for every case. Signing a replacement ICLA is **not** blocked yet, so guidance must not point the contributor back at signing — a fresh ICLA would silently undo a deliberate invalidation. | open product question; the block is [lfx-self-serve#1859](https://github.com/linuxfoundation/lfx-self-serve/issues/1859) |
 | **`Superseded` is unreachable** | Nothing can produce it — the version a contributor signed is never compared against the current one. Document-version staleness is not handled at all. | later change |
 
 ## Related tickets
