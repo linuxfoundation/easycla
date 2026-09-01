@@ -50,7 +50,8 @@ func TestAuth0UserIdentities(t *testing.T) {
 		`{"identities":[
 			{"provider":"auth0","user_id":"someone"},
 			{"provider":"Github","user_id":30514950,"profileData":{"nickname":"ah-med"}},
-			{"provider":"gitlab","user_id":"777","profileData":{"nickname":"someone-gl"}}
+			{"provider":"gitlab","user_id":"777","profileData":{"nickname":"someone-gl"}},
+			{"provider":"bitbucket","user_id":null,"profileData":{"nickname":"someone-bb"}}
 		]}`)
 	svc := NewAuth0IdentityService(server.URL+"/oauth/token", "id", "secret")
 	require.NotNil(t, svc)
@@ -61,6 +62,7 @@ func TestAuth0UserIdentities(t *testing.T) {
 		{Provider: "auth0", UserID: "someone", Username: ""},
 		{Provider: "github", UserID: "30514950", Username: "ah-med"},
 		{Provider: "gitlab", UserID: "777", Username: "someone-gl"},
+		{Provider: "bitbucket", UserID: "", Username: "someone-bb"},
 	}, identities)
 
 	_, err = svc.UserIdentities(context.Background(), "someone")
@@ -90,4 +92,20 @@ func TestAuth0UserIdentitiesError(t *testing.T) {
 	_, err := svc.UserIdentities(context.Background(), "someone")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "403")
+}
+
+func TestAuth0TokenError(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/oauth/token", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":"access_denied","error_description":"client-grant missing"}`)) // nolint:errcheck
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	svc := NewAuth0IdentityService(server.URL+"/oauth/token", "id", "secret")
+
+	_, err := svc.UserIdentities(context.Background(), "someone")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "403")
+	assert.Contains(t, err.Error(), "client-grant missing")
 }

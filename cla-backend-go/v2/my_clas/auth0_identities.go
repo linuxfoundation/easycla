@@ -102,9 +102,13 @@ func (c *auth0Client) UserIdentities(ctx context.Context, lfUsername string) ([]
 	}
 	identities := make([]Auth0Identity, 0, len(payload.Identities))
 	for _, identity := range payload.Identities {
+		userID := strings.Trim(string(identity.UserID), `"`)
+		if userID == "null" {
+			userID = ""
+		}
 		identities = append(identities, Auth0Identity{
 			Provider: strings.ToLower(strings.TrimSpace(identity.Provider)),
-			UserID:   strings.Trim(string(identity.UserID), `"`),
+			UserID:   userID,
 			Username: identity.ProfileData.Nickname,
 		})
 	}
@@ -137,7 +141,8 @@ func (c *auth0Client) getToken(ctx context.Context) (string, error) {
 	}
 	defer resp.Body.Close() // nolint:errcheck
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("auth0 token request returned status %d", resp.StatusCode)
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512)) // nolint:errcheck
+		return "", fmt.Errorf("auth0 token request returned status %d: %s", resp.StatusCode, string(body))
 	}
 	var tokenResponse struct {
 		AccessToken string `json:"access_token"`
