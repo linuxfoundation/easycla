@@ -3424,7 +3424,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		// if email removal update signature approvals
 		if params.RemoveEmailApprovalList != nil {
 			repo.updateApprovalTable(ctx, params.RemoveEmailApprovalList, utils.EmailApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, false)
-			log.WithFields(f).Debugf("removing email: %+v the approval list", params.RemoveEmailApprovalList)
+			log.WithFields(f).Debugf("removing email: %+v from the Approved List", params.RemoveEmailApprovalList)
 			var wg sync.WaitGroup
 			wg.Add(len(params.RemoveEmailApprovalList))
 			approvalList.Criteria = utils.EmailCriteria
@@ -3698,7 +3698,11 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 
 						// Send Email
 						if len(invalidatedICLAs) > 0 || len(invalidatedECLAs) > 0 {
-							repo.sendEmail(ctx, getBestEmail(claUser), &entryApprovalList, invalidatedICLAs, invalidatedECLAs)
+							if recipient := getBestEmail(claUser); recipient != "" {
+								repo.sendEmail(ctx, recipient, &entryApprovalList, invalidatedICLAs, invalidatedECLAs)
+							} else {
+								log.WithFields(f).Warnf("no usable email for invalidated user - skipping notification")
+							}
 						}
 
 					}(ghUsername)
@@ -3872,7 +3876,11 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 
 						// Send Email
 						if len(invalidatedICLAs) > 0 || len(invalidatedECLAs) > 0 {
-							repo.sendEmail(ctx, getBestEmail(claUser), &entryApprovalList, invalidatedICLAs, invalidatedECLAs)
+							if recipient := getBestEmail(claUser); recipient != "" {
+								repo.sendEmail(ctx, recipient, &entryApprovalList, invalidatedICLAs, invalidatedECLAs)
+							} else {
+								log.WithFields(f).Warnf("no usable email for invalidated user - skipping notification")
+							}
 						}
 
 					}(ghUsername)

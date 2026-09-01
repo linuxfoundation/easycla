@@ -94,9 +94,11 @@ func (f *fakePlatform) ListUserIdentities(_ context.Context, _ string) ([]*platf
 type fakeAuth0 struct {
 	identities []Auth0Identity
 	err        error
+	calls      int
 }
 
 func (f *fakeAuth0) UserIdentities(_ context.Context, _ string) ([]Auth0Identity, error) {
+	f.calls++
 	return f.identities, f.err
 }
 
@@ -314,6 +316,31 @@ func TestAuthorizeIdentityViaAuth0(t *testing.T) {
 	assert.Equal(t, []int64{777}, allowed.GitlabIDs)
 	assert.Equal(t, []string{"someone-gl", "Someone-GL"}, allowed.GitlabUsernames)
 	assert.Equal(t, []string{"githubId:99"}, skipped)
+}
+
+func TestAuthorizeIdentitySelfRecordShortCircuit(t *testing.T) {
+	repo := &fakeRepo{byLFUsername: map[string][]*v1Models.User{"someone": {
+		{UserID: "user-a", LfUsername: "someone", Emails: []string{"someone@example.org"}, GithubID: "12345", GithubUsername: "Octocat", GitlabUsername: "octolab"},
+	}}}
+	platform := &fakePlatform{}
+	auth0 := &fakeAuth0{}
+	svc := newTestService(repo, platform, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+	svc.auth0Identities = auth0
+
+	allowed, skipped, err := svc.AuthorizeIdentity(context.Background(), "someone", false, &Identity{
+		Emails:          []string{"someone@example.org"},
+		GithubIDs:       []int64{12345},
+		GithubUsernames: []string{"octocat"},
+		GitlabUsernames: []string{"OCTOLAB"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"someone@example.org"}, allowed.Emails)
+	assert.Equal(t, []int64{12345}, allowed.GithubIDs)
+	assert.Equal(t, []string{"Octocat", "octocat"}, allowed.GithubUsernames)
+	assert.Equal(t, []string{"octolab", "OCTOLAB"}, allowed.GitlabUsernames)
+	assert.Empty(t, skipped)
+	assert.Zero(t, auth0.calls, "self-record hits must not trigger the Auth0 lookup")
+	assert.Zero(t, platform.lookups, "self-record hits must not trigger the user-service lookup")
 }
 
 func TestAuthorizeIdentityAuth0Failure(t *testing.T) {

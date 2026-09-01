@@ -950,8 +950,10 @@ func (s *service) authorizeIdentity(ctx context.Context, currentUsername string,
 		return func(username string) []string {
 			key := strings.ToLower(username)
 			variants := append([]string{}, selfUsernames[source][key]...)
-			variants = append(variants, platformIdentities().usernames[source][key]...)
-			return variants
+			if len(variants) > 0 {
+				return variants
+			}
+			return append(variants, platformIdentities().usernames[source][key]...)
 		}
 	}
 	idAllowed := func(selfIDs map[string]bool, source string) func(int64) bool {
@@ -1039,16 +1041,8 @@ func appendAllowedUsernames(values []string, param string, canon func(string) []
 	}
 }
 
-// loadPlatformIdentities collects the emails and per-source canonical usernames connected to the
-// LF account - a lookup failure yields an empty set, so affected keys are skipped, never allowed
-func (s *service) loadPlatformIdentities(ctx context.Context, lfUsername string) *platformIdentitySet {
-	f := logrus.Fields{
-		"functionName":   "v2.my_clas.service.loadPlatformIdentities",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"lfUsername":     lfUsername,
-	}
-
-	set := &platformIdentitySet{
+func newPlatformIdentitySet() *platformIdentitySet {
+	return &platformIdentitySet{
 		emails: make(map[string]bool),
 		usernames: map[string]map[string][]string{
 			identitySourceGithub: {},
@@ -1060,17 +1054,65 @@ func (s *service) loadPlatformIdentities(ctx context.Context, lfUsername string)
 			identitySourceGitlab: {},
 		},
 	}
+}
 
-	s.addAuth0Identities(ctx, lfUsername, set)
+func (set *platformIdentitySet) merge(other *platformIdentitySet) {
+	for email := range other.emails {
+		set.emails[email] = true
+	}
+	for source, canon := range other.usernames {
+		for _, variants := range canon {
+			for _, variant := range variants {
+				addCanonical(set.usernames[source], variant)
+			}
+		}
+	}
+	for source, ids := range other.ids {
+		for id := range ids {
+			set.ids[source][id] = true
+		}
+	}
+}
+
+// loadPlatformIdentities collects the emails and per-source canonical usernames connected to the
+// LF account, fetching the Auth0 and user-service sources concurrently - a lookup failure yields
+// an empty set, so affected keys are skipped, never allowed
+func (s *service) loadPlatformIdentities(ctx context.Context, lfUsername string) *platformIdentitySet {
+	auth0Set := newPlatformIdentitySet()
+	userServiceSet := newPlatformIdentitySet()
+
+	var eg errgroup.Group
+	eg.Go(func() error {
+		s.addAuth0Identities(ctx, lfUsername, auth0Set)
+		return nil
+	})
+	eg.Go(func() error {
+		s.addUserServiceIdentities(ctx, lfUsername, userServiceSet)
+		return nil
+	})
+	_ = eg.Wait() // nolint:errcheck
+
+	auth0Set.merge(userServiceSet)
+	return auth0Set
+}
+
+// addUserServiceIdentities merges the emails and connected identities from the platform
+// user-service into the set
+func (s *service) addUserServiceIdentities(ctx context.Context, lfUsername string, set *platformIdentitySet) {
+	f := logrus.Fields{
+		"functionName":   "v2.my_clas.service.addUserServiceIdentities",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"lfUsername":     lfUsername,
+	}
 
 	if s.platformUsersService == nil {
-		return set
+		return
 	}
 
 	platformUser, err := s.platformUsersService.GetUserByUsernameContext(ctx, lfUsername)
 	if err != nil || platformUser == nil {
 		log.WithFields(f).WithError(err).Warn("unable to lookup the LF user in the platform user-service")
-		return set
+		return
 	}
 
 	if platformUser.Email != nil && *platformUser.Email != "" {
@@ -1087,12 +1129,12 @@ func (s *service) loadPlatformIdentities(ctx context.Context, lfUsername string)
 	}
 
 	if platformUser.ID == "" {
-		return set
+		return
 	}
 	identityList, err := s.platformUsersService.ListUserIdentities(ctx, platformUser.ID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to list the LF user's connected identities")
-		return set
+		return
 	}
 	for _, identity := range identityList {
 		if identity == nil {
@@ -1109,8 +1151,6 @@ func (s *service) loadPlatformIdentities(ctx context.Context, lfUsername string)
 			set.emails[normalizeEmail(identity.Email)] = true
 		}
 	}
-
-	return set
 }
 
 // addAuth0Identities merges the identities linked to the LF login's Auth0 user record into the
