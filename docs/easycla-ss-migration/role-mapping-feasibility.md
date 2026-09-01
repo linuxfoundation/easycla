@@ -26,7 +26,7 @@ The org-lens milestone recommendation stands: **Option A (bridge) for the org/pr
 
 Two conditions to convert into facts before committing M3–M5 staffing — both are one-day curl spikes (§7):
 
-1. ACS's gateway-level path authorization must admit **ordinary users (no CLA role)** to the v4 *read* endpoints M1/M3 need.
+1. ~~ACS's gateway-level path authorization must admit **ordinary users (no CLA role)** to the v4 *read* endpoints M1/M3 need.~~ **Resolved by shipped M1** (see §7): the My CLAs read endpoints ship with an any-authenticated-user policy, so this is no longer an open gate.
 2. The refresh-token exchange for the api-gw audience must be **granted to the SS Auth0 client** in each environment.
 
 ---
@@ -93,7 +93,9 @@ sequenceDiagram
 - **ACS caches warden authorize responses for 30 minutes** (`acs/middleware/cache.go:39,52-54`) — so the gateway's allow/deny decision, and the injected scopes, can be up to 30 minutes stale after a role grant **or revocation**.
 - **Many v4 paths bypass all of this** on a public router — health, `request-individual-signature`, `user-from-token`, `notify-cla-managers`, the designee-check, the cla-group manager list, and more (`cla-service.yaml:4-38`).
 
-**Layer 2 — v4 handlers (fine-grained resource binding)** **[verified]**. v4 does **no JWT validation of its own** on `/v4`: `v2API.LfAuthAuth = lfxAuth.SwaggerAuth` (`cla-backend-go/cmd/server.go:481`) simply base64-decodes `X-ACL` into an `authUser` (`lfx-kit@v0.1.33/auth/handlers.go:76-82`). Handlers then check that the scopes match the **specific project/company SFIDs in the request** — the part the gateway can't do, since ACS only sees the URL. They compare scope **type + ID**; the scope's `Role` field is never consulted (`cla-backend-go/utils/utils_user_auth_lambda.go`; `lfx-kit/auth/user.go:91-127`).
+**Layer 2 — v4 handlers (fine-grained resource binding)** **[verified]**. v4 does **no JWT validation of its own** on `/v4` *as a general rule* — with one exception since M1, noted below: `v2API.LfAuthAuth = lfxAuth.SwaggerAuth` (`cla-backend-go/cmd/server.go:491`) simply base64-decodes `X-ACL` into an `authUser` (`lfx-kit@v0.1.33/auth/handlers.go:76-82`). Handlers then check that the scopes match the **specific project/company SFIDs in the request** — the part the gateway can't do, since ACS only sees the URL. They compare scope **type + ID**; the scope's `Role` field is never consulted (`cla-backend-go/utils/utils_user_auth_lambda.go`; `lfx-kit/auth/user.go:91-127`).
+>
+> **Exception (M1, P10)**: the My CLAs handlers *do* re-verify the bearer token against Auth0 JWKS when the trusted-caller path is enabled (`cla-backend-go/auth/trusted_caller.go`), since an `azp` claim is only trustworthy on a token whose signature was checked in-handler. That path is disabled while the `cla-ss-trusted-client-ids-{stage}` SSM parameter is unset — the current state — so the general rule still describes every deployed request today.
 
 > **Architectural takeaway**: role-specificity lives in **ACS's policy mapping** (which roles produce which scopes for which resource×action), not in EasyCLA code. "Will v4 accept a Self Serve token" is really "will ACS warden authorize this *user* for this *path*" — the same question for every client.
 

@@ -1,9 +1,11 @@
 <!-- Copyright The Linux Foundation and each contributor to CommunityBridge.
 SPDX-License-Identifier: CC-BY-4.0 -->
 
-# Spike Runbook — Spikes 1 & 2 (dev)
+# Spike Runbook — Spike 1 (dev), with Spike 2 retained as a connectivity check
 
-Ready-to-run steps for the two decision-gating spikes in [role-mapping-feasibility.md §7](role-mapping-feasibility.md). Both run against the **dev** environment. Goal: confirm a Self-Serve-minted user token reaches EasyCLA v4 through lfx-gateway, and find out whether a **role-less** user is allowed through.
+Ready-to-run steps against the **dev** environment.
+
+**Only Spike 1 is still a decision gate**: confirm a Self-Serve-minted user token reaches EasyCLA v4 through lfx-gateway (the api-gw grant + secured-call token path feeding P3). **Spike 2 — whether a role-less user is allowed through — was resolved by shipped M1**, which ships an any-authenticated-user policy on the My CLAs read endpoints; its call is retained below purely as a route-sync/connectivity diagnostic, not as an open investigation. See [role-mapping-feasibility.md §7](role-mapping-feasibility.md).
 
 ## What you need
 
@@ -74,7 +76,7 @@ curl -s -o /dev/null -w "%{http_code}\n" \
 
 ## Recording results
 
-For each call log: user, endpoint, HTTP status, and (on 403) the response body and whether it looks gateway-issued or v4-issued. Those four fields answer both spikes and feed the P3 decision.
+For each call log: user, endpoint, HTTP status, and (on 403) the response body and whether it looks gateway-issued or v4-issued. For the **Spike 1** call those four fields feed the P3 decision. The **role-less** call is now only a route-sync check — a 403 there indicates a missing or unsynced ACS route, not an open policy question — so record it as a diagnostic and do not read a decision into it.
 
 ## Notes / gotchas
 
