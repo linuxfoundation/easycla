@@ -3580,7 +3580,6 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			companyProjectParams := signatures.GetProjectCompanyEmployeeSignaturesParams{
 				CompanyID: approvalList.CompanyID,
 				ProjectID: approvalList.ClaGroupID,
-				PageSize:  utils.Int64(10),
 			}
 
 			criteria := ApprovalCriteria{}
@@ -4407,7 +4406,7 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 			log.WithFields(f).Warnf("no usable email domain for user: %s - skipping domain criteria check", user.UserID)
 		}
 		if domain != "" && utils.StringInSlice(domain, approvalList.ApprovalList) {
-			if (!utils.StringInSlice(user.GithubUsername, approvalList.GitHubUsernameApprovals) || utils.StringInSlice(user.LfUsername, approvalList.GerritICLAECLAs)) && !utils.StringInSlice(email, approvalList.EmailApprovals) {
+			if (!utils.StringInSlice(user.GithubUsername, approvalList.GitHubUsernameApprovals) || utils.StringInSlice(user.LfUsername, approvalList.GerritICLAECLAs)) && !utils.StringInSlice(email, approvalList.EmailApprovals) && !userStillApproved(user, approvalList) {
 				//Invalidate record
 				note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), utils.EmailDomainCriteria)
 				err := repo.InvalidateProjectRecordWithMetadata(ctx, signatureID, note, invalidationMetadata)
@@ -4448,7 +4447,7 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 				invalidated = true
 			}
 		}
-	} else if approvalList.Criteria == utils.GitHubUsernameCriteria || approvalList.Criteria == utils.EmailCriteria {
+	} else if approvalList.Criteria == utils.GitHubUsernameCriteria || approvalList.Criteria == utils.GitlabUsernameCriteria || approvalList.Criteria == utils.EmailCriteria {
 		if userStillApproved(user, approvalList) {
 			log.WithFields(f).Debugf("user: %s still covered by another approval list criteria - skipping invalidation of signature: %s", userID, signatureID)
 			return user, false, nil
@@ -4495,18 +4494,17 @@ func userStillApproved(user *models.User, approvalList *ApprovalList) bool {
 		if containsFold(approvalList.EmailApprovals, email) {
 			return true
 		}
-		parts := strings.Split(strings.TrimSpace(email), "@")
-		if len(parts) == 2 && containsFold(approvalList.DomainApprovals, parts[1]) {
-			return true
-		}
 	}
-
-	// usernames stay exact-match: the enforcement gate matches them exactly, so folding here
-	// could skip an invalidation based on an approval entry the gate itself wouldn't honor
-	if user.GithubUsername != "" && utils.StringInSlice(user.GithubUsername, approvalList.GitHubUsernameApprovals) {
+	// domain entries support the same wildcard patterns the enforcement gate honors
+	if matched, err := matchEmailsToDomainPatterns(emails, approvalList.DomainApprovals); err == nil && matched != nil && *matched {
 		return true
 	}
-	if user.GitlabUsername != "" && utils.StringInSlice(user.GitlabUsername, approvalList.GitlabUsernameApprovals) {
+
+	// usernames fold like the enforcement gate (EqualFold in EvaluateUserApproval)
+	if user.GithubUsername != "" && containsFold(approvalList.GitHubUsernameApprovals, user.GithubUsername) {
+		return true
+	}
+	if user.GitlabUsername != "" && containsFold(approvalList.GitlabUsernameApprovals, user.GitlabUsername) {
 		return true
 	}
 
