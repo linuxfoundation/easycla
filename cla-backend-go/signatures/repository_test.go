@@ -71,6 +71,13 @@ func TestEffectiveApprovals(t *testing.T) {
 	assert.Equal(t, []string{"a"}, effectiveApprovals([]string{"a"}, nil, []string{" a "}))
 }
 
+func TestEmailDomain(t *testing.T) {
+	assert.Equal(t, "example.com", emailDomain("user@example.com"))
+	assert.Equal(t, "", emailDomain(""))
+	assert.Equal(t, "", emailDomain("no-at"))
+	assert.Equal(t, "", emailDomain("user@"))
+}
+
 // userStillApproved receives approval lists that already reflect the full pending update
 // (built via effectiveApprovals), so removed entries are simply absent
 func TestUserStillApproved(t *testing.T) {
