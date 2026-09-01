@@ -15,7 +15,7 @@ Single source of truth for the status a My CLAs row shows. The status model is *
 | **Revoked** | ECLA only | The employer is under a sanctions block, so the agreement cannot be relied on. Set by the system, never by a person in the product. | yes — *Revoked · date* | Nothing — the row is read-only |
 | **—** | ECLA only | Coverage could not be confirmed. Shown as a plain dash, **not** a labelled pill, because this is an absence of information rather than a verdict. | no | Request Removal |
 
-Three rules that hold across the table:
+Four rules that hold across the table:
 
 - **Unsigned agreements are never shown.** A row only exists once the contributor has signed — in the data, `signature_signed = true`. Records with `signature_signed = false` are filtered out before any status is worked out, so they have no status at all rather than a hidden one.
 - **Invalidated and Revoked must never share wording.** They are different situations: Revoked is about the employer being sanctioned, Invalidated is about the agreement being voided. Conflating them would tell a contributor their company is sanctioned when it is not.
