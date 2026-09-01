@@ -75,6 +75,8 @@ const (
 	CCLAICLA = "CCLAICLA"
 	//CCLAICLAECLA representing user removal under CCLA + ICLA +ECLA
 	CCLAICLAECLA = "CCLAICLAECLA"
+	//CCLAECLA representing user removal under CCLA + ECLA
+	CCLAECLA = "CCLAECLA"
 	//CCLA representing normal use case of user under CCLA
 	CCLA = "ICLA"
 	//ICLA representing individual use case
