@@ -91,6 +91,15 @@ func (f *fakePlatform) ListUserIdentities(_ context.Context, _ string) ([]*platf
 	return f.identities, nil
 }
 
+type fakeAuth0 struct {
+	identities []Auth0Identity
+	err        error
+}
+
+func (f *fakeAuth0) UserIdentities(_ context.Context, _ string) ([]Auth0Identity, error) {
+	return f.identities, f.err
+}
+
 type fakeSignatures struct {
 	cclas             map[string]*v1Models.Signature
 	approvedUserIDs   map[string]bool
@@ -284,6 +293,41 @@ func TestGetMyClasUnionAndDedupe(t *testing.T) {
 	assert.Equal(t, "sig-2", result.Clas[0].SignatureID)
 	assert.Equal(t, "sig-1", result.Clas[1].SignatureID)
 	assert.Equal(t, "My CLA Group", result.Clas[0].ClaGroupName)
+}
+
+func TestAuthorizeIdentityViaAuth0(t *testing.T) {
+	svc := newTestService(&fakeRepo{}, nil, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+	svc.auth0Identities = &fakeAuth0{identities: []Auth0Identity{
+		{Provider: "github", UserID: "30514950", Username: "ah-med"},
+		{Provider: "gitlab", UserID: "777", Username: "someone-gl"},
+	}}
+
+	allowed, skipped, err := svc.AuthorizeIdentity(context.Background(), "someone", false, &Identity{
+		GithubIDs:       []int64{30514950, 99},
+		GithubUsernames: []string{"AH-MED"},
+		GitlabIDs:       []int64{777},
+		GitlabUsernames: []string{"Someone-GL"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []int64{30514950}, allowed.GithubIDs)
+	assert.Equal(t, []string{"ah-med", "AH-MED"}, allowed.GithubUsernames)
+	assert.Equal(t, []int64{777}, allowed.GitlabIDs)
+	assert.Equal(t, []string{"someone-gl", "Someone-GL"}, allowed.GitlabUsernames)
+	assert.Equal(t, []string{"githubId:99"}, skipped)
+}
+
+func TestAuthorizeIdentityAuth0Failure(t *testing.T) {
+	svc := newTestService(&fakeRepo{}, nil, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+	svc.auth0Identities = &fakeAuth0{err: errors.New("auth0 unavailable")}
+
+	allowed, skipped, err := svc.AuthorizeIdentity(context.Background(), "someone", false, &Identity{
+		GithubIDs:       []int64{30514950},
+		GithubUsernames: []string{"ah-med"},
+	})
+	require.NoError(t, err)
+	assert.Empty(t, allowed.GithubIDs)
+	assert.Empty(t, allowed.GithubUsernames)
+	assert.Equal(t, []string{"githubId:30514950", "githubUsername:ah-med"}, skipped)
 }
 
 func TestGetMyClasProjectNameAndLogo(t *testing.T) {

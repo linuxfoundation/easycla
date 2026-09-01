@@ -3333,14 +3333,15 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		})
 	}
 
-	// Keep track of existing company approvals
+	// Keep track of the company approvals as they will look after this update, so coverage
+	// re-checks consider every removal (and addition) in the request, not just the current branch
 	approvalList := ApprovalList{
-		EmailApprovals:          cclaSignature.EmailApprovalList,
-		DomainApprovals:         cclaSignature.DomainApprovalList,
-		GitHubUsernameApprovals: cclaSignature.GithubUsernameApprovalList,
-		GitHubOrgApprovals:      cclaSignature.GithubOrgApprovalList,
-		GitlabUsernameApprovals: cclaSignature.GitlabUsernameApprovalList,
-		GitlabOrgApprovals:      cclaSignature.GitlabOrgApprovalList,
+		EmailApprovals:          effectiveApprovals(cclaSignature.EmailApprovalList, params.AddEmailApprovalList, params.RemoveEmailApprovalList),
+		DomainApprovals:         effectiveApprovals(cclaSignature.DomainApprovalList, params.AddDomainApprovalList, params.RemoveDomainApprovalList),
+		GitHubUsernameApprovals: effectiveApprovals(cclaSignature.GithubUsernameApprovalList, params.AddGithubUsernameApprovalList, params.RemoveGithubUsernameApprovalList),
+		GitHubOrgApprovals:      effectiveApprovals(cclaSignature.GithubOrgApprovalList, params.AddGithubOrgApprovalList, params.RemoveGithubOrgApprovalList),
+		GitlabUsernameApprovals: effectiveApprovals(cclaSignature.GitlabUsernameApprovalList, params.AddGitlabUsernameApprovalList, params.RemoveGitlabUsernameApprovalList),
+		GitlabOrgApprovals:      effectiveApprovals(cclaSignature.GitlabOrgApprovalList, params.AddGitlabOrgApprovalList, params.RemoveGitlabOrgApprovalList),
 		CLAManager:              claManager,
 		ICLAs:                   make([]*models.IclaSignature, 0),
 		ECLAs:                   make([]*models.Signature, 0),
@@ -3434,8 +3435,10 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 				go func(email string) {
 					defer wg.Done()
 					email = strings.ToLower(strings.TrimSpace(email))
-					var iclas []*models.IclaSignature
-					var eclas []*models.Signature
+					// per-goroutine copy - the shared struct must not be mutated concurrently
+					entryApprovalList := approvalList
+					entryApprovalList.ICLAs = nil
+					entryApprovalList.ECLAs = nil
 					log.WithFields(f).Debugf("getting cla user record for email: %s ", email)
 					userSearch, userErr := repo.usersRepo.SearchUsers("user_emails", email, false)
 					if userErr != nil || userSearch == nil {
@@ -3457,8 +3460,23 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 					}
 
 					if len(signs.Signatures) > 0 {
-						approvalList.ECLAs = signs.Signatures
-						eclas = signs.Signatures
+						entryApprovalList.ECLAs = signs.Signatures
+					}
+
+					// older ECLA records may lack the user_email attribute the criteria query filters on,
+					// so fall back to a per-user employee signature lookup for anyone the query missed
+					for _, matchedUser := range userSearch.Users {
+						if employeeSignatureListed(entryApprovalList.ECLAs, matchedUser.UserID) {
+							continue
+						}
+						ecla, eclaErr := repo.getEmployeeSignatureByUserID(ctx, projectID, companyID, matchedUser.UserID)
+						if eclaErr != nil {
+							log.WithFields(f).Warnf("unable to lookup employee signature for user: %s : %v", matchedUser.UserID, eclaErr)
+							continue
+						}
+						if ecla != nil {
+							entryApprovalList.ECLAs = append(entryApprovalList.ECLAs, ecla)
+						}
 					}
 
 					if len(userSearch.Users) > 0 {
@@ -3501,18 +3519,17 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 						for result := range results {
 							if result.Error == nil {
 								log.WithFields(f).Debug("processing icla...")
-								approvalList.ICLAs = append(approvalList.ICLAs, result.ICLASignature)
-								iclas = append(iclas, result.ICLASignature)
+								entryApprovalList.ICLAs = append(entryApprovalList.ICLAs, result.ICLASignature)
 							}
 						}
 
 					}
 
 					// Invalidate signatures
-					repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs)
+					invalidatedICLAs, invalidatedECLAs := repo.invalidateSignatures(ctx, &entryApprovalList, claManager, eventArgs)
 
 					// Send email
-					repo.sendEmail(ctx, email, &approvalList, iclas, eclas)
+					repo.sendEmail(ctx, email, &entryApprovalList, invalidatedICLAs, invalidatedECLAs)
 
 				}(email)
 			}
@@ -3627,8 +3644,10 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 				for _, ghUsername := range params.RemoveGithubUsernameApprovalList {
 					go func(ghUsername string) {
 						defer wg.Done()
-						var iclas []*models.IclaSignature
-						var eclas []*models.Signature
+						// per-goroutine copy - the shared struct must not be mutated concurrently
+						entryApprovalList := approvalList
+						entryApprovalList.ICLAs = nil
+						entryApprovalList.ECLAs = nil
 
 						criteria := &ApprovalCriteria{
 							GitHubUsername: ghUsername,
@@ -3640,8 +3659,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 							return
 						}
 						if signs.Signatures != nil {
-							approvalList.ECLAs = signs.Signatures
-							eclas = signs.Signatures
+							entryApprovalList.ECLAs = signs.Signatures
 						}
 						// Get ICLAs
 						claUser, claErr := repo.usersRepo.GetUserByGitHubUsername(ghUsername)
@@ -3650,13 +3668,23 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 							return
 						}
 						if claUser != nil {
+							// older ECLA records may lack the user_github_username attribute the criteria
+							// query filters on, so fall back to a per-user employee signature lookup
+							if !employeeSignatureListed(entryApprovalList.ECLAs, claUser.UserID) {
+								ecla, eclaErr := repo.getEmployeeSignatureByUserID(ctx, projectID, companyID, claUser.UserID)
+								if eclaErr != nil {
+									log.WithFields(f).Warnf("unable to lookup employee signature for user: %s : %v", claUser.UserID, eclaErr)
+								} else if ecla != nil {
+									entryApprovalList.ECLAs = append(entryApprovalList.ECLAs, ecla)
+								}
+							}
 							icla, iclaErr := repo.GetIndividualSignature(ctx, projectID, claUser.UserID, &approved, &signed)
 							if iclaErr != nil || icla == nil {
 								log.WithFields(f).Debugf("unable to get icla signature for user with github username: %s ", ghUsername)
 							}
 							if icla != nil {
 								// Convert to IclSignature instance to leverage invalidateSignatures helper function
-								approvalList.ICLAs = []*models.IclaSignature{{
+								entryApprovalList.ICLAs = []*models.IclaSignature{{
 									GithubUsername: icla.UserGHUsername,
 									LfUsername:     icla.UserLFID,
 									SignatureID:    icla.SignatureID,
@@ -3664,10 +3692,10 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 							}
 						}
 
-						repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs)
+						invalidatedICLAs, invalidatedECLAs := repo.invalidateSignatures(ctx, &entryApprovalList, claManager, eventArgs)
 
 						// Send Email
-						repo.sendEmail(ctx, getBestEmail(claUser), &approvalList, iclas, eclas)
+						repo.sendEmail(ctx, getBestEmail(claUser), &entryApprovalList, invalidatedICLAs, invalidatedECLAs)
 
 					}(ghUsername)
 				}
@@ -3788,8 +3816,10 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 				for _, ghUsername := range params.RemoveGitlabUsernameApprovalList {
 					go func(gitLabUsername string) {
 						defer wg.Done()
-						var iclas []*models.IclaSignature
-						var eclas []*models.Signature
+						// per-goroutine copy - the shared struct must not be mutated concurrently
+						entryApprovalList := approvalList
+						entryApprovalList.ICLAs = nil
+						entryApprovalList.ECLAs = nil
 
 						criteria := &ApprovalCriteria{
 							GitlabUsername: gitLabUsername,
@@ -3801,8 +3831,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 							return
 						}
 						if signs.Signatures != nil {
-							approvalList.ECLAs = signs.Signatures
-							eclas = signs.Signatures
+							entryApprovalList.ECLAs = signs.Signatures
 						}
 
 						claUser, claErr := repo.usersRepo.GetUserByGitLabUsername(gitLabUsername)
@@ -3811,13 +3840,23 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 							return
 						}
 						if claUser != nil {
+							// older ECLA records may lack the user_gitlab_username attribute the criteria
+							// query filters on, so fall back to a per-user employee signature lookup
+							if !employeeSignatureListed(entryApprovalList.ECLAs, claUser.UserID) {
+								ecla, eclaErr := repo.getEmployeeSignatureByUserID(ctx, projectID, companyID, claUser.UserID)
+								if eclaErr != nil {
+									log.WithFields(f).Warnf("unable to lookup employee signature for user: %s : %v", claUser.UserID, eclaErr)
+								} else if ecla != nil {
+									entryApprovalList.ECLAs = append(entryApprovalList.ECLAs, ecla)
+								}
+							}
 							icla, iclaErr := repo.GetIndividualSignature(ctx, projectID, claUser.UserID, &approved, &signed)
 							if iclaErr != nil || icla == nil {
 								log.WithFields(f).Debugf("unable to get icla signature for user with gitlab username: %s ", gitLabUsername)
 							}
 							if icla != nil {
 								// Convert to IclSignature instance to leverage invalidateSignatures helper function
-								approvalList.ICLAs = []*models.IclaSignature{{
+								entryApprovalList.ICLAs = []*models.IclaSignature{{
 									GitlabUsername: icla.UserGHUsername,
 									LfUsername:     icla.UserLFID,
 									SignatureID:    icla.SignatureID,
@@ -3825,10 +3864,10 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 							}
 						}
 
-						repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs)
+						invalidatedICLAs, invalidatedECLAs := repo.invalidateSignatures(ctx, &entryApprovalList, claManager, eventArgs)
 
 						// Send Email
-						repo.sendEmail(ctx, getBestEmail(claUser), &approvalList, iclas, eclas)
+						repo.sendEmail(ctx, getBestEmail(claUser), &entryApprovalList, invalidatedICLAs, invalidatedECLAs)
 
 					}(ghUsername)
 				}
@@ -4063,6 +4102,9 @@ func (repo repository) sendEmail(ctx context.Context, email string, approvalList
 	} else if len(iclas) > 0 && len(eclas) > 0 {
 		// case 3 ccla + icla + ecla
 		removalType = CCLAICLAECLA
+	} else if len(iclas) == 0 && len(eclas) > 0 {
+		// case 4 ccla + ecla
+		removalType = CCLAECLA
 	}
 
 	// Send CCLA Email
@@ -4102,6 +4144,18 @@ func (repo repository) sendEmail(ctx context.Context, email string, approvalList
 				log.WithFields(f).Debugf("unable to send approval list update email to : %s ", email)
 			}
 		}
+	} else if removalType == CCLAECLA {
+		subject := fmt.Sprintf("EasyCLA: Employee Acknowledgement invalidated  for :%s ", approvalList.ClaGroupName)
+		log.WithFields(f).Debugf("sending employee acknowledgement invalidation email to :%s ", email)
+		body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateCCLAECLASignatureTemplateName, InvalidateCCLAECLASignatureTemplate, params)
+		if renderErr != nil {
+			log.WithFields(f).Debugf("unable to render email approval template for user: %s ", email)
+		} else {
+			err := utils.SendEmail(subject, body, []string{email})
+			if err != nil {
+				log.WithFields(f).Debugf("unable to send approval list update email to : %s ", email)
+			}
+		}
 	} else if removalType == CCLAICLAECLA {
 		subject := fmt.Sprintf("EasyCLA: Employee Acknowledgement invalidated  for :%s ", approvalList.ClaGroupName)
 		log.WithFields(f).Debugf("sending employee acknowledgement invalidation email to :%s ", email)
@@ -4117,15 +4171,103 @@ func (repo repository) sendEmail(ctx context.Context, email string, approvalList
 	}
 }
 
-// invalidateSignatures is a helper function that invalidates signature records based on approval list
-func (repo repository) invalidateSignatures(ctx context.Context, approvalList *ApprovalList, claManager *models.User, eventArgs *events.LogEventArgs) {
+// invalidateICLAsOnApprovalListRemoval gates the historic behavior of also invalidating a
+// contributor's ICLA when they are removed from a CCLA approved list. ICLAs are personal and
+// have no company link, so a corporate approved list edit must not touch them (#5166).
+const invalidateICLAsOnApprovalListRemoval = false
+
+// employeeSignatureListed reports whether the given user already has an employee signature in the list
+func employeeSignatureListed(eclas []*models.Signature, userID string) bool {
+	for _, ecla := range eclas {
+		if ecla.SignatureReferenceID == userID {
+			return true
+		}
+	}
+	return false
+}
+
+// getEmployeeSignatureByUserID looks up the active employee acknowledgement (ECLA) for the given
+// user, project and company by user ID alone - no filtering on the user_email/user_github_username
+// signature attributes, which older ECLA records may lack
+func (repo repository) getEmployeeSignatureByUserID(ctx context.Context, projectID, companyID, userID string) (*models.Signature, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.getEmployeeSignatureByUserID",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"projectID":      projectID,
+		"companyID":      companyID,
+		"userID":         userID,
+	}
+
+	condition := expression.Key("signature_project_id").Equal(expression.Value(projectID)).
+		And(expression.Key("signature_reference_id").Equal(expression.Value(userID)))
+	var filterAdded bool
+	var filter expression.ConditionBuilder
+	filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").Equal(expression.Value(companyID)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_approved").Equal(expression.Value(true)), &filterAdded)
+	filter = addAndCondition(filter, expression.Name("signature_signed").Equal(expression.Value(true)), &filterAdded)
+
+	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithFilter(filter).WithProjection(buildProjection()).Build()
+	if err != nil {
+		return nil, err
+	}
+	queryInput := &dynamodb.QueryInput{
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+		KeyConditionExpression:    expr.KeyCondition(),
+		FilterExpression:          expr.Filter(),
+		ProjectionExpression:      expr.Projection(),
+		TableName:                 aws.String(repo.signatureTableName),
+		IndexName:                 aws.String(SignatureProjectReferenceIndex),
+		Limit:                     aws.Int64(100),
+	}
+
+	sigs := make([]*models.Signature, 0)
+	var lastEvaluatedKey string
+	for ok := true; ok; ok = lastEvaluatedKey != "" {
+		results, errQuery := repo.dynamoDBClient.Query(queryInput)
+		if errQuery != nil {
+			return nil, errQuery
+		}
+		signatureList, modelErr := repo.buildProjectSignatureModels(ctx, results, projectID, LoadACLDetails)
+		if modelErr != nil {
+			return nil, modelErr
+		}
+		sigs = append(sigs, signatureList...)
+		if results.LastEvaluatedKey["signature_id"] != nil {
+			lastEvaluatedKey = *results.LastEvaluatedKey["signature_id"].S
+			queryInput.ExclusiveStartKey = results.LastEvaluatedKey
+		} else {
+			lastEvaluatedKey = ""
+		}
+	}
+
+	if len(sigs) == 0 {
+		return nil, nil
+	}
+	if len(sigs) > 1 {
+		log.WithFields(f).Warnf("found multiple matching employee signatures - found %d total", len(sigs))
+	}
+	return sigs[0], nil
+}
+
+// invalidateSignatures is a helper function that invalidates signature records based on approval list.
+// It returns the signatures that were actually invalidated.
+func (repo repository) invalidateSignatures(ctx context.Context, approvalList *ApprovalList, claManager *models.User, eventArgs *events.LogEventArgs) ([]*models.IclaSignature, []*models.Signature) {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.invalidateSignatures",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     &approvalList,
 	}
 
-	if approvalList.ICLAs != nil {
+	var invalidatedMutex sync.Mutex
+	var invalidatedICLAs []*models.IclaSignature
+	var invalidatedECLAs []*models.Signature
+
+	if len(approvalList.ICLAs) > 0 && !invalidateICLAsOnApprovalListRemoval {
+		log.WithFields(f).Debugf("skipping invalidation of %d icla record(s) - ICLAs are not tied to the company approved list", len(approvalList.ICLAs))
+	}
+
+	if approvalList.ICLAs != nil && invalidateICLAsOnApprovalListRemoval {
 		var iclaWg sync.WaitGroup
 		//Iterate iclas
 		iclaWg.Add(len(approvalList.ICLAs))
@@ -4144,22 +4286,29 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 					return
 				}
 
-				user, verifyErr := repo.verifyUserApprovals(ctx, signature.SignatureReferenceID, signature.SignatureID, claManager, approvalList)
+				user, invalidated, verifyErr := repo.verifyUserApprovals(ctx, signature.SignatureReferenceID, signature.SignatureID, claManager, approvalList)
 				if verifyErr != nil {
 					log.WithFields(f).Warnf("unable to verify user: %s ", signature.SignatureReferenceID)
 					return
 				}
+				if !invalidated {
+					return
+				}
+				invalidatedMutex.Lock()
+				invalidatedICLAs = append(invalidatedICLAs, icla)
+				invalidatedMutex.Unlock()
 				// Map representing CLA types against email ....
 				email := getBestEmail(user)
-				// Log Event
-				eventArgs.EventData = &events.SignatureInvalidatedApprovalRejectionEventData{
+				// Log Event - use a per-goroutine copy of the event args
+				entryEventArgs := *eventArgs
+				entryEventArgs.EventData = &events.SignatureInvalidatedApprovalRejectionEventData{
 					SignatureID: icla.SignatureID,
 					CLAManager:  claManager,
 					CLAGroupID:  signature.ProjectID,
 					Email:       email,
 					GHUsername:  user.GithubUsername,
 				}
-				repo.eventsService.LogEventWithContext(ctx, eventArgs)
+				repo.eventsService.LogEventWithContext(ctx, &entryEventArgs)
 			}(icla)
 		}
 		iclaWg.Wait()
@@ -4178,29 +4327,38 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 					log.WithFields(f).Warnf("no signatureReferenceID for signature: %+v ", ecla)
 					return
 				}
-				user, verifyErr := repo.verifyUserApprovals(ctx, ecla.SignatureReferenceID, ecla.SignatureID, claManager, approvalList)
+				user, invalidated, verifyErr := repo.verifyUserApprovals(ctx, ecla.SignatureReferenceID, ecla.SignatureID, claManager, approvalList)
 				if verifyErr != nil {
 					log.WithFields(f).Warnf("unable to verify user: %s ", ecla.SignatureReferenceID)
 					return
 				}
+				if !invalidated {
+					return
+				}
+				invalidatedMutex.Lock()
+				invalidatedECLAs = append(invalidatedECLAs, ecla)
+				invalidatedMutex.Unlock()
 				email := getBestEmail(user)
-				// Log Event
-				eventArgs.EventData = &events.SignatureInvalidatedApprovalRejectionEventData{
+				// Log Event - use a per-goroutine copy of the event args
+				entryEventArgs := *eventArgs
+				entryEventArgs.EventData = &events.SignatureInvalidatedApprovalRejectionEventData{
 					SignatureID: ecla.SignatureID,
 					CLAManager:  claManager,
 					CLAGroupID:  ecla.ProjectID,
 					Email:       email,
 					GHUsername:  user.GithubUsername,
 				}
-				repo.eventsService.LogEventWithContext(ctx, eventArgs)
+				repo.eventsService.LogEventWithContext(ctx, &entryEventArgs)
 			}(ecla)
 		}
 		eclaWg.Wait()
 	}
+
+	return invalidatedICLAs, invalidatedECLAs
 }
 
 // verify UserApprovals checks user
-func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatureID string, claManager *models.User, approvalList *ApprovalList) (*models.User, error) {
+func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatureID string, claManager *models.User, approvalList *ApprovalList) (*models.User, bool, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.verifyUserApprovals",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -4210,9 +4368,14 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 	user, err := repo.usersRepo.GetUser(userID)
 	if err != nil {
 		log.WithFields(f).Warnf("unable to get user record for ID: %s ", userID)
-		return nil, err
+		return nil, false, err
 	}
 	email := getBestEmail(user)
+	invalidationMetadata := &InvalidationMetadata{
+		InvalidatedBy: utils.GetBestUsername(claManager),
+		Reason:        fmt.Sprintf("approved list removal (%s)", approvalList.Criteria),
+	}
+	invalidated := false
 
 	//authUser := auth.User{
 	//	Email:    claManager.LfEmail.String(),
@@ -4227,11 +4390,12 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 			if (!utils.StringInSlice(user.GithubUsername, approvalList.GitHubUsernameApprovals) || utils.StringInSlice(user.LfUsername, approvalList.GerritICLAECLAs)) && !utils.StringInSlice(email, approvalList.EmailApprovals) {
 				//Invalidate record
 				note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), utils.EmailDomainCriteria)
-				err := repo.InvalidateProjectRecord(ctx, signatureID, note)
+				err := repo.InvalidateProjectRecordWithMetadata(ctx, signatureID, note, invalidationMetadata)
 				if err != nil {
 					log.WithFields(f).Warnf("unable to invalidate record for signatureID: %s ", signatureID)
-					return user, err
+					return user, false, err
 				}
+				invalidated = true
 
 				// Update Gerrit group users
 				//				if utils.StringInSlice(user.LfUsername, approvalList.GerritICLAECLAs) {
@@ -4256,24 +4420,77 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 				//Invalidate record
 
 				note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), utils.GitHubOrgCriteria)
-				err := repo.InvalidateProjectRecord(ctx, signatureID, note)
+				err := repo.InvalidateProjectRecordWithMetadata(ctx, signatureID, note, invalidationMetadata)
 				if err != nil {
 					log.WithFields(f).Warnf("unable to invalidate record for signatureID: %s ", signatureID)
-					return user, err
+					return user, false, err
 				}
+				invalidated = true
 			}
 		}
 	} else if approvalList.Criteria == utils.GitHubUsernameCriteria || approvalList.Criteria == utils.EmailCriteria {
+		if userStillApproved(user, approvalList) {
+			log.WithFields(f).Debugf("user: %s still covered by another approval list criteria - skipping invalidation of signature: %s", userID, signatureID)
+			return user, false, nil
+		}
 		note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), approvalList.Criteria)
-		err := repo.InvalidateProjectRecord(ctx, signatureID, note)
+		err := repo.InvalidateProjectRecordWithMetadata(ctx, signatureID, note, invalidationMetadata)
 		if err != nil {
 			log.WithFields(f).Warnf("unable to invalidate record for signatureID: %s ", signatureID)
-			return user, err
+			return user, false, err
 		}
-
+		invalidated = true
 	}
 
-	return user, nil
+	return user, invalidated, nil
+}
+
+// effectiveApprovals returns the approval list as it will look after applying the pending
+// additions and removals
+func effectiveApprovals(current, add, remove []string) []string {
+	var result []string
+	for _, entry := range current {
+		if !utils.StringInSlice(entry, remove) {
+			result = append(result, entry)
+		}
+	}
+	for _, entry := range add {
+		if !utils.StringInSlice(entry, remove) && !utils.StringInSlice(entry, result) {
+			result = append(result, entry)
+		}
+	}
+	return result
+}
+
+// userStillApproved reports whether the user remains covered by any approval list criteria.
+// The approvalList approval fields must already reflect the full pending update (see
+// effectiveApprovals). GitHub/GitLab org membership is not re-checked here, consistent with
+// the sibling criteria branches.
+func userStillApproved(user *models.User, approvalList *ApprovalList) bool {
+	var emails []string
+	emails = append(emails, user.Emails...)
+	if user.LfEmail != "" {
+		emails = append(emails, user.LfEmail.String())
+	}
+
+	for _, email := range emails {
+		if utils.StringInSlice(email, approvalList.EmailApprovals) {
+			return true
+		}
+		parts := strings.Split(email, "@")
+		if len(parts) == 2 && utils.StringInSlice(parts[1], approvalList.DomainApprovals) {
+			return true
+		}
+	}
+
+	if user.GithubUsername != "" && utils.StringInSlice(user.GithubUsername, approvalList.GitHubUsernameApprovals) {
+		return true
+	}
+	if user.GitlabUsername != "" && utils.StringInSlice(user.GitlabUsername, approvalList.GitlabUsernameApprovals) {
+		return true
+	}
+
+	return false
 }
 
 // removeColumn is a helper function to remove a given column when we need to zero out the column value - typically the approval list

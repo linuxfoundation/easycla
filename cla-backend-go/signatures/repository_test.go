@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 )
 
 func TestInvalidationUpdateExpression(t *testing.T) {
@@ -49,4 +51,58 @@ func TestInvalidationUpdateExpressionWithoutMetadata(t *testing.T) {
 		assert.NotContains(t, names, "#IB")
 		assert.NotContains(t, values, ":ib")
 	}
+}
+
+func TestEffectiveApprovals(t *testing.T) {
+	// removals subtracted, additions appended, add+remove of the same entry removes it
+	assert.Equal(t, []string{"a", "c", "d"},
+		effectiveApprovals([]string{"a", "b", "c"}, []string{"d", "b", "a"}, []string{"b"}))
+	assert.Nil(t, effectiveApprovals([]string{"a"}, nil, []string{"a"}))
+	assert.Equal(t, []string{"a"}, effectiveApprovals(nil, []string{"a"}, nil))
+}
+
+// userStillApproved receives approval lists that already reflect the full pending update
+// (built via effectiveApprovals), so removed entries are simply absent
+func TestUserStillApproved(t *testing.T) {
+	user := &models.User{
+		Emails:         []string{"jane@corp.example"},
+		GithubUsername: "janegh",
+		GitlabUsername: "janegl",
+	}
+
+	// GH username removed but still on the email approved list (the #5166 scenario)
+	assert.True(t, userStillApproved(user, &ApprovalList{
+		EmailApprovals: []string{"jane@corp.example"},
+	}))
+
+	// GH username removed, no other coverage
+	assert.False(t, userStillApproved(user, &ApprovalList{}))
+
+	// email removed but still covered by the domain approved list
+	assert.True(t, userStillApproved(user, &ApprovalList{
+		DomainApprovals: []string{"corp.example"},
+	}))
+
+	// email removed, remaining GH username approval covers the user
+	assert.True(t, userStillApproved(user, &ApprovalList{
+		GitHubUsernameApprovals: []string{"janegh"},
+	}))
+
+	// GitLab username coverage
+	assert.True(t, userStillApproved(user, &ApprovalList{
+		GitlabUsernameApprovals: []string{"janegl"},
+	}))
+
+	// approvals for other users don't cover this one
+	assert.False(t, userStillApproved(user, &ApprovalList{
+		GitHubUsernameApprovals: []string{"someoneelse"},
+		EmailApprovals:          []string{"other@corp.example"},
+	}))
+
+	// cross-criteria removal in one request: email and GH username both removed,
+	// effective lists no longer contain either entry, so the user is not covered
+	assert.False(t, userStillApproved(user, &ApprovalList{
+		EmailApprovals:          effectiveApprovals([]string{"jane@corp.example"}, nil, []string{"jane@corp.example"}),
+		GitHubUsernameApprovals: effectiveApprovals([]string{"janegh"}, nil, []string{"janegh"}),
+	}))
 }

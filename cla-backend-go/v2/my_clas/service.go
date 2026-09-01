@@ -163,6 +163,7 @@ type Service interface {
 type service struct {
 	repo                  Repository
 	platformUsersService  PlatformUsersService
+	auth0Identities       Auth0IdentityService
 	signaturesService     SignaturesService
 	companyRepo           CompanyRepository
 	projectsClaGroupsRepo ProjectsCLAGroupsRepository
@@ -175,10 +176,11 @@ type service struct {
 }
 
 // NewService creates a new instance of the My CLAs service
-func NewService(repo Repository, platformUsersService PlatformUsersService, signaturesService SignaturesService, companyRepo CompanyRepository, projectsClaGroupsRepo ProjectsCLAGroupsRepository, projectService ProjectService, eventsService EventsService, sanctions SanctionsScreener) Service {
+func NewService(repo Repository, platformUsersService PlatformUsersService, auth0Identities Auth0IdentityService, signaturesService SignaturesService, companyRepo CompanyRepository, projectsClaGroupsRepo ProjectsCLAGroupsRepository, projectService ProjectService, eventsService EventsService, sanctions SanctionsScreener) Service {
 	return &service{
 		repo:                  repo,
 		platformUsersService:  platformUsersService,
+		auth0Identities:       auth0Identities,
 		signaturesService:     signaturesService,
 		companyRepo:           companyRepo,
 		projectsClaGroupsRepo: projectsClaGroupsRepo,
@@ -882,6 +884,7 @@ func callerUsername(caller *Caller) string {
 type platformIdentitySet struct {
 	emails    map[string]bool
 	usernames map[string]map[string][]string
+	ids       map[string]map[string]bool
 }
 
 // authorizeIdentity verifies each requested key against all of the authenticated user's own
@@ -946,9 +949,10 @@ func (s *service) authorizeIdentity(ctx context.Context, currentUsername string,
 			return variants
 		}
 	}
-	idAllowed := func(selfIDs map[string]bool) func(int64) bool {
+	idAllowed := func(selfIDs map[string]bool, source string) func(int64) bool {
 		return func(id int64) bool {
-			return selfIDs[strconv.FormatInt(id, 10)]
+			key := strconv.FormatInt(id, 10)
+			return selfIDs[key] || platformIdentities().ids[source][key]
 		}
 	}
 
@@ -960,9 +964,9 @@ func (s *service) authorizeIdentity(ctx context.Context, currentUsername string,
 	}
 	appendAllowedStrings(requested.Emails, "email", normalizeEmail, emailAllowed, &allowed.Emails, &skipped)
 	appendAllowedStrings(requested.SecondaryEmails, "secondaryEmail", normalizeEmail, emailAllowed, &allowed.SecondaryEmails, &skipped)
-	appendAllowedIDs(requested.GithubIDs, "githubId", idAllowed(selfGithubIDs), &allowed.GithubIDs, &skipped)
+	appendAllowedIDs(requested.GithubIDs, "githubId", idAllowed(selfGithubIDs, identitySourceGithub), &allowed.GithubIDs, &skipped)
 	appendAllowedUsernames(requested.GithubUsernames, "githubUsername", canonFor(identitySourceGithub), &allowed.GithubUsernames, &skipped)
-	appendAllowedIDs(requested.GitlabIDs, "gitlabId", idAllowed(selfGitlabIDs), &allowed.GitlabIDs, &skipped)
+	appendAllowedIDs(requested.GitlabIDs, "gitlabId", idAllowed(selfGitlabIDs, identitySourceGitlab), &allowed.GitlabIDs, &skipped)
 	appendAllowedUsernames(requested.GitlabUsernames, "gitlabUsername", canonFor(identitySourceGitlab), &allowed.GitlabUsernames, &skipped)
 	appendAllowedUsernames(requested.GerritUsernames, "gerritUsername", canonFor(identitySourceGerrit), &allowed.GerritUsernames, &skipped)
 
@@ -1046,7 +1050,13 @@ func (s *service) loadPlatformIdentities(ctx context.Context, lfUsername string)
 			identitySourceGitlab: {},
 			identitySourceGerrit: {},
 		},
+		ids: map[string]map[string]bool{
+			identitySourceGithub: {},
+			identitySourceGitlab: {},
+		},
 	}
+
+	s.addAuth0Identities(ctx, lfUsername, set)
 
 	if s.platformUsersService == nil {
 		return set
@@ -1096,6 +1106,31 @@ func (s *service) loadPlatformIdentities(ctx context.Context, lfUsername string)
 	}
 
 	return set
+}
+
+// addAuth0Identities merges the identities linked to the LF login's Auth0 user record into the
+// set - lfxOne links new identities only in Auth0, so they may exist nowhere else yet
+func (s *service) addAuth0Identities(ctx context.Context, lfUsername string, set *platformIdentitySet) {
+	if s.auth0Identities == nil {
+		return
+	}
+	identities, err := s.auth0Identities.UserIdentities(ctx, lfUsername)
+	if err != nil {
+		log.WithFields(logrus.Fields{
+			"functionName":   "v2.my_clas.service.addAuth0Identities",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"lfUsername":     lfUsername,
+		}).WithError(err).Warn("unable to list the LF user's Auth0 identities")
+		return
+	}
+	for _, identity := range identities {
+		if canon, ok := set.usernames[identity.Provider]; ok {
+			addCanonical(canon, identity.Username)
+		}
+		if idSet, ok := set.ids[identity.Provider]; ok && identity.UserID != "" {
+			idSet[identity.UserID] = true
+		}
+	}
 }
 
 func (s *service) resolveUsers(ctx context.Context, identity *Identity) ([]*v1Models.User, error) {

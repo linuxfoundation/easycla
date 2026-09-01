@@ -1,0 +1,154 @@
+// Copyright The Linux Foundation and each contributor to CommunityBridge.
+// SPDX-License-Identifier: MIT
+
+package my_clas
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"strings"
+	"sync"
+	"time"
+)
+
+// Auth0Identity is one identity linked to the LF login's Auth0 user record
+type Auth0Identity struct {
+	Provider string
+	UserID   string
+	Username string
+}
+
+// Auth0IdentityService lists the identities linked to the LF login's Auth0 user record - the
+// third identity source checked after the EasyCLA user records and the platform user-service
+type Auth0IdentityService interface {
+	UserIdentities(ctx context.Context, lfUsername string) ([]Auth0Identity, error)
+}
+
+type auth0Client struct {
+	baseURL      string
+	tokenURL     string
+	clientID     string
+	clientSecret string
+	httpClient   *http.Client
+
+	mu     sync.Mutex
+	token  string
+	expiry time.Time
+}
+
+// NewAuth0IdentityService builds an Auth0 Management API client from the shared platform M2M
+// credentials - tokenURL is the tenant token endpoint (cla-auth0-platform-url-{stage}), from
+// which the tenant base URL and the Management API audience are derived
+func NewAuth0IdentityService(tokenURL, clientID, clientSecret string) Auth0IdentityService {
+	base, ok := strings.CutSuffix(strings.TrimSpace(tokenURL), "/oauth/token")
+	if !ok || clientID == "" || clientSecret == "" {
+		return nil
+	}
+	return &auth0Client{
+		baseURL:      base,
+		tokenURL:     strings.TrimSpace(tokenURL),
+		clientID:     clientID,
+		clientSecret: clientSecret,
+		httpClient:   &http.Client{Timeout: 30 * time.Second},
+	}
+}
+
+func (c *auth0Client) UserIdentities(ctx context.Context, lfUsername string) ([]Auth0Identity, error) {
+	lfUsername = strings.TrimSpace(lfUsername)
+	if lfUsername == "" {
+		return nil, nil
+	}
+	token, err := c.getToken(ctx)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := fmt.Sprintf("%s/api/v2/users/%s?fields=identities&include_fields=true",
+		c.baseURL, url.PathEscape("auth0|"+lfUsername))
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close() // nolint:errcheck
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512)) // nolint:errcheck
+		return nil, fmt.Errorf("auth0 management api returned status %d: %s", resp.StatusCode, string(body))
+	}
+	var payload struct {
+		Identities []struct {
+			Provider    string          `json:"provider"`
+			UserID      json.RawMessage `json:"user_id"`
+			ProfileData struct {
+				Nickname string `json:"nickname"`
+			} `json:"profileData"`
+		} `json:"identities"`
+	}
+	if decodeErr := json.NewDecoder(resp.Body).Decode(&payload); decodeErr != nil {
+		return nil, decodeErr
+	}
+	identities := make([]Auth0Identity, 0, len(payload.Identities))
+	for _, identity := range payload.Identities {
+		identities = append(identities, Auth0Identity{
+			Provider: strings.ToLower(strings.TrimSpace(identity.Provider)),
+			UserID:   strings.Trim(string(identity.UserID), `"`),
+			Username: identity.ProfileData.Nickname,
+		})
+	}
+	return identities, nil
+}
+
+func (c *auth0Client) getToken(ctx context.Context) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.token != "" && time.Until(c.expiry) > time.Minute {
+		return c.token, nil
+	}
+	body, err := json.Marshal(map[string]string{
+		"grant_type":    "client_credentials",
+		"client_id":     c.clientID,
+		"client_secret": c.clientSecret,
+		"audience":      c.baseURL + "/api/v2/",
+	})
+	if err != nil {
+		return "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.tokenURL, bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close() // nolint:errcheck
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("auth0 token request returned status %d", resp.StatusCode)
+	}
+	var tokenResponse struct {
+		AccessToken string `json:"access_token"`
+		ExpiresIn   int    `json:"expires_in"`
+	}
+	if decodeErr := json.NewDecoder(resp.Body).Decode(&tokenResponse); decodeErr != nil {
+		return "", decodeErr
+	}
+	if tokenResponse.AccessToken == "" {
+		return "", errors.New("empty auth0 token response")
+	}
+	c.token = tokenResponse.AccessToken
+	c.expiry = time.Now().Add(time.Duration(tokenResponse.ExpiresIn) * time.Second)
+	return c.token, nil
+}

@@ -110,8 +110,8 @@ func GetEmailHelpContent(showV2HelpLink bool) string {
 	// We only support v2 help links as of late 2021/early2022
 	helpLinkInfo := `<p>If you need help or have questions about EasyCLA, you can
 <a href="https://docs.linuxfoundation.org/lfx/easycla" target="_blank">read the documentation</a> or
-<a href="https://jira.linuxfoundation.org/servicedesk/customer/portal/4/create/143" target="_blank">reach out to us for
-support</a>.</p>`
+<a href="https://easycla.lfx.linuxfoundation.org/" target="_blank">visit our EasyCLA portal</a> and chat with our
+support bot.</p>`
 	if showV2HelpLink {
 		return helpLinkInfo
 	}
