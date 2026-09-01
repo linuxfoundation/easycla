@@ -27,7 +27,7 @@ Extend M1's read-only My CLAs page (Me lens, Profile → CLAs tab) with four add
 
 ### Self Serve (lfx-self-serve, `apps/lfx-one`)
 
-- The M1 page lives at `/profile/clas` (Profile-hub tab, renamed "CLAs" in the UI); the whole M2 overlay is dark-launched behind the `my-clas-m2-enabled` LaunchDarkly flag (M1's tab behind `my-clas-enabled`), both fail-open.
+- The M1 page lives at `/profile/clas` (Profile-hub tab, renamed "CLAs" in the UI); the whole M2 overlay is dark-launched behind the `my-clas-m2-enabled` LaunchDarkly flag (M1's tab behind `my-clas-enabled`), both **fail closed** — `getBooleanFlag(MY_CLAS_M2_ENABLED_FLAG, false)`, so an unavailable or failed flag evaluation keeps the overlay off. (M1's route guard has its own timeout behavior; the two are not the same.)
 - **Sign a CLA**: "Sign CLA" button → `ClaGroupSelectComponent` live search (min 3 chars, debounced) via `GET /api/me/clas/sign-options` → routed by the CLA group's linked platforms:
   - **GitHub**: linked-account picker (`SignIdentitySelectComponent`; always shown, even for one account; empty state when none linked) → `POST /api/me/clas/prepare-sign` → full-page navigate to the returned Contributor Console `signUrl`. The server verifies the returned `githubId` matches the chosen account.
   - **Gerrit**: an LF-username confirmation card (Gerrit signs under LF SSO), then a direct browser redirect to the Console's Gerrit route — no BFF call.
