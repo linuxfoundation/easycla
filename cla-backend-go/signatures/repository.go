@@ -3347,6 +3347,9 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		ECLAs:                   make([]*models.Signature, 0),
 		ManagersInfo:            cclaManagers,
 		CCLASignature:           cclaSignature,
+		ClaGroupID:              projectID,
+		ClaGroupName:            claGroupModel.ProjectName,
+		CompanyID:               companyID,
 	}
 
 	// Just grab and use the first one - need to figure out conflict resolution if more than one
@@ -4159,7 +4162,7 @@ func (repo repository) sendEmail(ctx context.Context, email string, approvalList
 			}
 		}
 	} else if removalType == CCLAECLA {
-		subject := fmt.Sprintf("EasyCLA: Employee Acknowledgement invalidated  for :%s ", approvalList.ClaGroupName)
+		subject := fmt.Sprintf("EasyCLA: Employee Acknowledgement invalidated for %s", approvalList.ClaGroupName)
 		log.WithFields(f).Debugf("sending employee acknowledgement invalidation email to :%s ", email)
 		body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateCCLAECLASignatureTemplateName, InvalidateCCLAECLASignatureTemplate, params)
 		if renderErr != nil {
@@ -4171,7 +4174,7 @@ func (repo repository) sendEmail(ctx context.Context, email string, approvalList
 			}
 		}
 	} else if removalType == CCLAICLAECLA {
-		subject := fmt.Sprintf("EasyCLA: Employee Acknowledgement invalidated  for :%s ", approvalList.ClaGroupName)
+		subject := fmt.Sprintf("EasyCLA: Employee Acknowledgement invalidated for %s", approvalList.ClaGroupName)
 		log.WithFields(f).Debugf("sending employee acknowledgement invalidation email to :%s ", email)
 		body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateCCLAICLAECLASignatureTemplateName, InvalidateCCLAICLAECLASignatureTemplate, params)
 		if renderErr != nil {
