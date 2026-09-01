@@ -4401,12 +4401,21 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 	if approvalList.Criteria == utils.EmailDomainCriteria {
 		// Handle Domains
 		log.WithFields(f).Debugf("Handling domain for user email: %s  with approval list: %+v ", email, approvalList.ApprovalList)
-		domain := emailDomain(email)
-		if domain == "" {
-			log.WithFields(f).Warnf("no usable email domain for user: %s - skipping domain criteria check", user.UserID)
+		var emails []string
+		emails = append(emails, user.Emails...)
+		if user.LfEmail != "" {
+			emails = append(emails, user.LfEmail.String())
 		}
-		if domain != "" && utils.StringInSlice(domain, approvalList.ApprovalList) {
-			if (!utils.StringInSlice(user.GithubUsername, approvalList.GitHubUsernameApprovals) || utils.StringInSlice(user.LfUsername, approvalList.GerritICLAECLAs)) && !utils.StringInSlice(email, approvalList.EmailApprovals) && !userStillApproved(user, approvalList) {
+		if len(emails) == 0 {
+			log.WithFields(f).Warnf("no emails for user: %s - skipping domain criteria check", user.UserID)
+		}
+		matched, matchErr := matchEmailsToDomainPatterns(emails, approvalList.ApprovalList)
+		if matchErr != nil {
+			log.WithFields(f).WithError(matchErr).Warnf("unable to match user: %s emails against removed domain entries - skipping domain criteria check", user.UserID)
+		}
+		// the coverage veto subsumes the earlier per-field email/GH-username checks
+		if matched != nil && *matched {
+			if !userStillApproved(user, approvalList) {
 				//Invalidate record
 				note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), utils.EmailDomainCriteria)
 				err := repo.InvalidateProjectRecordWithMetadata(ctx, signatureID, note, invalidationMetadata)
@@ -4509,15 +4518,6 @@ func userStillApproved(user *models.User, approvalList *ApprovalList) bool {
 	}
 
 	return false
-}
-
-// emailDomain returns the domain part of an email, or "" when the email has no usable domain
-func emailDomain(email string) string {
-	parts := strings.Split(email, "@")
-	if len(parts) != 2 || parts[1] == "" {
-		return ""
-	}
-	return parts[1]
 }
 
 // containsFold reports whether list contains value, comparing with surrounding whitespace
