@@ -2,7 +2,7 @@
 
 No persistent storage is introduced. These are view models and upstream-record mappings only.
 
-Updated 2026-09-01 to match the implementation ([linuxfoundation/easycla#5125](https://github.com/linuxfoundation/easycla/pull/5125)): identity resolution, aggregation, deduplication, validity evaluation, and ownership enforcement all happen **inside EasyCLA**, behind `GET /v4/my-clas` / `GET /v4/my-clas/{signatureID}/pdf` (see [contracts/upstream-easycla-api.md](contracts/upstream-easycla-api.md) and [docs/MY_CLAS_API.md](../../../docs/MY_CLAS_API.md)). SS holds no EasyCLA user IDs and does no per-user signature queries — it forwards session-derived identity keys and renders the response.
+Updated 2026-09-01 to match the implementation ([linuxfoundation/easycla#5125](https://github.com/linuxfoundation/easycla/pull/5125)): identity resolution, aggregation, deduplication, validity evaluation, and **signature**-ownership enforcement all happen **inside EasyCLA**, behind `GET /v4/my-clas` / `GET /v4/my-clas/{signatureID}/pdf` (see [contracts/upstream-easycla-api.md](contracts/upstream-easycla-api.md) and [docs/MY_CLAS_API.md](../../../docs/MY_CLAS_API.md)). SS does no per-user signature queries — it forwards session-derived identity keys and renders the response. It does receive the upstream `userIds`, but only to derive the `matchedUserIds` count; it neither persists them, queries by them, nor exposes them to the browser.
 
 ## Upstream records (read-only, EasyCLA-owned)
 
@@ -23,7 +23,7 @@ One LF person ⇒ 0..N EasyCLA user records (pre-LF-login history, multiple emai
 |-------|---------|
 | `signatureID` | key; input to the PDF endpoint |
 | `projectID` / project name | CLA group signed against |
-| `signatureType` (`cla`/`ccla`) + `signatureReferenceType` (`user`/`company`) | record class |
+| `signatureType` (`cla`/`ecla`/`ccla`) + `signatureReferenceType` (`user`/`company`) | record class — `ecla` is the auto-created ECLA variant, see the classification rule below |
 | `companyName` / `signature_user_ccla_company_id` | present ⇒ ECLA, identifies employer |
 | `signed`, `approved` | validity inputs |
 | `signedOn` / created | display date |
@@ -87,9 +87,9 @@ SS derives the identity keys from the session — LF username, verified emails, 
 How EasyCLA treats those keys depends on the caller (`effectiveIdentity`, `cla-backend-go/v2/my_clas/service.go`):
 
 - **Untrusted callers** have every forwarded key verified against their own LF account — EasyCLA's own user records, the platform user-service, and the Auth0 Management API (per [linuxfoundation/easycla#5172](https://github.com/linuxfoundation/easycla/pull/5172)) — before it is searched. Unverifiable keys come back in `skippedIdentities`.
-- **Admins and trusted callers** — a verified JWT whose `azp` is on the `cla-ss-trusted-client-ids-{stage}` SSM allow-list, which is how SS calls this endpoint — supply their keys **directly, with no per-key ownership verification**. This is deliberate: the trusted list is Auth0-derived and not re-derivable inside EasyCLA, and the historical GitHub-only signers this endpoint exists to serve carry no `lf_username` on their EasyCLA records, so verifying against those records would deny exactly the CLAs the caller is entitled to see.
+- **Admins and trusted callers** — a verified JWT whose `azp` is on the `cla-ss-trusted-client-ids-{stage}` SSM allow-list — supply their keys **directly, with no per-key ownership verification**. **SS is not such a caller today**: the parameter is unset, and the token SS sends is also handed to users as `v1Token`, so its client must not be allow-listed (see "Known limitations" in [docs/MY_CLAS_API.md](../../../docs/MY_CLAS_API.md)); enabling this for SS needs a dedicated server-only client first. The bypass itself is deliberate: the trusted list is Auth0-derived and not re-derivable inside EasyCLA, and the historical GitHub-only signers this endpoint exists to serve carry no `lf_username` on their EasyCLA records, so verifying against those records would deny exactly the CLAs the caller is entitled to see.
 
-**SS therefore remains an authorization boundary for the identity keys it forwards** — it is trusted to send only keys derived from the authenticated session. What moved into EasyCLA is *signature* ownership: the PDF route passes the `signatureID` straight to `GET /v4/my-clas/{signatureID}/pdf`, which re-runs the ownership check itself and returns 404 (never 403) for anything the resolved identity doesn't own.
+**If the trusted path is ever activated for SS, SS becomes the authorization boundary for the identity keys it forwards** — trusted to send only keys derived from the authenticated session. Until then EasyCLA verifies each key itself. What moved into EasyCLA is *signature* ownership: the PDF route passes the `signatureID` straight to `GET /v4/my-clas/{signatureID}/pdf`, which re-runs the ownership check itself and returns 404 (never 403) for anything the resolved identity doesn't own.
 
 ## State transitions
 

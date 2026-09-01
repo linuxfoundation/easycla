@@ -7,7 +7,7 @@
 
 **Status: implemented** (dark-launched behind the `my-clas-enabled` LaunchDarkly flag). This plan is retained as the design record, updated 2026-09-01 to state what actually shipped.
 
-Add a read-only "My CLAs" surface to LFX Self Serve showing the logged-in user's signed ICLAs (with signed-PDF download) and ECLAs, backed by EasyCLA v4 APIs via the crowdfunding-style server-side integration pattern. The core technical problem — resolving the LF SSO identity to EasyCLA user record(s), including pre-LF-login history — was solved **inside EasyCLA rather than in SS**: a new consolidated read surface (`GET /v4/my-clas`, `GET /v4/my-clas/{signatureID}/pdf`, `GET /v4/my-clas/identities`, documented in [docs/MY_CLAS_API.md](../../../docs/MY_CLAS_API.md)) takes session-derived identity keys forwarded by SS (LF username, verified emails, GitHub IDs/usernames) and performs aggregation, deduplication, validity evaluation, and signature-ownership enforcement server-side. For untrusted callers it first verifies each key against the caller's LF account (EasyCLA records, platform user-service, and the Auth0 Management API per [linuxfoundation/easycla#5172](https://github.com/linuxfoundation/easycla/pull/5172)); admins and trusted SS callers (allow-listed `azp`) supply keys directly, so SS remains responsible for forwarding only session-derived keys — see [data-model.md](data-model.md). The originally expected `GET /v4/users/by-identity` endpoint was never built — the my-clas module absorbed that role. A "Don't see your CLAs? Link your GitHub account" CTA covers unlinked GitHub identities. Feature-flagged, no writes.
+Add a read-only "My CLAs" surface to LFX Self Serve showing the logged-in user's signed ICLAs (with signed-PDF download) and ECLAs, backed by EasyCLA v4 APIs via the crowdfunding-style server-side integration pattern. The core technical problem — resolving the LF SSO identity to EasyCLA user record(s), including pre-LF-login history — was solved **inside EasyCLA rather than in SS**: a new consolidated read surface (`GET /v4/my-clas`, `GET /v4/my-clas/{signatureID}/pdf`, `GET /v4/my-clas/identities`, documented in [docs/MY_CLAS_API.md](../../../docs/MY_CLAS_API.md)) takes session-derived identity keys forwarded by SS (LF username, verified emails, GitHub IDs/usernames) and performs aggregation, deduplication, validity evaluation, and signature-ownership enforcement server-side. For untrusted callers it first verifies each key against the caller's LF account (EasyCLA records, platform user-service, and the Auth0 Management API per [linuxfoundation/easycla#5172](https://github.com/linuxfoundation/easycla/pull/5172)); admins and callers with an allow-listed `azp` supply keys directly. **SS is on the untrusted path as deployed** — the allow-list is unset and SS's current client does not qualify for it — so every key it forwards is verified upstream today; see [data-model.md](data-model.md). The originally expected `GET /v4/users/by-identity` endpoint was never built — the my-clas module absorbed that role. A "Don't see your CLAs? Link your GitHub account" CTA covers unlinked GitHub identities. Feature-flagged, no writes.
 
 ## Technical Context
 
@@ -19,7 +19,7 @@ Add a read-only "My CLAs" surface to LFX Self Serve showing the logged-in user's
 **Project Type**: web application (feature module in existing monorepo)
 **Performance Goals**: page interactive with agreement list < 2s p95 against dev/prod EasyCLA; PDF link issuance < 1s p95 (presigned URL fetch on click)
 **Constraints**: read-only (no EasyCLA writes); server-side identity derivation only (never trust client-supplied user IDs); presigned URLs are 15-minute TTL — fetch on demand; feature-flagged dark launch
-**Scale/Scope**: all LFX users with CLA history (~hundreds of thousands of signature records upstream; per-user result sets are small — typically < 50 agreements); 1 new lens module, ~2 server routes, 3 upstream endpoints (2 proxied by SS routes; the identities endpoint is available but not consumed by the shipped UI)
+**Scale/Scope**: all LFX users with CLA history (~hundreds of thousands of signature records upstream; per-user result sets are small — typically < 50 agreements); 1 feature surface (shipped as the Profile-hub CLAs tab, not the `/me/clas` lens module sketched below), ~2 server routes, 3 upstream endpoints (2 proxied by SS routes; the identities endpoint is available but not consumed by the shipped UI)
 
 ## Constitution Check
 
@@ -28,7 +28,7 @@ Add a read-only "My CLAs" surface to LFX Self Serve showing the logged-in user's
 `.specify/memory/constitution.md` is the unratified template — no project-specific gates exist. Default gates applied instead:
 
 - **Simplicity**: no new services, no new storage, no state; single SS server module + lens module. PASS
-- **Security**: user-scoped data derived from session server-side; SS MUST NOT expose arbitrary-user lookup. *(As built, the boundary is split rather than SS-only: the original finding — that `GET /v4/signatures/user/{userID}` performs no ownership check (`v2/signatures/handlers.go`, `GetUserSignatures`) — was addressed by not using that route. The new `/v4/my-clas` endpoints enforce **signature** ownership upstream, while **identity-key** trust stays with SS, because an allow-listed `azp` bypasses per-key verification. SS therefore remains the enforcement point for deriving keys only from the authenticated session.)* PASS with this split carried into contracts.
+- **Security**: user-scoped data derived from session server-side; SS MUST NOT expose arbitrary-user lookup. *(As built: the original finding — that `GET /v4/signatures/user/{userID}` performs no ownership check (`v2/signatures/handlers.go`, `GetUserSignatures`) — was addressed by not using that route. The new `/v4/my-clas` endpoints enforce **signature** ownership upstream and, as deployed, also verify every identity key, since SS runs as an untrusted caller. The trusted-caller bypass exists in code but is switched off pending a dedicated SS server-only client; if activated, identity-key trust shifts to SS. Either way SS derives keys only from the authenticated session.)* PASS.
 - **No speculative work**: M2–M5 needs (signing, roles) explicitly excluded; the `cla` server module is the only deliberately reusable seam. PASS
 
 **Post-Phase-1 re-check**: design adds no projects, no new patterns beyond the existing crowdfunding integration precedent. PASS
@@ -53,9 +53,11 @@ specs/001-easycla-ss-integration-fable/          # program level (review docs)
 
 Primary repo: `linuxfoundation/lfx-self-serve`
 
+The tree below is the **original design sketch, retained as the design record** — see the as-built placement delta after it for what actually shipped.
+
 ```text
 apps/lfx-one/src/
-├── app/modules/my-clas/                     # NEW Angular lens module (Me lens)
+├── app/modules/my-clas/                     # PLANNED Angular lens module (Me lens) — superseded, see below
 │   ├── my-clas.routes.ts                    # exported MY_CLAS_ROUTES, lazy-loaded at /me/clas
 │   ├── my-clas.component.ts|html            # list view: ICLA + ECLA sections, empty state
 │   └── components/
