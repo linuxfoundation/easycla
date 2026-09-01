@@ -1454,6 +1454,9 @@ func TestGetMyIdentities(t *testing.T) {
 		},
 	}
 	svc := newTestService(repo, platform, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+	svc.auth0Identities = &fakeAuth0{identities: []Auth0Identity{
+		{Provider: "github", UserID: "9218699"},
+	}}
 
 	result, err := svc.GetMyIdentities(context.Background(), "someone")
 	require.NoError(t, err)
@@ -1464,6 +1467,7 @@ func TestGetMyIdentities(t *testing.T) {
 		"email:someone@example.org",
 		"gerrit-username:someone",
 		"github-id:12345",
+		"github-id:9218699",
 		"github-username:Octocat",
 		"gitlab-id:777",
 		"gitlab-username:octolab",

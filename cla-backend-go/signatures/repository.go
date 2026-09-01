@@ -4452,20 +4452,18 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 }
 
 // effectiveApprovals returns the approval list as it will look after applying the pending
-// additions and removals
+// additions and removals, mirroring persistence: entries are trimmed and deduped like
+// buildApprovalAttributeList, and removals stay exact-match on the raw remove entries like
+// utils.RemoveItemsFromList
 func effectiveApprovals(current, add, remove []string) []string {
 	var result []string
-	for _, entry := range current {
-		if !utils.StringInSlice(entry, remove) {
-			result = append(result, entry)
+	for _, entry := range append(append([]string{}, current...), add...) {
+		t := strings.TrimSpace(entry)
+		if !utils.StringInSlice(t, result) {
+			result = append(result, t)
 		}
 	}
-	for _, entry := range add {
-		if !utils.StringInSlice(entry, remove) && !utils.StringInSlice(entry, result) {
-			result = append(result, entry)
-		}
-	}
-	return result
+	return utils.RemoveItemsFromList(result, remove)
 }
 
 // userStillApproved reports whether the user remains covered by any approval list criteria.

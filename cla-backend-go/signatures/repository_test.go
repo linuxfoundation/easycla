@@ -57,8 +57,18 @@ func TestEffectiveApprovals(t *testing.T) {
 	// removals subtracted, additions appended, add+remove of the same entry removes it
 	assert.Equal(t, []string{"a", "c", "d"},
 		effectiveApprovals([]string{"a", "b", "c"}, []string{"d", "b", "a"}, []string{"b"}))
-	assert.Nil(t, effectiveApprovals([]string{"a"}, nil, []string{"a"}))
+	assert.Empty(t, effectiveApprovals([]string{"a"}, nil, []string{"a"}))
 	assert.Equal(t, []string{"a"}, effectiveApprovals(nil, []string{"a"}, nil))
+
+	// entries are trimmed like persistence, so a padded add matches the persisted value
+	assert.Equal(t, []string{"janegh"}, effectiveApprovals(nil, []string{" janegh "}, nil))
+
+	// duplicate current entries are deduped like persistence
+	assert.Equal(t, []string{"a", "b"}, effectiveApprovals([]string{"a", "a", "b"}, nil, nil))
+
+	// removals stay exact-match on raw entries (persistence parity): a padded remove entry
+	// removes nothing
+	assert.Equal(t, []string{"a"}, effectiveApprovals([]string{"a"}, nil, []string{" a "}))
 }
 
 // userStillApproved receives approval lists that already reflect the full pending update

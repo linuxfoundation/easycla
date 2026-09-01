@@ -837,6 +837,11 @@ func (s *service) GetMyIdentities(ctx context.Context, currentUsername string) (
 			}
 		}
 	}
+	for source, byID := range platform.ids {
+		for id := range byID {
+			add(source+"-id", id)
+		}
+	}
 
 	sort.Strings(identities)
 	return &models.MyIdentityList{
