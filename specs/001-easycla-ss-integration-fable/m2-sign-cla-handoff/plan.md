@@ -1,9 +1,11 @@
 # Implementation Plan: Milestone 2 — My CLAs actions: proactive sign entry, CLA-manager-routed removal, status
 
 **Branch**: `docs/easycla-ss-m2-speckit` | **Date**: 2026-08-04 (revised 2026-08-14) | **Spec**: [spec.md](spec.md)
-**Input**: [spec.md](spec.md), [../spec.md](../spec.md), [../02-milestone-sign-icla-fable.md](../02-milestone-sign-icla-fable.md), and the [M2 UI mockup v17 Final](https://github.com/linuxfoundation/easyclav2-migration-planning/blob/main/Mockups/M2/EasyCLA_MyCLAs_Full_Prototype_Final.html). M1 is a completed dependency; M3–M6 are roadmap context only.
+**Input**: [spec.md](spec.md), [../spec.md](../spec.md), [../02-milestone-sign-cla-fable.md](../02-milestone-sign-cla-fable.md), and the [M2 UI mockup v17 Final](https://github.com/linuxfoundation/easyclav2-migration-planning/blob/main/Mockups/M2/EasyCLA_MyCLAs_Full_Prototype_Final.html). M1 is a completed dependency; M3–M5 (renumbered 2026-09-01) are roadmap context only.
 
 **2026-08-14 legal/stakeholder review**: self-service invalidation (ICLA and ECLA) is removed from scope entirely. This plan reflects that revision — see [lfx-self-serve#1253](https://github.com/linuxfoundation/lfx-self-serve/issues/1253) and its linked tasks for the ticket-level scope this now matches.
+
+**Implementation outcome (2026-09-01)**: M2 is **implemented** (dark-launched behind `my-clas-m2-enabled`; epic [linuxfoundation/lfx-self-serve#1229](https://github.com/linuxfoundation/lfx-self-serve/issues/1229)). This plan is retained as authored; the deltas between plan and as-built are listed in [spec.md](spec.md) § "As-built deltas" — notably the five-value status model (adds `invalidated` and `unknown`), the search endpoint landing as `GET /v4/cla-group/search` with a ~30-minute in-process cache (revising this plan's "no cache" stance; still no new datastore), the GitHub hand-off going through `POST /v4/self-serve/prepare-sign`, the third `contact` request mode, and GitLab-only groups being blocked at the sign entry.
 
 ## Summary
 
