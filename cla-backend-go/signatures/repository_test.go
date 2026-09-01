@@ -128,13 +128,27 @@ func TestUserStillApproved(t *testing.T) {
 		EmailApprovals: []string{"Jane@Corp.Example"},
 	}))
 
-	// domain approval entries match with whitespace trimmed and case ignored
-	assert.True(t, userStillApproved(user, &ApprovalList{
+	// domain entries match with the gate's pattern semantics: case-sensitive and untrimmed,
+	// so a padded mixed-case entry the gate would not honor grants no coverage here either
+	assert.False(t, userStillApproved(user, &ApprovalList{
 		DomainApprovals: []string{" Corp.Example "},
 	}))
 
-	// usernames stay exact-match, mirroring the enforcement gate
-	assert.False(t, userStillApproved(user, &ApprovalList{
+	// usernames fold like the enforcement gate (EqualFold)
+	assert.True(t, userStillApproved(user, &ApprovalList{
 		GitHubUsernameApprovals: []string{"JaneGH"},
+	}))
+	assert.True(t, userStillApproved(user, &ApprovalList{
+		GitlabUsernameApprovals: []string{"JaneGL"},
+	}))
+
+	// wildcard domain entries cover subdomains like the enforcement gate
+	assert.True(t, userStillApproved(&models.User{Emails: []string{"jane@dev.example.com"}}, &ApprovalList{
+		DomainApprovals: []string{"*.example.com"},
+	}))
+
+	// a malformed domain pattern neither panics nor grants coverage
+	assert.False(t, userStillApproved(&models.User{Emails: []string{"jane@corp.example"}}, &ApprovalList{
+		DomainApprovals: []string{"("},
 	}))
 }

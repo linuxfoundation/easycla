@@ -1734,6 +1734,12 @@ func (s service) EvaluateUserApproval(ctx context.Context, user *models.User, cc
 }
 
 func (s service) processPattern(emails []string, patterns []string) (*bool, error) {
+	return matchEmailsToDomainPatterns(emails, patterns)
+}
+
+// matchEmailsToDomainPatterns reports whether any email matches any domain approval entry,
+// honoring the same wildcard patterns as the enforcement gate
+func matchEmailsToDomainPatterns(emails []string, patterns []string) (*bool, error) {
 	matched := false
 
 	for _, pattern := range patterns {
