@@ -105,4 +105,19 @@ func TestUserStillApproved(t *testing.T) {
 		EmailApprovals:          effectiveApprovals([]string{"jane@corp.example"}, nil, []string{"jane@corp.example"}),
 		GitHubUsernameApprovals: effectiveApprovals([]string{"janegh"}, nil, []string{"janegh"}),
 	}))
+
+	// email approval entries match case-insensitively
+	assert.True(t, userStillApproved(user, &ApprovalList{
+		EmailApprovals: []string{"Jane@Corp.Example"},
+	}))
+
+	// domain approval entries match with whitespace trimmed and case ignored
+	assert.True(t, userStillApproved(user, &ApprovalList{
+		DomainApprovals: []string{" Corp.Example "},
+	}))
+
+	// usernames stay exact-match, mirroring the enforcement gate
+	assert.False(t, userStillApproved(user, &ApprovalList{
+		GitHubUsernameApprovals: []string{"JaneGH"},
+	}))
 }

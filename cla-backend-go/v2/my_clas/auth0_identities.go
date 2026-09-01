@@ -46,13 +46,14 @@ type auth0Client struct {
 // credentials - tokenURL is the tenant token endpoint (cla-auth0-platform-url-{stage}), from
 // which the tenant base URL and the Management API audience are derived
 func NewAuth0IdentityService(tokenURL, clientID, clientSecret string) Auth0IdentityService {
-	base, ok := strings.CutSuffix(strings.TrimSpace(tokenURL), "/oauth/token")
+	u := strings.TrimRight(strings.TrimSpace(tokenURL), "/")
+	base, ok := strings.CutSuffix(u, "/oauth/token")
 	if !ok || clientID == "" || clientSecret == "" {
 		return nil
 	}
 	return &auth0Client{
 		baseURL:      base,
-		tokenURL:     strings.TrimSpace(tokenURL),
+		tokenURL:     u,
 		clientID:     clientID,
 		clientSecret: clientSecret,
 		httpClient:   &http.Client{Timeout: 30 * time.Second},

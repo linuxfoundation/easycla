@@ -3529,7 +3529,9 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 					invalidatedICLAs, invalidatedECLAs := repo.invalidateSignatures(ctx, &entryApprovalList, claManager, eventArgs)
 
 					// Send email
-					repo.sendEmail(ctx, email, &entryApprovalList, invalidatedICLAs, invalidatedECLAs)
+					if len(invalidatedICLAs) > 0 || len(invalidatedECLAs) > 0 {
+						repo.sendEmail(ctx, email, &entryApprovalList, invalidatedICLAs, invalidatedECLAs)
+					}
 
 				}(email)
 			}
@@ -3695,7 +3697,9 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 						invalidatedICLAs, invalidatedECLAs := repo.invalidateSignatures(ctx, &entryApprovalList, claManager, eventArgs)
 
 						// Send Email
-						repo.sendEmail(ctx, getBestEmail(claUser), &entryApprovalList, invalidatedICLAs, invalidatedECLAs)
+						if len(invalidatedICLAs) > 0 || len(invalidatedECLAs) > 0 {
+							repo.sendEmail(ctx, getBestEmail(claUser), &entryApprovalList, invalidatedICLAs, invalidatedECLAs)
+						}
 
 					}(ghUsername)
 				}
@@ -3857,7 +3861,7 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 							if icla != nil {
 								// Convert to IclSignature instance to leverage invalidateSignatures helper function
 								entryApprovalList.ICLAs = []*models.IclaSignature{{
-									GitlabUsername: icla.UserGHUsername,
+									GitlabUsername: icla.UserGitlabUsername,
 									LfUsername:     icla.UserLFID,
 									SignatureID:    icla.SignatureID,
 								}}
@@ -3867,7 +3871,9 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 						invalidatedICLAs, invalidatedECLAs := repo.invalidateSignatures(ctx, &entryApprovalList, claManager, eventArgs)
 
 						// Send Email
-						repo.sendEmail(ctx, getBestEmail(claUser), &entryApprovalList, invalidatedICLAs, invalidatedECLAs)
+						if len(invalidatedICLAs) > 0 || len(invalidatedECLAs) > 0 {
+							repo.sendEmail(ctx, getBestEmail(claUser), &entryApprovalList, invalidatedICLAs, invalidatedECLAs)
+						}
 
 					}(ghUsername)
 				}
@@ -4474,15 +4480,17 @@ func userStillApproved(user *models.User, approvalList *ApprovalList) bool {
 	}
 
 	for _, email := range emails {
-		if utils.StringInSlice(email, approvalList.EmailApprovals) {
+		if containsFold(approvalList.EmailApprovals, email) {
 			return true
 		}
-		parts := strings.Split(email, "@")
-		if len(parts) == 2 && utils.StringInSlice(parts[1], approvalList.DomainApprovals) {
+		parts := strings.Split(strings.TrimSpace(email), "@")
+		if len(parts) == 2 && containsFold(approvalList.DomainApprovals, parts[1]) {
 			return true
 		}
 	}
 
+	// usernames stay exact-match: the enforcement gate matches them exactly, so folding here
+	// could skip an invalidation based on an approval entry the gate itself wouldn't honor
 	if user.GithubUsername != "" && utils.StringInSlice(user.GithubUsername, approvalList.GitHubUsernameApprovals) {
 		return true
 	}
@@ -4490,6 +4498,18 @@ func userStillApproved(user *models.User, approvalList *ApprovalList) bool {
 		return true
 	}
 
+	return false
+}
+
+// containsFold reports whether list contains value, comparing with surrounding whitespace
+// trimmed and case ignored
+func containsFold(list []string, value string) bool {
+	value = strings.TrimSpace(value)
+	for _, entry := range list {
+		if strings.EqualFold(strings.TrimSpace(entry), value) {
+			return true
+		}
+	}
 	return false
 }
 

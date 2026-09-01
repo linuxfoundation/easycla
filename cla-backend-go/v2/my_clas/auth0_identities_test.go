@@ -41,6 +41,7 @@ func TestNewAuth0IdentityService(t *testing.T) {
 	assert.Nil(t, NewAuth0IdentityService("https://tenant.auth0.com/oauth/token", "", "secret"))
 	assert.Nil(t, NewAuth0IdentityService("https://tenant.auth0.com/oauth/token", "id", ""))
 	assert.NotNil(t, NewAuth0IdentityService("https://tenant.auth0.com/oauth/token", "id", "secret"))
+	assert.NotNil(t, NewAuth0IdentityService("https://tenant.auth0.com/oauth/token/", "id", "secret"))
 }
 
 func TestAuth0UserIdentities(t *testing.T) {
