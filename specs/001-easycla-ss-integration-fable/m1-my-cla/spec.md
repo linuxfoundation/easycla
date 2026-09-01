@@ -14,13 +14,13 @@ A contributor logs into LFX Self Serve and opens the **"CLAs" tab in the Profile
 **Acceptance Scenarios**:
 
 1. **Given** a logged-in user who has signed at least one ICLA, **When** they open My CLAs, **Then** each signed ICLA is listed with project name, date signed, and a working signed-PDF download.
-2. **Given** a logged-in user with a valid ECLA, **When** they open My CLAs, **Then** the ECLA is listed with company name, project, and acknowledgement date, and no PDF download is offered.
+2. **Given** a logged-in user with an ECLA, **When** they open My CLAs, **Then** the ECLA is listed with company name, project, acknowledgement date, and its computed status — valid or not — and no PDF download is offered.
 3. **Given** a logged-in user with no CLA history, **When** they open My CLAs, **Then** an empty state explains what CLAs are and links to documentation.
 4. **Given** any user viewing My CLAs, **When** they look for signing actions, **Then** none exist in Self Serve; any "sign" pointers link out to the Contributor Console.
 
 ## Functional Requirements
 
-- **FR-001**: Self Serve MUST display, for the logged-in user, all ICLAs they have signed (any status: valid, superseded, expired), with project/CLA group name, date signed, and validity status.
+- **FR-001**: Self Serve MUST display, for the logged-in user, all ICLAs they have signed regardless of status, with project/CLA group name, date signed, and validity status. *(As built, M1 shipped the boolean `valid`; the five-value computed status — `valid`/`needs_attention`/`invalidated`/`revoked`/`unknown` — arrived in M2. Neither exposes `superseded` or `expired`: the original wording named statuses the endpoint has never produced. `superseded` is reserved in the SS interface for forward compatibility.)*
 - **FR-002**: Self Serve MUST display all of the user's ECLAs with company name, project/CLA group, and acknowledgement date, and MUST NOT offer a PDF for ECLAs (none exists). *(As built, this widened from "currently valid ECLAs only": every ECLA is shown with its computed status, because invalid rows are the ones needing M2's manager-routed Request-approval action.)*
 - **FR-003**: Users MUST be able to download the signed PDF for each of their signed ICLAs via a time-limited link.
 - **FR-004**: The view MUST be read-only; any signing affordance MUST link out to the existing Contributor Console.
@@ -30,7 +30,7 @@ A contributor logs into LFX Self Serve and opens the **"CLAs" tab in the Profile
 
 ## Success Criteria
 
-- **SC-001**: 100% of a sampled user population's signed ICLAs and valid ECLAs visible in EasyCLA's data are also visible in Self Serve; ICLA PDF download success rate ≥ 99%.
+- **SC-001**: 100% of a sampled user population's signed ICLAs and ECLAs visible in EasyCLA's data are also visible in Self Serve (as built, all ECLAs — not only valid ones — per FR-002); ICLA PDF download success rate ≥ 99%.
 - Unmatched-identity telemetry live with an agreed threshold (launch gate for M2).
 
 ## Scope boundaries

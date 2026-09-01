@@ -195,8 +195,8 @@ searched:
    do carry provider user IDs — so numeric IDs validate against the EasyCLA LFID records
    or the Auth0 identity set. Because the users-table username indexes are
    exact-match while verification is case-insensitive, allowed usernames are expanded to
-   their **canonical spellings** (from the EasyCLA records and user-service, plus the
-   requested spelling) before the index lookups — `githubUsername=octocat` finds a record
+   their **canonical spellings** (from the EasyCLA records, user-service, and Auth0
+   identities, plus the requested spelling) before the index lookups — `githubUsername=octocat` finds a record
    stored as `Octocat`.
 3. Keys verified by neither source are **not searched** and are reported in the response's
    `skippedIdentities` array (formatted `"<parameter>:<value>"`, e.g.

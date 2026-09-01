@@ -28,7 +28,7 @@ One LF person ⇒ 0..N EasyCLA user records (pre-LF-login history, multiple emai
 | `signed`, `approved` | validity inputs |
 | `signedOn` / created | display date |
 
-**Classification rule** (applied upstream): `type=cla & referenceType=user & cclaCompanyID empty` ⇒ **ICLA** (has PDF); `type=cla & referenceType=user & cclaCompanyID set` ⇒ **ECLA** (no PDF, never offer download); `type=ccla` ⇒ corporate record — **excluded from M1** (Organization-lens data, M3).
+**Classification rule** (applied upstream): the query accepts `signature_type` of **both `cla` and `ecla`** — ICLAs and DocuSign-era ECLAs are stored as `cla`, while ECLAs auto-created from approval-list changes are stored as `ecla`. User-referenced rows are then classified by company-ID presence: `referenceType=user & cclaCompanyID empty` ⇒ **ICLA** (has PDF); `referenceType=user & cclaCompanyID set` ⇒ **ECLA** (no PDF, never offer download). `type=ccla` ⇒ corporate record — **excluded from M1** (Organization-lens data, M3).
 
 ## Upstream response item (`GET /v4/my-clas`)
 
@@ -72,7 +72,7 @@ Validation/invariants:
 }
 ```
 
-(`skippedIdentities` from the upstream response feeds the `unmatched` hint. `matchedUserIds` is a **count only** — raw EasyCLA user IDs never reach the client.)
+(`unmatched` is derived from the match count — `userIds.length === 0` — not from `skippedIdentities`, which the SS server logs separately as telemetry. The SS server does receive the upstream `userIds` before reducing them to the `matchedUserIds` count; it is the **browser** that never sees raw EasyCLA user IDs.)
 
 ### `PdfUrlResponse`
 

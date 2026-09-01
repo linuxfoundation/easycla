@@ -20,11 +20,13 @@ All via lfx-gateway `/cla-service` prefix (`lfx-gateway/dynamic/services/cla-ser
 
 ## 3. `GET /cla-service/v4/my-clas/identities`
 
-- Returns the identities EasyCLA can attach to the caller (the resolvable key set) — used for the "Don't see your CLAs?" diagnostics and identity-linking hints.
+- Returns the identities EasyCLA can attach to the caller (the resolvable key set), available for identity-linking diagnostics. **Not consumed by the shipped M1 UI**: SS derives `githubLinked` from its own session/auth-service identities, and logs `skippedIdentities` from `GET /my-clas` as telemetry.
 
 ## Authorization boundary
 
-Ownership enforcement moved **upstream into EasyCLA**: SS forwards identity keys but EasyCLA independently verifies them, so a compromised or buggy SS route cannot read arbitrary users' signatures. (Contrast with `GET /v4/signatures/user/{userID}`, which performs no ownership check and is no longer consumed by this feature.)
+**Signature** ownership enforcement moved **upstream into EasyCLA**: whatever identity set is resolved, the endpoints only ever return signatures owned by it, and the PDF route answers 404 — never 403 — for anything else. (Contrast with `GET /v4/signatures/user/{userID}`, which performs no ownership check and is no longer consumed by this feature.)
+
+**Identity-key** trust is split by caller, and SS is on the trusted side. For an untrusted caller EasyCLA verifies each forwarded key independently; for an admin or an SS caller with an allow-listed `azp` it does not (see §"Identity keys" above). A compromised or buggy SS route could therefore submit another person's identity keys, so SS remains responsible for deriving keys only from the authenticated session — the upstream guarantee is JWT/`azp` verification plus signature ownership, not per-key ownership.
 
 ---
 

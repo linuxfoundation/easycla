@@ -19,7 +19,7 @@ Add a read-only "My CLAs" surface to LFX Self Serve showing the logged-in user's
 **Project Type**: web application (feature module in existing monorepo)
 **Performance Goals**: page interactive with agreement list < 2s p95 against dev/prod EasyCLA; PDF link issuance < 1s p95 (presigned URL fetch on click)
 **Constraints**: read-only (no EasyCLA writes); server-side identity derivation only (never trust client-supplied user IDs); presigned URLs are 15-minute TTL — fetch on demand; feature-flagged dark launch
-**Scale/Scope**: all LFX users with CLA history (~hundreds of thousands of signature records upstream; per-user result sets are small — typically < 50 agreements); 1 new lens module, ~2 server routes, 2 upstream endpoints
+**Scale/Scope**: all LFX users with CLA history (~hundreds of thousands of signature records upstream; per-user result sets are small — typically < 50 agreements); 1 new lens module, ~2 server routes, 3 upstream endpoints (2 proxied by SS routes; the identities endpoint is available but not consumed by the shipped UI)
 
 ## Constitution Check
 
@@ -28,7 +28,7 @@ Add a read-only "My CLAs" surface to LFX Self Serve showing the logged-in user's
 `.specify/memory/constitution.md` is the unratified template — no project-specific gates exist. Default gates applied instead:
 
 - **Simplicity**: no new services, no new storage, no state; single SS server module + lens module. PASS
-- **Security**: user-scoped data derived from session server-side; upstream v4 endpoint lacks per-user authz (verified in `v2/signatures/handlers.go` — `GetUserSignatures` performs no ownership check), so the SS server MUST be the enforcement point and MUST NOT expose arbitrary-user lookup. PASS with this requirement carried into contracts.
+- **Security**: user-scoped data derived from session server-side; SS MUST NOT expose arbitrary-user lookup. *(As built, the boundary is split rather than SS-only: the original finding — that `GET /v4/signatures/user/{userID}` performs no ownership check (`v2/signatures/handlers.go`, `GetUserSignatures`) — was addressed by not using that route. The new `/v4/my-clas` endpoints enforce **signature** ownership upstream, while **identity-key** trust stays with SS, because an allow-listed `azp` bypasses per-key verification. SS therefore remains the enforcement point for deriving keys only from the authenticated session.)* PASS with this split carried into contracts.
 - **No speculative work**: M2–M5 needs (signing, roles) explicitly excluded; the `cla` server module is the only deliberately reusable seam. PASS
 
 **Post-Phase-1 re-check**: design adds no projects, no new patterns beyond the existing crowdfunding integration precedent. PASS
