@@ -13,7 +13,7 @@
 
 ## Requirement Completeness
 
-- [x] No [NEEDS CLARIFICATION] markers remain — Q1–Q3 resolved after review feedback on 2026-07-11 (Q1: LF login already mandatory in the console, no decision needed; Q2: all three platforms via sub-milestones M2a–c/M3a–c; Q3: UI-first, hybrid strangler noted as the alternative if M6 is committed early)
+- [x] No [NEEDS CLARIFICATION] markers remain — Q1–Q3 resolved after review feedback on 2026-07-11 (Q1: LF login already mandatory in the console, no decision needed; Q2: all three platforms, originally via per-platform sub-milestones — later dropped when M2 shipped as a single hand-off flow (2026-09-01 revision); Q3: UI-first, hybrid strangler noted as the alternative if the K8s milestone (now M5) is committed early)
 - [x] Requirements are testable and unambiguous
 - [x] Success criteria are measurable
 - [x] Success criteria are technology-agnostic (no implementation details)
@@ -27,7 +27,7 @@
 - [x] All functional requirements have clear acceptance criteria
 - [x] User scenarios cover primary flows (contributor view/sign ICLA/ECLA, org-lens management, project-lens admin, platform migration)
 - [x] Feature meets measurable outcomes defined in Success Criteria
-- [x] Implementation details in spec.md are limited to explicitly scoped M6 architecture decisions (Kubernetes, Postgres) called out as a separately gated milestone, not leaked into the M1–M5 behavior-level requirements
+- [x] Implementation details in spec.md are limited to explicitly scoped M5 architecture decisions (Kubernetes, Postgres) called out as a separately gated milestone, not leaked into the M1–M4 behavior-level requirements
 
 ## Notes
 

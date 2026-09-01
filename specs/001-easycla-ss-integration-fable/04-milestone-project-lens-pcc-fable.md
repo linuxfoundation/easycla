@@ -1,6 +1,6 @@
-# Milestone 5 — EasyCLA Project Administration in the Project Lens; remove from PCC
+# Milestone 4 — EasyCLA Project Administration in the Project Lens; remove from PCC
 
-**Status**: **DECISION-GATED** (2026-07-15 review): whether project-level EasyCLA administration moves to Self Serve or stays in PCC is an open product decision (Kieran/Manish/Heather) — this document describes the move-to-SS option; do not start until the placement decision lands | **Depends on**: M4 patterns (role bridge, reporting components) | **Retires**: PCC EasyCLA module (v1-frontend) | **Effort**: L
+**Status**: **DECISION-GATED** (2026-07-15 review): whether project-level EasyCLA administration moves to Self Serve or stays in PCC is an open product decision (Kieran/Manish/Heather) — this document describes the move-to-SS option; do not start until the placement decision lands | **Depends on**: M3 patterns (role bridge, reporting components) | **Retires**: PCC EasyCLA module (v1-frontend) | **Effort**: L
 **Spec**: [spec.md](spec.md) | **Overview**: [00-overview-fable.md](00-overview-fable.md)
 
 ## Goal
@@ -22,7 +22,7 @@ Project administrators configure EasyCLA from Self Serve's Project lens: CLA gro
 
 ## Role mapping
 
-Simpler than M4: PCC's CLA permissions are all **project-scoped admin** authority — they map naturally onto the Project lens's existing "project writer/admin" concept. Two credible options:
+Simpler than M3: PCC's CLA permissions are all **project-scoped admin** authority — they map naturally onto the Project lens's existing "project writer/admin" concept. Two credible options:
 
 - **A. Map to project lens authority (recommended)**: SS gates the CLA admin module on the same project-admin relation used by the lens's other admin features; EasyCLA v4 continues its own server-side checks. v4 accepts SS-authenticated calls with api-gw-audience access tokens (verified in the role-mapping feasibility analysis — authorization keys on the username, not the client/audience); confirm the project-scoped ACS policies admit these operations via spikes 1–2 in [docs/easycla-ss-migration/role-mapping-feasibility.md](../../docs/easycla-ss-migration/role-mapping-feasibility.md), or fall back to the M2M + subject pattern.
 - **B. Reproduce PCC's fine-grained 24-permission matrix**: fidelity, but the matrix mostly collapses to "project CLA admin: yes/no" in practice — reproduce only if an actual persona split (e.g., view-only staff) is confirmed by PM. Audit real role assignments before choosing.
@@ -58,7 +58,7 @@ Simpler than M4: PCC's CLA permissions are all **project-scoped admin** authorit
 | CLA group creation wizard encodes project-hierarchy rules (foundation/child validation) | Port the validation semantics, not the code; test against real hierarchies incl. standalone projects |
 | Signature invalidation is a destructive admin action | Parity + confirmation UX + audit event verified |
 | PCC and SS project identity (SFID vs slug) mismatches | SS project lens keys on project context; ensure clean SFID mapping for v4 calls |
-| Long tail of small features (archived repos toggle, CSV formats, Gerrit instance quirks) | Inventory-driven checklist; golden-file CSV comparisons as in M4 |
+| Long tail of small features (archived repos toggle, CSV formats, Gerrit instance quirks) | Inventory-driven checklist; golden-file CSV comparisons as in M3 |
 
 ## Exit criteria
 

@@ -1,6 +1,6 @@
-# Milestone 6 — EasyCLA API as a V2 Kubernetes Service; DynamoDB → Postgres Evaluation
+# Milestone 5 — EasyCLA API as a V2 Kubernetes Service; DynamoDB → Postgres Evaluation
 
-**Status**: Draft — **decision milestone**, not committed scope | **Depends on**: M1–M5 (UI-first sequencing confirmed; hybrid-strangler alternative noted below) | **Retires**: Lambda/API-GW deployment (including the legacy `/v1`/`/v2` Go surface, deployed from the same `cla-backend` serverless stack) | **Effort**: XL without DB migration; XXL with
+**Status**: Draft — **decision milestone**, not committed scope | **Depends on**: M1–M4 (UI-first sequencing confirmed; hybrid-strangler alternative noted below) | **Retires**: Lambda/API-GW deployment (including the legacy `/v1`/`/v2` Go surface, deployed from the same `cla-backend` serverless stack) | **Effort**: XL without DB migration; XXL with
 **Spec**: [spec.md](spec.md) | **Overview**: [00-overview-fable.md](00-overview-fable.md)
 
 ## What "being a V2 service" means (verified against the platform)
@@ -10,12 +10,12 @@ From the ~15 existing services in `lfx-v2-argocd` and the fga-sync/gateway contr
 - Kubernetes deployment via **Helm chart + ArgoCD app** per env; image at `ghcr.io/linuxfoundation/<service>`.
 - **Heimdall** token validation at the edge; **OpenFGA** authorization (object types + relations registered in the FGA model, tuples maintained via `lfx-v2-fga-sync` NATS subjects `lfx.fga-sync.*`, checks via `lfx.access_check.*`).
 - **NATS** for messaging/eventing; OpenTelemetry; routed via **lfx-gateway**.
-- Today **no CLA object types exist in the FGA model** — a CLA authorization model (e.g., `cla_group#manager|signatory`, company-scoped relations) must be designed and registered; this is where the ACS→OpenFGA role migration actually happens (deferred here deliberately from M3–M5).
+- Today **no CLA object types exist in the FGA model** — a CLA authorization model (e.g., `cla_group#manager|signatory`, company-scoped relations) must be designed and registered; this is where the ACS→OpenFGA role migration actually happens (deferred here deliberately from M3–M4).
 
 ## What EasyCLA actually runs today (the true scope)
 
 1. **Go API** — `/v3` (us-east-1) + `/v4` (us-east-2) Lambdas. Mitigating fact: `cmd/server_standalone.go` already runs the same API as a plain HTTP server → containerization of the main API is cheap.
-2. **Legacy Go backend** (`cla-backend-legacy`) — the `/v1`/`/v2` surface is already ported to Go (Python fully removed) and deployed from the `cla-backend` stack on the original `api.*` domains. This shrinks M6 meaningfully versus the old Python-port assumption, but it remains a second API codebase and deployment: M6 folds its endpoints into the V2 service (or consciously containerizes it alongside) and retires the separate stack.
+2. **Legacy Go backend** (`cla-backend-legacy`) — the `/v1`/`/v2` surface is already ported to Go (Python fully removed) and deployed from the `cla-backend` stack on the original `api.*` domains. This shrinks M5 meaningfully versus the old Python-port assumption, but it remains a second API codebase and deployment: M5 folds its endpoints into the V2 service (or consciously containerizes it alongside) and retires the separate stack.
 3. **Auxiliary Lambdas** — `cmd/` contains ~10 more binaries: **dynamo-events (DynamoDB Streams consumer driving audit/event fan-out), zipbuilder, metrics, user-subscribe, gitlab-repository-check, ldap_gerrit_check**, etc. Each needs a K8s home (Deployment/CronJob) or retirement. The Streams consumer is the architecturally sticky one — see DB section.
 4. **Inbound integrations that must not drop events during cutover**: GitHub App webhooks, GitLab webhooks, Gerrit hooks, **DocuSign envelope callbacks**, SNS/SES flows.
 5. **Config**: SSM Parameter Store + assumed AWS IAM → K8s secrets management (`lfx-secrets-management`) and per-env values.
@@ -44,15 +44,15 @@ Rough shape: **roughly doubles Track A**, and concentrates risk in the least-for
 
 - The stated motivation is "DynamoDB causes performance and other issues". **Interrogate that before committing**: the notorious pain points (scan-heavy signature queries, hot lookups) are query/index-design problems that Postgres would solve — but several could also be solved with targeted GSIs/caching at 5% of the cost. Quantify the top offenders first.
 - **However**, if the API is being rewritten as a V2 service anyway (Track A includes touching every module's wiring), the *marginal* cost of Postgres is much lower than a standalone DB migration, Postgres matches platform norms (relational fits CLA's join-heavy access patterns: signatures × companies × projects × approval lists), and it removes the permanent us-east-1 tether.
-- **Recommendation**: commit Track A; run Track B as a **phased strangler inside M6** — new service reads/writes Postgres per domain (start with low-risk tables: events, store; signatures last) behind the repository interface, rather than a big-bang migration. Do not attempt Postgres without the service rewrite, and do not block the K8s move on it.
+- **Recommendation**: commit Track A; run Track B as a **phased strangler inside M5** — new service reads/writes Postgres per domain (start with low-risk tables: events, store; signatures last) behind the repository interface, rather than a big-bang migration. Do not attempt Postgres without the service rewrite, and do not block the K8s move on it.
 
 ## Scope decision for the review (Open Decision Q3)
 
-Because M3–M5 build SS↔v4 adapters and an ACS role bridge that M6 then replaces, the board should choose explicitly:
+Because M3–M4 build SS↔v4 adapters and an ACS role bridge that M5 then replaces, the board should choose explicitly:
 
-1. **UI-first (current plan)**: full user value early; accept adapter rework in M6. Keep adapters thin (single SS server module) to bound the waste.
+1. **UI-first (current plan)**: full user value early; accept adapter rework in M5. Keep adapters thin (single SS server module) to bound the waste.
 2. **Platform-first**: rewrite API + roles first, migrate UIs onto the new service. Cleanest end-state, but ~a year of no user-visible progress and big-bang risk.
-3. **Hybrid strangler (recommended if M6 is truly committed)**: after M2, stand up a **CLA read/query V2 service** (the easy 70% of SS's needs; akin to the platform's query-service pattern) while writes stay on v4; M4/M5 consume it; M6 completes writes + roles + legacy Go surface consolidation. Spreads M6 across the program instead of stacking it at the end.
+3. **Hybrid strangler (recommended if M5 is truly committed)**: after M2, stand up a **CLA read/query V2 service** (the easy 70% of SS's needs; akin to the platform's query-service pattern) while writes stay on v4; M3/M4 consume it; M5 completes writes + roles + legacy Go surface consolidation. Spreads M5 across the program instead of stacking it at the end.
 
 ## Risks
 
