@@ -7,6 +7,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 )
 
 func TestInvalidationUpdateExpression(t *testing.T) {
@@ -49,4 +51,90 @@ func TestInvalidationUpdateExpressionWithoutMetadata(t *testing.T) {
 		assert.NotContains(t, names, "#IB")
 		assert.NotContains(t, values, ":ib")
 	}
+}
+
+func TestEffectiveApprovals(t *testing.T) {
+	// removals subtracted, additions appended, add+remove of the same entry removes it
+	assert.Equal(t, []string{"a", "c", "d"},
+		effectiveApprovals([]string{"a", "b", "c"}, []string{"d", "b", "a"}, []string{"b"}))
+	assert.Empty(t, effectiveApprovals([]string{"a"}, nil, []string{"a"}))
+	assert.Equal(t, []string{"a"}, effectiveApprovals(nil, []string{"a"}, nil))
+
+	// entries are trimmed like persistence, so a padded add matches the persisted value
+	assert.Equal(t, []string{"janegh"}, effectiveApprovals(nil, []string{" janegh "}, nil))
+
+	// duplicate current entries are deduped like persistence
+	assert.Equal(t, []string{"a", "b"}, effectiveApprovals([]string{"a", "a", "b"}, nil, nil))
+
+	// removals stay exact-match on raw entries (persistence parity): a padded remove entry
+	// removes nothing
+	assert.Equal(t, []string{"a"}, effectiveApprovals([]string{"a"}, nil, []string{" a "}))
+}
+
+func TestEmailDomain(t *testing.T) {
+	assert.Equal(t, "example.com", emailDomain("user@example.com"))
+	assert.Equal(t, "", emailDomain(""))
+	assert.Equal(t, "", emailDomain("no-at"))
+	assert.Equal(t, "", emailDomain("user@"))
+}
+
+// userStillApproved receives approval lists that already reflect the full pending update
+// (built via effectiveApprovals), so removed entries are simply absent
+func TestUserStillApproved(t *testing.T) {
+	user := &models.User{
+		Emails:         []string{"jane@corp.example"},
+		GithubUsername: "janegh",
+		GitlabUsername: "janegl",
+	}
+
+	// GH username removed but still on the email approved list (the #5166 scenario)
+	assert.True(t, userStillApproved(user, &ApprovalList{
+		EmailApprovals: []string{"jane@corp.example"},
+	}))
+
+	// GH username removed, no other coverage
+	assert.False(t, userStillApproved(user, &ApprovalList{}))
+
+	// email removed but still covered by the domain approved list
+	assert.True(t, userStillApproved(user, &ApprovalList{
+		DomainApprovals: []string{"corp.example"},
+	}))
+
+	// email removed, remaining GH username approval covers the user
+	assert.True(t, userStillApproved(user, &ApprovalList{
+		GitHubUsernameApprovals: []string{"janegh"},
+	}))
+
+	// GitLab username coverage
+	assert.True(t, userStillApproved(user, &ApprovalList{
+		GitlabUsernameApprovals: []string{"janegl"},
+	}))
+
+	// approvals for other users don't cover this one
+	assert.False(t, userStillApproved(user, &ApprovalList{
+		GitHubUsernameApprovals: []string{"someoneelse"},
+		EmailApprovals:          []string{"other@corp.example"},
+	}))
+
+	// cross-criteria removal in one request: email and GH username both removed,
+	// effective lists no longer contain either entry, so the user is not covered
+	assert.False(t, userStillApproved(user, &ApprovalList{
+		EmailApprovals:          effectiveApprovals([]string{"jane@corp.example"}, nil, []string{"jane@corp.example"}),
+		GitHubUsernameApprovals: effectiveApprovals([]string{"janegh"}, nil, []string{"janegh"}),
+	}))
+
+	// email approval entries match case-insensitively
+	assert.True(t, userStillApproved(user, &ApprovalList{
+		EmailApprovals: []string{"Jane@Corp.Example"},
+	}))
+
+	// domain approval entries match with whitespace trimmed and case ignored
+	assert.True(t, userStillApproved(user, &ApprovalList{
+		DomainApprovals: []string{" Corp.Example "},
+	}))
+
+	// usernames stay exact-match, mirroring the enforcement gate
+	assert.False(t, userStillApproved(user, &ApprovalList{
+		GitHubUsernameApprovals: []string{"JaneGH"},
+	}))
 }
