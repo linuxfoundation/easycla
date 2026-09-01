@@ -69,7 +69,7 @@ curl -s -o /dev/null -w "%{http_code}\n" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-- **200** → **role-less users pass the secured router.** M1/M3 use user tokens exactly as proposed (P3); no fallback needed. Best outcome.
+- **200** → **role-less users pass the secured router.** M1/M2 (contributor-facing reads; M3 in the pre-2026-09-01 numbering) use user tokens exactly as proposed (P3); no fallback needed. Best outcome.
 - **403 at the gateway** → warden denies users with no CLA role on this path. M1 then needs **either** a small ACS policy entry admitting authenticated users to these read paths, **or** the M2M fallback (SS server calls with a service token and binds the session userID itself — still Option A). Capture the warden response so we can size the policy change.
 
 ## Recording results

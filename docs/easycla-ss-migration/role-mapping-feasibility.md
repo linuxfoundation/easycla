@@ -3,8 +3,8 @@ SPDX-License-Identifier: CC-BY-4.0 -->
 
 # Roles/Permissions Mapping Feasibility — EasyCLA ↔ LFX Self Serve
 
-**For**: Heather (PM), Kieran (strategy), architecture review | **From**: Michal (engineering) | **Date**: 2026-07-15
-**Basis**: [00-overview-fable.md](../../specs/001-easycla-ss-integration-fable/00-overview-fable.md) §2.4/§3, [04-milestone-ccla-org-lens-fable.md](../../specs/001-easycla-ss-integration-fable/04-milestone-ccla-org-lens-fable.md) role options; code citations verified 2026-07-15, re-checked 2026-07-20
+**For**: Heather (PM), Kieran (strategy), architecture review | **From**: Michal (engineering) | **Date**: 2026-07-15 | **Renumbering note (2026-09-01)**: milestone numbers below use the original scheme; after the 2026-09-01 revision, old M4→M3 (org lens), M5→M4 (project lens), M6→M5 (K8s V2 API), and the old M2/M3 are the merged, implemented M2. The analysis and verdicts are unchanged.
+**Basis**: [00-overview-fable.md](../../specs/001-easycla-ss-integration-fable/00-overview-fable.md) §2.4/§3, [03-milestone-ccla-org-lens-fable.md](../../specs/001-easycla-ss-integration-fable/03-milestone-ccla-org-lens-fable.md) (formerly 04) role options; code citations verified 2026-07-15, re-checked 2026-07-20
 **Answers**: the open engineering action from the 2026-07-15 leadership review ([spec.md](../../specs/001-easycla-ss-integration-fable/spec.md) "Program review outcomes")
 
 **How to read**: §0 is the answer. §1–§2 explain how EasyCLA authorization actually works (where most assumptions were wrong). §3–§5 are evidence tables. §6 is the decision. §7 is what to verify next. **[verified]** claims cite `file:line`; **[inferred]** claims are covered by a spike.
@@ -22,7 +22,7 @@ Self Serve can call the existing EasyCLA v4 APIs with user-scoped tokens, **with
 - Self Serve **already ships** the needed token machinery: a secondary access token for the `api-gw.*.platform.linuxfoundation.org` audience — exactly the audience Auth0 stamps the required `lfx.dev/claims/username` claim onto **[verified]**.
 - The Corporate Console today sends an Auth0 **ID token** and it works — direct evidence that audience is irrelevant **[verified]**.
 
-The milestone-04 recommendation stands: **Option A (bridge) for M4/M5, OpenFGA modeling deferred to M6, org-admin mapping rejected** (§6).
+The org-lens milestone recommendation stands: **Option A (bridge) for the org/project lens milestones (now M3/M4), OpenFGA modeling deferred to the K8s milestone (now M5), org-admin mapping rejected** (§6).
 
 Two conditions to convert into facts before committing M3–M5 staffing — both are one-day curl spikes (§7):
 
