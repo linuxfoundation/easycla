@@ -56,21 +56,21 @@ curl -s -o /dev/null -w "%{http_code}\n" \
 - **200** → the whole chain works: SS token → gateway (issuer check) → ACS warden allow → X-ACL injected → v4 scope check passes. Spikes 1's happy path confirmed.
 - **403** → capture the body. If the gateway rejects (`User <name> does not have access to resource or path ...`), it's an ACS warden/policy result. If the body is a v4 payload, the scopes didn't match the resource. Note which.
 
-### Spike 2 (user B = no CLA role): the decision point
+### Spike 2 (user B = no CLA role): resolved by the shipped M1
 
-Re-run step 1 with user B's refresh token, then hit the M1 read endpoint. First resolve B's EasyCLA userID (the SS server does this via identity resolution; for the spike, use a known dev userID for B):
+> **Superseded.** This spike was written against `/v4/signatures/user/{userID}` — an older operation that also filters out ECLAs — to decide whether M1 could use user tokens. M1 shipped a purpose-built `GET /v4/my-clas` instead, whose ACS policy admits any authenticated user, with ownership enforced inside the endpoint. User tokens work as designed; no M2M fallback was needed. Kept below as a connectivity check against the **actual** M1 route — a 403 here means a missing or unsynced M1 ACS route, not an M1 policy gap.
+
+Re-run step 1 with user B's refresh token, then hit the M1 read endpoint. No EasyCLA userID is needed — the endpoint resolves the caller's identity itself:
 
 ```bash
-USER_ID="<user-B-easycla-userID>"
-
 # $TOKEN here is user B's token — re-run Step 1 with B's refresh token first
 curl -s -o /dev/null -w "%{http_code}\n" \
-  "https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/signatures/user/$USER_ID" \
+  "https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/my-clas" \
   -H "Authorization: Bearer $TOKEN"
 ```
 
 - **200** → **role-less users pass the secured router.** M1/M2 (contributor-facing reads; M3 in the pre-2026-09-01 numbering) use user tokens exactly as proposed (P3); no fallback needed. Best outcome.
-- **403 at the gateway** → warden denies users with no CLA role on this path. M1 then needs **either** a small ACS policy entry admitting authenticated users to these read paths, **or** the M2M fallback (SS server calls with a service token and binds the session userID itself — still Option A). Capture the warden response so we can size the policy change.
+- **403 at the gateway** → the M1 ACS route is missing or unsynced in this environment (the shipped policy admits any authenticated user). Capture the warden response and file the route sync — this is an environment gap, not the M1 policy gap the original spike hypothesised, and it does not call for the M2M fallback.
 
 ## Recording results
 

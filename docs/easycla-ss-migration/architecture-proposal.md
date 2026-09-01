@@ -14,7 +14,7 @@ Migrate EasyCLA user-facing functionality — the Corporate CLA Console (plus it
 
 ```mermaid
 flowchart LR
-    subgraph TODAY["Today: four UIs being absorbed"]
+    subgraph TODAY["Today: four EasyCLA UIs (two absorbed, two retained)"]
         CTC["Contributor Console"]
         CCC["Corporate CLA Console<br/>+ GraphQL BFF"]
         PCC["PCC EasyCLA module"]
@@ -75,7 +75,7 @@ Current-state facts the proposal relies on (verified in code; details in the [fe
 | L1 | **UI-first sequencing approved**: M1–M4 build on the existing EasyCLA APIs; M5 gated separately |
 | L2 | Target timeline: **Q3 / early Q4 2026** |
 | L3 | **M4 (formerly M5) is decision-gated**: PCC EasyCLA admin moves to SS *or stays in PCC* — open product decision (Kieran/Manish/Heather) |
-| L4 | EasyCLA **landing page retired** (originally in the old-M3 decommission package; **deferred 2026-09-01** along with Contributor Console retirement) |
+| L4 | ~~EasyCLA **landing page retired**~~ — **superseded 2026-09-01**: retirement is no longer scheduled. It was part of the old-M3 decommission package, which was dropped when that milestone merged into the implemented M2; the landing page and the Contributor Console both stay, pending a future product decision |
 | L5 | LFID account is a prerequisite for signing (already the status quo in the consoles) |
 | L6 | Post-signing redirect to the SS profile (collect GitHub linking *after* signing, no friction before) |
 
