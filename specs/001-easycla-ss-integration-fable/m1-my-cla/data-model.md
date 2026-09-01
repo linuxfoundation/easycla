@@ -32,7 +32,7 @@ One LF person ⇒ 0..N EasyCLA user records (pre-LF-login history, multiple emai
 
 ## Upstream response item (`GET /v4/my-clas`)
 
-Each item in the response carries (see MY_CLAS_API.md for the full shape): `signatureID`, `type` (`icla`/`ecla`), project/CLA group identifiers and names, `companyName` (ECLA), `signedOn`, and validity. In M1 status is the boolean `valid` — no superseded detection; M2 later extended this to the computed five-value `status` (`valid`/`needs_attention`/`invalidated`/`revoked`/`unknown`) plus `signedVia`/`signedAs`. All agreements are returned regardless of validity (the "valid ECLAs only" filter from the original plan was dropped — invalid ECLA rows are the ones that carry M2's Request-approval action).
+Each item in the response carries (see MY_CLAS_API.md for the full shape): `signatureID`, `claType` (`icla`/`ecla`), project/CLA group identifiers and names, `companyName` (ECLA), `signedOn`, and validity. The endpoint still exposes the boolean `valid` that M1 shipped with; M2 added the computed five-value `status` (`valid`/`needs_attention`/`invalidated`/`revoked`/`unknown`) plus `signedVia`/`signedAs`. All agreements are returned regardless of validity (the "valid ECLAs only" filter from the original plan was dropped — invalid ECLA rows are the ones that carry M2's Request-approval action).
 
 ## SS view models (TypeScript, server `cla` types + shared interface)
 
@@ -42,13 +42,16 @@ Each item in the response carries (see MY_CLAS_API.md for the full shape): `sign
 {
   id: string;                    // signatureID
   kind: 'ICLA' | 'ECLA';
-  projectName: string;           // CLA group name
+  claGroupName: string;          // CLA group name (falls back to the CLA group UUID)
+  projectName?: string;          // Salesforce project name; omitted when unresolved
   companyName?: string;          // ECLA only
   signedOn: string;              // ISO date
-  valid: boolean;                // M1: upstream boolean; M2 adds the computed status enum
+  status: ClaStatus;             // computed five-value status (M2 added the enum; see below)
   pdfAvailable: boolean;         // true only for ICLA
 }
 ```
+
+`claGroupName` and `projectName` are distinct: the CLA group name is *not* the Salesforce project name. The UI renders `projectName` as the primary line and `claGroupName` as its subtext, falling back to `claGroupName` alone when the project is unresolved. The interface carries further optional display/routing fields (`projectLogo`, `projectSfid`, `foundationSfid`, `claGroupId`, `claManager`, `signedVia`, `signedAs`, `statusReason`, `documentVersion`) — see `packages/shared/src/interfaces/cla.interface.ts` in `lfx-self-serve` for the authoritative shape.
 
 Validation/invariants:
 
@@ -62,13 +65,14 @@ Validation/invariants:
 {
   agreements: MyClaAgreement[];    // sorted signedOn desc
   identity: {
+    matchedUserIds: number;        // count of EasyCLA user records matched to the session identity
     unmatched: boolean;            // true ⇒ show "history may be incomplete" hint
     githubLinked: boolean;         // false ⇒ show "Don't see your CLAs? Link your GitHub account" CTA
   }
 }
 ```
 
-(`skippedIdentities` from the upstream response feeds the `unmatched` hint; raw EasyCLA user IDs never reach the client — SS never holds them at all.)
+(`skippedIdentities` from the upstream response feeds the `unmatched` hint. `matchedUserIds` is a **count only** — raw EasyCLA user IDs never reach the client.)
 
 ### `PdfUrlResponse`
 
@@ -78,7 +82,14 @@ Validation/invariants:
 
 ## Server-side identity forwarding (in-memory, per request)
 
-SS derives the identity keys from the session — LF username, verified emails, GitHub IDs/usernames from the Auth0 identities array — and forwards them as query parameters to `GET /v4/my-clas`. Nothing is persisted and nothing is client-supplied. EasyCLA verifies every forwarded key against the caller's LF account (its own records, the platform user-service, and the Auth0 Management API per [linuxfoundation/easycla#5172](https://github.com/linuxfoundation/easycla/pull/5172)) before searching it; unverifiable keys come back in `skippedIdentities`. The PDF route passes the `signatureID` straight to `GET /v4/my-clas/{signatureID}/pdf`, which re-runs the ownership check itself and returns 404 (never 403) for anything the caller doesn't own — SS is no longer the authorization boundary.
+SS derives the identity keys from the session — LF username, verified emails, GitHub IDs/usernames from the Auth0 identities array — and forwards them as query parameters to `GET /v4/my-clas`. Nothing is persisted and nothing is client-supplied.
+
+How EasyCLA treats those keys depends on the caller (`effectiveIdentity`, `cla-backend-go/v2/my_clas/service.go`):
+
+- **Untrusted callers** have every forwarded key verified against their own LF account — EasyCLA's own user records, the platform user-service, and the Auth0 Management API (per [linuxfoundation/easycla#5172](https://github.com/linuxfoundation/easycla/pull/5172)) — before it is searched. Unverifiable keys come back in `skippedIdentities`.
+- **Admins and trusted callers** — a verified JWT whose `azp` is on the `cla-ss-trusted-client-ids-{stage}` SSM allow-list, which is how SS calls this endpoint — supply their keys **directly, with no per-key ownership verification**. This is deliberate: the trusted list is Auth0-derived and not re-derivable inside EasyCLA, and the historical GitHub-only signers this endpoint exists to serve carry no `lf_username` on their EasyCLA records, so verifying against those records would deny exactly the CLAs the caller is entitled to see.
+
+**SS therefore remains an authorization boundary for the identity keys it forwards** — it is trusted to send only keys derived from the authenticated session. What moved into EasyCLA is *signature* ownership: the PDF route passes the `signatureID` straight to `GET /v4/my-clas/{signatureID}/pdf`, which re-runs the ownership check itself and returns 404 (never 403) for anything the resolved identity doesn't own.
 
 ## State transitions
 

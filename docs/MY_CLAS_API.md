@@ -594,12 +594,13 @@ EasyCLA user, it can read the exact identity set EasyCLA already associates with
 curl -H "Authorization: Bearer $TOKEN" "$GW/cla-service/v4/my-clas/identities"
 ```
 
-The set is the **union of the two sources the ownership enforcement (step 0) trusts** — the
-identities on the caller's EasyCLA user records (`GetUsersByLFUsername`) and those connected
-to their LF account in the platform user-service (`loadPlatformIdentities`: profile emails +
-non-deleted connected identities). `GetMyIdentities` reuses those same two calls, so this
-endpoint can never surface an identity that `/v4/my-clas` would refuse to search for that
-caller, and the My CLAs / PDF endpoints are unchanged.
+The set is the **union of the three sources the ownership enforcement (step 0) trusts** — the
+identities on the caller's EasyCLA user records (`GetUsersByLFUsername`), those connected to
+their LF account in the platform user-service (profile emails + non-deleted connected
+identities), and those linked to the LF login's Auth0 user record (Auth0 Management API).
+`loadPlatformIdentities` fetches the latter two concurrently and merges them. `GetMyIdentities`
+reuses those same calls, so this endpoint can never surface an identity that `/v4/my-clas`
+would refuse to search for that caller, and the My CLAs / PDF endpoints are unchanged.
 
 Each entry is `"<type>:<value>"`, deduplicated and sorted; types are `lf-username`, `email`,
 `github-id`, `github-username`, `gitlab-id`, `gitlab-username`, `gerrit-username`. Response
@@ -787,10 +788,11 @@ the latency envelope is to be confirmed on dev.
 - **Secondary emails** (`user_emails`) are matchable only via the opt-in `secondaryEmail`
   parameter, one table scan for all values (set attribute, not indexable); the default `email`
   parameter stays index-backed.
-- **Numeric GitHub/GitLab IDs can only be verified against the caller's EasyCLA LFID
-  records** — platform identities carry usernames, not provider IDs. An ID on no such record
-  is skipped even when the matching username would have been allowed, so pass the username
-  alongside the ID.
+- **Numeric GitHub/GitLab IDs are verified against the caller's EasyCLA LFID records or their
+  Auth0 linked identities** — the platform user-service carries usernames, not provider IDs,
+  but the Auth0 Management API returns each linked identity's provider `user_id`. An ID found
+  on neither source is skipped even when the matching username would have been allowed, so
+  pass the username alongside the ID.
 - **Superseded-document detection** is not computed server-side; the signed document version
   is exposed (`documentMajorVersion/MinorVersion`) so a consumer can compare it against the
   CLA group's current template version if a "superseded" badge is wanted later (the final
