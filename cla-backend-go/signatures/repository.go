@@ -4192,6 +4192,9 @@ func (repo repository) sendEmail(ctx context.Context, email string, approvalList
 // have no company link, so a corporate approved list edit must not touch them (#5166).
 const invalidateICLAsOnApprovalListRemoval = false
 
+// nilSignatureEntry labels a nil signature slice entry in the panic-recovery logs
+const nilSignatureEntry = "<nil entry>"
+
 // employeeSignatureListed reports whether the given user already has an employee signature in the list
 func employeeSignatureListed(eclas []*models.Signature, userID string) bool {
 	for _, ecla := range eclas {
@@ -4291,12 +4294,21 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 		for _, icla := range approvalList.ICLAs {
 			go func(icla *models.IclaSignature) {
 				defer iclaWg.Done()
-				// a panic in this goroutine would kill the whole process - contain it here
+				// a panic in this goroutine would kill the whole process - contain it here,
+				// without dereferencing anything that could re-panic inside the handler
 				defer func() {
 					if r := recover(); r != nil {
-						log.WithFields(f).Errorf("recovered from panic while invalidating signature: %s - skipping record: %v", icla.SignatureID, r)
+						sigID := nilSignatureEntry
+						if icla != nil {
+							sigID = icla.SignatureID
+						}
+						log.WithFields(f).Errorf("recovered from panic while invalidating signature: %s - skipping record: %v", sigID, r)
 					}
 				}()
+				if icla == nil {
+					log.WithFields(f).Warn("nil icla entry - skipping")
+					return
+				}
 				signature, sigErr := repo.GetSignature(ctx, icla.SignatureID)
 				if sigErr != nil {
 					log.WithFields(f).Warnf("unable to fetch signature for ID: %s ", icla.SignatureID)
@@ -4344,12 +4356,21 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 		for _, ecla := range approvalList.ECLAs {
 			go func(ecla *models.Signature) {
 				defer eclaWg.Done()
-				// a panic in this goroutine would kill the whole process - contain it here
+				// a panic in this goroutine would kill the whole process - contain it here,
+				// without dereferencing anything that could re-panic inside the handler
 				defer func() {
 					if r := recover(); r != nil {
-						log.WithFields(f).Errorf("recovered from panic while invalidating signature: %s - skipping record: %v", ecla.SignatureID, r)
+						sigID := nilSignatureEntry
+						if ecla != nil {
+							sigID = ecla.SignatureID
+						}
+						log.WithFields(f).Errorf("recovered from panic while invalidating signature: %s - skipping record: %v", sigID, r)
 					}
 				}()
+				if ecla == nil {
+					log.WithFields(f).Warn("nil ecla entry - skipping")
+					return
+				}
 				// Grab user record
 				if ecla.SignatureReferenceID == "" {
 					log.WithFields(f).Warnf("no signatureReferenceID for signature: %+v ", ecla)

@@ -4,11 +4,15 @@
 package signatures
 
 import (
+	"context"
 	"testing"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	mock_users "github.com/linuxfoundation/easycla/cla-backend-go/users/mocks"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 )
 
 func TestInvalidationUpdateExpression(t *testing.T) {
@@ -69,6 +73,43 @@ func TestEffectiveApprovals(t *testing.T) {
 	// removals stay exact-match on raw entries (persistence parity): a padded remove entry
 	// removes nothing
 	assert.Equal(t, []string{"a"}, effectiveApprovals([]string{"a"}, nil, []string{" a "}))
+}
+
+// a panic inside an invalidation goroutine must never escape - the non-nil entry reaches
+// verifyUserApprovals, panics on the nil usersRepo, and recover contains it; the nil entry
+// exercises the nil-skip and the nil-safe recovery logging. The ICLA loop shares the same
+// containment but is compile-time disabled (invalidateICLAsOnApprovalListRemoval), so only
+// the ECLA loop is exercisable here.
+func TestInvalidateSignaturesPanicContainment(t *testing.T) {
+	repo := repository{}
+	eclas := []*models.Signature{
+		nil,
+		{SignatureID: "sig-1", SignatureReferenceID: "user-1", ProjectID: "p"},
+	}
+
+	icla, ecla := repo.invalidateSignatures(context.Background(),
+		&ApprovalList{Criteria: utils.EmailDomainCriteria, ECLAs: eclas},
+		&models.User{}, nil)
+
+	assert.Empty(t, icla)
+	assert.Empty(t, ecla)
+}
+
+// a missing user record (GetUser returning nil, nil) must skip the re-check without error
+// and without invalidating - invalidation would nil-panic on the repository's dynamoDBClient
+func TestVerifyUserApprovalsMissingUser(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockUsers := mock_users.NewMockUserRepository(ctrl)
+	mockUsers.EXPECT().GetUser("missing-user").Return(nil, nil)
+	repo := repository{usersRepo: mockUsers}
+
+	user, invalidated, err := repo.verifyUserApprovals(context.Background(),
+		"missing-user", "sig-1", &models.User{}, &ApprovalList{Criteria: utils.EmailDomainCriteria})
+
+	assert.Nil(t, user)
+	assert.False(t, invalidated)
+	assert.NoError(t, err)
 }
 
 // userStillApproved receives approval lists that already reflect the full pending update
