@@ -81,5 +81,5 @@ For each call log: user, endpoint, HTTP status, and (on 403) the response body a
 ## Notes / gotchas
 
 - **`clagroup` vs `claGroupID`**: unrelated to these spikes, but if you also try the write path (spike 3), the approval-list segment is `.../clagroup/{claGroupID}/approval-list` — lowercase `clagroup`.
-- A **404** on the cla-managers call usually means wrong company-internal-id vs SFID — the path wants the internal company ID, not the Salesforce ID.
+- A **400** on the cla-managers call usually means wrong company-internal-id vs SFID — the path wants the internal company ID, not the Salesforce ID. (The handler maps a `GetCompanyByID` miss to `GetCompanyProjectClaManagersBadRequest`, `cla-backend-go/v2/company/handlers.go` — there is no 404 responder on this route, so do not wait for one.)
 - The gateway only reads `http://lfx.dev/claims/username` from the token; a token missing that claim 403s at the ACS plugin regardless of audience, so the step-1 checkpoint matters before you debug step 2.
