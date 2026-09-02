@@ -6,16 +6,39 @@ package my_clas
 import (
 	"bytes"
 	"context"
+	"crypto/sha512"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/akamensky/base58"
+	"github.com/sirupsen/logrus"
+
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 )
+
+// mirrors lfx-v2-auth-service's mapUsernameToSub: LF usernames Auth0 cannot hold verbatim are
+// stored under base58(sha512(username)) instead
+var (
+	auth0SafeNameRE = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,58}[A-Za-z0-9]$`)
+	auth0HexUserRE  = regexp.MustCompile(`^[0-9a-f]{24,60}$`)
+)
+
+func auth0UserID(lfUsername string) string {
+	if auth0SafeNameRE.MatchString(lfUsername) && !auth0HexUserRE.MatchString(lfUsername) {
+		return lfUsername
+	}
+	hash := sha512.Sum512([]byte(lfUsername))
+	return base58.Encode(hash[:])
+}
 
 // Auth0Identity is one identity linked to the LF login's Auth0 user record
 type Auth0Identity struct {
@@ -69,8 +92,9 @@ func (c *auth0Client) UserIdentities(ctx context.Context, lfUsername string) ([]
 	if err != nil {
 		return nil, err
 	}
+	auth0ID := "auth0|" + auth0UserID(lfUsername)
 	endpoint := fmt.Sprintf("%s/api/v2/users/%s?fields=identities&include_fields=true",
-		c.baseURL, url.PathEscape("auth0|"+lfUsername))
+		c.baseURL, url.PathEscape(auth0ID))
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return nil, err
@@ -82,6 +106,12 @@ func (c *auth0Client) UserIdentities(ctx context.Context, lfUsername string) ([]
 	}
 	defer resp.Body.Close() // nolint:errcheck
 	if resp.StatusCode == http.StatusNotFound {
+		log.WithFields(logrus.Fields{
+			"functionName":   "v2.my_clas.auth0Client.UserIdentities",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"lfUsername":     lfUsername,
+			"auth0UserID":    auth0ID,
+		}).Warn("no Auth0 user record for the LF username - skipping the Auth0 identity source")
 		return nil, nil
 	}
 	if resp.StatusCode != http.StatusOK {
