@@ -80,6 +80,11 @@ func TestUserStillApproved(t *testing.T) {
 		GitlabUsername: "janegl",
 	}
 
+	// a missing user record can never count as approved
+	assert.False(t, userStillApproved(nil, &ApprovalList{
+		EmailApprovals: []string{"jane@corp.example"},
+	}))
+
 	// GH username removed but still on the email approved list (the #5166 scenario)
 	assert.True(t, userStillApproved(user, &ApprovalList{
 		EmailApprovals: []string{"jane@corp.example"},
