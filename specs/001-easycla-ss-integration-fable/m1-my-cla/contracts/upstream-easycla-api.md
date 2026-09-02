@@ -2,7 +2,7 @@
 
 Updated 2026-09-01. The originally planned per-endpoint composition (v3 user lookups + per-user signature queries + the `GET /v4/users/by-identity` contingency, preserved in §"Superseded plan" below) was replaced by a consolidated read surface in `cla-backend-go/v2/my_clas` — `GET /v4/my-clas` and `GET /v4/my-clas/{signatureID}/pdf` in [linuxfoundation/easycla#5125](https://github.com/linuxfoundation/easycla/pull/5125), `GET /v4/my-clas/identities` in [linuxfoundation/easycla#5128](https://github.com/linuxfoundation/easycla/pull/5128). The authoritative endpoint reference is [docs/MY_CLAS_API.md](../../../../docs/MY_CLAS_API.md).
 
-All via lfx-gateway `/cla-service` prefix (`lfx-gateway/dynamic/services/cla-service.yaml`), with the caller's **user bearer token** (research R3 resolved in favor of user tokens). Additionally, the Self Serve server can be recognized as a trusted caller via in-handler JWT verification plus an `azp` allow-list read from SSM `cla-ss-trusted-client-ids-{stage}` . That parameter is unset in every environment today, so the path is disabled and SS is handled as an ordinary untrusted caller.
+All via lfx-gateway `/cla-service` prefix (`lfx-gateway/dynamic/services/cla-service.yaml`), with the caller's **user bearer token** (research R3 resolved in favor of user tokens). Additionally, the Self Serve server can be recognized as a trusted caller via in-handler JWT verification plus an `azp` allow-list read from SSM `cla-ss-trusted-client-ids-{stage}`. That parameter is unset in every environment today, so the path is disabled and SS is handled as an ordinary untrusted caller.
 
 ## 1. `GET /cla-service/v4/my-clas`
 

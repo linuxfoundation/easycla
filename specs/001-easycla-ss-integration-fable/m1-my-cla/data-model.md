@@ -12,7 +12,8 @@ Updated 2026-09-01 to match the implementation ([linuxfoundation/easycla#5125](h
 |-------|-----------|
 | `user_id` | key for signatures query (internal to EasyCLA) |
 | `lf_username` | primary identity match |
-| `user_emails[]`, `lf_email` | email identity match |
+| `lf_email` | email identity match — the shipped SS client sends verified emails only as `email`, matched against `lf_email` (`GetUsersByPrimaryEmail`) |
+| `user_emails[]` | available upstream via the opt-in `secondaryEmail` parameter (an unindexed scan); **not used by M1** — SS never sends it |
 | `user_github_username`/`user_github_id` | identity-resolution keys (GitHub accounts linked to the LF identity) |
 
 One LF person ⇒ 0..N EasyCLA user records (pre-LF-login history, multiple emails). The my-clas module unions them; SS never sees the individual records.

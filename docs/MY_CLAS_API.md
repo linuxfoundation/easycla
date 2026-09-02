@@ -665,10 +665,12 @@ lookup, the `resolveUsers` service function is its ready-made core.
 
 Per request, with every distinct key resolved exactly once:
 
-- one GSI query for the caller's own EasyCLA records (enforcement) + zero, one or two
-  platform user-service HTTP calls (profile + paginated identities — loaded lazily, at most
-  once, whenever a username key is present or another key is not covered by the EasyCLA
-  records);
+- one GSI query for the caller's own EasyCLA records (enforcement) + the lazily-loaded
+  platform identity sources (at most once per request, whenever a username key is present or
+  another key is not covered by the EasyCLA records): zero, one or two **user-service** HTTP
+  calls (profile + paginated identities) and one **Auth0 Management API** user lookup, plus a
+  token request when the shared M2M token is not cached. The two sources are fetched
+  concurrently, so the added latency is the slower of the two rather than their sum;
 - one GSI query per allowed identity key (typically 2–4);
 - one paginated GSI query per matched user record (typically 1–2);
 - one `GetItem` per distinct CLA group (name), one per distinct company (ECLAs only);
