@@ -87,8 +87,14 @@ func TestInvalidateSignaturesPanicContainment(t *testing.T) {
 		{SignatureID: "sig-1", SignatureReferenceID: "user-1", ProjectID: "p"},
 	}
 
+	// the ICLA entry proves the disabled-invalidation contract: with
+	// invalidateICLAsOnApprovalListRemoval false the loop is never entered
 	icla, ecla := repo.invalidateSignatures(context.Background(),
-		&ApprovalList{Criteria: utils.EmailDomainCriteria, ECLAs: eclas},
+		&ApprovalList{
+			Criteria: utils.EmailDomainCriteria,
+			ICLAs:    []*models.IclaSignature{{SignatureID: "icla-1"}},
+			ECLAs:    eclas,
+		},
 		&models.User{}, nil)
 
 	assert.Empty(t, icla)
