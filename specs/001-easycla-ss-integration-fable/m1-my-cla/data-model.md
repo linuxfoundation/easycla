@@ -32,7 +32,7 @@ One LF person ⇒ 0..N EasyCLA user records (pre-LF-login history, multiple emai
 
 ## Upstream response item (`GET /v4/my-clas`)
 
-Each item in the response carries (see MY_CLAS_API.md for the full shape): `signatureID`, `claType` (`icla`/`ecla`), project/CLA group identifiers and names, `companyName` (ECLA), `signedOn`, and validity. The endpoint still exposes the boolean `valid` that M1 shipped with; M2 added the computed five-value `status` (`valid`/`needs_attention`/`invalidated`/`revoked`/`unknown`) plus `signedVia`/`signedAs`. All agreements are returned regardless of validity (the "valid ECLAs only" filter from the original plan was dropped). Not every invalid row carries M2's Request-approval action: the shipped gate is an **ECLA whose `statusReason` is `not_on_approval_list`** (`canRequestClaApproval`, `packages/shared/src/utils/cla-manager-actions.utils.ts`) — which corresponds to `needs_attention`. `invalidated`, `revoked`, and `unknown` rows are informational.
+Each item in the response carries (see MY_CLAS_API.md for the full shape): `signatureID`, `claType` (`icla`/`ecla`), project/CLA group identifiers and names, `companyName` (ECLA), `signedOn`, and validity. The endpoint still exposes the boolean `valid` that M1 shipped with; M2 added the computed five-value `status` (`valid`/`needs_attention`/`invalidated`/`revoked`/`unknown`) plus `signedVia`/`signedAs`. All agreements are returned regardless of validity (the "valid ECLAs only" filter from the original plan was dropped). Not every invalid row carries M2's Request-approval action: the shipped gate is an **ECLA whose `statusReason` is `not_on_approval_list`** (`canRequestClaApproval`, `packages/shared/src/utils/cla-manager-actions.utils.ts`) — which corresponds to `needs_attention`. The other manager actions are scoped differently, so `invalidated` and `unknown` rows are **not** action-free: `canRequestClaRemoval` offers Request Removal on every non-revoked ECLA, and `canContactClaManager` offers Contact CLA Manager on `valid` and `needs_attention`. Only `revoked` carries no manager action at all.
 
 ## SS view models (TypeScript, server `cla` types + shared interface)
 
@@ -56,7 +56,7 @@ Each item in the response carries (see MY_CLAS_API.md for the full shape): `sign
 Validation/invariants:
 
 - `kind='ECLA'` ⇒ `pdfAvailable=false` and `companyName` required (FR-002).
-- All rows are shown with their validity/status; nothing is filtered out client- or server-side in SS.
+- All rows are shown; nothing is filtered out client- or server-side in SS. The status column that renders each row's computed status is part of the M2 overlay (`my-clas-m2-enabled`) — M1 listed the same rows without it.
 - Deduplication happens upstream by `signatureID`; distinct signatures for the same project are all shown (they are distinct legal records).
 
 ### `MyClasResponse`
