@@ -32,7 +32,7 @@ One LF person ⇒ 0..N EasyCLA user records (pre-LF-login history, multiple emai
 
 ## Upstream response item (`GET /v4/my-clas`)
 
-Each item in the response carries (see MY_CLAS_API.md for the full shape): `signatureID`, `claType` (`icla`/`ecla`), project/CLA group identifiers and names, `companyName` (ECLA), `signedOn`, and validity. The endpoint still exposes the boolean `valid` that M1 shipped with; M2 added the computed five-value `status` (`valid`/`needs_attention`/`invalidated`/`revoked`/`unknown`) plus `signedVia`/`signedAs`. All agreements are returned regardless of validity (the "valid ECLAs only" filter from the original plan was dropped — invalid ECLA rows are the ones that carry M2's Request-approval action).
+Each item in the response carries (see MY_CLAS_API.md for the full shape): `signatureID`, `claType` (`icla`/`ecla`), project/CLA group identifiers and names, `companyName` (ECLA), `signedOn`, and validity. The endpoint still exposes the boolean `valid` that M1 shipped with; M2 added the computed five-value `status` (`valid`/`needs_attention`/`invalidated`/`revoked`/`unknown`) plus `signedVia`/`signedAs`. All agreements are returned regardless of validity (the "valid ECLAs only" filter from the original plan was dropped). Not every invalid row carries M2's Request-approval action: the shipped gate is an **ECLA whose `statusReason` is `not_on_approval_list`** (`canRequestClaApproval`, `packages/shared/src/utils/cla-manager-actions.utils.ts`) — which corresponds to `needs_attention`. `invalidated`, `revoked`, and `unknown` rows are informational.
 
 ## SS view models (TypeScript, server `cla` types + shared interface)
 
