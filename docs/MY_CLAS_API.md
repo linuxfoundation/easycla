@@ -19,9 +19,10 @@ deduplicated identity set they own (the set the list endpoint authorizes them to
 For non-admin, untrusted callers every identity key is **verified to belong to the
 authenticated user** before it is searched (admin/trusted exceptions below), so the
 endpoints cannot enumerate other people's CLA history. "Belongs to" means *currently*
-attached to the caller's LF account (their EasyCLA user records or their platform
-user-service profile/identities) — the accepted bar for this read-only surface; the
-recycled-alias trade-off is under "Known limitations".
+attached to the caller's LF account (their EasyCLA user records, their platform
+user-service profile/identities, or the identities on their Auth0 user record) — the
+accepted bar for this read-only surface; the recycled-alias trade-off is under "Known
+limitations".
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -30,6 +31,15 @@ recycled-alias trade-off is under "Known limitations".
 | `GET` | `/v4/my-clas/identities` | List the deduplicated `<type>:<value>` identities the authenticated user owns (no query params) |
 | `GET` | `/v4/my-clas/{signatureID}/cla-managers` | List the CLA managers of the CCLA covering an ECLA owned by the provided identity |
 | `POST` | `/v4/my-clas/{signatureID}/cla-manager-requests` | Email a removal/approval request or a contact-only message for an owned ECLA to selected CLA managers (M2; swagger-documented; `requestType=contact` requires a non-blank `message`) |
+
+M2's sign-CLA entry adds two further Self-Serve-facing v4 endpoints outside the
+`my-clas` surface (swagger-documented in `cla-backend-go/swagger/cla.v2.yaml`; scope and
+behavior in the M2 milestone artifacts, linuxfoundation/easycla#5144):
+`GET /v4/cla-group/search` (case-insensitive search over CLA group / Salesforce project /
+linked organization names plus repository-URL resolution, backed by an in-process cache
+with a ~30-minute TTL) and `POST /v4/self-serve/prepare-sign` (verifies the identity,
+creates the EasyCLA user record if missing, records the signing session, and returns the
+Contributor Console hand-off `signUrl`).
 
 ## Changed repositories and branches
 
@@ -46,6 +56,7 @@ Files changed in `easycla`:
 - `cla-backend-go/v2/my_clas/service.go` — ownership enforcement, identity resolution, aggregation, validity evaluation
 - `cla-backend-go/v2/my_clas/prefetch.go` — per-request concurrent prefetch of every distinct external lookup
 - `cla-backend-go/v2/my_clas/sanctions.go` — sanctions screener (live SSS lookup; the screener never writes, the service persists a first detection)
+- `cla-backend-go/v2/my_clas/auth0_identities.go` — Auth0 Management API client, the third identity-verification source ([linuxfoundation/easycla#5172](https://github.com/linuxfoundation/easycla/pull/5172))
 - `cla-backend-go/v2/my_clas/repository.go` — plural, paginated GSI queries for identity resolution and the user's ICLA/ECLA records, plus the single-scan secondary-email lookup
 - `cla-backend-go/emails/contact_cla_manager_templates.go`, `cla-backend-go/events/event_data.go`, `event_types.go` — the contact-request email and its audit event
 - `cla-backend-go/v2/my_clas/*_test.go` — unit tests
@@ -163,19 +174,29 @@ searched:
    (case-insensitive), `gitlabId`/`gitlabUsername` likewise, and
    `gerritUsername`/`lfUsername` against the token username.
 2. Username keys and keys not covered there are checked against the **LF-wide identities**
-   connected to the account in the platform user-service (loaded lazily, at most once per
-   request): `GET /user-service/v1/users?username={lfid}` for the profile (SFID + all
-   non-deleted profile emails) and `GET /user-service/v1/users/{sfid}/identities` for
-   connected identities (paginated — all pages fetched, so accounts with more than 100
-   identities are fully covered; identities whose `DataSource` is not `platform` are
-   ignored). Usernames are accepted per source (`github`, `gitlab`, `gerrit` — a Slack
+   connected to the account, loaded lazily (at most once per request) from **two platform
+   sources fetched concurrently**:
+   - the **platform user-service**: `GET /user-service/v1/users?username={lfid}` for the
+     profile (SFID + all non-deleted profile emails) and
+     `GET /user-service/v1/users/{sfid}/identities` for connected identities (paginated —
+     all pages fetched, so accounts with more than 100 identities are fully covered;
+     identities whose `DataSource` is not `platform` are ignored);
+   - the **Auth0 Management API** (`v2/my_clas/auth0_identities.go`, added in
+     [linuxfoundation/easycla#5172](https://github.com/linuxfoundation/easycla/pull/5172)):
+     the identities linked to the LF login's Auth0 user record, via the shared platform
+     M2M credentials. LFX One links newly connected identities only in Auth0, so they may
+     exist nowhere else yet; a lookup failure yields an empty set, so affected keys are
+     skipped, never allowed.
+
+   Usernames are accepted per source (`github`, `gitlab`, `gerrit` — a Slack
    identity never authorizes a GitHub search); identity emails are accepted from any
    platform-sourced identity. Numeric GitHub/GitLab IDs cannot be validated through
-   user-service (identities carry usernames, not provider IDs), so they validate only
-   against the EasyCLA LFID records. Because the users-table username indexes are
+   user-service (its identities carry usernames, not provider IDs), but Auth0 identities
+   do carry provider user IDs — so numeric IDs validate against the EasyCLA LFID records
+   or the Auth0 identity set. Because the users-table username indexes are
    exact-match while verification is case-insensitive, allowed usernames are expanded to
-   their **canonical spellings** (from the EasyCLA records and user-service, plus the
-   requested spelling) before the index lookups — `githubUsername=octocat` finds a record
+   their **canonical spellings** (from the EasyCLA records, user-service, and Auth0
+   identities, plus the requested spelling) before the index lookups — `githubUsername=octocat` finds a record
    stored as `Octocat`.
 3. Keys verified by neither source are **not searched** and are reported in the response's
    `skippedIdentities` array (formatted `"<parameter>:<value>"`, e.g.
@@ -573,12 +594,13 @@ EasyCLA user, it can read the exact identity set EasyCLA already associates with
 curl -H "Authorization: Bearer $TOKEN" "$GW/cla-service/v4/my-clas/identities"
 ```
 
-The set is the **union of the two sources the ownership enforcement (step 0) trusts** — the
-identities on the caller's EasyCLA user records (`GetUsersByLFUsername`) and those connected
-to their LF account in the platform user-service (`loadPlatformIdentities`: profile emails +
-non-deleted connected identities). `GetMyIdentities` reuses those same two calls, so this
-endpoint can never surface an identity that `/v4/my-clas` would refuse to search for that
-caller, and the My CLAs / PDF endpoints are unchanged.
+The set is the **union of the three sources the ownership enforcement (step 0) trusts** — the
+identities on the caller's EasyCLA user records (`GetUsersByLFUsername`), those connected to
+their LF account in the platform user-service (profile emails + non-deleted connected
+identities), and those linked to the LF login's Auth0 user record (Auth0 Management API).
+`loadPlatformIdentities` fetches the latter two concurrently and merges them. `GetMyIdentities`
+reuses those same calls, so this endpoint can never surface an identity that `/v4/my-clas`
+would refuse to search for that caller, and the My CLAs / PDF endpoints are unchanged.
 
 Each entry is `"<type>:<value>"`, deduplicated and sorted; types are `lf-username`, `email`,
 `github-id`, `github-username`, `gitlab-id`, `gitlab-username`, `gerrit-username`. Response
@@ -643,10 +665,12 @@ lookup, the `resolveUsers` service function is its ready-made core.
 
 Per request, with every distinct key resolved exactly once:
 
-- one GSI query for the caller's own EasyCLA records (enforcement) + zero, one or two
-  platform user-service HTTP calls (profile + paginated identities — loaded lazily, at most
-  once, whenever a username key is present or another key is not covered by the EasyCLA
-  records);
+- one GSI query for the caller's own EasyCLA records (enforcement) + the lazily-loaded
+  platform identity sources (at most once per request, whenever a username key is present or
+  another key is not covered by the EasyCLA records): zero, one or two **user-service** HTTP
+  calls (profile + paginated identities) and one **Auth0 Management API** user lookup, plus a
+  token request when the shared M2M token is not cached. The two sources are fetched
+  concurrently, so the added latency is the slower of the two rather than their sum;
 - one GSI query per allowed identity key (typically 2–4);
 - one paginated GSI query per matched user record (typically 1–2);
 - one `GetItem` per distinct CLA group (name), one per distinct company (ECLAs only);
@@ -766,10 +790,11 @@ the latency envelope is to be confirmed on dev.
 - **Secondary emails** (`user_emails`) are matchable only via the opt-in `secondaryEmail`
   parameter, one table scan for all values (set attribute, not indexable); the default `email`
   parameter stays index-backed.
-- **Numeric GitHub/GitLab IDs can only be verified against the caller's EasyCLA LFID
-  records** — platform identities carry usernames, not provider IDs. An ID on no such record
-  is skipped even when the matching username would have been allowed, so pass the username
-  alongside the ID.
+- **Numeric GitHub/GitLab IDs are verified against the caller's EasyCLA LFID records or their
+  Auth0 linked identities** — the platform user-service carries usernames, not provider IDs,
+  but the Auth0 Management API returns each linked identity's provider `user_id`. An ID found
+  on neither source is skipped even when the matching username would have been allowed, so
+  pass the username alongside the ID.
 - **Superseded-document detection** is not computed server-side; the signed document version
   is exposed (`documentMajorVersion/MinorVersion`) so a consumer can compare it against the
   CLA group's current template version if a "superseded" badge is wanted later (the final
