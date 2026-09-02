@@ -70,6 +70,7 @@ require (
 )
 
 require (
+	github.com/akamensky/base58 v0.0.0-20210829145138-ce8bf8802e8f
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.53.1
 	github.com/bradleyfalzon/ghinstallation/v2 v2.2.0
 	github.com/golang-jwt/jwt/v4 v4.5.2

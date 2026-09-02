@@ -74,6 +74,41 @@ func TestAuth0UserIdentities(t *testing.T) {
 	assert.Nil(t, identities)
 }
 
+// golden hashes produced with lfx-v2-auth-service's mapUsernameToSub implementation
+func TestAuth0UserID(t *testing.T) {
+	assert.Equal(t, "someone", auth0UserID("someone"))
+	assert.Equal(t, "Some.One-1_x", auth0UserID("Some.One-1_x"))
+	// unsafe shapes (legacy LDAP usernames) map to base58(sha512(username))
+	assert.Equal(t, "5kMCBMmM1Nz41roKkv37FeGJnEUxTVQtbWyE7Ead97tr53jpRf4Z5YT3wbmey1qnhdPacvvU5Aw81arBof2ZnoAD",
+		auth0UserID("Lonnie K"))
+	assert.Equal(t, "27tAPEA6iekKLujHgDMmq6EwyezNnhKPcyNcxkQeCNZ8ZGyar6hQU5zmiCDSginEtJiWAKEFz2gFoyfzfryDdwX6",
+		auth0UserID("victord 14"))
+	// 24-60 lowercase hex chars collide with Auth0-generated IDs, so they hash too
+	assert.Equal(t, "2Ub9T1AHtbbBbaj4QcsdXmR5Gp1HZyYE7jR3mc6qcqq11u99JJbTHXHdXeLftcPwYLJNR4u8shKqXRGD2bEXpF2A",
+		auth0UserID("abcdef0123456789abcdef01"))
+	// single-character names fail the safe pattern and hash
+	assert.NotEqual(t, "a", auth0UserID("a"))
+}
+
+func TestAuth0UserIdentitiesUnsafeUsernamePath(t *testing.T) {
+	var requestedPath string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/oauth/token", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(`{"access_token":"test-token","expires_in":86400}`)) // nolint:errcheck
+	})
+	mux.HandleFunc("/api/v2/users/", func(w http.ResponseWriter, r *http.Request) {
+		requestedPath = r.URL.EscapedPath()
+		_, _ = w.Write([]byte(`{"identities":[]}`)) // nolint:errcheck
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	svc := NewAuth0IdentityService(server.URL+"/oauth/token", "id", "secret")
+
+	_, err := svc.UserIdentities(context.Background(), "Lonnie K")
+	require.NoError(t, err)
+	assert.Equal(t, "/api/v2/users/auth0%7C"+auth0UserID("Lonnie K"), requestedPath)
+}
+
 func TestAuth0UserIdentitiesNotFound(t *testing.T) {
 	tokenCalls := 0
 	server := newAuth0TestServer(t, &tokenCalls, http.StatusNotFound, `{"error":"Not Found"}`)
