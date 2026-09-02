@@ -199,7 +199,7 @@ const GitHubUsernameCriteria = "GitHubUsername"
 const GitHubOrgCriteria = "GitHub Org Criteria"
 
 // GitlabUsernameCriteria represents criteria based on gitlab username
-const GitlabUsernameCriteria = "GitHubUsername"
+const GitlabUsernameCriteria = "GitLabUsername"
 
 // GitlabOrgCriteria represents approvals based on gitlab org group membership
 const GitlabOrgCriteria = "Gitlab Org Criteria"

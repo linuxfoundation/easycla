@@ -91,6 +91,17 @@ func (f *fakePlatform) ListUserIdentities(_ context.Context, _ string) ([]*platf
 	return f.identities, nil
 }
 
+type fakeAuth0 struct {
+	identities []Auth0Identity
+	err        error
+	calls      int
+}
+
+func (f *fakeAuth0) UserIdentities(_ context.Context, _ string) ([]Auth0Identity, error) {
+	f.calls++
+	return f.identities, f.err
+}
+
 type fakeSignatures struct {
 	cclas             map[string]*v1Models.Signature
 	approvedUserIDs   map[string]bool
@@ -284,6 +295,66 @@ func TestGetMyClasUnionAndDedupe(t *testing.T) {
 	assert.Equal(t, "sig-2", result.Clas[0].SignatureID)
 	assert.Equal(t, "sig-1", result.Clas[1].SignatureID)
 	assert.Equal(t, "My CLA Group", result.Clas[0].ClaGroupName)
+}
+
+func TestAuthorizeIdentityViaAuth0(t *testing.T) {
+	svc := newTestService(&fakeRepo{}, nil, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+	svc.auth0Identities = &fakeAuth0{identities: []Auth0Identity{
+		{Provider: "github", UserID: "30514950", Username: "ah-med"},
+		{Provider: "gitlab", UserID: "777", Username: "someone-gl"},
+	}}
+
+	allowed, skipped, err := svc.AuthorizeIdentity(context.Background(), "someone", false, &Identity{
+		GithubIDs:       []int64{30514950, 99},
+		GithubUsernames: []string{"AH-MED"},
+		GitlabIDs:       []int64{777},
+		GitlabUsernames: []string{"Someone-GL"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []int64{30514950}, allowed.GithubIDs)
+	assert.Equal(t, []string{"ah-med", "AH-MED"}, allowed.GithubUsernames)
+	assert.Equal(t, []int64{777}, allowed.GitlabIDs)
+	assert.Equal(t, []string{"someone-gl", "Someone-GL"}, allowed.GitlabUsernames)
+	assert.Equal(t, []string{"githubId:99"}, skipped)
+}
+
+func TestAuthorizeIdentitySelfRecordShortCircuit(t *testing.T) {
+	repo := &fakeRepo{byLFUsername: map[string][]*v1Models.User{"someone": {
+		{UserID: "user-a", LfUsername: "someone", Emails: []string{"someone@example.org"}, GithubID: "12345", GithubUsername: "Octocat", GitlabUsername: "octolab"},
+	}}}
+	platform := &fakePlatform{}
+	auth0 := &fakeAuth0{}
+	svc := newTestService(repo, platform, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+	svc.auth0Identities = auth0
+
+	allowed, skipped, err := svc.AuthorizeIdentity(context.Background(), "someone", false, &Identity{
+		Emails:          []string{"someone@example.org"},
+		GithubIDs:       []int64{12345},
+		GithubUsernames: []string{"octocat"},
+		GitlabUsernames: []string{"OCTOLAB"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"someone@example.org"}, allowed.Emails)
+	assert.Equal(t, []int64{12345}, allowed.GithubIDs)
+	assert.Equal(t, []string{"Octocat", "octocat"}, allowed.GithubUsernames)
+	assert.Equal(t, []string{"octolab", "OCTOLAB"}, allowed.GitlabUsernames)
+	assert.Empty(t, skipped)
+	assert.Zero(t, auth0.calls, "self-record hits must not trigger the Auth0 lookup")
+	assert.Zero(t, platform.lookups, "self-record hits must not trigger the user-service lookup")
+}
+
+func TestAuthorizeIdentityAuth0Failure(t *testing.T) {
+	svc := newTestService(&fakeRepo{}, nil, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+	svc.auth0Identities = &fakeAuth0{err: errors.New("auth0 unavailable")}
+
+	allowed, skipped, err := svc.AuthorizeIdentity(context.Background(), "someone", false, &Identity{
+		GithubIDs:       []int64{30514950},
+		GithubUsernames: []string{"ah-med"},
+	})
+	require.NoError(t, err)
+	assert.Empty(t, allowed.GithubIDs)
+	assert.Empty(t, allowed.GithubUsernames)
+	assert.Equal(t, []string{"githubId:30514950", "githubUsername:ah-med"}, skipped)
 }
 
 func TestGetMyClasProjectNameAndLogo(t *testing.T) {
@@ -1410,6 +1481,9 @@ func TestGetMyIdentities(t *testing.T) {
 		},
 	}
 	svc := newTestService(repo, platform, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+	svc.auth0Identities = &fakeAuth0{identities: []Auth0Identity{
+		{Provider: "github", UserID: "9218699"},
+	}}
 
 	result, err := svc.GetMyIdentities(context.Background(), "someone")
 	require.NoError(t, err)
@@ -1420,6 +1494,7 @@ func TestGetMyIdentities(t *testing.T) {
 		"email:someone@example.org",
 		"gerrit-username:someone",
 		"github-id:12345",
+		"github-id:9218699",
 		"github-username:Octocat",
 		"gitlab-id:777",
 		"gitlab-username:octolab",

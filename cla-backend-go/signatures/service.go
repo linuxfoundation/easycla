@@ -959,7 +959,7 @@ func (s service) InvalidateProjectRecords(ctx context.Context, projectID, note s
 			// Do this in parallel, as we could have a lot to invalidate
 			go func(sigID, projectID string) {
 				defer wg.Done()
-				updateErr := s.repo.InvalidateProjectRecord(ctx, sigID, note)
+				updateErr := s.repo.InvalidateProjectRecordWithMetadata(ctx, sigID, note, nil)
 				if updateErr != nil {
 					log.WithFields(f).WithError(updateErr).Warnf("Unable to update signature: %s with project ID: %s, error: %v", sigID, projectID, updateErr)
 				}
@@ -1734,6 +1734,12 @@ func (s service) EvaluateUserApproval(ctx context.Context, user *models.User, cc
 }
 
 func (s service) processPattern(emails []string, patterns []string) (*bool, error) {
+	return matchEmailsToDomainPatterns(emails, patterns)
+}
+
+// matchEmailsToDomainPatterns reports whether any email matches any domain approval entry,
+// honoring the same wildcard patterns as the enforcement gate
+func matchEmailsToDomainPatterns(emails []string, patterns []string) (*bool, error) {
 	matched := false
 
 	for _, pattern := range patterns {

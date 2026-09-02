@@ -2639,7 +2639,7 @@ func emailHelpContent(showV2HelpLink bool) string {
 		// v2 help link is currently the same as v1 in legacy Python.
 		helpLink = "https://docs.linuxfoundation.org/lfx/easycla"
 	}
-	return fmt.Sprintf(`<p>If you need help or have questions about EasyCLA, you can <a href="%s" target="_blank">read the documentation</a> or <a href="https://jira.linuxfoundation.org/servicedesk/customer/portal/4/create/143" target="_blank">reach out to us for support</a>.</p>`, helpLink)
+	return fmt.Sprintf(`<p>If you need help or have questions about EasyCLA, you can <a href="%s" target="_blank">read the documentation</a> or <a href="https://easycla.lfx.linuxfoundation.org/" target="_blank">visit our EasyCLA portal</a> and chat with our support bot.</p>`, helpLink)
 }
 
 func emailSignOffContent() string {
