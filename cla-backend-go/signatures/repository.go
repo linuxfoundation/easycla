@@ -4192,6 +4192,9 @@ func (repo repository) sendEmail(ctx context.Context, email string, approvalList
 // have no company link, so a corporate approved list edit must not touch them (#5166).
 const invalidateICLAsOnApprovalListRemoval = false
 
+// nilSignatureEntry labels a nil signature slice entry in the panic-recovery logs
+const nilSignatureEntry = "<nil entry>"
+
 // employeeSignatureListed reports whether the given user already has an employee signature in the list
 func employeeSignatureListed(eclas []*models.Signature, userID string) bool {
 	for _, ecla := range eclas {
@@ -4291,6 +4294,21 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 		for _, icla := range approvalList.ICLAs {
 			go func(icla *models.IclaSignature) {
 				defer iclaWg.Done()
+				// a panic in this goroutine would kill the whole process - contain it here,
+				// without dereferencing anything that could re-panic inside the handler
+				defer func() {
+					if r := recover(); r != nil {
+						sigID := nilSignatureEntry
+						if icla != nil {
+							sigID = icla.SignatureID
+						}
+						log.WithFields(f).Errorf("recovered from panic while invalidating signature: %s - skipping record: %v", sigID, r)
+					}
+				}()
+				if icla == nil {
+					log.WithFields(f).Warn("nil icla entry - skipping")
+					return
+				}
 				signature, sigErr := repo.GetSignature(ctx, icla.SignatureID)
 				if sigErr != nil {
 					log.WithFields(f).Warnf("unable to fetch signature for ID: %s ", icla.SignatureID)
@@ -4338,6 +4356,21 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 		for _, ecla := range approvalList.ECLAs {
 			go func(ecla *models.Signature) {
 				defer eclaWg.Done()
+				// a panic in this goroutine would kill the whole process - contain it here,
+				// without dereferencing anything that could re-panic inside the handler
+				defer func() {
+					if r := recover(); r != nil {
+						sigID := nilSignatureEntry
+						if ecla != nil {
+							sigID = ecla.SignatureID
+						}
+						log.WithFields(f).Errorf("recovered from panic while invalidating signature: %s - skipping record: %v", sigID, r)
+					}
+				}()
+				if ecla == nil {
+					log.WithFields(f).Warn("nil ecla entry - skipping")
+					return
+				}
 				// Grab user record
 				if ecla.SignatureReferenceID == "" {
 					log.WithFields(f).Warnf("no signatureReferenceID for signature: %+v ", ecla)
@@ -4385,6 +4418,12 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 	if err != nil {
 		log.WithFields(f).Warnf("unable to get user record for ID: %s ", userID)
 		return nil, false, err
+	}
+	// GetUser returns (nil, nil) for a missing record - historical signatures may reference
+	// deleted users, and invalidating what we cannot re-check would be destructive
+	if user == nil {
+		log.WithFields(f).Warnf("user record not found for ID: %s - skipping approval re-check for signature: %s", userID, signatureID)
+		return nil, false, nil
 	}
 	email := getBestEmail(user)
 	invalidationMetadata := &InvalidationMetadata{
@@ -4493,6 +4532,9 @@ func effectiveApprovals(current, add, remove []string) []string {
 // effectiveApprovals). GitHub/GitLab org membership is not re-checked here, consistent with
 // the sibling criteria branches.
 func userStillApproved(user *models.User, approvalList *ApprovalList) bool {
+	if user == nil {
+		return false
+	}
 	var emails []string
 	emails = append(emails, user.Emails...)
 	if user.LfEmail != "" {
