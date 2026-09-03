@@ -47,7 +47,7 @@
     "axios": "^1.16.1",
     "basic-ftp": "^5.3.1",
     "cookiejar": "^2.1.4",
-    "fast-uri": "^3.1.2",
+    "fast-uri": "^3.1.7",
     "fast-xml-builder": "^1.1.7",
     "fast-xml-parser": "^5.7.3",
     "file-type": "^16.5.4",
