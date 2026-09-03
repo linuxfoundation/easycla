@@ -579,6 +579,11 @@ func (osc *Client) CreateOrg(ctx context.Context, companyName, signingEntityName
 
 		clientAuth := runtimeClient.BearerToken(tok)
 		logoURL := linuxFoundation[0].LogoURL
+		// the org-service create-org LogoURL pattern forbids '?' and '=', so a versioned
+		// logo URL (?v=...) would be rejected with 422 - strip the query/fragment
+		if i := strings.IndexAny(logoURL, "?#"); i >= 0 {
+			logoURL = logoURL[:i]
+		}
 		f["logoURL"] = logoURL
 
 		params := &organizations.CreateOrgParams{
