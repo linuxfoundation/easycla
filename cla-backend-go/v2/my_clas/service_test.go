@@ -270,9 +270,19 @@ func newTestService(repo Repository, platform PlatformUsersService, signaturesSe
 
 func TestSignedOnFallbacks(t *testing.T) {
 	assert.Equal(t, "2024-01-02T03:04:05Z", signedOn(&signatures.ItemSignature{
-		SignedOn: "2024-01-02T03:04:05Z", DateCreated: "2024-02-02T03:04:05Z", DateModified: "2024-03-02T03:04:05Z"}))
-	assert.Equal(t, "2024-02-02T03:04:05Z", signedOn(&signatures.ItemSignature{
+		SignedOn: "2024-01-02T03:04:05Z", UserDocusignDateSigned: "2024-01-15T03:04:05.123",
 		DateCreated: "2024-02-02T03:04:05Z", DateModified: "2024-03-02T03:04:05Z"}))
+	// the DocuSign completion date is a real signing timestamp - it wins over creation dates
+	// (its DocuSign-style fraction/no-timezone format is normalized to RFC3339)
+	assert.Equal(t, "2024-01-15T03:04:05Z", signedOn(&signatures.ItemSignature{
+		UserDocusignDateSigned: "2024-01-15T03:04:05.123",
+		DateCreated:            "2024-02-02T03:04:05Z", DateModified: "2024-03-02T03:04:05Z"}))
+	assert.Equal(t, "2024-02-02T03:04:05Z", signedOn(&signatures.ItemSignature{
+		DateCreated: "2024-02-02T03:04:05Z", ApproxDateCreated: "2024-02-20T03:04:05Z",
+		DateModified: "2024-03-02T03:04:05Z"}))
+	// backfilled auto-ECLAs carry only approx_date_created + date_modified
+	assert.Equal(t, "2024-02-20T03:04:05Z", signedOn(&signatures.ItemSignature{
+		ApproxDateCreated: "2024-02-20T03:04:05Z", DateModified: "2024-03-02T03:04:05Z"}))
 	assert.Equal(t, "2024-03-02T03:04:05Z", signedOn(&signatures.ItemSignature{
 		DateModified: "2024-03-02T03:04:05Z"}))
 	assert.Equal(t, "", signedOn(&signatures.ItemSignature{}))

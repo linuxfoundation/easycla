@@ -1460,15 +1460,18 @@ func (s *service) company(ctx context.Context, companyID string) (*v1Models.Comp
 	return companyModel, nil
 }
 
-// signedOn mirrors the v1 signatures converter: prefer signed_on, fall back to date_created,
-// then date_modified
+// signedOn prefers an actual signing timestamp (signed_on, then the DocuSign completion date),
+// then falls back to creation dates (date_created, then the backfilled approx_date_created),
+// and finally date_modified - matching how these fields are actually populated in prod
 func signedOn(sig *signatures.ItemSignature) string {
-	value := sig.SignedOn
-	if value == "" {
-		value = sig.DateCreated
-	}
-	if value == "" {
-		value = sig.DateModified
+	value := ""
+	for _, candidate := range []string{
+		sig.SignedOn, sig.UserDocusignDateSigned, sig.DateCreated, sig.ApproxDateCreated, sig.DateModified,
+	} {
+		if candidate != "" {
+			value = candidate
+			break
+		}
 	}
 	if value != "" {
 		value = utils.FormatTimeString(value)
