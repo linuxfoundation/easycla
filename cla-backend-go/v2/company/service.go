@@ -1406,15 +1406,11 @@ func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string) (
 			})
 			row.ClaManagersCount = int64(len(row.ClaManagers))
 			row.NeedsClaManager = row.Signed && row.ClaManagersCount == 0
-			eclaSigs, eclaErr := s.signatureRepo.GetProjectCompanyEmployeeSignatures(ctx, v1SignatureParams.GetProjectCompanyEmployeeSignaturesParams{
-				CompanyID: comp.CompanyID,
-				ProjectID: claGroupID,
-				PageSize:  aws.Int64(1),
-			}, nil)
+			contributors, eclaErr := s.signatureRepo.GetClaGroupCorporateContributors(ctx, claGroupID, &comp.CompanyID, aws.Int64(1), nil, nil)
 			if eclaErr != nil {
 				return nil, eclaErr
 			}
-			row.ApprovedContributorsCount = eclaSigs.TotalCount
+			row.ApprovedContributorsCount = contributors.TotalCount
 			result.List = append(result.List, row)
 		}
 	}

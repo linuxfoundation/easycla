@@ -202,14 +202,6 @@ func cclaSignaturesParams(companyID string, nextKey *string) v1SignatureParams.G
 	}
 }
 
-func eclaCountParams(companyID, claGroupID string) v1SignatureParams.GetProjectCompanyEmployeeSignaturesParams {
-	return v1SignatureParams.GetProjectCompanyEmployeeSignaturesParams{
-		CompanyID: companyID,
-		ProjectID: claGroupID,
-		PageSize:  aws.Int64(1),
-	}
-}
-
 func TestGetCompanyClaGroups(t *testing.T) {
 	ctx := context.Background()
 	ctrl := gomock.NewController(t)
@@ -259,8 +251,8 @@ func TestGetCompanyClaGroups(t *testing.T) {
 			},
 		},
 	}, nil)
-	mockSignatureRepo.EXPECT().GetProjectCompanyEmployeeSignatures(ctx, eclaCountParams("company-id-1", "cla-group-id"), nil).Return(&v1Models.Signatures{TotalCount: 3}, nil)
-	mockSignatureRepo.EXPECT().GetProjectCompanyEmployeeSignatures(ctx, eclaCountParams("company-id-2", "cla-group-id"), nil).Return(&v1Models.Signatures{TotalCount: 0}, nil)
+	mockSignatureRepo.EXPECT().GetClaGroupCorporateContributors(ctx, "cla-group-id", aws.String("company-id-1"), aws.Int64(1), nil, nil).Return(&v1Models.CorporateContributorList{TotalCount: 3}, nil)
+	mockSignatureRepo.EXPECT().GetClaGroupCorporateContributors(ctx, "cla-group-id", aws.String("company-id-2"), aws.Int64(1), nil, nil).Return(&v1Models.CorporateContributorList{TotalCount: 0}, nil)
 
 	mockProjectClaGroupRepo := mock_pcg_repo.NewMockRepository(ctrl)
 	mockProjectClaGroupRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-id").Times(1).Return([]*projects_cla_groups.ProjectClaGroup{
@@ -379,7 +371,7 @@ func TestGetCompanyClaGroupsOrphanClaGroup(t *testing.T) {
 			},
 		},
 	}, nil)
-	mockSignatureRepo.EXPECT().GetProjectCompanyEmployeeSignatures(ctx, eclaCountParams("company-id-1", "orphan-cla-group-id"), nil).Return(&v1Models.Signatures{TotalCount: 0}, nil)
+	mockSignatureRepo.EXPECT().GetClaGroupCorporateContributors(ctx, "orphan-cla-group-id", aws.String("company-id-1"), aws.Int64(1), nil, nil).Return(&v1Models.CorporateContributorList{TotalCount: 0}, nil)
 
 	mockProjectClaGroupRepo := mock_pcg_repo.NewMockRepository(ctrl)
 	mockProjectClaGroupRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "orphan-cla-group-id").Return([]*projects_cla_groups.ProjectClaGroup{}, nil)
@@ -428,8 +420,8 @@ func TestGetCompanyClaGroupsSignaturePagination(t *testing.T) {
 			{SignatureID: "signature-id-3", ProjectID: "cla-group-id-2", SignatureSigned: true, SignedOn: "2021-01-01T00:00:00Z"},
 		},
 	}, nil)
-	mockSignatureRepo.EXPECT().GetProjectCompanyEmployeeSignatures(ctx, eclaCountParams("company-id-1", "cla-group-id"), nil).Times(1).Return(&v1Models.Signatures{TotalCount: 1}, nil)
-	mockSignatureRepo.EXPECT().GetProjectCompanyEmployeeSignatures(ctx, eclaCountParams("company-id-1", "cla-group-id-2"), nil).Times(1).Return(&v1Models.Signatures{TotalCount: 2}, nil)
+	mockSignatureRepo.EXPECT().GetClaGroupCorporateContributors(ctx, "cla-group-id", aws.String("company-id-1"), aws.Int64(1), nil, nil).Times(1).Return(&v1Models.CorporateContributorList{TotalCount: 1}, nil)
+	mockSignatureRepo.EXPECT().GetClaGroupCorporateContributors(ctx, "cla-group-id-2", aws.String("company-id-1"), aws.Int64(1), nil, nil).Times(1).Return(&v1Models.CorporateContributorList{TotalCount: 2}, nil)
 
 	mockProjectClaGroupRepo := mock_pcg_repo.NewMockRepository(ctrl)
 	mockProjectClaGroupRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-id").Times(1).Return([]*projects_cla_groups.ProjectClaGroup{
