@@ -14,7 +14,3 @@ properties:
     type: string
     x-omitempty: false
     description: Project name
-  projectExternalID:
-    type: string
-    x-omitempty: false
-    description: Project external ID

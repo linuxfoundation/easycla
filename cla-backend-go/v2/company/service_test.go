@@ -265,22 +265,28 @@ func TestGetCompanyClaGroups(t *testing.T) {
 	mockProjectClaGroupRepo := mock_pcg_repo.NewMockRepository(ctrl)
 	mockProjectClaGroupRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-id").Times(1).Return([]*projects_cla_groups.ProjectClaGroup{
 		{
-			ClaGroupID:        "cla-group-id",
-			ClaGroupName:      "Test CLA Group",
-			FoundationSFID:    "foundation-sfid",
-			FoundationName:    "Test Foundation",
-			ProjectSFID:       "project-sfid-2",
-			ProjectName:       "Zeta",
-			ProjectExternalID: "ext-2",
+			ClaGroupID:     "cla-group-id",
+			ClaGroupName:   "Test CLA Group",
+			FoundationSFID: "foundation-sfid",
+			FoundationName: "Test Foundation",
+			ProjectSFID:    "foundation-sfid",
+			ProjectName:    "Test Foundation",
 		},
 		{
-			ClaGroupID:        "cla-group-id",
-			ClaGroupName:      "Test CLA Group",
-			FoundationSFID:    "foundation-sfid",
-			FoundationName:    "Test Foundation",
-			ProjectSFID:       "project-sfid-1",
-			ProjectName:       "Alpha",
-			ProjectExternalID: "ext-1",
+			ClaGroupID:     "cla-group-id",
+			ClaGroupName:   "Test CLA Group",
+			FoundationSFID: "foundation-sfid",
+			FoundationName: "Test Foundation",
+			ProjectSFID:    "project-sfid-2",
+			ProjectName:    "Zeta",
+		},
+		{
+			ClaGroupID:     "cla-group-id",
+			ClaGroupName:   "Test CLA Group",
+			FoundationSFID: "foundation-sfid",
+			FoundationName: "Test Foundation",
+			ProjectSFID:    "project-sfid-1",
+			ProjectName:    "Alpha",
 		},
 	}, nil)
 
@@ -302,8 +308,8 @@ func TestGetCompanyClaGroups(t *testing.T) {
 	assert.Equal(t, "foundation-sfid", first.FoundationSFID)
 	assert.Equal(t, "Test Foundation", first.FoundationName)
 	assert.Equal(t, []models.CompanyClaGroupProject{
-		{ProjectSFID: "project-sfid-1", ProjectName: "Alpha", ProjectExternalID: "ext-1"},
-		{ProjectSFID: "project-sfid-2", ProjectName: "Zeta", ProjectExternalID: "ext-2"},
+		{ProjectSFID: "project-sfid-1", ProjectName: "Alpha"},
+		{ProjectSFID: "project-sfid-2", ProjectName: "Zeta"},
 	}, first.Projects)
 	assert.True(t, first.Signed)
 	assert.Equal(t, "2023-01-02T03:04:05Z", first.SignedOn)
@@ -442,8 +448,8 @@ func TestGetCompanyClaGroupsSignaturePagination(t *testing.T) {
 			ClaGroupName:   "Second CLA Group",
 			FoundationSFID: "foundation-sfid",
 			FoundationName: "Test Foundation",
-			ProjectSFID:    "project-sfid-2",
-			ProjectName:    "Beta",
+			ProjectSFID:    "foundation-sfid",
+			ProjectName:    "Test Foundation",
 		},
 	}, nil)
 
@@ -455,6 +461,10 @@ func TestGetCompanyClaGroupsSignaturePagination(t *testing.T) {
 	assert.Equal(t, "signature-id-3", result.List[0].SignatureID)
 	assert.Equal(t, "cla-group-id-2", result.List[0].ClaGroupID)
 	assert.Equal(t, int64(2), result.List[0].ApprovedContributorsCount)
+	assert.Len(t, result.List[0].Projects, 0)
+	assert.Equal(t, "foundation-sfid", result.List[0].FoundationSFID)
+	assert.Equal(t, "Test Foundation", result.List[0].FoundationName)
+	assert.Equal(t, "Second CLA Group", result.List[0].ClaGroupName)
 	assert.Equal(t, "signature-id-2", result.List[1].SignatureID)
 	assert.Equal(t, "cla-group-id", result.List[1].ClaGroupID)
 	assert.Equal(t, "2020-01-01T00:01:30Z", result.List[1].SignedOn)

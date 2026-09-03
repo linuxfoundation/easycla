@@ -1375,10 +1375,12 @@ func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string) (
 				row.FoundationSFID = pcgs[0].FoundationSFID
 				row.FoundationName = pcgs[0].FoundationName
 				for _, pcg := range pcgs {
+					if pcg.ProjectSFID == pcg.FoundationSFID {
+						continue
+					}
 					row.Projects = append(row.Projects, models.CompanyClaGroupProject{
-						ProjectSFID:       pcg.ProjectSFID,
-						ProjectName:       pcg.ProjectName,
-						ProjectExternalID: pcg.ProjectExternalID,
+						ProjectSFID: pcg.ProjectSFID,
+						ProjectName: pcg.ProjectName,
 					})
 				}
 				sort.Slice(row.Projects, func(i, j int) bool {

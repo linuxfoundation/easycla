@@ -14,7 +14,7 @@ Read-only organization CLA landing list: one entry per **(signing entity × CLA 
 derived from the signed+approved CCLA signatures of every signing entity (company record)
 carrying the given external `companySFID`. Each entry carries all its ids
 (`companyID`, `companySFID`, `claGroupID`, `foundationSFID`, `signatureID`, project
-`projectSFID`/`projectExternalID`, manager `userID`) plus `companyName`,
+`projectSFID`, manager `userID`) plus `companyName`,
 `signingEntityName`, `claGroupName`, `foundationName`, the covered `projects`,
 `signed`/`signedOn`, the stored `sanctioned` flag, `approvedContributorsCount` (employee
 acknowledgements under the CCLA, same count as the corporate-console contributors list),
