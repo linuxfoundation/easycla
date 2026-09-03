@@ -268,6 +268,16 @@ func newTestService(repo Repository, platform PlatformUsersService, signaturesSe
 	}
 }
 
+func TestSignedOnFallbacks(t *testing.T) {
+	assert.Equal(t, "2024-01-02T03:04:05Z", signedOn(&signatures.ItemSignature{
+		SignedOn: "2024-01-02T03:04:05Z", DateCreated: "2024-02-02T03:04:05Z", DateModified: "2024-03-02T03:04:05Z"}))
+	assert.Equal(t, "2024-02-02T03:04:05Z", signedOn(&signatures.ItemSignature{
+		DateCreated: "2024-02-02T03:04:05Z", DateModified: "2024-03-02T03:04:05Z"}))
+	assert.Equal(t, "2024-03-02T03:04:05Z", signedOn(&signatures.ItemSignature{
+		DateModified: "2024-03-02T03:04:05Z"}))
+	assert.Equal(t, "", signedOn(&signatures.ItemSignature{}))
+}
+
 func TestGetMyClasUnionAndDedupe(t *testing.T) {
 	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone", LfEmail: "someone@example.org", GithubID: "12345"}
 	userB := &v1Models.User{UserID: "user-b", GithubID: "12345"}

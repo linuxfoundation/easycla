@@ -1460,11 +1460,15 @@ func (s *service) company(ctx context.Context, companyID string) (*v1Models.Comp
 	return companyModel, nil
 }
 
-// signedOn mirrors the v1 signatures converter: prefer signed_on, fall back to date_created
+// signedOn mirrors the v1 signatures converter: prefer signed_on, fall back to date_created,
+// then date_modified
 func signedOn(sig *signatures.ItemSignature) string {
-	value := sig.DateCreated
-	if sig.SignedOn != "" {
-		value = sig.SignedOn
+	value := sig.SignedOn
+	if value == "" {
+		value = sig.DateCreated
+	}
+	if value == "" {
+		value = sig.DateModified
 	}
 	if value != "" {
 		value = utils.FormatTimeString(value)
