@@ -90,6 +90,7 @@ type Service interface {
 	GetCompanyProjectActiveCLAs(ctx context.Context, companyID string, projectSFID string) (*models.ActiveClaList, error)
 	GetCompanyProjectContributors(ctx context.Context, params *v2Ops.GetCompanyProjectContributorsParams) (*models.CorporateContributorList, error)
 	GetCompanyProjectCLA(ctx context.Context, authUser *auth.User, companySFID, projectSFID string, companyID *string) (*models.CompanyProjectClaList, error)
+	GetCompanyClaGroups(ctx context.Context, companySFID string) (*models.CompanyClaGroups, error)
 	CreateCompany(ctx context.Context, params *v2Ops.CreateCompanyParams) (*models.CompanyOutput, error)
 	CreateCompanyFromSFModel(ctx context.Context, orgModel *orgModels.Organization, authUser *auth.User) (*models.CompanyOutput, error)
 	GetCompanyByName(ctx context.Context, companyName string) (*models.Company, error)
@@ -1308,6 +1309,158 @@ func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, proj
 	log.WithFields(f).Debug("queries finished")
 
 	return result, nil
+}
+
+func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string) (*models.CompanyClaGroups, error) {
+	f := logrus.Fields{
+		"functionName":   "v2.company.service.GetCompanyClaGroups",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"companySFID":    companySFID,
+	}
+	result := &models.CompanyClaGroups{
+		CompanySFID: companySFID,
+		List:        make([]models.CompanyClaGroup, 0),
+	}
+	companies, err := s.companyRepo.GetCompaniesByExternalID(ctx, companySFID, true)
+	if err != nil {
+		if _, ok := err.(*utils.CompanyNotFound); ok {
+			log.WithFields(f).Debug("company not found - returning empty list")
+			return result, nil
+		}
+		return nil, err
+	}
+	claGroupProjects := make(map[string][]*projects_cla_groups.ProjectClaGroup)
+	for _, comp := range companies {
+		sigs, sigErr := s.getCompanyCCLASignaturesWithACL(ctx, comp.CompanyID)
+		if sigErr != nil {
+			return nil, sigErr
+		}
+		newestSigs := make(map[string]*v1Models.Signature)
+		for _, sig := range sigs {
+			if cur, ok := newestSigs[sig.ProjectID]; !ok || newerSignature(sig, cur) {
+				newestSigs[sig.ProjectID] = sig
+			}
+		}
+		for claGroupID, sig := range newestSigs {
+			pcgs, found := claGroupProjects[claGroupID]
+			if !found {
+				pcgs, err = s.projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, claGroupID)
+				if err != nil {
+					return nil, err
+				}
+				claGroupProjects[claGroupID] = pcgs
+			}
+			row := models.CompanyClaGroup{
+				CompanyID:         comp.CompanyID,
+				CompanySFID:       comp.CompanyExternalID,
+				CompanyName:       comp.CompanyName,
+				SigningEntityName: comp.SigningEntityName,
+				ClaGroupID:        claGroupID,
+				Projects:          make([]models.CompanyClaGroupProject, 0),
+				Signed:            sig.SignatureSigned,
+				SignedOn:          sig.SignedOn,
+				SignatureID:       sig.SignatureID,
+				Sanctioned:        comp.IsSanctioned,
+				ClaManagers:       make([]models.CompanyClaGroupManager, 0),
+				AutoCreateECLA:    sig.AutoCreateECLA,
+			}
+			if row.SigningEntityName == "" {
+				row.SigningEntityName = comp.CompanyName
+			}
+			if row.SignedOn == "" {
+				row.SignedOn = sig.SignatureCreated
+			}
+			if len(pcgs) > 0 {
+				row.ClaGroupName = pcgs[0].ClaGroupName
+				row.FoundationSFID = pcgs[0].FoundationSFID
+				row.FoundationName = pcgs[0].FoundationName
+				for _, pcg := range pcgs {
+					if pcg.ProjectSFID == pcg.FoundationSFID {
+						continue
+					}
+					row.Projects = append(row.Projects, models.CompanyClaGroupProject{
+						ProjectSFID: pcg.ProjectSFID,
+						ProjectName: pcg.ProjectName,
+					})
+				}
+				sort.Slice(row.Projects, func(i, j int) bool {
+					return row.Projects[i].ProjectName < row.Projects[j].ProjectName
+				})
+			} else {
+				claGroup, cgErr := s.projectRepo.GetCLAGroupByID(ctx, claGroupID, DontLoadRepoDetails)
+				if cgErr != nil {
+					var nf *utils.CLAGroupNotFound
+					if !errors.As(cgErr, &nf) && !errors.Is(cgErr, repository.ErrProjectDoesNotExist) {
+						return nil, cgErr
+					}
+					log.WithFields(f).WithError(cgErr).Warnf("unable to load CLA group: %s", claGroupID)
+				} else {
+					row.ClaGroupName = claGroup.ProjectName
+					row.FoundationSFID = claGroup.FoundationSFID
+				}
+			}
+			for _, aclUser := range sig.SignatureACL {
+				row.ClaManagers = append(row.ClaManagers, models.CompanyClaGroupManager{
+					UserID:     aclUser.UserID,
+					LfUsername: aclUser.LfUsername,
+				})
+			}
+			sort.Slice(row.ClaManagers, func(i, j int) bool {
+				return row.ClaManagers[i].LfUsername < row.ClaManagers[j].LfUsername
+			})
+			row.ClaManagersCount = int64(len(row.ClaManagers))
+			row.NeedsClaManager = row.Signed && row.ClaManagersCount == 0
+			contributors, eclaErr := s.signatureRepo.GetClaGroupCorporateContributors(ctx, claGroupID, &comp.CompanyID, aws.Int64(1), nil, nil)
+			if eclaErr != nil {
+				return nil, eclaErr
+			}
+			row.ApprovedContributorsCount = contributors.TotalCount
+			result.List = append(result.List, row)
+		}
+	}
+	sort.Slice(result.List, func(i, j int) bool {
+		if result.List[i].SigningEntityName != result.List[j].SigningEntityName {
+			return result.List[i].SigningEntityName < result.List[j].SigningEntityName
+		}
+		if result.List[i].ClaGroupName != result.List[j].ClaGroupName {
+			return result.List[i].ClaGroupName < result.List[j].ClaGroupName
+		}
+		return result.List[i].ClaGroupID < result.List[j].ClaGroupID
+	})
+	result.ResultCount = int64(len(result.List))
+	return result, nil
+}
+
+func (s *service) getCompanyCCLASignaturesWithACL(ctx context.Context, companyID string) ([]*v1Models.Signature, error) {
+	var sigs []*v1Models.Signature
+	var lastScannedKey *string
+	for {
+		sigModels, err := s.signatureRepo.GetCompanySignatures(ctx, v1SignatureParams.GetCompanySignaturesParams{
+			CompanyID:     companyID,
+			CompanyName:   aws.String(""),
+			SignatureType: aws.String("ccla"),
+			NextKey:       lastScannedKey,
+		}, HugePageSize, signatures.LoadACLDetails)
+		if err != nil {
+			return nil, err
+		}
+		sigs = append(sigs, sigModels.Signatures...)
+		if sigModels.LastKeyScanned == "" {
+			break
+		}
+		lastScannedKey = aws.String(sigModels.LastKeyScanned)
+	}
+	return sigs, nil
+}
+
+func newerSignature(a, b *v1Models.Signature) bool {
+	if a.SignedOn != b.SignedOn {
+		return a.SignedOn > b.SignedOn
+	}
+	if a.SignatureCreated != b.SignatureCreated {
+		return a.SignatureCreated > b.SignatureCreated
+	}
+	return a.SignatureID > b.SignatureID
 }
 
 func (s *service) getAllCCLASignatures(ctx context.Context, companyID string) ([]*v1Models.Signature, error) {

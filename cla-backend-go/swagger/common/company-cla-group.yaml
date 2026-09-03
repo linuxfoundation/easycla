@@ -1,0 +1,86 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: Company CLA Group
+description: A CCLA of one signing entity under one CLA group
+properties:
+  companyID:
+    type: string
+    x-omitempty: false
+    description: Signing entity company ID (UUID)
+  companySFID:
+    type: string
+    x-omitempty: false
+    description: Company external Salesforce ID
+  companyName:
+    type: string
+    x-omitempty: false
+    description: Company name
+  signingEntityName:
+    type: string
+    x-omitempty: false
+    description: Signing entity name, the company name when the record has none
+  claGroupID:
+    type: string
+    x-omitempty: false
+    description: CLA Group ID (UUID)
+  claGroupName:
+    type: string
+    x-omitempty: false
+    description: CLA Group name
+  foundationSFID:
+    type: string
+    x-omitempty: false
+    description: Salesforce foundation ID of the CLA Group
+  foundationName:
+    type: string
+    x-omitempty: false
+    description: Foundation name
+  projects:
+    type: array
+    x-omitempty: false
+    description: Salesforce projects covered by the CLA Group, sorted by projectName
+    items:
+      $ref: '#/definitions/company-cla-group-project'
+  signed:
+    type: boolean
+    x-omitempty: false
+    description: Whether the CCLA is signed
+  signedOn:
+    type: string
+    x-omitempty: false
+    description: Date/time the CCLA was signed
+  signatureID:
+    type: string
+    x-omitempty: false
+    description: CCLA signature ID (UUID)
+  sanctioned:
+    type: boolean
+    x-omitempty: false
+    description: Stored sanctions flag of the signing entity company
+  approvedContributorsCount:
+    type: integer
+    format: int64
+    x-omitempty: false
+    description: Number of employee acknowledgements (ECLAs) under this CCLA
+  claManagersCount:
+    type: integer
+    format: int64
+    x-omitempty: false
+    description: Number of CLA managers on the CCLA signature ACL
+  claManagers:
+    type: array
+    x-omitempty: false
+    description: CLA managers from the CCLA signature ACL, sorted by lfUsername
+    items:
+      $ref: '#/definitions/company-cla-group-manager'
+  needsClaManager:
+    type: boolean
+    x-omitempty: false
+    description: True when the CCLA is signed but has no CLA managers
+  autoCreateECLA:
+    type: boolean
+    x-omitempty: false
+    description: Whether employee acknowledgements are created automatically for approved contributors

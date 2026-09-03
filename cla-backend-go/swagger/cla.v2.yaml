@@ -3902,6 +3902,37 @@ paths:
       tags:
         - company
 
+  /company/external/{companySFID}/cla-groups:
+    get:
+      summary: Get Company CLA Groups
+      description: Returns the CLA groups of the organization - one entry per signing entity and CLA group, an empty list when the company or CLA groups do not exist
+      operationId: getCompanyClaGroups
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: '#/parameters/path-companySFID'
+      produces:
+        - application/json
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/company-cla-groups'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+      tags:
+        - company
+
   /company/name/{companyName}:
     get:
       summary: Gets the company by name
@@ -5314,6 +5345,18 @@ definitions:
 
   cla-search-org:
     $ref: './common/cla-search-org.yaml'
+
+  company-cla-groups:
+    $ref: './common/company-cla-groups.yaml'
+
+  company-cla-group:
+    $ref: './common/company-cla-group.yaml'
+
+  company-cla-group-project:
+    $ref: './common/company-cla-group-project.yaml'
+
+  company-cla-group-manager:
+    $ref: './common/company-cla-group-manager.yaml'
 
   #--------------------------------------
   # Docusign Webhook Payload
