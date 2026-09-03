@@ -1,0 +1,23 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: Company CLA Groups
+description: The CLA groups of an organization - one entry per signing entity and CLA group
+properties:
+  companySFID:
+    type: string
+    x-omitempty: false
+    description: The company external Salesforce ID the list was resolved for
+  resultCount:
+    type: integer
+    format: int64
+    x-omitempty: false
+    description: Number of entries returned
+  list:
+    type: array
+    x-omitempty: false
+    description: The signing entity / CLA group entries, sorted by signingEntityName then claGroupName
+    items:
+      $ref: '#/definitions/company-cla-group'

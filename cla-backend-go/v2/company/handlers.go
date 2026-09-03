@@ -117,6 +117,37 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			return company.NewGetCompanyByExternalIDOK().WithXRequestID(reqID).WithPayload(v2CompanyModel)
 		})
 
+	api.CompanyGetCompanyClaGroupsHandler = company.GetCompanyClaGroupsHandlerFunc(
+		func(params company.GetCompanyClaGroupsParams, authUser *auth.User) middleware.Responder {
+			reqID := utils.GetRequestID(params.XREQUESTID)
+			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+			f := logrus.Fields{
+				"functionName":   "v2.company.handlers.CompanyGetCompanyClaGroupsHandler",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+				"companySFID":    params.CompanySFID,
+				"authUserName":   utils.StringValue(params.XUSERNAME),
+				"authUserEmail":  utils.StringValue(params.XEMAIL),
+			}
+
+			log.WithFields(f).Debug("checking permissions")
+			if !utils.IsUserAuthorizedForOrganization(ctx, authUser, params.CompanySFID, utils.ALLOW_ADMIN_SCOPE) {
+				msg := fmt.Sprintf("user %s does not have access to GetCompanyClaGroups with Organization scope of %s",
+					authUser.UserName, params.CompanySFID)
+				log.WithFields(f).Warn(msg)
+				return company.NewGetCompanyClaGroupsForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+			}
+
+			result, err := service.GetCompanyClaGroups(ctx, params.CompanySFID)
+			if err != nil {
+				msg := fmt.Sprintf("unable to load CLA groups for company SFID: %s", params.CompanySFID)
+				log.WithFields(f).WithError(err).Warn(msg)
+				return company.NewGetCompanyClaGroupsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+			}
+
+			return company.NewGetCompanyClaGroupsOK().WithXRequestID(reqID).WithPayload(result)
+		})
+
 	api.CompanyGetCompanyProjectClaManagersHandler = company.GetCompanyProjectClaManagersHandlerFunc(
 		func(params company.GetCompanyProjectClaManagersParams, authUser *auth.User) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)

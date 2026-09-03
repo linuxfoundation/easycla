@@ -1,0 +1,20 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: Company CLA Group Project
+description: A Salesforce project covered by the CLA Group
+properties:
+  projectSFID:
+    type: string
+    x-omitempty: false
+    description: Salesforce project ID
+  projectName:
+    type: string
+    x-omitempty: false
+    description: Project name
+  projectExternalID:
+    type: string
+    x-omitempty: false
+    description: Project external ID
