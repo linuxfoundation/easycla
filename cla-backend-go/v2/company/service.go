@@ -1389,6 +1389,10 @@ func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string) (
 			} else {
 				claGroup, cgErr := s.projectRepo.GetCLAGroupByID(ctx, claGroupID, DontLoadRepoDetails)
 				if cgErr != nil {
+					var nf *utils.CLAGroupNotFound
+					if !errors.As(cgErr, &nf) && !errors.Is(cgErr, repository.ErrProjectDoesNotExist) {
+						return nil, cgErr
+					}
 					log.WithFields(f).WithError(cgErr).Warnf("unable to load CLA group: %s", claGroupID)
 				} else {
 					row.ClaGroupName = claGroup.ProjectName
