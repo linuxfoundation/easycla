@@ -1335,8 +1335,13 @@ func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string) (
 		if sigErr != nil {
 			return nil, sigErr
 		}
+		newestSigs := make(map[string]*v1Models.Signature)
 		for _, sig := range sigs {
-			claGroupID := sig.ProjectID
+			if cur, ok := newestSigs[sig.ProjectID]; !ok || newerSignature(sig, cur) {
+				newestSigs[sig.ProjectID] = sig
+			}
+		}
+		for claGroupID, sig := range newestSigs {
 			pcgs, found := claGroupProjects[claGroupID]
 			if !found {
 				pcgs, err = s.projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, claGroupID)
@@ -1385,6 +1390,7 @@ func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string) (
 					log.WithFields(f).WithError(cgErr).Warnf("unable to load CLA group: %s", claGroupID)
 				} else {
 					row.ClaGroupName = claGroup.ProjectName
+					row.FoundationSFID = claGroup.FoundationSFID
 				}
 			}
 			for _, aclUser := range sig.SignatureACL {
@@ -1443,6 +1449,16 @@ func (s *service) getCompanyCCLASignaturesWithACL(ctx context.Context, companyID
 		lastScannedKey = aws.String(sigModels.LastKeyScanned)
 	}
 	return sigs, nil
+}
+
+func newerSignature(a, b *v1Models.Signature) bool {
+	if a.SignedOn != b.SignedOn {
+		return a.SignedOn > b.SignedOn
+	}
+	if a.SignatureCreated != b.SignatureCreated {
+		return a.SignatureCreated > b.SignatureCreated
+	}
+	return a.SignatureID > b.SignatureID
 }
 
 func (s *service) getAllCCLASignatures(ctx context.Context, companyID string) ([]*v1Models.Signature, error) {

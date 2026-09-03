@@ -379,7 +379,7 @@ func TestGetCompanyClaGroupsOrphanClaGroup(t *testing.T) {
 	mockProjectClaGroupRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "orphan-cla-group-id").Return([]*projects_cla_groups.ProjectClaGroup{}, nil)
 
 	mockProjectRepo := mock_project_repo.NewMockProjectRepository(ctrl)
-	mockProjectRepo.EXPECT().GetCLAGroupByID(ctx, "orphan-cla-group-id", DontLoadRepoDetails).Return(&v1Models.ClaGroup{ProjectName: "Orphan Group"}, nil)
+	mockProjectRepo.EXPECT().GetCLAGroupByID(ctx, "orphan-cla-group-id", DontLoadRepoDetails).Return(&v1Models.ClaGroup{ProjectName: "Orphan Group", FoundationSFID: "orphan-foundation-sfid"}, nil)
 
 	service := NewService(nil, mockSignatureRepo, mockProjectRepo, mock_user_repo.NewMockUserRepository(ctrl), mockCompanyRepo, mockProjectClaGroupRepo, nil)
 	result, err := service.GetCompanyClaGroups(ctx, companySFID)
@@ -388,7 +388,7 @@ func TestGetCompanyClaGroupsOrphanClaGroup(t *testing.T) {
 	assert.Len(t, result.List, 1)
 	row := result.List[0]
 	assert.Equal(t, "Orphan Group", row.ClaGroupName)
-	assert.Equal(t, "", row.FoundationSFID)
+	assert.Equal(t, "orphan-foundation-sfid", row.FoundationSFID)
 	assert.Equal(t, "", row.FoundationName)
 	assert.Len(t, row.Projects, 0)
 	assert.False(t, row.Signed)
@@ -413,13 +413,17 @@ func TestGetCompanyClaGroupsSignaturePagination(t *testing.T) {
 
 	mockSignatureRepo := mock_signature_repo.NewMockSignatureRepository(ctrl)
 	mockSignatureRepo.EXPECT().GetCompanySignatures(ctx, cclaSignaturesParams("company-id-1", nil), HugePageSize, signatures.LoadACLDetails).Return(&v1Models.Signatures{
-		Signatures:     []*v1Models.Signature{{SignatureID: "signature-id-1", ProjectID: "cla-group-id", SignatureSigned: true}},
+		Signatures:     []*v1Models.Signature{{SignatureID: "signature-id-1", ProjectID: "cla-group-id", SignatureSigned: true, SignedOn: "2020-01-01T00:00:00Z"}},
 		LastKeyScanned: "next-key",
 	}, nil)
 	mockSignatureRepo.EXPECT().GetCompanySignatures(ctx, cclaSignaturesParams("company-id-1", aws.String("next-key")), HugePageSize, signatures.LoadACLDetails).Return(&v1Models.Signatures{
-		Signatures: []*v1Models.Signature{{SignatureID: "signature-id-2", ProjectID: "cla-group-id", SignatureSigned: true}},
+		Signatures: []*v1Models.Signature{
+			{SignatureID: "signature-id-2", ProjectID: "cla-group-id", SignatureSigned: true, SignedOn: "2020-01-01T00:01:30Z"},
+			{SignatureID: "signature-id-3", ProjectID: "cla-group-id-2", SignatureSigned: true, SignedOn: "2021-01-01T00:00:00Z"},
+		},
 	}, nil)
-	mockSignatureRepo.EXPECT().GetProjectCompanyEmployeeSignatures(ctx, eclaCountParams("company-id-1", "cla-group-id"), nil).Times(2).Return(&v1Models.Signatures{TotalCount: 1}, nil)
+	mockSignatureRepo.EXPECT().GetProjectCompanyEmployeeSignatures(ctx, eclaCountParams("company-id-1", "cla-group-id"), nil).Times(1).Return(&v1Models.Signatures{TotalCount: 1}, nil)
+	mockSignatureRepo.EXPECT().GetProjectCompanyEmployeeSignatures(ctx, eclaCountParams("company-id-1", "cla-group-id-2"), nil).Times(1).Return(&v1Models.Signatures{TotalCount: 2}, nil)
 
 	mockProjectClaGroupRepo := mock_pcg_repo.NewMockRepository(ctrl)
 	mockProjectClaGroupRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-id").Times(1).Return([]*projects_cla_groups.ProjectClaGroup{
@@ -432,14 +436,38 @@ func TestGetCompanyClaGroupsSignaturePagination(t *testing.T) {
 			ProjectName:    "Alpha",
 		},
 	}, nil)
+	mockProjectClaGroupRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-id-2").Times(1).Return([]*projects_cla_groups.ProjectClaGroup{
+		{
+			ClaGroupID:     "cla-group-id-2",
+			ClaGroupName:   "Second CLA Group",
+			FoundationSFID: "foundation-sfid",
+			FoundationName: "Test Foundation",
+			ProjectSFID:    "project-sfid-2",
+			ProjectName:    "Beta",
+		},
+	}, nil)
 
 	service := NewService(nil, mockSignatureRepo, mock_project_repo.NewMockProjectRepository(ctrl), mock_user_repo.NewMockUserRepository(ctrl), mockCompanyRepo, mockProjectClaGroupRepo, nil)
 	result, err := service.GetCompanyClaGroups(ctx, companySFID)
 
 	assert.Nil(t, err)
 	assert.Len(t, result.List, 2)
-	assert.Equal(t, "signature-id-1", result.List[0].SignatureID)
+	assert.Equal(t, "signature-id-3", result.List[0].SignatureID)
+	assert.Equal(t, "cla-group-id-2", result.List[0].ClaGroupID)
+	assert.Equal(t, int64(2), result.List[0].ApprovedContributorsCount)
 	assert.Equal(t, "signature-id-2", result.List[1].SignatureID)
+	assert.Equal(t, "cla-group-id", result.List[1].ClaGroupID)
+	assert.Equal(t, "2020-01-01T00:01:30Z", result.List[1].SignedOn)
+	assert.Equal(t, int64(1), result.List[1].ApprovedContributorsCount)
+}
+
+func TestNewerSignature(t *testing.T) {
+	older := &v1Models.Signature{SignatureID: "signature-id-b", SignedOn: "2020-01-01T00:00:00Z", SignatureCreated: "2020-01-01T00:00:00Z"}
+	assert.True(t, newerSignature(&v1Models.Signature{SignedOn: "2020-01-01T00:01:30Z"}, older))
+	assert.False(t, newerSignature(&v1Models.Signature{SignedOn: "2019-12-31T23:59:59Z"}, older))
+	assert.True(t, newerSignature(&v1Models.Signature{SignedOn: "2020-01-01T00:00:00Z", SignatureCreated: "2020-01-01T00:00:01Z"}, older))
+	assert.True(t, newerSignature(&v1Models.Signature{SignedOn: "2020-01-01T00:00:00Z", SignatureCreated: "2020-01-01T00:00:00Z", SignatureID: "signature-id-c"}, older))
+	assert.False(t, newerSignature(&v1Models.Signature{SignedOn: "2020-01-01T00:00:00Z", SignatureCreated: "2020-01-01T00:00:00Z", SignatureID: "signature-id-a"}, older))
 }
 
 func TestCompanyClaGroupsJSONContract(t *testing.T) {
