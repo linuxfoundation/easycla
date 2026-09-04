@@ -43,6 +43,12 @@ var ErrSigningNotEnabled = errors.New("the cla group has neither an individual n
 // ErrReturnURLNotSupported is returned when the return URL is not an absolute https URL
 var ErrReturnURLNotSupported = errors.New("returnUrl must be an absolute https URL")
 
+// ErrAttestationRequired is returned when either Self Serve attestation is missing or false
+var ErrAttestationRequired = errors.New("both the authority_acked and embargo_acked attestations must be true")
+
+// ErrSigningEntityMismatch is returned when the requested signing entity belongs to a different company
+var ErrSigningEntityMismatch = errors.New("signing entity name does not belong to the provided company SFID")
+
 const activeSignatureTTLDays = 1
 
 // MyClasService is the subset of the My CLAs service used to verify identity ownership
@@ -67,8 +73,9 @@ type CLAGroupService interface {
 	GetCLAGroupByID(ctx context.Context, claGroupID string) (*v1Models.ClaGroup, error)
 }
 
-// ProjectsCLAGroupsRepository is the subset of the projects-cla-groups repository used to resolve the Salesforce IDs of a CLA Group
+// ProjectsCLAGroupsRepository is the subset of the projects-cla-groups repository used to map between CLA Groups and Salesforce projects
 type ProjectsCLAGroupsRepository interface {
+	GetClaGroupIDForProject(ctx context.Context, projectSFID string) (*projects_cla_groups.ProjectClaGroup, error)
 	GetProjectsIdsForClaGroup(ctx context.Context, claGroupID string) ([]*projects_cla_groups.ProjectClaGroup, error)
 }
 
@@ -77,9 +84,21 @@ type StoreRepository interface {
 	SetActiveSignatureMetaData(ctx context.Context, key string, expire int64, value string) error
 }
 
+// CorporateSignService is the subset of the v2 sign service used to request the corporate signature
+type CorporateSignService interface {
+	RequestCorporateSignature(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error)
+}
+
+// CompanyRepository is the subset of the company repository used to resolve the signing company ahead of delegation
+type CompanyRepository interface {
+	GetCompanyByExternalID(ctx context.Context, companySFID string) (*v1Models.Company, error)
+	GetCompanyBySigningEntityName(ctx context.Context, signingEntityName string) (*v1Models.Company, error)
+}
+
 // Service interface defines the Self Serve signing service methods
 type Service interface {
 	PrepareSign(ctx context.Context, currentUsername, currentEmail string, admin bool, input *models.PrepareSignInput) (*models.PrepareSign, error)
+	RequestCorporateSignature(ctx context.Context, lfUsername, authorizationHeader string, input *models.SelfServeCorporateSignatureInput) (*models.SelfServeCorporateSignatureOutput, error)
 }
 
 type service struct {
@@ -88,18 +107,22 @@ type service struct {
 	claGroupService       CLAGroupService
 	projectsClaGroupsRepo ProjectsCLAGroupsRepository
 	storeRepo             StoreRepository
+	corporateSignService  CorporateSignService
+	companyRepo           CompanyRepository
 	contributorConsoleURL string
 	githubUserDetails     func(username string) (*githubsdk.User, error)
 }
 
 // NewService creates a new instance of the Self Serve signing service
-func NewService(myClasService MyClasService, usersService UsersService, claGroupService CLAGroupService, projectsClaGroupsRepo ProjectsCLAGroupsRepository, storeRepo StoreRepository, contributorConsoleURL string) Service {
+func NewService(myClasService MyClasService, usersService UsersService, claGroupService CLAGroupService, projectsClaGroupsRepo ProjectsCLAGroupsRepository, storeRepo StoreRepository, corporateSignService CorporateSignService, companyRepo CompanyRepository, contributorConsoleURL string) Service {
 	return &service{
 		myClasService:         myClasService,
 		usersService:          usersService,
 		claGroupService:       claGroupService,
 		projectsClaGroupsRepo: projectsClaGroupsRepo,
 		storeRepo:             storeRepo,
+		corporateSignService:  corporateSignService,
+		companyRepo:           companyRepo,
 		contributorConsoleURL: contributorConsoleURL,
 		githubUserDetails:     github.GetUserDetails,
 	}
@@ -202,6 +225,80 @@ func (s *service) PrepareSign(ctx context.Context, currentUsername, currentEmail
 	result.ProjectSfid = s.projectSFID(ctx, claGroupID, claGroup.ProjectExternalID)
 
 	return result, nil
+}
+
+// RequestCorporateSignature verifies both Self Serve attestations, resolves the signing company
+// and the CLA group of the project - rejecting a signing entity that belongs to a different
+// company than the one the caller is authorized for - delegates the request verbatim to the
+// shared corporate signing service, and echoes the identifiers of the created signature
+func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername, authorizationHeader string, input *models.SelfServeCorporateSignatureInput) (*models.SelfServeCorporateSignatureOutput, error) {
+	f := logrus.Fields{
+		"functionName":      "v2.self_serve_sign.service.RequestCorporateSignature",
+		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
+		"lfUsername":        lfUsername,
+		"projectSFID":       utils.StringValue(input.ProjectSfid),
+		"companySFID":       utils.StringValue(input.CompanySfid),
+		"signingEntityName": input.SigningEntityName,
+	}
+
+	if !input.AuthorityAcked || !input.EmbargoAcked {
+		log.WithFields(f).Warn(ErrAttestationRequired.Error())
+		return nil, ErrAttestationRequired
+	}
+
+	var comp *v1Models.Company
+	var err error
+	if input.SigningEntityName == "" {
+		comp, err = s.companyRepo.GetCompanyByExternalID(ctx, utils.StringValue(input.CompanySfid))
+	} else {
+		comp, err = s.companyRepo.GetCompanyBySigningEntityName(ctx, input.SigningEntityName)
+	}
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to resolve the signing company")
+		return nil, err
+	}
+	if comp == nil {
+		if input.CompanySfid != nil {
+			return nil, fmt.Errorf("company not found for SFID %s", *input.CompanySfid)
+		}
+		return nil, errors.New("company not found")
+	}
+	if input.SigningEntityName != "" && comp.CompanyExternalID != "" && comp.CompanyExternalID != utils.StringValue(input.CompanySfid) {
+		log.WithFields(f).WithField("companyExternalID", comp.CompanyExternalID).Warn(ErrSigningEntityMismatch.Error())
+		return nil, ErrSigningEntityMismatch
+	}
+
+	pcg, err := s.projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, utils.StringValue(input.ProjectSfid))
+	if err == nil && pcg == nil {
+		err = projects_cla_groups.ErrProjectNotAssociatedWithClaGroup
+	}
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to resolve the cla group of the project")
+		return nil, err
+	}
+
+	signature, err := s.corporateSignService.RequestCorporateSignature(ctx, lfUsername, authorizationHeader, &models.CorporateSignatureInput{
+		ProjectSfid:       input.ProjectSfid,
+		CompanySfid:       input.CompanySfid,
+		SigningEntityName: input.SigningEntityName,
+		SendAsEmail:       input.SendAsEmail,
+		AuthorityName:     input.AuthorityName,
+		AuthorityEmail:    input.AuthorityEmail,
+		ReturnURL:         input.ReturnURL,
+	})
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to request the corporate signature")
+		return nil, err
+	}
+
+	return &models.SelfServeCorporateSignatureOutput{
+		SignatureID: signature.SignatureID,
+		SignURL:     signature.SignURL,
+		ClaGroupID:  pcg.ClaGroupID,
+		ProjectSfid: utils.StringValue(input.ProjectSfid),
+		CompanyID:   comp.CompanyID,
+		CompanySfid: utils.StringValue(input.CompanySfid),
+	}, nil
 }
 
 // acceptVerifiedGithubID admits the requested GitHub numeric ID when it resolves to the GitHub
