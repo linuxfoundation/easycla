@@ -134,6 +134,7 @@ func TestClaManagerRequestHandlers(t *testing.T) {
 		authUser       *auth.User
 		companyErr     error
 		cgErr          error
+		cgNil          bool
 		serviceErr     error
 		expectedStatus int
 		expectedCalls  int
@@ -143,6 +144,7 @@ func TestClaManagerRequestHandlers(t *testing.T) {
 		{name: "unrelated company scope is rejected", authUser: unrelatedUser, expectedStatus: http.StatusForbidden},
 		{name: "company lookup failure", authUser: managerUser, companyErr: errors.New("company not found"), expectedStatus: http.StatusBadRequest},
 		{name: "no cla group for project", authUser: managerUser, cgErr: projects_cla_groups.ErrProjectNotAssociatedWithClaGroup, expectedStatus: http.StatusBadRequest},
+		{name: "nil cla group mapping without error", authUser: managerUser, cgNil: true, expectedStatus: http.StatusBadRequest},
 		{name: "missing request maps to 404", authUser: managerUser, serviceErr: errRequestNotFound, expectedStatus: http.StatusNotFound, expectedCalls: 1},
 		{name: "other service failure maps to 400", authUser: managerUser, serviceErr: errors.New("dynamo down"), expectedStatus: http.StatusBadRequest, expectedCalls: 1},
 	}
@@ -163,6 +165,9 @@ func TestClaManagerRequestHandlers(t *testing.T) {
 					companyService.company = nil
 				}
 				pcgRepo := &fakeProjectClaGroupRepo{cginfo: cginfo, err: tc.cgErr}
+				if tc.cgNil {
+					pcgRepo.cginfo = nil
+				}
 				Configure(api, service, companyService, "", "", pcgRepo, nil)
 
 				status, body := callRequestOp(t, api, op, tc.authUser)

@@ -424,7 +424,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 
 		log.WithFields(f).Debug("looking up CLA Group for projectSFID...")
 		cginfo, err := projectClaGroupRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
-		if err != nil {
+		if err != nil || cginfo == nil {
 			msg := fmt.Sprintf("no CLA Group associated with this project: %s", params.ProjectSFID)
 			log.WithFields(f).WithError(err).Warn(msg)
 			return cla_manager.NewGetCLAManagerRequestsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
@@ -470,7 +470,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 
 		log.WithFields(f).Debug("looking up CLA Group for projectSFID...")
 		cginfo, err := projectClaGroupRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
-		if err != nil {
+		if err != nil || cginfo == nil {
 			msg := fmt.Sprintf("no CLA Group associated with this project: %s", params.ProjectSFID)
 			log.WithFields(f).WithError(err).Warn(msg)
 			return cla_manager.NewGetCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
@@ -521,7 +521,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 
 		log.WithFields(f).Debug("looking up CLA Group for projectSFID...")
 		cginfo, err := projectClaGroupRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
-		if err != nil {
+		if err != nil || cginfo == nil {
 			msg := fmt.Sprintf("no CLA Group associated with this project: %s", params.ProjectSFID)
 			log.WithFields(f).WithError(err).Warn(msg)
 			return cla_manager.NewApproveCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
@@ -572,7 +572,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 
 		log.WithFields(f).Debug("looking up CLA Group for projectSFID...")
 		cginfo, err := projectClaGroupRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
-		if err != nil {
+		if err != nil || cginfo == nil {
 			msg := fmt.Sprintf("no CLA Group associated with this project: %s", params.ProjectSFID)
 			log.WithFields(f).WithError(err).Warn(msg)
 			return cla_manager.NewDenyCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
