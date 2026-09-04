@@ -7,8 +7,7 @@ SPDX-License-Identifier: CC-BY-4.0
 Backend for the **M1 "My CLAs" (Me lens)** and **M2 "My CLAs actions"** milestones of the
 EasyCLA → LFX Self Serve program
 ([M1 epic linuxfoundation/lfx-self-serve#1157](https://github.com/linuxfoundation/lfx-self-serve/issues/1157),
-specs in [`specs/001-easycla-ss-integration-fable/m1-my-cla/`](https://github.com/linuxfoundation/easycla/tree/001-easycla-ss-integration/specs/001-easycla-ss-integration-fable/m1-my-cla)
-on the `001-easycla-ss-integration` branch).
+milestone specs in [`specs/001-easycla-ss-integration-fable/`](../specs/001-easycla-ss-integration-fable/spec.md)).
 
 Five EasyCLA v2 endpoints — four read-only plus the M2 contact-request POST — under `/v4`
 (`/cla-service/v4/...` through lfx-gateway). They let the authenticated user list **all

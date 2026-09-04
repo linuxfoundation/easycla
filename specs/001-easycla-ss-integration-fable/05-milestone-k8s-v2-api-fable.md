@@ -3,6 +3,8 @@
 **Status**: Draft — **decision milestone**, not committed scope | **Depends on**: M1–M4 (UI-first sequencing confirmed; hybrid-strangler alternative noted below) | **Retires**: Lambda/API-GW deployment (including the legacy `/v1`/`/v2` Go surface, deployed from the same `cla-backend` serverless stack) | **Effort**: XL without DB migration; XXL with
 **Spec**: [spec.md](spec.md) | **Overview**: [00-overview-fable.md](00-overview-fable.md)
 
+> **Not planned.** The program aims to complete **M1–M3**; M4 and M5 are not scheduled and may never be implemented. This document is a design option retained for reference, not committed scope.
+
 ## What "being a V2 service" means (verified against the platform)
 
 From the ~15 existing services in `lfx-v2-argocd` and the fga-sync/gateway contracts:

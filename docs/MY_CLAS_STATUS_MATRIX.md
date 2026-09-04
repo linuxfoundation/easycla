@@ -1,6 +1,6 @@
 # M2 Status Matrix — My CLAs row status
 
-**Parent spec**: FR-010 in [spec.md](spec.md), merged to `dev` with [easycla#5144](https://github.com/linuxfoundation/easycla/pull/5144)
+**Parent spec**: FR-010 in [specs/001-easycla-ss-integration-fable/spec.md](../specs/001-easycla-ss-integration-fable/spec.md); milestone brief [02-milestone-sign-cla-fable.md](../specs/001-easycla-ss-integration-fable/02-milestone-sign-cla-fable.md), merged to `dev` with [easycla#5144](https://github.com/linuxfoundation/easycla/pull/5144)
 **Last verified against shipped code**: 2026-09-03
 
 Single source of truth for the status a My CLAs row shows. The status model is **shipped and settled** — the backend status fields (`easycla` `dev`, including [easycla#5156](https://github.com/linuxfoundation/easycla/pull/5156)) and the frontend rendering ([lfx-self-serve#1440](https://github.com/linuxfoundation/lfx-self-serve/pull/1440), merged 2026-08-21). [Not yet implemented](#not-yet-implemented) lists everything a contributor cannot do or see today, so nobody builds to it by mistake.

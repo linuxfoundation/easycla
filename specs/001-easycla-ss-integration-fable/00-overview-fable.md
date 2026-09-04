@@ -9,15 +9,17 @@
 
 EasyCLA today spans four UIs (Contributor Console, Corporate CLA Console, PCC EasyCLA module, plus the landing page) and a backend running as AWS Lambdas behind API Gateway / lfx-gateway. The program migrates EasyCLA user-facing functionality into **LFX Self Serve (LFX One)** under its Me / Organization / Project lenses — the one deliberate exception is emailed CCLA signatory signing, which stays an external, LF SSO-independent DocuSign path through M3 (see §5) — and — as a separately gated decision — re-platforms the EasyCLA API as an LFX V2 Kubernetes service, optionally replacing DynamoDB with Postgres. The Corporate CLA Console (with its BFF) and the PCC EasyCLA module are retired by their milestones; **Contributor Console and `easycla-landing-page` retirement is no longer scheduled** — M2 shipped as a hand-off *to* the Console (the retire-Console framing was dropped as too disruptive, epic [lfx-self-serve#1229](https://github.com/linuxfoundation/lfx-self-serve/issues/1229)), so their retirement is deferred to a future product decision.
 
-Five milestones, each independently shippable and reversible:
+Five milestones, each independently shippable and reversible — **M1–M3 are the planned program; M4 and M5 are not planned yet**:
 
 | # | Milestone | Status | Retires | Doc |
 |---|-----------|--------|---------|-----|
 | M1 | Read-only "My CLAs" in Me lens | **Implemented** (dark-launched) | nothing | [01](01-milestone-read-only-me-lens-fable.md) |
 | M2 | Sign-CLA entry + My CLAs actions in SS, hands off to Contributor Console (merges former M2+M3; ICLA and ECLA both via the Console decision screen) | **Implemented** (dark-launched) | nothing | [02](02-milestone-sign-cla-fable.md) |
-| M3 | CCLA management in Organization lens | Planned | Corporate CLA Console + its BFF | [03](03-milestone-ccla-org-lens-fable.md) |
-| M4 | EasyCLA admin in Project lens | Decision-gated | PCC EasyCLA module | [04](04-milestone-project-lens-pcc-fable.md) |
-| M5 | API → Kubernetes V2 service (± Postgres) | Decision-gated | Lambda/API GW deployment | [05](05-milestone-k8s-v2-api-fable.md) |
+| M3 | CCLA management in Organization lens | **In progress** | Corporate CLA Console + its BFF | [03](03-milestone-ccla-org-lens-fable.md) |
+| M4 | EasyCLA admin in Project lens | **Not planned** (decision-gated) | PCC EasyCLA module | [04](04-milestone-project-lens-pcc-fable.md) |
+| M5 | API → Kubernetes V2 service (± Postgres) | **Not planned** (decision-gated) | Lambda/API GW deployment | [05](05-milestone-k8s-v2-api-fable.md) |
+
+**Program scope**: the program aims to complete **M1–M3**. **M4 and M5 are not planned yet** — they remain decision-gated design options and may never be implemented; the milestone docs for them are retained for reference, not as committed scope. The target architecture through M3 is summarized in [ARCHITECTURE.md](../../ARCHITECTURE.md).
 
 ## 2. Current state (verified in code)
 
