@@ -26,18 +26,18 @@ else               { this.findActiveSignature(); }              // GitHub: gated
 `findActiveSignature()` calls `getUserActiveSignature(userId)` and, on an empty response, sets `status = 'Failed'` and shows *"Whoops, It looks like you don't have any signatures in progress. Try going back to your pull request and restarting the signing process…"* (`:49-66`). The active-signature record is created by the PR flow, so a proactively-arriving contributor hits exactly this dead end. It also supplies `return_url` from `activeSignatureModel.return_url` (`:73`) — the active signature is both a gate *and* a data source.
 
 **(b) Backend — `getIndividualSignatureCallbackURL` requires PR metadata.**
-For `return_url_type=github`, `v2/sign/service.go:1414-1419` unconditionally calls it, and it errors when either key is missing (`:2882-2906`):
+For `return_url_type=github`, `v2/sign/service.go:1469-1475` unconditionally calls it, and it errors when either key is missing (`:3093-3117`):
 
 ```
-errors.New("missing pull_request_id in metadata")   // :2890
-errors.New("missing repository_id in metadata")     // :2903
+errors.New("missing pull_request_id in metadata")   // :3101
+errors.New("missing repository_id in metadata")     // :3114
 ```
 
-Those values produce the DocuSign callback via `getInstallationIDFromRepositoryID` → `github.GetReturnURL(...)` (`:2909-2915`).
+Those values produce the DocuSign callback via `getInstallationIDFromRepositoryID` → `github.GetReturnURL(...)` (`:3120-3126`).
 
 ### The Gerrit precedent, and what it actually proves
 
-Gerrit works because it avoids **both** dependencies rather than satisfying them: `GerritDashboardComponent` sets `HAS_GERRIT = true` (`gerrit-dashboard.component.ts:39`), routing past the Console gate and sourcing `return_url` from the stored `redirect` value (`individual-dashboard.component.ts:74`); and its `return_url_type` matches neither callback branch (`v2/sign/service.go:1414-1427`), so `callBackURL` stays empty and `acl` is never set (`:1432-1436`).
+Gerrit works because it avoids **both** dependencies rather than satisfying them: `GerritDashboardComponent` sets `HAS_GERRIT = true` (`gerrit-dashboard.component.ts:39`), routing past the Console gate and sourcing `return_url` from the stored `redirect` value (`individual-dashboard.component.ts:74`); and its `return_url_type` matches neither callback branch (`v2/sign/service.go:1469-1481`), so `callBackURL` stays empty and `acl` is never set (`:1487-1491`).
 
 The precedent bounds the work but proves a **weaker** claim than the spec originally implied. It shows "the DocuSign ceremony completes with no PR callback" — not "GitHub ICLA signing without a PR works." The GitHub-specific pieces (PR-comment callback, `acl = github:{githubID}`) are what M2 must decide about, not merely re-route.
 
@@ -76,20 +76,20 @@ Two ordering/data dependencies for the contracts:
 
 That flip is then undone by two separate paths:
 
-1. **`auto_create_ecla` re-validation.** The employee-signature loop calls `ValidateProjectRecord` under exactly the condition a flip creates (`signatures/service.go:898`): `if !employeeSignatureModel.SignatureApproved || !employeeSignatureModel.SignatureSigned`, with the note *"signed and approved employee acknowledgement since auto_create_ecla feature flag set to true"*. Any Approved-List update re-approves the self-invalidated signature. **The durability caveat is the live code path, not a precaution.**
-2. **PR-time re-authorization.** `ProcessEmployeeSignature` sets `hasSigned = true` whenever `UserIsApproved` succeeds (`:1578-1583`), *independent of the signature's own approved flag* — so PR gating would pass even without (1).
+1. **`auto_create_ecla` re-validation.** The employee-signature loop calls `ValidateProjectRecord` under exactly the condition a flip creates (`signatures/service.go:904`): `if !employeeSignatureModel.SignatureApproved || !employeeSignatureModel.SignatureSigned`, with the note *"signed and approved employee acknowledgement since auto_create_ecla feature flag set to true"*. Any Approved-List update re-approves the self-invalidated signature. **The durability caveat is the live code path, not a precaution.**
+2. **PR-time re-authorization.** `ProcessEmployeeSignature` sets `hasSigned = true` whenever `UserIsApproved` succeeds (`:1595-1600`), *independent of the signature's own approved flag* — so PR gating would pass even without (1).
 
 ### The decisive design constraint
 
-`UserIsApproved(ctx, user, cclaSignature)` (`signatures/service.go:1607`) receives **only the user and the CCLA**. It has no reference to the employee signature record; it matches the user against the CCLA's GitHub/GitLab username, email, and domain approval lists (`:1623-1660+`).
+`UserIsApproved(ctx, user, cclaSignature)` (`signatures/service.go:1615`) receives **only the user and the CCLA**. It has no reference to the employee signature record; it matches the user against the CCLA's GitHub/GitLab username, email, and domain approval lists (`:1642-1690+`).
 
 This rules out the obvious implementation: a marker stored on the employee signature **cannot** be honored inside `UserIsApproved` without changing its signature.
 
 **Option A — exclusion checked at the call sites (recommended).** Keep `UserIsApproved` as the pure Approved-List predicate it is, and have consumers consult the marker *before* treating approval as coverage:
 
-- `signatures/service.go:898` — add the marker to the re-validation guard so a self-excluded record is skipped, not re-approved.
-- `ProcessEmployeeSignature` `:1578` — require `!selfExcluded` alongside `userApproved` before `hasSigned = true`.
-- `v2/my_clas/service.go:214` — `eclaCoveredByCurrentApprovalList` is the third consumer; the marker feeds FR-010's status directly.
+- `signatures/service.go:904` — add the marker to the re-validation guard so a self-excluded record is skipped, not re-approved.
+- `ProcessEmployeeSignature` `:1595` — require `!selfExcluded` alongside `userApproved` before `hasSigned = true`.
+- `v2/my_clas/service.go:1350` — the my-clas coverage evaluation `evaluateApproval` is the third consumer; the marker feeds FR-010's status directly.
 
 Three call sites, each a one-condition change, `UserIsApproved`'s contract untouched. The marker is FR-010b's reason/actor field — one concept, one field.
 
@@ -145,7 +145,7 @@ The open caveat was whether SS's GitHub identity and EasyCLA's `user.GithubID` a
 
 The open question was the shape of a backend-owned identity-binding operation (create-vs-enrich branches, gateway auth). **Recommendation adopted: build neither branch.** SS runs a read-only pre-flight against the shipped `GET /v4/my-clas/identities`, gates per repo-source type (Gerrit needs no GitHub ID), and when the identity is missing hands off to the Console's existing GitHub OAuth.
 
-1. **`user.GithubID` is merge-gating state.** It becomes the signature ACL (`v2/sign/service.go:1433`) the PR check resolves against. A second writer means two systems can disagree about which contributor owns a GitHub ID, and the casualty is a signature that gates merges.
+1. **`user.GithubID` is merge-gating state.** It becomes the signature ACL (`v2/sign/service.go:1488`) the PR check resolves against. A second writer means two systems can disagree about which contributor owns a GitHub ID, and the casualty is a signature that gates merges.
 2. **The hazard is already proven on this branch.** Commit `d0a4f81e0` exists specifically to guard enrichment against overwriting a bound GitHub ID. Adding SS as a caller multiplies the paths that can trip it.
 3. **The design already puts linking elsewhere.** The mockup carries a dedicated **Identities** tab and the note *"You'll be asked to authorize the account you want to use (GitHub or GitLab) before EasyCLA opens"* — authorization in the hand-off, not pre-bound in SS.
 
@@ -161,7 +161,7 @@ For the record, the enrichment path that was considered and dropped: `GET /v4/us
 
 - **Download PDF is not a discrepancy.** ICLA rows render a real `<a>`; ECLA rows render a **disabled** `<span class="ccla-note">` with `cursor:not-allowed` and `title="Covered by Corporate CLA (CCLA)"`. The mockup already encodes the no-ECLA-PDF backend reality — now FR-011a, and no PM input is needed. Revoked rows additionally suppress download regardless of type (v17).
 - **A row action originally uncovered by any FR: "Request approval."** Present only on the Needs-attention ECLA and removed once a row leaves that state. In v16 this was a deep link; **in v17 Final it opens the shared Contact-CLA-Manager modal in approval mode** instead (FR-011) — an in-app message to the manager(s), not a Console redirect.
-- **Status vocabulary, which forces FR-010a — updated for v17.** v16 had `Valid` / `Needs attention` / `Invalidated` (self-invalidation copy). **v17 Final replaces the third pill with `Revoked`** — system-set, sanctions/OFAC, read-only, `Revoked · <date>`, no user actions. The middle state remains unrepresentable today: `row.Valid = sig.SignatureApproved && covered` (`v2/my_clas/service.go:218`) collapses approved-ness and coverage. Hence three independent fields still — the largest single M2 change to the read path — but the third field is now revocation provenance (Spike 2, superseded section) rather than self-/manager-invalidation attribution.
+- **Status vocabulary, which forces FR-010a — updated for v17.** v16 had `Valid` / `Needs attention` / `Invalidated` (self-invalidation copy). **v17 Final replaces the third pill with `Revoked`** — system-set, sanctions/OFAC, read-only, `Revoked · <date>`, no user actions. The middle state remains unrepresentable today: `row.Valid = sig.SignatureApproved && covered` (`v2/my_clas/service.go:288`) collapses approved-ness and coverage. Hence three independent fields still — the largest single M2 change to the read path — but the third field is now revocation provenance (Spike 2, superseded section) rather than self-/manager-invalidation attribution.
 - v16's typed-`INVALIDATE` confirmation modal is **retired** — no self-service invalidation exists in v17 Final.
 - Also noted (still true in v17): the ECLA type chip carries the company inline (`ECLA · IBM`).
 

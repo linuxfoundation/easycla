@@ -1,7 +1,7 @@
 # M2 Status Matrix — My CLAs row status
 
-**Parent spec**: FR-010 in `spec.md`, which lands with [easycla#5144](https://github.com/linuxfoundation/easycla/pull/5144) — **not yet on `dev`**, so it sits beside this file only once that PR merges ([read it there](https://github.com/linuxfoundation/easycla/blob/docs/easycla-ss-m2-speckit/specs/001-easycla-ss-integration-fable/m2-sign-cla-handoff/spec.md) meanwhile)
-**Last verified against shipped code**: 2026-08-25
+**Parent spec**: FR-010 in [spec.md](spec.md), merged to `dev` with [easycla#5144](https://github.com/linuxfoundation/easycla/pull/5144)
+**Last verified against shipped code**: 2026-09-03
 
 Single source of truth for the status a My CLAs row shows. The status model is **shipped and settled** — the backend status fields (`easycla` `dev`, including [easycla#5156](https://github.com/linuxfoundation/easycla/pull/5156)) and the frontend rendering ([lfx-self-serve#1440](https://github.com/linuxfoundation/lfx-self-serve/pull/1440), merged 2026-08-21). [Not yet implemented](#not-yet-implemented) lists everything a contributor cannot do or see today, so nobody builds to it by mistake.
 
@@ -85,8 +85,6 @@ Everything above describes the intended behavior. These parts are not live for a
 | Gap | What the contributor sees today | Backend status |
 |---|---|---|
 | **Dates are not displayed** | Invalidated and Revoked render without a date, even where one was recorded. | Done — `invalidatedAt` and `flaggedAt` are on every row ([easycla#5156](https://github.com/linuxfoundation/easycla/pull/5156)). The console's row model carries neither field. |
-| **Contact CLA Manager does not send** | The contributor picks managers, writes a message, clicks Send — and is told *"Message not sent"*. | Done — `requestType: contact` delivers a message-only email that states no change was requested. The console still treats contact as a no-op. |
-| **Contact CLA Manager is missing on Valid rows** | It appears only on Needs attention, so a contributor with a working agreement has no way to reach their manager. | Done — the gate is frontend-only (`canContactClaManager`), which today requires Needs attention. |
 
 **Still open:**
 

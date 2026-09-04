@@ -623,19 +623,30 @@ trusted-caller exemption, since the endpoint is scoped to the token holder.
 
 ## How LFX Self Serve consumes this (M1 mapping)
 
-The SS server slice on `lfx-self-serve` branch `feat/easycla-my-clas-server` resolves
-identity from the session (LF username via `getEffectiveUsername`, verified emails, GitHub
-numeric IDs from Auth0 identities) and currently unions per-user calls with a TODO for the
-missing lookup endpoint. With this API it collapses to:
+The SS server slice (`apps/lfx-one/src/server/services/cla.service.ts`) resolves identity
+from the session — LF username via `getEffectiveUsername`, the user's verified emails, and
+linked GitHub numeric IDs *and* usernames from Auth0 identities — in `resolveIdentity`, and
+issues one upstream call per page load.
 
 - `GET /api/me/clas` → one upstream
-  `GET /cla-service/v4/my-clas?email=…&secondaryEmail=…&githubId=…&githubUsername=…&gitlabId=…&gitlabUsername=…&gerritUsername=…`.
-  SS MUST forward **all** session-derived identity keys: each verified email as both `email`
-  and `secondaryEmail` (they search different attributes), and provider usernames alongside
-  numeric IDs (an ID present only on a detached pre-LFID record cannot authorize itself; the
-  verified username recovers it). The same set goes on the PDF call. All values are
-  server-derived from the session; EasyCLA **re-verifies** every key against the LF account
-  until SS is allow-listed, after which SS's Auth0-derived list is authoritative. Mapping to
+  `GET /cla-service/v4/my-clas?lfUsername=…&email=…&githubId=…&githubUsername=…`.
+  **As built, SS sends four of the accepted keys** (`identityQuery`): `lfUsername`, every
+  verified email repeated as `email`, and each linked GitHub numeric ID and username. The
+  same set goes on the PDF call. Provider usernames are sent alongside numeric IDs because
+  an ID present only on a detached pre-LFID record cannot authorize itself — the verified
+  username recovers it. All values are server-derived from the session; EasyCLA
+  **re-verifies** every key against the LF account until SS is allow-listed, after which
+  SS's Auth0-derived list is authoritative.
+
+  The three keys SS does **not** send, and why:
+
+  | Key | Why not sent |
+  |---|---|
+  | `secondaryEmail` | SS sends every verified address via the index-backed `email` parameter instead, deliberately avoiding the opt-in table scan. Consequence: an address EasyCLA filed *solely* in a record's `user_emails` set is not matched. |
+  | `gerritUsername` | Redundant today — Gerrit uses LF SSO, so this key resolves through the same `lf-username-index` as `lfUsername`, which SS already sends. It becomes useful only once SS reads user-service `Source=gerrit` identities and can supply a **historical** LF username. |
+  | `gitlabId` / `gitlabUsername` | SS cannot verify a GitLab identity yet; GitLab support is deferred. |
+
+  Mapping to
   `MyClaAgreement`: `kind = claType`, `projectName = projectName` (bold top line of the
   Project cell) with `claGroupName` as subtext and `projectLogo` as the logo tile (falling
   back to `claGroupName` / a default icon when absent — the old
