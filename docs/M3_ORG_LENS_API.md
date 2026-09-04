@@ -8,6 +8,11 @@ Backend endpoints for the **M3 "Org lens"** milestone of the EasyCLA → LFX Sel
 program. Design and delivery rules: `~/M3-BE-plan.md` appendices embedded in the
 lfx-self-serve issues below.
 
+All endpoints are served through the LFX API gateway under the `/cla-service` prefix
+(dev: `https://api-gw.dev.platform.linuxfoundation.org/cla-service`) with an Auth0
+bearer token. Exact request/response schemas: `cla-backend-go/swagger/cla.v2.yaml`
+(+ `swagger/common/`); malformed path/body values return HTTP 422.
+
 ## `GET /v4/company/external/{companySFID}/cla-groups` ([lfx-self-serve#2149](https://github.com/linuxfoundation/lfx-self-serve/issues/2149))
 
 Read-only organization CLA landing list: one entry per **(signing entity × CLA group)**,
@@ -62,8 +67,9 @@ and emails without touching the ACL. Responses reuse the id-complete
 
 `PUT /v4/cla-group/{claGroupID}/ecla/{signatureID}/invalidate` invalidates one employee
 acknowledgement, mirroring the ICLA invalidate internals: sets
-`signature_approved=false` with invalidation metadata from the optional `reason`/`note`
-body, logs the event and emails the employee. 400 when the signature is not an ECLA or
+`signature_approved=false` with invalidation metadata from the optional body — `reason`
+(enum: `signed-in-error`, `should-be-corporate`, `compliance`, `other`) and `note`
+(≤2048 chars) — logs the event and emails the employee. 400 when the signature is not an ECLA or
 belongs to another CLA group, 409 when already invalidated; the response echoes
 `signature_id`, `cla_group_id`, `company_id`, `user_id`.
 
@@ -97,6 +103,10 @@ that matter again at **prod rollout**:
   `GET /acs/v1/api/warden/subjects/authorize?resource=<path>&actions=<action>` (returns
   computed scopes per resource row). Quirk: statements POST works only **without** the
   trailing slash (`/policies/{id}/statements`).
+- **acs-cli deploy workflows have no `concurrency:` group**: concurrent merge-triggered
+  runs race on the S3 `bundle-data/` upload (last writer wins with its own checkout's
+  snapshot — the two 2026-09-04 dev runs collided; the complete checkout won by ~3 s).
+  Run prod syncs one at a time, or add a concurrency group first.
 - **LF-admin tokens always 403 on the DISALLOW_ADMIN ops** (2150 + all five 2151 ops):
   warden short-circuits admins with `{"allowed":true,"isAdmin":true}` and **no scopes**,
   and `DISALLOW_ADMIN_SCOPE` checks ignore the admin bit — identical to the long-standing
