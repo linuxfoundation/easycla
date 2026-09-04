@@ -158,7 +158,7 @@ func TestClaManagerRequestHandlers(t *testing.T) {
 		{name: "no cla group for project", authUser: managerUser, cgErr: projects_cla_groups.ErrProjectNotAssociatedWithClaGroup, expectedStatus: http.StatusBadRequest},
 		{name: "nil cla group mapping without error", authUser: managerUser, cgNil: true, expectedStatus: http.StatusBadRequest},
 		{name: "missing request maps to 404", authUser: managerUser, serviceErr: errRequestNotFound, expectedStatus: http.StatusNotFound, expectedCalls: 1},
-		{name: "other service failure maps to 400", authUser: managerUser, serviceErr: errors.New("dynamo down"), expectedStatus: http.StatusBadRequest, expectedCalls: 1},
+		{name: "other service failure maps to 500", authUser: managerUser, serviceErr: errors.New("dynamo down"), expectedStatus: http.StatusInternalServerError, expectedCalls: 1},
 	}
 
 	for _, op := range []string{opList, opGet, opApprove, opDeny} {

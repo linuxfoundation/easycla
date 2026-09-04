@@ -49,8 +49,10 @@ func (f *fakeProjectService) GetCLAGroupByID(_ context.Context, claGroupID strin
 
 type fakeSignatureService struct {
 	signatures.SignatureService
-	signature   *models.Signature
-	removeCalls int
+	signature         *models.Signature
+	removeCalls       int
+	removedSignatures []string
+	removedManagers   []string
 }
 
 func (f *fakeSignatureService) GetProjectCompanySignature(_ context.Context, companyID, projectID string, approved, signed *bool, nextKey *string, pageSize *int64) (*models.Signature, error) {
@@ -59,6 +61,8 @@ func (f *fakeSignatureService) GetProjectCompanySignature(_ context.Context, com
 
 func (f *fakeSignatureService) RemoveCLAManager(_ context.Context, signatureID, claManagerID string) (*models.Signature, error) {
 	f.removeCalls++
+	f.removedSignatures = append(f.removedSignatures, signatureID)
+	f.removedManagers = append(f.removedManagers, claManagerID)
 	return f.signature, nil
 }
 
@@ -69,10 +73,12 @@ func (f *fakeSignatureService) GetProjectCompanySignatures(_ context.Context, pa
 type fakeEventsService struct {
 	events.Service
 	logCalls int
+	logged   []*events.LogEventArgs
 }
 
 func (f *fakeEventsService) LogEvent(args *events.LogEventArgs) {
 	f.logCalls++
+	f.logged = append(f.logged, args)
 }
 
 func TestRemoveClaManagerRejectsRemovingTheLastManager(t *testing.T) {
@@ -121,5 +127,20 @@ func TestRemoveClaManagerRemovesOneOfTwoManagers(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, result)
 	assert.Equal(t, 1, sigService.removeCalls, "with two managers on the ACL the removal must proceed")
-	assert.Equal(t, 1, eventsService.logCalls)
+	assert.Equal(t, []string{"sig-1"}, sigService.removedSignatures)
+	assert.Equal(t, []string{"manager-one"}, sigService.removedManagers, "the requested manager - not the other one - must be removed")
+	if assert.Equal(t, 1, eventsService.logCalls) {
+		logged := eventsService.logged[0]
+		assert.Equal(t, events.ClaManagerDeleted, logged.EventType)
+		assert.Equal(t, "cla-group-1", logged.CLAGroupID)
+		assert.Equal(t, "My Project", logged.CLAGroupName)
+		assert.Equal(t, "company-1", logged.CompanyID)
+		assert.Equal(t, "org-admin", logged.LfUsername)
+		if data, ok := logged.EventData.(*events.CLAManagerDeletedEventData); assert.True(t, ok) {
+			assert.Equal(t, "Acme", data.CompanyName)
+			assert.Equal(t, "manager-one", data.UserName)
+			assert.Equal(t, "m1@example.com", data.UserEmail)
+			assert.Equal(t, "manager-one", data.UserLFID)
+		}
+	}
 }

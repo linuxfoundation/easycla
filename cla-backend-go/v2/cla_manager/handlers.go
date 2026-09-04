@@ -434,7 +434,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 		if err != nil {
 			msg := fmt.Sprintf("unable to lookup CLA Manager requests for Company ID: %s, Project ID: %s", params.CompanyID, params.ProjectSFID)
 			log.WithFields(f).WithError(err).Warn(msg)
-			return cla_manager.NewGetCLAManagerRequestsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+			return cla_manager.NewGetCLAManagerRequestsInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
 		}
 
 		return cla_manager.NewGetCLAManagerRequestsOK().WithXRequestID(reqID).WithPayload(requestList)
@@ -485,7 +485,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			}
 			msg := fmt.Sprintf("unable to lookup CLA Manager request for Company ID: %s, Project ID: %s, Request ID: %s", params.CompanyID, params.ProjectSFID, params.RequestID)
 			log.WithFields(f).WithError(err).Warn(msg)
-			return cla_manager.NewGetCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+			return cla_manager.NewGetCLAManagerRequestInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
 		}
 
 		return cla_manager.NewGetCLAManagerRequestOK().WithXRequestID(reqID).WithPayload(request)
@@ -536,7 +536,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			}
 			msg := fmt.Sprintf("unable to approve CLA Manager request for Company ID: %s, Project ID: %s, Request ID: %s", params.CompanyID, params.ProjectSFID, params.RequestID)
 			log.WithFields(f).WithError(err).Warn(msg)
-			return cla_manager.NewApproveCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+			return cla_manager.NewApproveCLAManagerRequestInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
 		}
 
 		return cla_manager.NewApproveCLAManagerRequestOK().WithXRequestID(reqID).WithPayload(request)
@@ -587,7 +587,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			}
 			msg := fmt.Sprintf("unable to deny CLA Manager request for Company ID: %s, Project ID: %s, Request ID: %s", params.CompanyID, params.ProjectSFID, params.RequestID)
 			log.WithFields(f).WithError(err).Warn(msg)
-			return cla_manager.NewDenyCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+			return cla_manager.NewDenyCLAManagerRequestInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
 		}
 
 		return cla_manager.NewDenyCLAManagerRequestOK().WithXRequestID(reqID).WithPayload(request)

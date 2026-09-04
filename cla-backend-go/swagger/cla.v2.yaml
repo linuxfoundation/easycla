@@ -3127,6 +3127,8 @@ paths:
           $ref: '#/responses/invalid-request'
         '403':
           $ref: '#/responses/forbidden'
+        '500':
+          $ref: '#/responses/internal-server-error'
       tags:
         - cla-manager
     post:
@@ -3222,6 +3224,8 @@ paths:
           $ref: '#/responses/forbidden'
         '404':
           $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
       tags:
         - cla-manager
 
@@ -3257,6 +3261,8 @@ paths:
           $ref: '#/responses/forbidden'
         '404':
           $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
       tags:
         - cla-manager
 
@@ -3292,6 +3298,8 @@ paths:
           $ref: '#/responses/forbidden'
         '404':
           $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
       tags:
         - cla-manager
 
