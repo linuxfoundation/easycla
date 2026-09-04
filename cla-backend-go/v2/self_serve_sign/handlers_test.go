@@ -147,6 +147,7 @@ func TestSelfServeRequestCorporateSignatureHandlerErrorMapping(t *testing.T) {
 		expectedText   string
 	}{
 		{"attestations missing", ErrAttestationRequired, http.StatusBadRequest, "authority_acked and embargo_acked"},
+		{"signing entity mismatch", ErrSigningEntityMismatch, http.StatusForbidden, "signing entity name does not belong to the provided company SFID"},
 		{"company unknown", errors.New("company does not exist"), http.StatusNotFound, "company does not exist"},
 		{"platform failure", errors.New("internal server error - docusign unavailable"), http.StatusInternalServerError, "internal server error"},
 		{"sanctioned company", errors.New("company sanctioned-co requires further review for trade compliance"), http.StatusForbidden, "requires additional trade compliance review"},

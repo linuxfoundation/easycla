@@ -477,7 +477,7 @@ func server(localMode bool) http.Handler {
 	v2ClaGroupService := cla_groups.NewService(v1ProjectService, templateService, v1ProjectClaGroupRepo, v1ClaManagerService, v1SignaturesService, metricsRepo, gerritService, v1RepositoriesService, eventsService)
 
 	v2SignService := sign.NewService(configFile.ClaAPIV4Base, configFile.ClaV1ApiURL, v1CompanyRepo, v1CLAGroupRepo, v1ProjectClaGroupRepo, v1CompanyService, v2ClaGroupService, configFile.DocuSignPrivateKey, usersService, v1SignaturesService, storeRepository, v1RepositoriesService, githubOrganizationsService, gitlabOrganizationsService, configFile.CLALandingPage, configFile.CLALogoURL, emailService, eventsService, gitlabActivityService, gitlabApp, gerritService, sssClient, sssRequired, sssEnabled)
-	v2SelfServeSignService := v2SelfServeSign.NewService(v2MyClasService, usersService, v1ProjectService, v1ProjectClaGroupRepo, storeRepository, v2SignService, signaturesRepo, configFile.CLAContributorv2Base)
+	v2SelfServeSignService := v2SelfServeSign.NewService(v2MyClasService, usersService, v1ProjectService, v1ProjectClaGroupRepo, storeRepository, v2SignService, v1CompanyRepo, configFile.CLAContributorv2Base)
 
 	sessionStore, err := dynastore.New(dynastore.Path("/"), dynastore.HTTPOnly(), dynastore.TableName(configFile.SessionStoreTableName), dynastore.DynamoDB(dynamodb.New(awsSession)))
 	if err != nil {

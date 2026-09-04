@@ -37,7 +37,9 @@ Self Serve front door for starting a CCLA signing session. Input = the corporate
 the request is delegated **verbatim** to the same service method behind
 `/v4/request-corporate-signature` (company/signing-entity resolution, sanctions gate,
 DocuSign envelope, send-by-email signatory flow all unchanged), so behavior and error
-statuses match the console endpoint. Response echoes all ids: `signature_id`, `sign_url`
+statuses match the console endpoint — with one hardening on top: a `signing_entity_name`
+resolving to a company whose SFID differs from `company_sfid` is rejected with HTTP 403
+before delegation. Response echoes all ids: `signature_id`, `sign_url`
 (empty for `send_as_email`), `cla_group_id`, `project_sfid`, `company_id` (the signing
 entity's EasyCLA company record), `company_sfid`. Auth mirrors the console:
 `project|organization` tree scope for the (`project_sfid`, `company_sfid`) pair, LF admin

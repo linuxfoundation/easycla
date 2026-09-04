@@ -101,6 +101,8 @@ func requestCorporateSignatureError(reqID string, err error) middleware.Responde
 	switch {
 	case errors.Is(err, ErrAttestationRequired):
 		return selfServeSignOps.NewSelfServeRequestCorporateSignatureBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, err.Error()))
+	case errors.Is(err, ErrSigningEntityMismatch):
+		return selfServeSignOps.NewSelfServeRequestCorporateSignatureForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, err.Error()))
 	case strings.Contains(err.Error(), "does not exist"):
 		return selfServeSignOps.NewSelfServeRequestCorporateSignatureNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, err.Error()))
 	case strings.Contains(err.Error(), "internal server error"):
