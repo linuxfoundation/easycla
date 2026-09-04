@@ -33,7 +33,7 @@ errors.New("missing pull_request_id in metadata")   // :3101
 errors.New("missing repository_id in metadata")     // :3114
 ```
 
-Those values produce the DocuSign callback via `getInstallationIDFromRepositoryID` → `github.GetReturnURL(...)` (`:2909-2915`).
+Those values produce the DocuSign callback via `getInstallationIDFromRepositoryID` → `github.GetReturnURL(...)` (`:3120-3126`).
 
 ### The Gerrit precedent, and what it actually proves
 
@@ -76,19 +76,19 @@ Two ordering/data dependencies for the contracts:
 
 That flip is then undone by two separate paths:
 
-1. **`auto_create_ecla` re-validation.** The employee-signature loop calls `ValidateProjectRecord` under exactly the condition a flip creates (`signatures/service.go:898`): `if !employeeSignatureModel.SignatureApproved || !employeeSignatureModel.SignatureSigned`, with the note *"signed and approved employee acknowledgement since auto_create_ecla feature flag set to true"*. Any Approved-List update re-approves the self-invalidated signature. **The durability caveat is the live code path, not a precaution.**
-2. **PR-time re-authorization.** `ProcessEmployeeSignature` sets `hasSigned = true` whenever `UserIsApproved` succeeds (`:1578-1583`), *independent of the signature's own approved flag* — so PR gating would pass even without (1).
+1. **`auto_create_ecla` re-validation.** The employee-signature loop calls `ValidateProjectRecord` under exactly the condition a flip creates (`signatures/service.go:904`): `if !employeeSignatureModel.SignatureApproved || !employeeSignatureModel.SignatureSigned`, with the note *"signed and approved employee acknowledgement since auto_create_ecla feature flag set to true"*. Any Approved-List update re-approves the self-invalidated signature. **The durability caveat is the live code path, not a precaution.**
+2. **PR-time re-authorization.** `ProcessEmployeeSignature` sets `hasSigned = true` whenever `UserIsApproved` succeeds (`:1595-1600`), *independent of the signature's own approved flag* — so PR gating would pass even without (1).
 
 ### The decisive design constraint
 
-`UserIsApproved(ctx, user, cclaSignature)` (`signatures/service.go:1607`) receives **only the user and the CCLA**. It has no reference to the employee signature record; it matches the user against the CCLA's GitHub/GitLab username, email, and domain approval lists (`:1623-1660+`).
+`UserIsApproved(ctx, user, cclaSignature)` (`signatures/service.go:1615`) receives **only the user and the CCLA**. It has no reference to the employee signature record; it matches the user against the CCLA's GitHub/GitLab username, email, and domain approval lists (`:1642-1690+`).
 
 This rules out the obvious implementation: a marker stored on the employee signature **cannot** be honored inside `UserIsApproved` without changing its signature.
 
 **Option A — exclusion checked at the call sites (recommended).** Keep `UserIsApproved` as the pure Approved-List predicate it is, and have consumers consult the marker *before* treating approval as coverage:
 
-- `signatures/service.go:898` — add the marker to the re-validation guard so a self-excluded record is skipped, not re-approved.
-- `ProcessEmployeeSignature` `:1578` — require `!selfExcluded` alongside `userApproved` before `hasSigned = true`.
+- `signatures/service.go:904` — add the marker to the re-validation guard so a self-excluded record is skipped, not re-approved.
+- `ProcessEmployeeSignature` `:1595` — require `!selfExcluded` alongside `userApproved` before `hasSigned = true`.
 - `v2/my_clas/service.go:1350` — the my-clas coverage evaluation `evaluateApproval` is the third consumer; the marker feeds FR-010's status directly.
 
 Three call sites, each a one-condition change, `UserIsApproved`'s contract untouched. The marker is FR-010b's reason/actor field — one concept, one field.
