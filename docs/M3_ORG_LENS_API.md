@@ -27,6 +27,26 @@ scope for the `companySFID`, or any `project|organization` scope whose organizat
 matches (ACS resource `company_cla_groups`, action `view_all`). Probe:
 `utils/company_cla_groups.sh`.
 
+## `POST /v4/self-serve/request-corporate-signature` ([lfx-self-serve#2150](https://github.com/linuxfoundation/lfx-self-serve/issues/2150))
+
+Self Serve front door for starting a CCLA signing session. Input = the corporate-console
+`corporate-signature-input` fields (`project_sfid`, `company_sfid`, optional
+`signing_entity_name`, `send_as_email`, `authority_name`, `authority_email`,
+`return_url`) plus two required-true attestation booleans `authority_acked` and
+`embargo_acked` — HTTP 400 before any DocuSign work unless both are true. With both true
+the request is delegated **verbatim** to the same service method behind
+`/v4/request-corporate-signature` (company/signing-entity resolution, sanctions gate,
+DocuSign envelope, send-by-email signatory flow all unchanged), so behavior and error
+statuses match the console endpoint — with one hardening on top: a `signing_entity_name`
+resolving to a company whose SFID differs from `company_sfid` is rejected with HTTP 403
+before delegation. Response echoes all ids: `signature_id`, `sign_url`
+(empty for `send_as_email`), `cla_group_id`, `project_sfid`, `company_id` (the signing
+entity's EasyCLA company record), `company_sfid`. Auth mirrors the console:
+`project|organization` tree scope for the (`project_sfid`, `company_sfid`) pair, LF admin
+disallowed (ACS resource `self_serve_request_corporate_signature`, action `create`).
+Probe: `utils/self_serve_request_corporate_signature.sh` — **a 200 creates a real
+DocuSign envelope**; attestation/auth probes (400/403) are side-effect free.
+
 ## Managers & acknowledgments write ops ([lfx-self-serve#2151](https://github.com/linuxfoundation/lfx-self-serve/issues/2151))
 
 CLA-manager request lifecycle under

@@ -112,12 +112,20 @@ func (f *fakeCLAGroups) GetCLAGroupByID(_ context.Context, _ string) (*v1Models.
 }
 
 type fakeProjectsCLAGroups struct {
-	projects []*projects_cla_groups.ProjectClaGroup
-	err      error
+	projects    []*projects_cla_groups.ProjectClaGroup
+	pcg         *projects_cla_groups.ProjectClaGroup
+	err         error
+	pcgErr      error
+	projectSFID string
 }
 
 func (f *fakeProjectsCLAGroups) GetProjectsIdsForClaGroup(_ context.Context, _ string) ([]*projects_cla_groups.ProjectClaGroup, error) {
 	return f.projects, f.err
+}
+
+func (f *fakeProjectsCLAGroups) GetClaGroupIDForProject(_ context.Context, projectSFID string) (*projects_cla_groups.ProjectClaGroup, error) {
+	f.projectSFID = projectSFID
+	return f.pcg, f.pcgErr
 }
 
 type fakeStore struct {
@@ -507,4 +515,303 @@ func TestPrepareSignTreatsEveryNotFoundShapeAsAMiss(t *testing.T) {
 			assert.Nil(t, users.created)
 		})
 	}
+}
+
+type fakeCorporateSign struct {
+	lfUsername    string
+	authorization string
+	input         *models.CorporateSignatureInput
+	output        *models.CorporateSignatureOutput
+	err           error
+	calls         int
+}
+
+func (f *fakeCorporateSign) RequestCorporateSignature(_ context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error) {
+	f.calls++
+	f.lfUsername, f.authorization, f.input = lfUsername, authorizationHeader, input
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.output, nil
+}
+
+type fakeCompanyRepo struct {
+	byExternalID *v1Models.Company
+	byEntityName *v1Models.Company
+	err          error
+	sfid         string
+	entityName   string
+	calls        int
+}
+
+func (f *fakeCompanyRepo) GetCompanyByExternalID(_ context.Context, companySFID string) (*v1Models.Company, error) {
+	f.calls++
+	f.sfid = companySFID
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.byExternalID, nil
+}
+
+func (f *fakeCompanyRepo) GetCompanyBySigningEntityName(_ context.Context, signingEntityName string) (*v1Models.Company, error) {
+	f.calls++
+	f.entityName = signingEntityName
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.byEntityName, nil
+}
+
+const (
+	testProjectSFID     = "a09P000000DsCE9IAN"
+	testCompanySFID     = "0014100000Te0fZAAR"
+	testCompanyID       = "9b8e7d66-40a5-4cde-9f00-3e1d1a2b3c4d"
+	testEntityCompanyID = "1c9f8e77-51b6-4def-8a11-4f2e2b3c4d5e"
+	testEntityName      = "My Company Signing Entity, Ltd."
+	testSignatureID     = "7f0f1c22-3a51-49f5-b6a8-0f9d6a2e1c22"
+	testSignURL         = "https://demo.docusign.net/signing/startinsession.aspx?t=abc"
+)
+
+func newCorporateTestService(corporateSign CorporateSignService, companies CompanyRepository, projectsClaGroups ProjectsCLAGroupsRepository) *service {
+	return &service{corporateSignService: corporateSign, companyRepo: companies, projectsClaGroupsRepo: projectsClaGroups}
+}
+
+func corporateFakes() (*fakeCompanyRepo, *fakeProjectsCLAGroups) {
+	companies := &fakeCompanyRepo{
+		byExternalID: &v1Models.Company{CompanyID: testCompanyID, CompanyExternalID: testCompanySFID},
+		byEntityName: &v1Models.Company{CompanyID: testEntityCompanyID, CompanyExternalID: testCompanySFID, SigningEntityName: testEntityName},
+	}
+	return companies, &fakeProjectsCLAGroups{pcg: &projects_cla_groups.ProjectClaGroup{ProjectSFID: testProjectSFID, ClaGroupID: testCLAGroupID}}
+}
+
+func corporateInput() *models.SelfServeCorporateSignatureInput {
+	return &models.SelfServeCorporateSignatureInput{
+		ProjectSfid:    stringRef(testProjectSFID),
+		CompanySfid:    stringRef(testCompanySFID),
+		AuthorityAcked: true,
+		EmbargoAcked:   true,
+		ReturnURL:      strfmt.URI(testReturnURL),
+	}
+}
+
+func TestRequestCorporateSignatureRequiresBothAttestations(t *testing.T) {
+	testCases := []struct {
+		name           string
+		authorityAcked bool
+		embargoAcked   bool
+	}{
+		{"both missing", false, false},
+		{"authority only", true, false},
+		{"embargo only", false, true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			corporateSign := &fakeCorporateSign{}
+			companies, projectsClaGroups := corporateFakes()
+			svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+			input := corporateInput()
+			input.AuthorityAcked = tc.authorityAcked
+			input.EmbargoAcked = tc.embargoAcked
+
+			result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", input)
+
+			assert.ErrorIs(t, err, ErrAttestationRequired)
+			assert.Nil(t, result)
+			assert.Zero(t, corporateSign.calls)
+			assert.Zero(t, companies.calls)
+		})
+	}
+}
+
+func TestRequestCorporateSignatureDelegatesVerbatim(t *testing.T) {
+	corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{SignatureID: testSignatureID, SignURL: testSignURL}}
+	companies, projectsClaGroups := corporateFakes()
+	svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+	input := corporateInput()
+	input.SigningEntityName = testEntityName
+	input.SendAsEmail = true
+	input.AuthorityName = "Derk Miyamoto"
+	input.AuthorityEmail = "derk@example.org"
+
+	result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token-123", input)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, corporateSign.calls)
+	assert.Equal(t, "lgryglicki", corporateSign.lfUsername)
+	assert.Equal(t, "Bearer token-123", corporateSign.authorization)
+	assert.Equal(t, &models.CorporateSignatureInput{
+		ProjectSfid:       stringRef(testProjectSFID),
+		CompanySfid:       stringRef(testCompanySFID),
+		SigningEntityName: testEntityName,
+		SendAsEmail:       true,
+		AuthorityName:     "Derk Miyamoto",
+		AuthorityEmail:    "derk@example.org",
+		ReturnURL:         strfmt.URI(testReturnURL),
+	}, corporateSign.input)
+	assert.Equal(t, testSignatureID, result.SignatureID)
+	assert.Equal(t, testSignURL, result.SignURL)
+	assert.Equal(t, testCLAGroupID, result.ClaGroupID)
+	assert.Equal(t, testEntityCompanyID, result.CompanyID)
+	assert.Equal(t, testProjectSFID, result.ProjectSfid)
+	assert.Equal(t, testCompanySFID, result.CompanySfid)
+}
+
+func TestRequestCorporateSignatureResolvesTheSigningCompany(t *testing.T) {
+	testCases := []struct {
+		name              string
+		signingEntityName string
+		expectedCompanyID string
+		expectedSfid      string
+		expectedEntity    string
+	}{
+		{"by company SFID", "", testCompanyID, testCompanySFID, ""},
+		{"by signing entity name", testEntityName, testEntityCompanyID, "", testEntityName},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{SignatureID: testSignatureID, SignURL: testSignURL}}
+			companies, projectsClaGroups := corporateFakes()
+			svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+			input := corporateInput()
+			input.SigningEntityName = tc.signingEntityName
+
+			result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", input)
+
+			assert.NoError(t, err)
+			assert.Equal(t, 1, companies.calls)
+			assert.Equal(t, tc.expectedSfid, companies.sfid)
+			assert.Equal(t, tc.expectedEntity, companies.entityName)
+			assert.Equal(t, testProjectSFID, projectsClaGroups.projectSFID)
+			assert.Equal(t, testSignatureID, result.SignatureID)
+			assert.Equal(t, testSignURL, result.SignURL)
+			assert.Equal(t, testCLAGroupID, result.ClaGroupID)
+			assert.Equal(t, tc.expectedCompanyID, result.CompanyID)
+			assert.Equal(t, testProjectSFID, result.ProjectSfid)
+			assert.Equal(t, testCompanySFID, result.CompanySfid)
+		})
+	}
+}
+
+func TestRequestCorporateSignatureRejectsAForeignSigningEntity(t *testing.T) {
+	corporateSign := &fakeCorporateSign{}
+	companies, projectsClaGroups := corporateFakes()
+	companies.byEntityName.CompanyExternalID = "0014100000Te0fXAAR"
+	svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+	input := corporateInput()
+	input.SigningEntityName = testEntityName
+
+	result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", input)
+
+	assert.ErrorIs(t, err, ErrSigningEntityMismatch)
+	assert.Nil(t, result)
+	assert.Zero(t, corporateSign.calls)
+}
+
+// prod holds signing-entity company records without a company_external_id (168 of 3693 as of
+// 2026-09) - rejecting those would break legitimate signings, while a takeover target's own
+// record carries its non-empty SFID, so the mismatch guard still covers it
+func TestRequestCorporateSignatureAllowsASigningEntityWithoutAnExternalID(t *testing.T) {
+	corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{SignatureID: testSignatureID, SignURL: testSignURL}}
+	companies, projectsClaGroups := corporateFakes()
+	companies.byEntityName.CompanyExternalID = ""
+	svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+	input := corporateInput()
+	input.SigningEntityName = testEntityName
+
+	result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", input)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, corporateSign.calls)
+	assert.Equal(t, testEntityCompanyID, result.CompanyID)
+	assert.Equal(t, testCLAGroupID, result.ClaGroupID)
+}
+
+func TestRequestCorporateSignatureCompanyLookupFailuresPropagate(t *testing.T) {
+	lookupErr := &utils.CompanyNotFound{Message: "no company records found with matching external SFID", CompanySFID: testCompanySFID}
+	testCases := []struct {
+		name         string
+		setup        func(companies *fakeCompanyRepo)
+		expectedErr  error
+		expectedText string
+	}{
+		{"lookup error", func(companies *fakeCompanyRepo) { companies.err = lookupErr }, lookupErr, "no company records found with matching external SFID"},
+		{"no company record", func(companies *fakeCompanyRepo) { companies.byExternalID = nil }, nil, "company not found for SFID " + testCompanySFID},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			corporateSign := &fakeCorporateSign{}
+			companies, projectsClaGroups := corporateFakes()
+			tc.setup(companies)
+			svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+
+			result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", corporateInput())
+
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tc.expectedText)
+			if tc.expectedErr != nil {
+				assert.ErrorIs(t, err, tc.expectedErr)
+			}
+			assert.Nil(t, result)
+			assert.Zero(t, corporateSign.calls)
+		})
+	}
+}
+
+func TestRequestCorporateSignatureCLAGroupLookupFailuresPropagate(t *testing.T) {
+	testCases := []struct {
+		name  string
+		setup func(projectsClaGroups *fakeProjectsCLAGroups)
+	}{
+		{"lookup error", func(p *fakeProjectsCLAGroups) {
+			p.pcg, p.pcgErr = nil, projects_cla_groups.ErrProjectNotAssociatedWithClaGroup
+		}},
+		{"no mapping record", func(p *fakeProjectsCLAGroups) { p.pcg, p.pcgErr = nil, nil }},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			corporateSign := &fakeCorporateSign{}
+			companies, projectsClaGroups := corporateFakes()
+			tc.setup(projectsClaGroups)
+			svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+
+			result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", corporateInput())
+
+			assert.ErrorIs(t, err, projects_cla_groups.ErrProjectNotAssociatedWithClaGroup)
+			assert.Nil(t, result)
+			assert.Zero(t, corporateSign.calls)
+		})
+	}
+}
+
+func TestRequestCorporateSignatureDelegateErrorsPropagate(t *testing.T) {
+	delegateErr := errors.New("company does not exist")
+	corporateSign := &fakeCorporateSign{err: delegateErr}
+	companies, projectsClaGroups := corporateFakes()
+	svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+
+	result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", corporateInput())
+
+	assert.ErrorIs(t, err, delegateErr)
+	assert.Nil(t, result)
+	assert.Equal(t, 1, corporateSign.calls)
+}
+
+func TestRequestCorporateSignatureReturnsIDsEvenWithoutASignatureID(t *testing.T) {
+	corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{}}
+	companies, projectsClaGroups := corporateFakes()
+	svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+
+	result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", corporateInput())
+
+	assert.NoError(t, err)
+	assert.Empty(t, result.SignatureID)
+	assert.Empty(t, result.SignURL)
+	assert.Equal(t, testCLAGroupID, result.ClaGroupID)
+	assert.Equal(t, testCompanyID, result.CompanyID)
+	assert.Equal(t, testProjectSFID, result.ProjectSfid)
+	assert.Equal(t, testCompanySFID, result.CompanySfid)
 }
