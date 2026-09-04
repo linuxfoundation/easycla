@@ -9,7 +9,7 @@
 # SIGNING_ENTITY_NAME, SEND_AS_EMAIL, AUTHORITY_NAME, AUTHORITY_EMAIL, RETURN_URL: optional corporate-signature-input passthrough fields.
 # TOKEN: bearer access token (env, or ./self_serve_request_corporate_signature.token.secret / ./auth0.token.secret). Get one with ~/get_oauth_token.sh (dev) or ~/get_oauth_token_prod.sh (prod).
 # STAGE: dev (default) | test | staging | prod - selects the api-gw host.
-# Local mode (against a standalone backend, bypassing the gateway): set PRINCIPAL to the token username and ADMIN=true|false (or pass a raw base64 X_ACL). Defaults API_URL to http://localhost:8080.
+# Local mode (against a standalone backend, bypassing the gateway): set PRINCIPAL to the token username and ADMIN=true|false (or pass a raw base64 X_ACL). Defaults API_URL to http://localhost:8080. The required Authorization header is filled from TOKEN when set (needed for the positive path), a placeholder otherwise.
 # Examples:
 #   AUTHORITY_ACKED=false PROJECT_SFID=a0941000005ouJFAAY COMPANY_SFID=0014100000Te0G7AAJ ./utils/self_serve_request_corporate_signature.sh
 #   PRINCIPAL=lgryglicki ./utils/self_serve_request_corporate_signature.sh a0941000005ouJFAAY 0014100000Te0G7AAJ
@@ -33,7 +33,7 @@ fi
 
 if [ -n "$X_ACL" ]
 then
-  auth=(-H "X-ACL: ${X_ACL}")
+  auth=(-H "X-ACL: ${X_ACL}" -H "Authorization: Bearer ${TOKEN:-local}")
   [ -z "$API_URL" ] && API_URL="http://localhost:${PORT:-8080}"
 else
   if [ -z "$TOKEN" ]
