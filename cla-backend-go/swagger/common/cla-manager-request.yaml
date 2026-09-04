@@ -1,0 +1,64 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: CLA Manager Request
+description: A CLA Manager access request for the specified company and CLA Group
+properties:
+  requestID:
+    type: string
+    description: The request ID
+    x-omitempty: false
+  companyID:
+    type: string
+    description: The company internal ID
+    x-omitempty: false
+  companyExternalID:
+    type: string
+    description: The company Salesforce ID
+    x-omitempty: false
+  companyName:
+    type: string
+    description: The company name
+    x-omitempty: false
+  projectID:
+    type: string
+    description: The CLA Group ID
+    x-omitempty: false
+  projectExternalID:
+    type: string
+    description: The CLA Group external project ID
+    x-omitempty: false
+  projectName:
+    type: string
+    description: The CLA Group name
+    x-omitempty: false
+  userID:
+    type: string
+    description: The requesting user's EasyCLA user ID
+    x-omitempty: false
+  userExternalID:
+    type: string
+    description: The requesting user's external ID
+    x-omitempty: false
+  userName:
+    type: string
+    description: The requesting user's name
+    x-omitempty: false
+  userEmail:
+    type: string
+    description: The requesting user's email
+    x-omitempty: false
+  status:
+    type: string
+    description: The request status - one of pending, approved, denied
+    x-omitempty: false
+  created:
+    type: string
+    description: Date/time the record was created
+    x-omitempty: false
+  updated:
+    type: string
+    description: Date/time the record was last modified
+    x-omitempty: false

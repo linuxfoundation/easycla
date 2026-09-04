@@ -33,6 +33,7 @@ import (
 	v1ClaManager "github.com/linuxfoundation/easycla/cla-backend-go/cla_manager"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	v1Signatures "github.com/linuxfoundation/easycla/cla-backend-go/signatures"
 	v1User "github.com/linuxfoundation/easycla/cla-backend-go/user"
 	easyCLAUser "github.com/linuxfoundation/easycla/cla-backend-go/users"
 	v2AcsService "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
@@ -63,6 +64,8 @@ var (
 	ErrClaGroupNotFound = errors.New("cla group not found")
 	//ErrClaGroupBadRequest returns error if cla group bad request
 	ErrClaGroupBadRequest = errors.New("cla group bad request")
+
+	errRequestNotFound = errors.New("cla manager request not found")
 )
 
 const (
@@ -80,6 +83,7 @@ type service struct {
 	v2CompanyService     v2Company.Service
 	eventService         events.Service
 	projectCGRepo        projects_cla_groups.Repository
+	signatureService     v1Signatures.SignatureService
 }
 
 // Service interface
@@ -93,6 +97,10 @@ type Service interface {
 	CreateCLAManagerDesigneeByGroup(ctx context.Context, params cla_manager.CreateCLAManagerDesigneeByGroupParams, projectCLAGroups []*projects_cla_groups.ProjectClaGroup) ([]*models.ClaManagerDesignee, string, error)
 	ProjectCompanySignedOrNot(ctx context.Context, signedAtFoundation bool, projectCLAGroups []*projects_cla_groups.ProjectClaGroup, companyModel *v1Models.Company) error
 	IsCLAManagerDesignee(ctx context.Context, companySFID, claGroupID, userLFID string) (*models.UserRoleStatus, error)
+	GetCLAManagerRequests(ctx context.Context, companyID, claGroupID string) (*models.ClaManagerRequestList, error)
+	GetCLAManagerRequest(ctx context.Context, companyID, claGroupID, requestID string) (*models.ClaManagerRequest, error)
+	ApproveCLAManagerRequest(ctx context.Context, authUser *auth.User, companyModel *v1Models.Company, claGroupID, requestID string) (*models.ClaManagerRequest, error)
+	DenyCLAManagerRequest(ctx context.Context, authUser *auth.User, companyModel *v1Models.Company, claGroupID, requestID string) (*models.ClaManagerRequest, error)
 
 	// Email Functions
 	SendEmailToCLAManager(ctx context.Context, input *EmailToCLAManagerModel, projectSFIDs []string)
@@ -107,7 +115,7 @@ type Service interface {
 // NewService returns instance of CLA Manager service
 func NewService(emailTemplateService emails.EmailTemplateService, compService company.IService, projService service2.Service, mgrService v1ClaManager.IService, claUserService easyCLAUser.Service,
 	repoService repositories.Service, v2CompService v2Company.Service,
-	evService events.Service, projectCGroupRepo projects_cla_groups.Repository) Service {
+	evService events.Service, projectCGroupRepo projects_cla_groups.Repository, sigService v1Signatures.SignatureService) Service {
 	return &service{
 		emailTemplateService: emailTemplateService,
 		companyService:       compService,
@@ -118,6 +126,7 @@ func NewService(emailTemplateService emails.EmailTemplateService, compService co
 		v2CompanyService:     v2CompService,
 		eventService:         evService,
 		projectCGRepo:        projectCGroupRepo,
+		signatureService:     sigService,
 	}
 }
 

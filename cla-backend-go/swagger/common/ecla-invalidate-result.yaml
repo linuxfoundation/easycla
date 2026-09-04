@@ -1,0 +1,24 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: ECLA Invalidate Result
+description: Identifiers of the invalidated employee acknowledgement
+properties:
+  signature_id:
+    type: string
+    description: The invalidated ECLA signature ID
+    x-omitempty: false
+  cla_group_id:
+    type: string
+    description: The CLA Group ID the ECLA belongs to
+    x-omitempty: false
+  company_id:
+    type: string
+    description: The company internal ID from the ECLA record
+    x-omitempty: false
+  user_id:
+    type: string
+    description: The EasyCLA user ID of the acknowledged employee
+    x-omitempty: false
