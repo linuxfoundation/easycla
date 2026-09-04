@@ -47,7 +47,7 @@ Documented in [docs/MY_CLAS_API.md](../../docs/MY_CLAS_API.md); M2 added, on top
 | Endpoint | Purpose |
 |---|---|
 | `GET /v4/my-clas/{signatureID}/cla-managers` | List the CLA managers of the CCLA covering an owned ECLA |
-| `POST /v4/my-clas/{signatureID}/cla-manager-requests` | Email a removal/approval/contact request to selected managers; writes a request record + audit event, **never signature state** |
+| `POST /v4/my-clas/{signatureID}/cla-manager-requests` | Email a removal/approval/contact request to selected managers; returns a generated request ID and logs a best-effort audit event — **no request record is persisted**, and **never signature state** |
 | `GET /v4/cla-group/search` | Case-insensitive search over CLA group / Salesforce project / linked org names + repo-URL resolution (in-process cache, ~30 min TTL) |
 | `POST /v4/self-serve/prepare-sign` | Verifies the identity, creates the EasyCLA user record if missing, records the signing session, returns the Contributor Console hand-off `signUrl` |
 

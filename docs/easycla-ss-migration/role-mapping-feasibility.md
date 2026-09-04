@@ -52,7 +52,7 @@ flowchart TB
     ORG -.->|"Option A bridge:<br/>SS calls v4 as another client,<br/>v4 + gateway keep enforcing"| V4
 ```
 
-Key mismatch (from milestone 04): an org-lens admin (`b2b_org#writer`) is **not** a CLA manager, and CLA authority is per **company × project/CLA group** — finer-grained than anything the org lens models. Note also that the EasyCLA side has **two** stores of manager truth (ACS scopes *and* the signature ACL) — this matters for UI gating (§5) and the OpenFGA option (§6).
+Key mismatch (from the org-lens milestone, now M3): an org-lens admin (`b2b_org#writer`) is **not** a CLA manager, and CLA authority is per **company × project/CLA group** — finer-grained than anything the org lens models. Note also that the EasyCLA side has **two** stores of manager truth (ACS scopes *and* the signature ACL) — this matters for UI gating (§5) and the OpenFGA option (§6).
 
 ---
 

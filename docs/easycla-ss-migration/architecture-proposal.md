@@ -65,9 +65,11 @@ Current-state facts the proposal relies on (verified in code; details in the [fe
 |---|-----------|--------|---------|--------|
 | [M1](../../specs/001-easycla-ss-integration-fable/01-milestone-read-only-me-lens-fable.md) | Read-only "My CLAs" (Me lens) | **Implemented** (dark-launched) | — | S |
 | [M2](../../specs/001-easycla-ss-integration-fable/02-milestone-sign-cla-fable.md) | Sign-CLA entry + My CLAs actions in SS, hands off to Contributor Console (ICLA and ECLA via the Console decision screen) | **Implemented** (dark-launched) | — | M |
-| [M3](../../specs/001-easycla-ss-integration-fable/03-milestone-ccla-org-lens-fable.md) | CCLA management (Organization lens) | Planned | Corporate Console + its BFF | XL |
-| [M4](../../specs/001-easycla-ss-integration-fable/04-milestone-project-lens-pcc-fable.md) | EasyCLA admin (Project lens) — *decision-gated* | Planned | PCC EasyCLA module | L |
-| [M5](../../specs/001-easycla-ss-integration-fable/05-milestone-k8s-v2-api-fable.md) | API → Kubernetes V2 service (± Postgres) — *separately gated* | Planned | Lambda/API GW stack | XL–XXL |
+| [M3](../../specs/001-easycla-ss-integration-fable/03-milestone-ccla-org-lens-fable.md) | CCLA management (Organization lens) | **In progress** (started 2026-09) | Corporate Console + its BFF | XL |
+| [M4](../../specs/001-easycla-ss-integration-fable/04-milestone-project-lens-pcc-fable.md) | EasyCLA admin (Project lens) — *decision-gated* | **Not planned** | PCC EasyCLA module | L |
+| [M5](../../specs/001-easycla-ss-integration-fable/05-milestone-k8s-v2-api-fable.md) | API → Kubernetes V2 service (± Postgres) — *separately gated* | **Not planned** | Lambda/API GW stack | XL–XXL |
+
+> The program aims to complete **M1–M3**. **M4 and M5 are not planned yet** and may never be implemented.
 
 ## 3. Already settled at the leadership review (2026-07-15) — context, not up for review
 
