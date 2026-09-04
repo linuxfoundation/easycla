@@ -464,7 +464,7 @@ func server(localMode bool) http.Handler {
 		logrus.Panic(err)
 	}
 	v1ClaManagerService := cla_manager.NewService(claManagerReqRepo, v1ProjectClaGroupRepo, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService, configFile.CorporateConsoleV2URL)
-	v2ClaManagerService := v2ClaManager.NewService(emailTemplateService, v1CompanyService, v1ProjectService, v1ClaManagerService, usersService, v1RepositoriesService, v2CompanyService, eventsService, v1ProjectClaGroupRepo)
+	v2ClaManagerService := v2ClaManager.NewService(emailTemplateService, v1CompanyService, v1ProjectService, v1ClaManagerService, usersService, v1RepositoriesService, v2CompanyService, eventsService, v1ProjectClaGroupRepo, v1SignaturesService)
 	v1ApprovalListService := approval_list.NewService(approvalListRepo, v1ProjectClaGroupRepo, v1ProjectService, usersRepo, v1CompanyRepo, v1CLAGroupRepo, signaturesRepo, emailTemplateService, configFile.CorporateConsoleV2URL, http.DefaultClient)
 	authorizer := auth.NewAuthorizer(authValidator, userRepo)
 	v2MetricsService := metrics.NewService(metricsRepo, v1ProjectClaGroupRepo)

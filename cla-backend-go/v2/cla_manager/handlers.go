@@ -5,6 +5,7 @@ package cla_manager
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/sirupsen/logrus"
@@ -393,4 +394,202 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 
 			return cla_manager.NewNotifyCLAManagersNoContent().WithXRequestID(reqID)
 		})
+
+	api.ClaManagerGetCLAManagerRequestsHandler = cla_manager.GetCLAManagerRequestsHandlerFunc(func(params cla_manager.GetCLAManagerRequestsParams, authUser *auth.User) middleware.Responder {
+		reqID := utils.GetRequestID(params.XREQUESTID)
+		ctx := utils.ContextWithRequestAndUser(params.HTTPRequest.Context(), reqID, authUser) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+		f := logrus.Fields{
+			"functionName":   "v2.cla_manager.handlers.ClaManagerGetCLAManagerRequestsHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"CompanyID":      params.CompanyID,
+			"ProjectSFID":    params.ProjectSFID,
+			"authUser":       utils.StringValue(params.XUSERNAME),
+		}
+
+		log.WithFields(f).Debugf("looking up company by internal ID...")
+		v1CompanyModel, err := v1CompanyService.GetCompany(ctx, params.CompanyID)
+		if err != nil || v1CompanyModel == nil {
+			msg := fmt.Sprintf("unable to lookup company by ID: %s", params.CompanyID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return cla_manager.NewGetCLAManagerRequestsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+
+		log.WithFields(f).Debug("checking permissions...")
+		if !utils.IsUserAuthorizedForProjectOrganizationTree(ctx, authUser, params.ProjectSFID, v1CompanyModel.CompanyExternalID, utils.DISALLOW_ADMIN_SCOPE) {
+			msg := fmt.Sprintf("user %s does not have access to GetCLAManagerRequests with Project|Organization scope of %s | %s", authUser.UserName, params.ProjectSFID, params.CompanyID)
+			log.WithFields(f).Warn(msg)
+			return cla_manager.NewGetCLAManagerRequestsForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+		}
+
+		log.WithFields(f).Debug("looking up CLA Group for projectSFID...")
+		cginfo, err := projectClaGroupRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
+		if err != nil || cginfo == nil {
+			msg := fmt.Sprintf("no CLA Group associated with this project: %s", params.ProjectSFID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return cla_manager.NewGetCLAManagerRequestsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+
+		requestList, err := service.GetCLAManagerRequests(ctx, v1CompanyModel, cginfo.ClaGroupID)
+		if err != nil {
+			msg := fmt.Sprintf("unable to lookup CLA Manager requests for Company ID: %s, Project ID: %s", params.CompanyID, params.ProjectSFID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return cla_manager.NewGetCLAManagerRequestsInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
+		}
+
+		return cla_manager.NewGetCLAManagerRequestsOK().WithXRequestID(reqID).WithPayload(requestList)
+	})
+
+	api.ClaManagerGetCLAManagerRequestHandler = cla_manager.GetCLAManagerRequestHandlerFunc(func(params cla_manager.GetCLAManagerRequestParams, authUser *auth.User) middleware.Responder {
+		reqID := utils.GetRequestID(params.XREQUESTID)
+		ctx := utils.ContextWithRequestAndUser(params.HTTPRequest.Context(), reqID, authUser) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+		f := logrus.Fields{
+			"functionName":   "v2.cla_manager.handlers.ClaManagerGetCLAManagerRequestHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"CompanyID":      params.CompanyID,
+			"ProjectSFID":    params.ProjectSFID,
+			"RequestID":      params.RequestID,
+			"authUser":       utils.StringValue(params.XUSERNAME),
+		}
+
+		log.WithFields(f).Debugf("looking up company by internal ID...")
+		v1CompanyModel, err := v1CompanyService.GetCompany(ctx, params.CompanyID)
+		if err != nil || v1CompanyModel == nil {
+			msg := fmt.Sprintf("unable to lookup company by ID: %s", params.CompanyID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return cla_manager.NewGetCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+
+		log.WithFields(f).Debug("checking permissions...")
+		if !utils.IsUserAuthorizedForProjectOrganizationTree(ctx, authUser, params.ProjectSFID, v1CompanyModel.CompanyExternalID, utils.DISALLOW_ADMIN_SCOPE) {
+			msg := fmt.Sprintf("user %s does not have access to GetCLAManagerRequest with Project|Organization scope of %s | %s", authUser.UserName, params.ProjectSFID, params.CompanyID)
+			log.WithFields(f).Warn(msg)
+			return cla_manager.NewGetCLAManagerRequestForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+		}
+
+		log.WithFields(f).Debug("looking up CLA Group for projectSFID...")
+		cginfo, err := projectClaGroupRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
+		if err != nil || cginfo == nil {
+			msg := fmt.Sprintf("no CLA Group associated with this project: %s", params.ProjectSFID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return cla_manager.NewGetCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+
+		request, err := service.GetCLAManagerRequest(ctx, v1CompanyModel, cginfo.ClaGroupID, params.RequestID)
+		if err != nil {
+			if errors.Is(err, errRequestNotFound) {
+				msg := fmt.Sprintf("request not found for Company ID: %s, Project ID: %s, Request ID: %s", params.CompanyID, params.ProjectSFID, params.RequestID)
+				log.WithFields(f).Warn(msg)
+				return cla_manager.NewGetCLAManagerRequestNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, msg))
+			}
+			msg := fmt.Sprintf("unable to lookup CLA Manager request for Company ID: %s, Project ID: %s, Request ID: %s", params.CompanyID, params.ProjectSFID, params.RequestID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return cla_manager.NewGetCLAManagerRequestInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
+		}
+
+		return cla_manager.NewGetCLAManagerRequestOK().WithXRequestID(reqID).WithPayload(request)
+	})
+
+	api.ClaManagerApproveCLAManagerRequestHandler = cla_manager.ApproveCLAManagerRequestHandlerFunc(func(params cla_manager.ApproveCLAManagerRequestParams, authUser *auth.User) middleware.Responder {
+		reqID := utils.GetRequestID(params.XREQUESTID)
+		ctx := utils.ContextWithRequestAndUser(params.HTTPRequest.Context(), reqID, authUser) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+		f := logrus.Fields{
+			"functionName":   "v2.cla_manager.handlers.ClaManagerApproveCLAManagerRequestHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"CompanyID":      params.CompanyID,
+			"ProjectSFID":    params.ProjectSFID,
+			"RequestID":      params.RequestID,
+			"authUser":       utils.StringValue(params.XUSERNAME),
+		}
+
+		log.WithFields(f).Debugf("looking up company by internal ID...")
+		v1CompanyModel, err := v1CompanyService.GetCompany(ctx, params.CompanyID)
+		if err != nil || v1CompanyModel == nil {
+			msg := fmt.Sprintf("unable to lookup company by ID: %s", params.CompanyID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return cla_manager.NewApproveCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+
+		log.WithFields(f).Debug("checking permissions...")
+		if !utils.IsUserAuthorizedForProjectOrganizationTree(ctx, authUser, params.ProjectSFID, v1CompanyModel.CompanyExternalID, utils.DISALLOW_ADMIN_SCOPE) {
+			msg := fmt.Sprintf("user %s does not have access to ApproveCLAManagerRequest with Project|Organization scope of %s | %s", authUser.UserName, params.ProjectSFID, params.CompanyID)
+			log.WithFields(f).Warn(msg)
+			return cla_manager.NewApproveCLAManagerRequestForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+		}
+
+		log.WithFields(f).Debug("looking up CLA Group for projectSFID...")
+		cginfo, err := projectClaGroupRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
+		if err != nil || cginfo == nil {
+			msg := fmt.Sprintf("no CLA Group associated with this project: %s", params.ProjectSFID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return cla_manager.NewApproveCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+
+		request, err := service.ApproveCLAManagerRequest(ctx, authUser, v1CompanyModel, cginfo.ClaGroupID, params.RequestID)
+		if err != nil {
+			if errors.Is(err, errRequestNotFound) {
+				msg := fmt.Sprintf("request not found for Company ID: %s, Project ID: %s, Request ID: %s", params.CompanyID, params.ProjectSFID, params.RequestID)
+				log.WithFields(f).Warn(msg)
+				return cla_manager.NewApproveCLAManagerRequestNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, msg))
+			}
+			msg := fmt.Sprintf("unable to approve CLA Manager request for Company ID: %s, Project ID: %s, Request ID: %s", params.CompanyID, params.ProjectSFID, params.RequestID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return cla_manager.NewApproveCLAManagerRequestInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
+		}
+
+		return cla_manager.NewApproveCLAManagerRequestOK().WithXRequestID(reqID).WithPayload(request)
+	})
+
+	api.ClaManagerDenyCLAManagerRequestHandler = cla_manager.DenyCLAManagerRequestHandlerFunc(func(params cla_manager.DenyCLAManagerRequestParams, authUser *auth.User) middleware.Responder {
+		reqID := utils.GetRequestID(params.XREQUESTID)
+		ctx := utils.ContextWithRequestAndUser(params.HTTPRequest.Context(), reqID, authUser) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+		f := logrus.Fields{
+			"functionName":   "v2.cla_manager.handlers.ClaManagerDenyCLAManagerRequestHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"CompanyID":      params.CompanyID,
+			"ProjectSFID":    params.ProjectSFID,
+			"RequestID":      params.RequestID,
+			"authUser":       utils.StringValue(params.XUSERNAME),
+		}
+
+		log.WithFields(f).Debugf("looking up company by internal ID...")
+		v1CompanyModel, err := v1CompanyService.GetCompany(ctx, params.CompanyID)
+		if err != nil || v1CompanyModel == nil {
+			msg := fmt.Sprintf("unable to lookup company by ID: %s", params.CompanyID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return cla_manager.NewDenyCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+
+		log.WithFields(f).Debug("checking permissions...")
+		if !utils.IsUserAuthorizedForProjectOrganizationTree(ctx, authUser, params.ProjectSFID, v1CompanyModel.CompanyExternalID, utils.DISALLOW_ADMIN_SCOPE) {
+			msg := fmt.Sprintf("user %s does not have access to DenyCLAManagerRequest with Project|Organization scope of %s | %s", authUser.UserName, params.ProjectSFID, params.CompanyID)
+			log.WithFields(f).Warn(msg)
+			return cla_manager.NewDenyCLAManagerRequestForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+		}
+
+		log.WithFields(f).Debug("looking up CLA Group for projectSFID...")
+		cginfo, err := projectClaGroupRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
+		if err != nil || cginfo == nil {
+			msg := fmt.Sprintf("no CLA Group associated with this project: %s", params.ProjectSFID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return cla_manager.NewDenyCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+
+		request, err := service.DenyCLAManagerRequest(ctx, authUser, v1CompanyModel, cginfo.ClaGroupID, params.RequestID)
+		if err != nil {
+			if errors.Is(err, errRequestNotFound) {
+				msg := fmt.Sprintf("request not found for Company ID: %s, Project ID: %s, Request ID: %s", params.CompanyID, params.ProjectSFID, params.RequestID)
+				log.WithFields(f).Warn(msg)
+				return cla_manager.NewDenyCLAManagerRequestNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, msg))
+			}
+			msg := fmt.Sprintf("unable to deny CLA Manager request for Company ID: %s, Project ID: %s, Request ID: %s", params.CompanyID, params.ProjectSFID, params.RequestID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return cla_manager.NewDenyCLAManagerRequestInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
+		}
+
+		return cla_manager.NewDenyCLAManagerRequestOK().WithXRequestID(reqID).WithPayload(request)
+	})
 }

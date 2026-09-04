@@ -3143,6 +3143,34 @@ paths:
         - company
 
   /company/{companyID}/project/{projectSFID}/cla-manager/requests:
+    get:
+      summary: Lists the CLA Manager requests for the specified Company and Project
+      description: Returns the CLA Manager access requests for the CLA Group associated with the project
+      operationId: getCLAManagerRequests
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-projectSFID"
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: "#/definitions/cla-manager-request-list"
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - cla-manager
     post:
       summary: Adds a CLA Manager Designee to the specified Company and Project
       description: User proposes a CLA Manager making the proposed user CLA Manager Designee
@@ -3204,6 +3232,116 @@ paths:
       tags:
         - cla-manager
 
+  /company/{companyID}/project/{projectSFID}/cla-manager/requests/{requestID}:
+    get:
+      summary: Gets the CLA Manager request for the specified Company, Project and request ID
+      description: Returns the specified CLA Manager access request
+      operationId: getCLAManagerRequest
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-projectSFID"
+        - name: requestID
+          description: The CLA Manager request ID
+          in: path
+          type: string
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: "#/definitions/cla-manager-request"
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - cla-manager
+
+  /company/{companyID}/project/{projectSFID}/cla-manager/requests/{requestID}/approve:
+    put:
+      summary: Approves the CLA Manager request for the specified Company, Project and request ID
+      description: Approves the request, adds the requesting user to the CCLA signature ACL as a CLA Manager and notifies the requester and the existing CLA Managers
+      operationId: approveCLAManagerRequest
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-projectSFID"
+        - name: requestID
+          description: The CLA Manager request ID
+          in: path
+          type: string
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: "#/definitions/cla-manager-request"
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - cla-manager
+
+  /company/{companyID}/project/{projectSFID}/cla-manager/requests/{requestID}/deny:
+    put:
+      summary: Denies the CLA Manager request for the specified Company, Project and request ID
+      description: Denies the request and notifies the requester and the existing CLA Managers
+      operationId: denyCLAManagerRequest
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-projectSFID"
+        - name: requestID
+          description: The CLA Manager request ID
+          in: path
+          type: string
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: "#/definitions/cla-manager-request"
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - cla-manager
 
   /company/{companyID}/project/{projectSFID}/cla-manager:
     post:
@@ -3866,6 +4004,45 @@ paths:
           $ref: '#/responses/invalid-request'
         '403':
           $ref: '#/responses/forbidden'
+        '409':
+          $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - signatures
+
+  /cla-group/{claGroupID}/ecla/{signatureID}/invalidate:
+    put:
+      summary: Invalidate ECLA record
+      description: Invalidates a given employee acknowledgement (ECLA) record - also stamps date_invalidated, invalidated_by and the optional invalidation_reason/invalidation_note from the body
+      operationId: invalidateECLA
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/path-claGroupID"
+        - $ref: "#/parameters/path-signatureID"
+        - name: body
+          in: body
+          required: false
+          schema:
+            $ref: '#/definitions/ecla-invalidation-input'
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: "#/definitions/ecla-invalidate-result"
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
         '409':
           $ref: '#/responses/conflict'
         '500':
@@ -5367,6 +5544,18 @@ definitions:
 
   icla-invalidation-input:
     $ref: './common/icla-invalidation-input.yaml'
+
+  ecla-invalidation-input:
+    $ref: './common/ecla-invalidation-input.yaml'
+
+  ecla-invalidate-result:
+    $ref: './common/ecla-invalidate-result.yaml'
+
+  cla-manager-request:
+    $ref: './common/cla-manager-request.yaml'
+
+  cla-manager-request-list:
+    $ref: './common/cla-manager-request-list.yaml'
 
   my-identity-list:
     $ref: './common/my-identity-list.yaml'

@@ -1,0 +1,14 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: CLA Manager Request List
+description: A list of CLA Manager access requests
+properties:
+  requests:
+    type: array
+    description: The CLA Manager access requests
+    x-omitempty: false
+    items:
+      $ref: '#/definitions/cla-manager-request'

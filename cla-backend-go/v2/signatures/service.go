@@ -44,6 +44,12 @@ const (
 var (
 	// ErrZipNotPresent error
 	ErrZipNotPresent = errors.New("zip file not present")
+
+	errEclaNotFound           = errors.New("ecla signature not found")
+	errNotEcla                = errors.New("signature is not an employee acknowledgement (ECLA)")
+	errEclaWrongClaGroup      = errors.New("ecla does not belong to the specified cla group")
+	errEclaAlreadyInvalidated = errors.New("ecla already invalidated")
+	errEclaForbidden          = errors.New("not authorized for the ecla company and project scope")
 )
 
 // ServiceInterface contains method of v2 signature service
@@ -58,6 +64,7 @@ type ServiceInterface interface {
 	GetSignedIclaZipPdf(claGroupID string) (*models.URLObject, error)
 	GetSignedCclaZipPdf(claGroupID string) (*models.URLObject, error)
 	InvalidateICLA(ctx context.Context, claGroupID string, userID string, authUser *auth.User, eventsService events.Service, eventArgs *events.LogEventArgs, input *models.IclaInvalidationInput) error
+	InvalidateECLA(ctx context.Context, claGroupID string, signatureID string, authUser *auth.User, eventsService events.Service, eventArgs *events.LogEventArgs, input *models.EclaInvalidationInput) (*models.EclaInvalidateResult, error)
 	EclaAutoCreate(ctx context.Context, signatureID string, autoCreateECLA bool) error
 	IsUserAuthorized(ctx context.Context, lfid, claGroupId string) (*models.LfidAuthorizedResponse, error)
 }
@@ -441,6 +448,125 @@ func (s *Service) InvalidateICLA(ctx context.Context, claGroupID string, userID 
 	eventsService.LogEventWithContext(ctx, eventArgs)
 
 	return nil
+}
+
+// InvalidateECLA invalidates the specified employee acknowledgement (ECLA) signature record -
+// input optionally carries the invalidation reason and note recorded on the record
+func (s *Service) InvalidateECLA(ctx context.Context, claGroupID string, signatureID string, authUser *auth.User, eventsService events.Service, eventArgs *events.LogEventArgs, input *models.EclaInvalidationInput) (*models.EclaInvalidateResult, error) {
+	f := logrus.Fields{
+		"functionName": "v2.signatures.service.InvalidateECLA",
+		"claGroupID":   claGroupID,
+		"signatureID":  signatureID,
+	}
+
+	log.WithFields(f).Debug("getting signature record ...")
+	sig, sigErr := s.v1SignatureRepo.GetItemSignature(ctx, signatureID)
+	if sigErr != nil {
+		log.WithFields(f).Debug("unable to get signature record")
+		return nil, sigErr
+	}
+	if sig == nil {
+		return nil, errEclaNotFound
+	}
+	if sig.SignatureReferenceType != utils.SignatureReferenceTypeUser || (sig.SignatureType != utils.SignatureTypeCLA && sig.SignatureType != utils.ClaTypeECLA) || sig.SignatureUserCompanyID == "" {
+		return nil, errNotEcla
+	}
+	if sig.SignatureProjectID != claGroupID {
+		return nil, errEclaWrongClaGroup
+	}
+
+	companyModel, companyErr := s.v1CompanyService.GetCompany(ctx, sig.SignatureUserCompanyID)
+	if companyErr != nil {
+		return nil, companyErr
+	}
+	if companyModel == nil {
+		return nil, fmt.Errorf("company not found for companyID: %s", sig.SignatureUserCompanyID)
+	}
+
+	projects, projErr := s.projectsClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, claGroupID)
+	if projErr != nil {
+		return nil, projErr
+	}
+	authorized := false
+	for _, project := range projects {
+		if utils.IsUserAuthorizedForProjectOrganizationTree(ctx, authUser, project.ProjectSFID, companyModel.CompanyExternalID, utils.DISALLOW_ADMIN_SCOPE) {
+			authorized = true
+			break
+		}
+	}
+	if !authorized {
+		return nil, errEclaForbidden
+	}
+
+	if !sig.SignatureApproved {
+		return nil, errEclaAlreadyInvalidated
+	}
+
+	user, userErr := s.usersService.GetUser(sig.SignatureReferenceID)
+	if userErr != nil {
+		return nil, userErr
+	}
+	if user == nil {
+		return nil, fmt.Errorf("user not found for userID: %s", sig.SignatureReferenceID)
+	}
+
+	claGroup, claGrpErr := s.v1ProjectService.GetCLAGroupByID(ctx, claGroupID)
+	if claGrpErr != nil {
+		return nil, claGrpErr
+	}
+
+	log.WithFields(f).Debug("invalidating signature record ...")
+	note := fmt.Sprintf("Signature invalidated (approved set to false) by %s for %s ", authUser.UserName, utils.GetBestUsername(user))
+	metadata := &signatures.InvalidationMetadata{
+		InvalidatedBy: authUser.UserName,
+	}
+	if input != nil {
+		metadata.Reason = input.Reason
+		metadata.Note = utils.SanitizePlainText(input.Note)
+	}
+	if err := s.v1SignatureRepo.InvalidateProjectRecordWithMetadata(ctx, sig.SignatureID, note, metadata); err != nil {
+		log.WithFields(f).Debug("unable to invalidate ecla record")
+		return nil, err
+	}
+
+	email := utils.GetBestEmail(user)
+	log.WithFields(f).Debugf("sending invalidation email to : %s ", email)
+	subject := fmt.Sprintf("EasyCLA: ECLA invalidated for %s ", claGroup.ProjectName)
+	params := signatures.InvalidateSignatureTemplateParams{
+		RecipientName: utils.GetBestUsername(user),
+		CLAGroupName:  claGroup.ProjectName,
+		Company:       companyModel.CompanyName,
+	}
+	body, renderErr := utils.RenderTemplate(claGroup.Version, signatures.InvalidateECLASignatureTemplateName, signatures.InvalidateECLASignatureTemplate, params)
+	if renderErr != nil {
+		log.WithFields(f).Debugf("unable to render email invalidation template for user: %s ", email)
+	} else {
+		if err := utils.SendEmail(subject, body, []string{email}); err != nil {
+			log.WithFields(f).Debugf("unable to send invalidation email to : %s ", email)
+		}
+	}
+
+	eventArgs.UserName = utils.GetBestUsername(user)
+	eventArgs.UserModel = user
+	eventArgs.UserID = user.UserID
+	eventArgs.ProjectName = claGroup.ProjectName
+	eventArgs.CLAGroupID = claGroupID
+	eventArgs.CompanyID = sig.SignatureUserCompanyID
+	eventArgs.CompanyName = companyModel.CompanyName
+	if eventData, ok := eventArgs.EventData.(*events.SignatureProjectInvalidatedEventData); ok {
+		eventData.SignatureID = sig.SignatureID
+		eventData.InvalidatedBy = authUser.UserName
+		eventData.Reason = metadata.Reason
+		eventData.InvalidationNote = metadata.Note
+	}
+	eventsService.LogEventWithContext(ctx, eventArgs)
+
+	return &models.EclaInvalidateResult{
+		SignatureID: sig.SignatureID,
+		ClaGroupID:  claGroupID,
+		CompanyID:   sig.SignatureUserCompanyID,
+		UserID:      sig.SignatureReferenceID,
+	}, nil
 }
 
 // EclaAutoCreate this routine updates the CCLA signature record by adjusting the auto_create_ecla column to the specified value

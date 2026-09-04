@@ -1281,6 +1281,47 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		return signatures.NewInvalidateICLAOK().WithXRequestID(reqID)
 	})
 
+	api.SignaturesInvalidateECLAHandler = signatures.InvalidateECLAHandlerFunc(func(params signatures.InvalidateECLAParams, authUser *auth.User) middleware.Responder {
+		reqID := utils.GetRequestID(params.XREQUESTID)
+		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+		f := logrus.Fields{
+			"functionName":   "v2.signatures.handlers.SignaturesInvalidateECLAHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"claGroupID":     params.ClaGroupID,
+			"signatureID":    params.SignatureID,
+		}
+		log.WithFields(f).Debug("Invalidating ECLA record...")
+		eventArgs := &events.LogEventArgs{
+			EventType: events.InvalidatedSignature,
+			EventData: &events.SignatureProjectInvalidatedEventData{
+				InvalidatedCount: 1,
+			},
+		}
+		result, err := v2SignatureService.InvalidateECLA(ctx, params.ClaGroupID, params.SignatureID, authUser, eventsService, eventArgs, &params.Body)
+		if err != nil {
+			msg := "unable to invalidate ecla"
+			log.WithFields(f).Warn(msg)
+			switch {
+			case errors.Is(err, errEclaNotFound):
+				return signatures.NewInvalidateECLANotFound().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseNotFoundWithError(reqID, msg, err))
+			case errors.Is(err, errNotEcla), errors.Is(err, errEclaWrongClaGroup):
+				return signatures.NewInvalidateECLABadRequest().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+			case errors.Is(err, errEclaForbidden):
+				return signatures.NewInvalidateECLAForbidden().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseForbiddenWithError(reqID, msg, err))
+			case errors.Is(err, errEclaAlreadyInvalidated):
+				return signatures.NewInvalidateECLAConflict().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseConflictWithError(reqID, msg, err))
+			}
+			return signatures.NewInvalidateECLAInternalServerError().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
+		}
+		return signatures.NewInvalidateECLAOK().WithXRequestID(reqID).WithPayload(result)
+	})
+
 	api.SignaturesEclaAutoCreateHandler = signatures.EclaAutoCreateHandlerFunc(func(eacp signatures.EclaAutoCreateParams, u *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(eacp.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
