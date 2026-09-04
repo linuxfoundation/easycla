@@ -73,3 +73,42 @@ admin disallowed (ACS resources `cla_manager_request_admin`,
 existing last-CLA-manager guard is unchanged: a signed CCLA always keeps at least one
 manager. Probe: `utils/cla_manager_requests_ops.sh` — approve/deny/invalidate mutate;
 list/get and the 400/403/404/409 probes are side-effect free.
+
+## Deployment & validation notes (dev validated 2026-09-04, Githash 1979904)
+
+All endpoints above were validated end-to-end on dev (status codes, response shapes,
+DynamoDB side effects, invalidation metadata, cross-feature count consistency). Findings
+that matter again at **prod rollout**:
+
+- **ACS resource object types — manual surgery required (or a fixed acs-cli sync).**
+  The platform ACS `POST /v1/api/resources` **ignores `object_type_id`** and always
+  creates resources as type 8 (community), which forwards no scopes — every scope-checked
+  M3 endpoint 403s for everyone. The acs-cli `services/11-cla-service.yaml` declares the
+  correct `objectTypeIDs`, but the sync (POST-based) cannot apply them. Dev was
+  hand-fixed via `PUT /resources/{id}` (honors the field; body needs `name`, `path`,
+  `object_type_id`, `any_role`): `cla_manager_request_approve`/`_deny`/`_admin`,
+  `ecla_invalidate`, `self_serve_request_corporate_signature` → type 1 (project);
+  `company_cla_groups` → type 2 (organization) plus a type-1 twin resource wired into
+  `ViewCompanyClaGroups` (`view_all`) so `project|organization` pair holders pass too,
+  and an extra `CLAManagerRequestAdmin` statement binding the type-1
+  `cla_manager_request` row. After edits, flush: `POST /warden/invalidate/cache
+  {"type":"resource"}` + `POST /cache/flush`. **Repeat the same surgery on prod ACS
+  before M3 goes live**, then verify with warden v1
+  `GET /acs/v1/api/warden/subjects/authorize?resource=<path>&actions=<action>` (returns
+  computed scopes per resource row). Quirk: statements POST works only **without** the
+  trailing slash (`/policies/{id}/statements`).
+- **LF-admin tokens always 403 on the DISALLOW_ADMIN ops** (2150 + all five 2151 ops):
+  warden short-circuits admins with `{"allowed":true,"isAdmin":true}` and **no scopes**,
+  and `DISALLOW_ADMIN_SCOPE` checks ignore the admin bit — identical to the long-standing
+  approval-list endpoint, so this is platform-standard, not a bug. Testing/FE integration
+  needs a real non-admin CLA-manager login; 2149 (`ALLOW_ADMIN`) works with admin tokens.
+- **Do not rely on the `sigtype_signed_approved_id` GSI for ECLAs**: the dynamo-events
+  stream handler (`v2/dynamo_events/signatures.go`) only handles `signature_type`
+  `ccla`/`cla`, so auto-created ECLAs (type `ecla`) never receive the GSI attribute
+  (pre-existing gap, not an M3 regression). M3 is unaffected —
+  `approvedContributorsCount` filters `project-signature-index` on
+  `signature_user_ccla_company_id` + `approved` + `signed`, and invalidate is PK-based.
+- **Known shape gaps** (documented in swagger): `userExternalID` is always empty in
+  manager-request responses (v1 read projection); `invalidateECLA` looks up the signature
+  before authz, so a bogus `signatureID` returns 404 (not 403) to any authenticated
+  caller.
