@@ -97,8 +97,8 @@ type Service interface {
 	CreateCLAManagerDesigneeByGroup(ctx context.Context, params cla_manager.CreateCLAManagerDesigneeByGroupParams, projectCLAGroups []*projects_cla_groups.ProjectClaGroup) ([]*models.ClaManagerDesignee, string, error)
 	ProjectCompanySignedOrNot(ctx context.Context, signedAtFoundation bool, projectCLAGroups []*projects_cla_groups.ProjectClaGroup, companyModel *v1Models.Company) error
 	IsCLAManagerDesignee(ctx context.Context, companySFID, claGroupID, userLFID string) (*models.UserRoleStatus, error)
-	GetCLAManagerRequests(ctx context.Context, companyID, claGroupID string) (*models.ClaManagerRequestList, error)
-	GetCLAManagerRequest(ctx context.Context, companyID, claGroupID, requestID string) (*models.ClaManagerRequest, error)
+	GetCLAManagerRequests(ctx context.Context, companyModel *v1Models.Company, claGroupID string) (*models.ClaManagerRequestList, error)
+	GetCLAManagerRequest(ctx context.Context, companyModel *v1Models.Company, claGroupID, requestID string) (*models.ClaManagerRequest, error)
 	ApproveCLAManagerRequest(ctx context.Context, authUser *auth.User, companyModel *v1Models.Company, claGroupID, requestID string) (*models.ClaManagerRequest, error)
 	DenyCLAManagerRequest(ctx context.Context, authUser *auth.User, companyModel *v1Models.Company, claGroupID, requestID string) (*models.ClaManagerRequest, error)
 

@@ -8,8 +8,11 @@ import (
 	"testing"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
+	"github.com/go-openapi/strfmt"
 	"github.com/linuxfoundation/easycla/cla-backend-go/company"
+	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	sigAPI "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/signatures"
 	service2 "github.com/linuxfoundation/easycla/cla-backend-go/project/service"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
 	"github.com/linuxfoundation/easycla/cla-backend-go/users"
@@ -59,6 +62,19 @@ func (f *fakeSignatureService) RemoveCLAManager(_ context.Context, signatureID, 
 	return f.signature, nil
 }
 
+func (f *fakeSignatureService) GetProjectCompanySignatures(_ context.Context, params sigAPI.GetProjectCompanySignaturesParams) (*models.Signatures, error) {
+	return &models.Signatures{Signatures: []*models.Signature{f.signature}}, nil
+}
+
+type fakeEventsService struct {
+	events.Service
+	logCalls int
+}
+
+func (f *fakeEventsService) LogEvent(args *events.LogEventArgs) {
+	f.logCalls++
+}
+
 func TestRemoveClaManagerRejectsRemovingTheLastManager(t *testing.T) {
 	sigService := &fakeSignatureService{signature: &models.Signature{
 		SignatureID:  "sig-1",
@@ -81,4 +97,29 @@ func TestRemoveClaManagerRejectsRemovingTheLastManager(t *testing.T) {
 		}
 	}
 	assert.Zero(t, sigService.removeCalls, "the signature ACL must not be modified")
+}
+
+func TestRemoveClaManagerRemovesOneOfTwoManagers(t *testing.T) {
+	sigService := &fakeSignatureService{signature: &models.Signature{
+		SignatureID: "sig-1",
+		SignatureACL: []models.User{
+			{LfUsername: "manager-one", LfEmail: strfmt.Email("m1@example.com")},
+			{LfUsername: "manager-two", LfEmail: strfmt.Email("m2@example.com")},
+		},
+	}}
+	eventsService := &fakeEventsService{}
+	s := service{
+		usersService:   &fakeUsersService{user: &models.User{UserID: "user-1", LfUsername: "manager-one", LfEmail: strfmt.Email("m1@example.com")}},
+		companyService: &fakeCompanyService{company: &models.Company{CompanyID: "company-1", CompanyName: "Acme"}},
+		projectService: &fakeProjectService{claGroup: &models.ClaGroup{ProjectID: "cla-group-1", ProjectName: "My Project"}},
+		sigService:     sigService,
+		eventsService:  eventsService,
+	}
+
+	result, err := s.RemoveClaManager(context.Background(), &auth.User{UserName: "org-admin"}, "company-1", "cla-group-1", "manager-one", "proj-sfid")
+
+	assert.Nil(t, err)
+	assert.NotNil(t, result)
+	assert.Equal(t, 1, sigService.removeCalls, "with two managers on the ACL the removal must proceed")
+	assert.Equal(t, 1, eventsService.logCalls)
 }

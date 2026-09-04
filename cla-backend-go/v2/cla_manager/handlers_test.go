@@ -37,28 +37,40 @@ type fakeRequestsService struct {
 	request    *models.ClaManagerRequest
 	requestErr error
 	calls      int
+	companyIDs []string
+	claGroups  []string
+	requestIDs []string
 }
 
-func (f *fakeRequestsService) GetCLAManagerRequests(_ context.Context, companyID, claGroupID string) (*models.ClaManagerRequestList, error) {
+func (f *fakeRequestsService) record(companyModel *v1Models.Company, claGroupID string) {
 	f.calls++
+	f.companyIDs = append(f.companyIDs, companyModel.CompanyID)
+	f.claGroups = append(f.claGroups, claGroupID)
+}
+
+func (f *fakeRequestsService) GetCLAManagerRequests(_ context.Context, companyModel *v1Models.Company, claGroupID string) (*models.ClaManagerRequestList, error) {
+	f.record(companyModel, claGroupID)
 	if f.list != nil || f.listErr != nil {
 		return f.list, f.listErr
 	}
 	return v2ClaManagerRequestList(nil), nil
 }
 
-func (f *fakeRequestsService) GetCLAManagerRequest(_ context.Context, companyID, claGroupID, requestID string) (*models.ClaManagerRequest, error) {
-	f.calls++
+func (f *fakeRequestsService) GetCLAManagerRequest(_ context.Context, companyModel *v1Models.Company, claGroupID, requestID string) (*models.ClaManagerRequest, error) {
+	f.record(companyModel, claGroupID)
+	f.requestIDs = append(f.requestIDs, requestID)
 	return f.request, f.requestErr
 }
 
-func (f *fakeRequestsService) ApproveCLAManagerRequest(_ context.Context, _ *auth.User, _ *v1Models.Company, claGroupID, requestID string) (*models.ClaManagerRequest, error) {
-	f.calls++
+func (f *fakeRequestsService) ApproveCLAManagerRequest(_ context.Context, _ *auth.User, companyModel *v1Models.Company, claGroupID, requestID string) (*models.ClaManagerRequest, error) {
+	f.record(companyModel, claGroupID)
+	f.requestIDs = append(f.requestIDs, requestID)
 	return f.request, f.requestErr
 }
 
-func (f *fakeRequestsService) DenyCLAManagerRequest(_ context.Context, _ *auth.User, _ *v1Models.Company, claGroupID, requestID string) (*models.ClaManagerRequest, error) {
-	f.calls++
+func (f *fakeRequestsService) DenyCLAManagerRequest(_ context.Context, _ *auth.User, companyModel *v1Models.Company, claGroupID, requestID string) (*models.ClaManagerRequest, error) {
+	f.record(companyModel, claGroupID)
+	f.requestIDs = append(f.requestIDs, requestID)
 	return f.request, f.requestErr
 }
 
@@ -175,9 +187,12 @@ func TestClaManagerRequestHandlers(t *testing.T) {
 				assert.Equal(t, tc.expectedStatus, status)
 				assert.Equal(t, tc.expectedCalls, service.calls)
 				if status == http.StatusOK {
+					assert.Equal(t, []string{"company-1"}, service.companyIDs, "the internal company ID from the fetched model must reach the service")
+					assert.Equal(t, []string{"cla-group-1"}, service.claGroups, "the CLA group mapped from the projectSFID must reach the service")
 					if op == opList {
 						assert.Contains(t, body, `"requests":[]`, "empty list must serialize as [] not null")
 					} else {
+						assert.Equal(t, []string{"req-1"}, service.requestIDs)
 						assert.Contains(t, body, `"requestID":"req-1"`)
 						assert.Contains(t, body, `"userID":"user-9"`)
 					}

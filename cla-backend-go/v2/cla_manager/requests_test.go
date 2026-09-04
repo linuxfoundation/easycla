@@ -19,6 +19,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	service2 "github.com/linuxfoundation/easycla/cla-backend-go/project/service"
 	v1Signatures "github.com/linuxfoundation/easycla/cla-backend-go/signatures"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -107,24 +108,53 @@ func (f *fakeEmailTemplateService) PrefillV2CLAProjectParams(projectSFIDs []stri
 
 func (f *fakeEmailTemplateService) GetCLAGroupTemplateParamsFromProjectSFID(claGroupVersion, projectSFID string) (emails.CLAGroupTemplateParams, error) {
 	f.renderCalls = append(f.renderCalls, projectSFID)
-	return emails.CLAGroupTemplateParams{}, errors.New("render short-circuit for tests")
+	return emails.CLAGroupTemplateParams{}, nil
 }
 
 func (f *fakeEmailTemplateService) GetCLAGroupTemplateParamsFromCLAGroup(claGroupID string) (emails.CLAGroupTemplateParams, error) {
 	return emails.CLAGroupTemplateParams{}, nil
 }
 
+type capturedEmail struct {
+	subject    string
+	body       string
+	recipients []string
+}
+
+type capturingEmailSender struct {
+	sent []capturedEmail
+}
+
+func (c *capturingEmailSender) SendEmail(subject string, body string, recipients []string) error {
+	c.sent = append(c.sent, capturedEmail{subject: subject, body: body, recipients: recipients})
+	return nil
+}
+
+func installEmailSender(t *testing.T) *capturingEmailSender {
+	t.Helper()
+	sender := &capturingEmailSender{}
+	prev := utils.GetEmailSender()
+	utils.SetEmailSender(sender)
+	t.Cleanup(func() { utils.SetEmailSender(prev) })
+	return sender
+}
+
+func acmeCompany() *v1Models.Company {
+	return &v1Models.Company{CompanyID: "company-1", CompanyName: "Acme", CompanyExternalID: "comp-sfid"}
+}
+
 func pendingRequest() *v1Models.ClaManagerRequest {
 	return &v1Models.ClaManagerRequest{
-		RequestID:         "req-1",
-		CompanyID:         "company-1",
-		CompanyExternalID: "comp-sfid",
+		RequestID: "req-1",
+		CompanyID: "company-1",
+		// the shared v1 read projection drops both external ids
+		CompanyExternalID: "",
 		CompanyName:       "Acme",
 		ProjectID:         "cla-group-1",
 		ProjectExternalID: "proj-sfid",
 		ProjectName:       "My Project",
 		UserID:            "user-9",
-		UserExternalID:    "user-sfid-9",
+		UserExternalID:    "",
 		UserName:          "Requester",
 		UserEmail:         "requester@example.com",
 		Status:            "pending",
@@ -152,20 +182,20 @@ func TestGetCLAManagerRequests(t *testing.T) {
 		mgr := &fakeManagerService{requestList: &v1Models.ClaManagerRequestList{Requests: []v1Models.ClaManagerRequest{*pendingRequest()}}}
 		s := &service{managerService: mgr}
 
-		result, err := s.GetCLAManagerRequests(context.Background(), "company-1", "cla-group-1")
+		result, err := s.GetCLAManagerRequests(context.Background(), acmeCompany(), "cla-group-1")
 		assert.Nil(t, err)
 		assert.Equal(t, [][]string{{"company-1", "cla-group-1"}}, mgr.listCalls)
 		if assert.Len(t, result.Requests, 1) {
 			got := result.Requests[0]
 			assert.Equal(t, "req-1", got.RequestID)
 			assert.Equal(t, "company-1", got.CompanyID)
-			assert.Equal(t, "comp-sfid", got.CompanyExternalID)
+			assert.Equal(t, "comp-sfid", got.CompanyExternalID, "enriched from the company model - the v1 read projection drops it")
 			assert.Equal(t, "Acme", got.CompanyName)
 			assert.Equal(t, "cla-group-1", got.ProjectID)
 			assert.Equal(t, "proj-sfid", got.ProjectExternalID)
 			assert.Equal(t, "My Project", got.ProjectName)
 			assert.Equal(t, "user-9", got.UserID)
-			assert.Equal(t, "user-sfid-9", got.UserExternalID)
+			assert.Empty(t, got.UserExternalID, "not projected by the legacy read path")
 			assert.Equal(t, "Requester", got.UserName)
 			assert.Equal(t, "requester@example.com", got.UserEmail)
 			assert.Equal(t, "pending", got.Status)
@@ -178,7 +208,7 @@ func TestGetCLAManagerRequests(t *testing.T) {
 		mgr := &fakeManagerService{requestList: &v1Models.ClaManagerRequestList{}}
 		s := &service{managerService: mgr}
 
-		result, err := s.GetCLAManagerRequests(context.Background(), "company-1", "cla-group-1")
+		result, err := s.GetCLAManagerRequests(context.Background(), acmeCompany(), "cla-group-1")
 		assert.Nil(t, err)
 		body, marshalErr := json.Marshal(result)
 		assert.Nil(t, marshalErr)
@@ -189,7 +219,7 @@ func TestGetCLAManagerRequests(t *testing.T) {
 		mgr := &fakeManagerService{listErr: errors.New("dynamo down")}
 		s := &service{managerService: mgr}
 
-		result, err := s.GetCLAManagerRequests(context.Background(), "company-1", "cla-group-1")
+		result, err := s.GetCLAManagerRequests(context.Background(), acmeCompany(), "cla-group-1")
 		assert.Nil(t, result)
 		assert.EqualError(t, err, "dynamo down")
 	})
@@ -215,7 +245,9 @@ func TestGetCLAManagerRequest(t *testing.T) {
 			mgr := &fakeManagerService{request: tc.request, requestErr: tc.err}
 			s := &service{managerService: mgr}
 
-			result, err := s.GetCLAManagerRequest(context.Background(), tc.companyID, tc.claGroup, "req-1")
+			companyModel := acmeCompany()
+			companyModel.CompanyID = tc.companyID
+			result, err := s.GetCLAManagerRequest(context.Background(), companyModel, tc.claGroup, "req-1")
 			assert.Equal(t, []string{"req-1"}, mgr.getCalls)
 			if tc.wantErr != nil {
 				assert.Nil(t, result)
@@ -225,13 +257,14 @@ func TestGetCLAManagerRequest(t *testing.T) {
 			assert.Nil(t, err)
 			assert.Equal(t, "req-1", result.RequestID)
 			assert.Equal(t, "user-9", result.UserID)
+			assert.Equal(t, "comp-sfid", result.CompanyExternalID, "enriched from the company model - the v1 read projection drops it")
 		})
 	}
 }
 
 func TestApproveCLAManagerRequest(t *testing.T) {
 	authUser := &auth.User{UserName: "manager-user", Email: "manager@example.com"}
-	companyModel := &v1Models.Company{CompanyID: "company-1", CompanyName: "Acme", CompanyExternalID: "comp-sfid"}
+	companyModel := acmeCompany()
 
 	t.Run("approve flips status, updates the signature ACL and notifies managers and requester", func(t *testing.T) {
 		approvedRequest := pendingRequest()
@@ -248,10 +281,12 @@ func TestApproveCLAManagerRequest(t *testing.T) {
 			emailTemplateService: emailSvc,
 		}
 
+		sender := installEmailSender(t)
 		result, err := s.ApproveCLAManagerRequest(context.Background(), authUser, companyModel, "cla-group-1", "req-1")
 		assert.Nil(t, err)
 		assert.Equal(t, "approved", result.Status)
 		assert.Equal(t, "req-1", result.RequestID)
+		assert.Equal(t, "comp-sfid", result.CompanyExternalID, "enriched from the company model - the v1 read projection drops it")
 		assert.Equal(t, [][]string{{"company-1", "cla-group-1", "req-1"}}, mgr.approveCalls)
 		assert.Equal(t, [][]string{{"sig-1", "user-9"}}, sigs.addCalls, "the requester is added to the CCLA signature ACL")
 
@@ -274,6 +309,14 @@ func TestApproveCLAManagerRequest(t *testing.T) {
 		}
 
 		assert.Len(t, emailSvc.renderCalls, 3, "one email per existing CLA manager plus one to the requester")
+		if assert.Len(t, sender.sent, 3) {
+			assert.Equal(t, []string{"m1@example.com"}, sender.sent[0].recipients)
+			assert.Equal(t, []string{"m2@example.com"}, sender.sent[1].recipients)
+			assert.Equal(t, []string{"requester@example.com"}, sender.sent[2].recipients)
+			assert.Contains(t, sender.sent[0].subject, "CLA Manager Access Approval Notice for My Project")
+			assert.Contains(t, sender.sent[2].subject, "New CLA Manager Access Approved for My Project")
+			assert.Contains(t, sender.sent[0].body, "Requester (requester@example.com)")
+		}
 	})
 
 	t.Run("missing or cross-tenant request maps to not found before any mutation", func(t *testing.T) {
@@ -324,7 +367,7 @@ func TestApproveCLAManagerRequest(t *testing.T) {
 
 func TestDenyCLAManagerRequest(t *testing.T) {
 	authUser := &auth.User{UserName: "manager-user", Email: "manager@example.com"}
-	companyModel := &v1Models.Company{CompanyID: "company-1", CompanyName: "Acme", CompanyExternalID: "comp-sfid"}
+	companyModel := acmeCompany()
 
 	t.Run("deny flips status and notifies without touching the signature ACL", func(t *testing.T) {
 		deniedRequest := pendingRequest()
@@ -341,9 +384,11 @@ func TestDenyCLAManagerRequest(t *testing.T) {
 			emailTemplateService: emailSvc,
 		}
 
+		sender := installEmailSender(t)
 		result, err := s.DenyCLAManagerRequest(context.Background(), authUser, companyModel, "cla-group-1", "req-1")
 		assert.Nil(t, err)
 		assert.Equal(t, "denied", result.Status)
+		assert.Equal(t, "comp-sfid", result.CompanyExternalID, "enriched from the company model - the v1 read projection drops it")
 		assert.Equal(t, [][]string{{"company-1", "cla-group-1", "req-1"}}, mgr.denyCalls)
 		assert.Empty(t, sigs.addCalls, "deny must not modify the signature ACL")
 
@@ -358,6 +403,13 @@ func TestDenyCLAManagerRequest(t *testing.T) {
 		}
 
 		assert.Len(t, emailSvc.renderCalls, 3, "one email per existing CLA manager plus one to the requester")
+		if assert.Len(t, sender.sent, 3) {
+			assert.Equal(t, []string{"m1@example.com"}, sender.sent[0].recipients)
+			assert.Equal(t, []string{"m2@example.com"}, sender.sent[1].recipients)
+			assert.Equal(t, []string{"requester@example.com"}, sender.sent[2].recipients)
+			assert.Contains(t, sender.sent[0].subject, "CLA Manager Access Denied Notice for My Project")
+			assert.Contains(t, sender.sent[2].subject, "New CLA Manager Access Denied for My Project")
+		}
 	})
 
 	t.Run("missing request maps to not found", func(t *testing.T) {

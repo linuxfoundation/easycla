@@ -18,7 +18,7 @@
 # Examples:
 #   ./utils/cla_manager_requests_ops.sh f7c7ac9c-4dbf-4104-ab3f-6b38a26d82dc a09P000000DsCE5IAN
 #   OP=get REQUEST_ID=<uuid> ./utils/cla_manager_requests_ops.sh f7c7ac9c-4dbf-4104-ab3f-6b38a26d82dc a09P000000DsCE5IAN
-#   OP=invalidate-ecla REASON=offboarded ./utils/cla_manager_requests_ops.sh 01af041c-fa69-4052-a23c-fb8c1d3bef24 <signature-uuid>
+#   OP=invalidate-ecla REASON=other ./utils/cla_manager_requests_ops.sh 01af041c-fa69-4052-a23c-fb8c1d3bef24 <signature-uuid>
 #   PRINCIPAL=lgryglicki SCOPE='a09P000000DsCE5IAN|00117000015vpjXAAQ' ./utils/cla_manager_requests_ops.sh f7c7ac9c-4dbf-4104-ab3f-6b38a26d82dc a09P000000DsCE5IAN
 
 [ -z "$OP" ] && OP=list

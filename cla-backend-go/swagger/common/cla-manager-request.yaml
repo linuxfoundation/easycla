@@ -40,7 +40,7 @@ properties:
     x-omitempty: false
   userExternalID:
     type: string
-    description: The requesting user's external ID
+    description: The requesting user's external ID (may be empty - the legacy read path does not project it)
     x-omitempty: false
   userName:
     type: string

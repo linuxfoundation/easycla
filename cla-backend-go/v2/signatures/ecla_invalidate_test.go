@@ -13,6 +13,7 @@ import (
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/go-openapi/runtime"
+	"github.com/go-openapi/strfmt"
 	"github.com/golang/mock/gomock"
 	mock_company "github.com/linuxfoundation/easycla/cla-backend-go/company/mocks"
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
@@ -27,10 +28,26 @@ import (
 	mock_projects_cla_groups "github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups/mocks"
 	v1Signatures "github.com/linuxfoundation/easycla/cla-backend-go/signatures"
 	mock_v1_signatures "github.com/linuxfoundation/easycla/cla-backend-go/signatures/mocks"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	mock_users "github.com/linuxfoundation/easycla/cla-backend-go/v2/signatures/mock_users"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type capturedEmail struct {
+	subject    string
+	body       string
+	recipients []string
+}
+
+type capturingEmailSender struct {
+	sent []capturedEmail
+}
+
+func (c *capturingEmailSender) SendEmail(subject string, body string, recipients []string) error {
+	c.sent = append(c.sent, capturedEmail{subject: subject, body: body, recipients: recipients})
+	return nil
+}
 
 func eclaItemSignature() *v1Signatures.ItemSignature {
 	return &v1Signatures.ItemSignature{
@@ -91,7 +108,7 @@ func TestService_InvalidateECLA(t *testing.T) {
 
 			mockUserService := mock_users.NewMockService(ctrl)
 			mockUserService.EXPECT().GetUser("user-1").
-				Return(&v1Models.User{UserID: "user-1", LfUsername: "contributor", Username: "Contributor"}, nil)
+				Return(&v1Models.User{UserID: "user-1", LfUsername: "contributor", Username: "Contributor", LfEmail: strfmt.Email("contributor@example.com")}, nil)
 
 			mockProjectService := mock_project.NewMockService(ctrl)
 			mockProjectService.EXPECT().GetCLAGroupByID(ctx, "cla-group-1").
@@ -105,6 +122,11 @@ func TestService_InvalidateECLA(t *testing.T) {
 				})
 
 			service := NewService(awsSession, "", mockProjectService, mockCompanyService, nil, mockProjectClaGroupsRepo, mockRepo, mockUserService, nil)
+
+			sender := &capturingEmailSender{}
+			prevSender := utils.GetEmailSender()
+			utils.SetEmailSender(sender)
+			t.Cleanup(func() { utils.SetEmailSender(prevSender) })
 
 			// the scope matches only the second project mapped to the CLA Group - any-match authorizes
 			authUser := &auth.User{UserName: "org-admin", Email: "org-admin@example.com", ACL: auth.ACL{Allowed: true, Scopes: []auth.Scope{{Type: auth.ProjectOrganization, ID: "proj-sfid|comp-sfid"}}}}
@@ -140,6 +162,13 @@ func TestService_InvalidateECLA(t *testing.T) {
 				assert.Equal(t, "cla-group-1", logged.CLAGroupID)
 				assert.Equal(t, "company-1", logged.CompanyID)
 				assert.Equal(t, "Acme", logged.CompanyName)
+			}
+
+			if assert.Len(t, sender.sent, 1, "the employee is notified about the invalidation") {
+				assert.Equal(t, []string{"contributor@example.com"}, sender.sent[0].recipients)
+				assert.Contains(t, sender.sent[0].subject, "ECLA invalidated for My Project")
+				assert.Contains(t, sender.sent[0].body, "My Project")
+				assert.Contains(t, sender.sent[0].body, "Acme")
 			}
 		})
 	}

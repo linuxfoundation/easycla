@@ -20,24 +20,31 @@ import (
 )
 
 // GetCLAManagerRequests returns the list of CLA manager requests for the given company and CLA group
-func (s *service) GetCLAManagerRequests(ctx context.Context, companyID, claGroupID string) (*models.ClaManagerRequestList, error) {
-	requestList, err := s.managerService.GetRequests(companyID, claGroupID)
+func (s *service) GetCLAManagerRequests(ctx context.Context, companyModel *v1Models.Company, claGroupID string) (*models.ClaManagerRequestList, error) {
+	requestList, err := s.managerService.GetRequests(companyModel.CompanyID, claGroupID)
 	if err != nil {
 		return nil, err
 	}
-	return v2ClaManagerRequestList(requestList), nil
+	result := v2ClaManagerRequestList(requestList)
+	// the shared v1 read projection drops company_external_id - enrich from the company model already in hand
+	for i := range result.Requests {
+		result.Requests[i].CompanyExternalID = companyModel.CompanyExternalID
+	}
+	return result, nil
 }
 
 // GetCLAManagerRequest returns the CLA manager request identified by requestID if it belongs to the given company and CLA group
-func (s *service) GetCLAManagerRequest(ctx context.Context, companyID, claGroupID, requestID string) (*models.ClaManagerRequest, error) {
+func (s *service) GetCLAManagerRequest(ctx context.Context, companyModel *v1Models.Company, claGroupID, requestID string) (*models.ClaManagerRequest, error) {
 	request, err := s.managerService.GetRequest(requestID)
 	if err != nil {
 		return nil, err
 	}
-	if request == nil || request.CompanyID != companyID || request.ProjectID != claGroupID {
+	if request == nil || request.CompanyID != companyModel.CompanyID || request.ProjectID != claGroupID {
 		return nil, errRequestNotFound
 	}
-	return v2ClaManagerRequest(request), nil
+	result := v2ClaManagerRequest(request)
+	result.CompanyExternalID = companyModel.CompanyExternalID
+	return result, nil
 }
 
 // ApproveCLAManagerRequest approves the CLA manager request, adds the requester to the CCLA signature ACL and sends the notification emails
@@ -131,7 +138,9 @@ func (s *service) ApproveCLAManagerRequest(ctx context.Context, authUser *auth.U
 		},
 	}, claGroupModel)
 
-	return v2ClaManagerRequest(request), nil
+	result := v2ClaManagerRequest(request)
+	result.CompanyExternalID = companyModel.CompanyExternalID
+	return result, nil
 }
 
 // DenyCLAManagerRequest denies the CLA manager request and sends the notification emails
@@ -218,7 +227,9 @@ func (s *service) DenyCLAManagerRequest(ctx context.Context, authUser *auth.User
 		CompanyName:      companyModel.CompanyName,
 	}, claGroupModel)
 
-	return v2ClaManagerRequest(request), nil
+	result := v2ClaManagerRequest(request)
+	result.CompanyExternalID = companyModel.CompanyExternalID
+	return result, nil
 }
 
 func v2ClaManagerRequest(src *v1Models.ClaManagerRequest) *models.ClaManagerRequest {

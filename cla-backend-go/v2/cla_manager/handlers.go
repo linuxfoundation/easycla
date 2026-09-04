@@ -430,7 +430,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			return cla_manager.NewGetCLAManagerRequestsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 		}
 
-		requestList, err := service.GetCLAManagerRequests(ctx, v1CompanyModel.CompanyID, cginfo.ClaGroupID)
+		requestList, err := service.GetCLAManagerRequests(ctx, v1CompanyModel, cginfo.ClaGroupID)
 		if err != nil {
 			msg := fmt.Sprintf("unable to lookup CLA Manager requests for Company ID: %s, Project ID: %s", params.CompanyID, params.ProjectSFID)
 			log.WithFields(f).WithError(err).Warn(msg)
@@ -476,7 +476,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			return cla_manager.NewGetCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 		}
 
-		request, err := service.GetCLAManagerRequest(ctx, v1CompanyModel.CompanyID, cginfo.ClaGroupID, params.RequestID)
+		request, err := service.GetCLAManagerRequest(ctx, v1CompanyModel, cginfo.ClaGroupID, params.RequestID)
 		if err != nil {
 			if errors.Is(err, errRequestNotFound) {
 				msg := fmt.Sprintf("request not found for Company ID: %s, Project ID: %s, Request ID: %s", params.CompanyID, params.ProjectSFID, params.RequestID)
