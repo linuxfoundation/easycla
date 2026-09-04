@@ -508,3 +508,172 @@ func TestPrepareSignTreatsEveryNotFoundShapeAsAMiss(t *testing.T) {
 		})
 	}
 }
+
+type fakeCorporateSign struct {
+	lfUsername    string
+	authorization string
+	input         *models.CorporateSignatureInput
+	output        *models.CorporateSignatureOutput
+	err           error
+	calls         int
+}
+
+func (f *fakeCorporateSign) RequestCorporateSignature(_ context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error) {
+	f.calls++
+	f.lfUsername, f.authorization, f.input = lfUsername, authorizationHeader, input
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.output, nil
+}
+
+type fakeSignatures struct {
+	signature *v1Models.Signature
+	err       error
+	calls     int
+}
+
+func (f *fakeSignatures) GetSignature(_ context.Context, _ string) (*v1Models.Signature, error) {
+	f.calls++
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.signature, nil
+}
+
+const (
+	testProjectSFID = "a09P000000DsCE9IAN"
+	testCompanySFID = "0014100000Te0fZAAR"
+	testCompanyID   = "9b8e7d66-40a5-4cde-9f00-3e1d1a2b3c4d"
+	testSignatureID = "7f0f1c22-3a51-49f5-b6a8-0f9d6a2e1c22"
+	testSignURL     = "https://demo.docusign.net/signing/startinsession.aspx?t=abc"
+)
+
+func newCorporateTestService(corporateSign CorporateSignService, signatures SignatureRepository) *service {
+	return &service{corporateSignService: corporateSign, signatureRepo: signatures}
+}
+
+func corporateInput() *models.SelfServeCorporateSignatureInput {
+	return &models.SelfServeCorporateSignatureInput{
+		ProjectSfid:    stringRef(testProjectSFID),
+		CompanySfid:    stringRef(testCompanySFID),
+		AuthorityAcked: true,
+		EmbargoAcked:   true,
+		ReturnURL:      strfmt.URI(testReturnURL),
+	}
+}
+
+func TestRequestCorporateSignatureRequiresBothAttestations(t *testing.T) {
+	testCases := []struct {
+		name           string
+		authorityAcked bool
+		embargoAcked   bool
+	}{
+		{"both missing", false, false},
+		{"authority only", true, false},
+		{"embargo only", false, true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			corporateSign := &fakeCorporateSign{}
+			signatures := &fakeSignatures{}
+			svc := newCorporateTestService(corporateSign, signatures)
+			input := corporateInput()
+			input.AuthorityAcked = tc.authorityAcked
+			input.EmbargoAcked = tc.embargoAcked
+
+			result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", input)
+
+			assert.ErrorIs(t, err, ErrAttestationRequired)
+			assert.Nil(t, result)
+			assert.Zero(t, corporateSign.calls)
+			assert.Zero(t, signatures.calls)
+		})
+	}
+}
+
+func TestRequestCorporateSignatureDelegatesVerbatim(t *testing.T) {
+	corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{SignatureID: testSignatureID, SignURL: testSignURL}}
+	signatures := &fakeSignatures{signature: &v1Models.Signature{SignatureID: testSignatureID, ProjectID: testCLAGroupID, SignatureReferenceID: testCompanyID}}
+	svc := newCorporateTestService(corporateSign, signatures)
+	input := corporateInput()
+	input.SigningEntityName = "My Company Signing Entity, Ltd."
+	input.SendAsEmail = true
+	input.AuthorityName = "Derk Miyamoto"
+	input.AuthorityEmail = "derk@example.org"
+
+	result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token-123", input)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, corporateSign.calls)
+	assert.Equal(t, "lgryglicki", corporateSign.lfUsername)
+	assert.Equal(t, "Bearer token-123", corporateSign.authorization)
+	assert.Equal(t, &models.CorporateSignatureInput{
+		ProjectSfid:       stringRef(testProjectSFID),
+		CompanySfid:       stringRef(testCompanySFID),
+		SigningEntityName: "My Company Signing Entity, Ltd.",
+		SendAsEmail:       true,
+		AuthorityName:     "Derk Miyamoto",
+		AuthorityEmail:    "derk@example.org",
+		ReturnURL:         strfmt.URI(testReturnURL),
+	}, corporateSign.input)
+	assert.Equal(t, testSignatureID, result.SignatureID)
+	assert.Equal(t, testSignURL, result.SignURL)
+	assert.Equal(t, testCLAGroupID, result.ClaGroupID)
+	assert.Equal(t, testCompanyID, result.CompanyID)
+	assert.Equal(t, testProjectSFID, result.ProjectSfid)
+	assert.Equal(t, testCompanySFID, result.CompanySfid)
+}
+
+func TestRequestCorporateSignatureDelegateErrorsPropagate(t *testing.T) {
+	delegateErr := errors.New("company does not exist")
+	corporateSign := &fakeCorporateSign{err: delegateErr}
+	signatures := &fakeSignatures{}
+	svc := newCorporateTestService(corporateSign, signatures)
+
+	result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", corporateInput())
+
+	assert.ErrorIs(t, err, delegateErr)
+	assert.Nil(t, result)
+	assert.Zero(t, signatures.calls)
+}
+
+func TestRequestCorporateSignatureReadBackIsBestEffort(t *testing.T) {
+	testCases := map[string]*fakeSignatures{
+		"read error": {err: errors.New("dynamodb is unavailable")},
+		"no record":  {},
+	}
+
+	for name, signatures := range testCases {
+		t.Run(name, func(t *testing.T) {
+			corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{SignatureID: testSignatureID, SignURL: testSignURL}}
+			svc := newCorporateTestService(corporateSign, signatures)
+
+			result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", corporateInput())
+
+			assert.NoError(t, err)
+			assert.Equal(t, 1, signatures.calls)
+			assert.Equal(t, testSignatureID, result.SignatureID)
+			assert.Equal(t, testSignURL, result.SignURL)
+			assert.Empty(t, result.ClaGroupID)
+			assert.Empty(t, result.CompanyID)
+			assert.Equal(t, testProjectSFID, result.ProjectSfid)
+			assert.Equal(t, testCompanySFID, result.CompanySfid)
+		})
+	}
+}
+
+func TestRequestCorporateSignatureSkipsReadBackWithoutASignatureID(t *testing.T) {
+	corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{}}
+	signatures := &fakeSignatures{}
+	svc := newCorporateTestService(corporateSign, signatures)
+
+	result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", corporateInput())
+
+	assert.NoError(t, err)
+	assert.Zero(t, signatures.calls)
+	assert.Empty(t, result.SignatureID)
+	assert.Equal(t, testProjectSFID, result.ProjectSfid)
+	assert.Equal(t, testCompanySFID, result.CompanySfid)
+}

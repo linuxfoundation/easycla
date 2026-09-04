@@ -2996,6 +2996,46 @@ paths:
       tags:
         - self_serve_sign
 
+  /self-serve/request-corporate-signature:
+    post:
+      summary: Requests and generates a new Corporate Signature from LFX Self Serve
+      description: Creates a new corporate signature given project and company IDs, exactly as /request-corporate-signature does, after verifying the two Self Serve attestations - the request is rejected with a 400 unless both authority_acked and embargo_acked are true
+      operationId: selfServeRequestCorporateSignature
+      parameters:
+        - $ref: "#/parameters/authorization"
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - name: input
+          in: body
+          schema:
+            $ref: '#/definitions/self-serve-corporate-signature-input'
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/self-serve-corporate-signature-output'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+        '409':
+          $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - self_serve_sign
+
   /cla-group/search:
     get:
       summary: Search CLA Groups
@@ -5357,6 +5397,12 @@ definitions:
 
   company-cla-group-manager:
     $ref: './common/company-cla-group-manager.yaml'
+
+  self-serve-corporate-signature-input:
+    $ref: './common/self-serve-corporate-signature-input.yaml'
+
+  self-serve-corporate-signature-output:
+    $ref: './common/self-serve-corporate-signature-output.yaml'
 
   #--------------------------------------
   # Docusign Webhook Payload
