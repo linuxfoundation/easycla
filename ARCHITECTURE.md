@@ -169,10 +169,6 @@ add/remove/designee, signed-CLA and activity views) plus the v3 org search and C
 Those stay enumerated in the [M3 brief](specs/001-easycla-ss-integration-fable/03-milestone-ccla-org-lens-fable.md)
 until settled.
 
-Field-level detail: [docs/MY_CLAS_API.md](docs/MY_CLAS_API.md). The status a row shows and the actions each
-status permits: [docs/MY_CLAS_STATUS_MATRIX.md](docs/MY_CLAS_STATUS_MATRIX.md) — the single source of truth
-SS renders against.
-
 ### SS → Contributor Console (M2 hand-off)
 
 SS resolves a CLA group, then hands off; the Console's decision screen owns the ICLA-vs-ECLA choice. GitHub
