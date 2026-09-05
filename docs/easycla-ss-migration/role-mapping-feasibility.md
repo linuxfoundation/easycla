@@ -217,7 +217,7 @@ Context **[verified]**: SS permission management is already federated per domain
 | Role model | `writer`/`auditor` per org | `cla-manager`/`signatory`/`designee` per **company × project/CLA group** | Own screens; can't reuse the Access tab |
 | org-admin ≠ CLA-manager | Adding a `writer` grants org-wide abilities | Grants **no** CLA authority | Explicit UX copy in both places — the likeliest user surprise |
 | People views | Access tab lists org roles | CLA managers invisible there | Decide: surface CLA roles read-only in People (cheap — the cla-managers endpoint is public, §5) or keep them in the CLA module |
-| Eligibility/limits | none comparable | LF SSO required for new managers; one-company-at-a-time role; staff-admin disallowed on CLA writes | Support docs + error copy |
+| Eligibility/limits | none comparable | LF SSO required for new managers; one-company-at-a-time role; staff-admin disallowed on *some* CLA writes (per endpoint — approval-list writes disallow it, most do not) | Support docs + error copy |
 | Support runbook | SS → member-service → FGA | SS → v4 → org-service → ACS | Feeds M3's exit criterion "role-bridge behavior documented for support" |
 
 Mitigating fact: all of this is the **status quo** — the Corporate Console behaves this way today. The new risk is contrast, not regression: SS-native modules set a faster baseline that makes the bridged CLA module look worse unless its pending/error states are deliberately designed.
