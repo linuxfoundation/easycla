@@ -34,7 +34,7 @@ Five milestones, each independently shippable and reversible — **M1–M3 are t
   - CCLA: `signature_type=ccla`, `reference_type=company`, has PDF, carries Approved Lists + `auto_create_ecla`.
   - **ECLA: `signature_type=cla`, `reference_type=user`, `signature_user_ccla_company_id=<company>` — no PDF, confirmed.** ECLAs can be auto-created by Approved List edits.
 - **DocuSign** lives in Go `v2/sign`: creates envelopes, returns an embedded-signing `sign_url`, receives webhooks, downloads the signed PDF to S3, updates the record. Consoles never talk to DocuSign directly.
-- **PR gating**: failed status check links to `{CLAContributorv2Base}/#/cla/project/{claGroupID}/user/{userID}?redirect=<PR URL>`; the base URL is an SSM parameter per environment — **a console→SS cutover would be a config flip with instant rollback**, though no milestone through M3 changes it (M2 deliberately left it unchanged).
+- **PR gating**: failed status check links to `{CLAContributorv2Base}/#/cla/project/{claGroupID}/user/{userID}?redirect=<PR URL>`; the base URL is an SSM parameter per environment — **a console→SS cutover would be a config flip**, though no milestone through M3 changes it (M2 deliberately left it unchanged). Rollback is *not* instant: SSM is read at process init and the value is copied into long-lived services (`config/config.go`, `cmd/server.go`), so warm Lambdas keep the old destination and produce mixed redirects until they recycle.
 - **Sanctions screening (SSS)**: corporate flows are gated by a live compliance check (`check-prepare-employee-signature`, and re-screen at CCLA finalization); enabled/required per environment.
 
 ### 2.2 UIs being absorbed
