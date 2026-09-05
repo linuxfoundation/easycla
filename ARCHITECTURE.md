@@ -217,7 +217,7 @@ hard-depend on v1 IDs it cannot resolve later: users resolve via the `lfx.lookup
 
 | Dependency | Used for | Contract note |
 |---|---|---|
-| **lfx-gateway** (Traefik) | routing + layer-1 authorization | EasyCLA is already behind it; nothing to onboard |
+| **lfx-gateway** (Traefik) | routing + layer-1 authorization | The gateway route needs no change — `cla-service.yaml` sends anything off its unauthenticated path allow-list to the `secured` router (jwks + ACS). But each new operation needs a companion **ACS resource + permission** registered in `acs-cli/services/11-cla-service.yaml` before production QA, or it 403s. M1/M2 are registered `anyRole: true`; M3's `self-serve/request-corporate-signature` is `anyRole: false` over `organization`, so it additionally needs a real org-scoped role assignment |
 | **ACS** (LFX v1) | CLA role+scope truth | async assignment; ~30-min authorize cache; one-company-at-a-time grants |
 | **user-service / org-service** (LFX v1) | self permission checks; identity and org resolution | v1 IDs may not remain resolvable — see P9 |
 | **Auth0** (+ Management API) | authentication; identity linking; JWKS | the `http://lfx.dev/claims/username` claim is audience-conditional |
