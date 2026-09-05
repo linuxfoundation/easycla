@@ -199,8 +199,9 @@ cannot yet verify a GitLab identity. The return URL is host-validated.
 
 ### v1-ID dependency (P9)
 
-v4 payloads still carry LFX **v1** user-service and org-service IDs, and both services are being deprecated
-(users collapse to email/username references; orgs to name/domain except true B2B orgs). SS must not
+v4 payloads still carry LFX **v1** user-service and org-service IDs. user-service deprecation is
+anticipated (users collapse to email/username references); org-service has **no announced deprecation** —
+the v2 model keeps true B2B orgs. Either way, SS must not
 hard-depend on v1 IDs it cannot resolve later: users resolve via the `lfx.lookup_v1_user_sfid.by_username` /
 `.by_email` NATS RPCs, orgs via the v1 org service on the api-gw secondary token.
 
@@ -212,7 +213,7 @@ hard-depend on v1 IDs it cannot resolve later: users resolve via the `lfx.lookup
 |---|---|---|
 | **lfx-gateway** (Traefik) | routing + layer-1 authorization | EasyCLA is already behind it; nothing to onboard |
 | **ACS** (LFX v1) | CLA role+scope truth | async assignment; ~30-min authorize cache; one-company-at-a-time grants |
-| **user-service / org-service** (LFX v1) | self permission checks; identity and org resolution | deprecation planned — see P9 |
+| **user-service / org-service** (LFX v1) | self permission checks; identity and org resolution | v1 IDs may not remain resolvable — see P9 |
 | **Auth0** (+ Management API) | authentication; identity linking; JWKS | the `http://lfx.dev/claims/username` claim is audience-conditional |
 | **DocuSign** | e-signature | server-side only, in `v2/sign` |
 | **DynamoDB + S3** | 19 tables; signed PDFs | unchanged through M3; PDFs served as presigned URLs |
