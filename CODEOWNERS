@@ -1,0 +1,12 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+# Architecture documentation requires review by the LFX architecture team.
+#
+# There is deliberately no `*` rule here: this file exists only to guard
+# ARCHITECTURE.md, not to impose review on the rest of the repository.
+#
+# Note: GitHub silently skips code owners that lack read access to the
+# repository. If the team below cannot read this repo, this rule will not fire.
+
+/ARCHITECTURE.md @linuxfoundation/lfx-architecture-team
