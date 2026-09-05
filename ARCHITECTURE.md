@@ -39,7 +39,7 @@ flowchart TB
         PCC["PCC EasyCLA module<br/>(unchanged — M4 not planned)"]
     end
     GW["lfx-gateway (Traefik)<br/>JWT signature + issuer · ACS warden · injects X-ACL"]
-    subgraph backend["EasyCLA backend (unchanged through M3)"]
+    subgraph backend["EasyCLA backend (system of record; not re-platformed before M5)"]
         V4["cla-backend-go — /v3 + /v4 Lambdas"]
         LEG["cla-backend-legacy — /v1 + /v2"]
     end
@@ -150,8 +150,11 @@ directly.
 ### SS → EasyCLA (`/cla-service/v3|v4` through lfx-gateway)
 
 All integration goes through **one SS server-side `cla` module**, so an M5 re-platform has a single adapter
-to rework. API responses carry no raw EasyCLA user IDs — with one exception: M2's `prepare-sign`
-hand-off returns a `signUrl` containing the user's UUID, which the browser navigates to.
+to rework. Through **M1–M2** the only raw EasyCLA user ID reaching the browser is in `prepare-sign`'s
+`signUrl`, which embeds the user's UUID in the hand-off route. **M3 carries more**: its organization-list,
+manager-request and ECLA-invalidation responses expose `userID`/`user_id`
+([docs/M3_ORG_LENS_API.md](docs/M3_ORG_LENS_API.md)), which are v1 IDs subject to the mapping rules in
+[§v1-ID dependency](#v1-id-dependency-p9).
 
 | Endpoint | Milestone | Contract |
 |---|---|---|
