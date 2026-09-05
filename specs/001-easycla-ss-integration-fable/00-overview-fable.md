@@ -101,7 +101,7 @@ Beyond the five milestones as described, the program must also account for:
 - **Signature invalidation** semantics (PCC feature, M4).
 - **Metrics/insights endpoints** consumed by the Corporate Console (M3).
 - **API consumers beyond the consoles** (anyone calling v3/v4 directly; audit before M5 contract changes).
-- **v1 user-service/org-service IDs inside v4 payloads** (both services are being deprecated in the LFX v2 transition): audit where they appear and resolve for rendering via the `lfx.lookup_v1_user_sfid.by_username` / `.by_email` NATS RPCs (lfx-v1-sync-helper) (users) and the v1 org service over the api-gw secondary token (orgs) — architecture-review action 2026-07-20.
+- **v1 user-service/org-service IDs inside v4 payloads** (user-service deprecation is anticipated in the LFX v2 transition; org-service has no announced deprecation): audit where they appear and resolve for rendering via the `lfx.lookup_v1_user_sfid.by_username` / `.by_email` NATS RPCs (lfx-v1-sync-helper) (users) and the v1 org service over the api-gw secondary token (orgs) — architecture-review action 2026-07-20.
 - **Decommission work as first-class scope**: DNS/CDN teardown, redirect stubs for bookmarked console URLs, support-doc updates in lfx-product-documentation.
 - **Parity long-tail from the product documentation** (lfx-product-documentation/easycla/v2-current, reviewed 2026-07-11):
   - **Email-based CCLA signatory signing**: the CLA signatory signs via an emailed DocuSign link and **does not need an LF SSO account** — a distinct UX path that must survive M3 (don't force signatories into SS).
