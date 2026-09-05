@@ -34,7 +34,7 @@ Five milestones, each independently shippable and reversible — **M1–M3 are t
   - CCLA: `signature_type=ccla`, `reference_type=company`, has PDF, carries Approved Lists + `auto_create_ecla`.
   - **ECLA: `signature_type=cla`, `reference_type=user`, `signature_user_ccla_company_id=<company>` — no PDF, confirmed.** ECLAs can be auto-created by Approved List edits.
 - **DocuSign** lives in Go `v2/sign`: creates envelopes, returns an embedded-signing `sign_url`, receives webhooks, downloads the signed PDF to S3, updates the record. Consoles never talk to DocuSign directly.
-- **PR gating**: failed status check links to `{CLAContributorv2Base}/#/cla/project/{claGroupID}/user/{userID}?redirect=<PR URL>`; the base URL is an SSM parameter per environment — **console→SS cutover is a config flip with instant rollback**.
+- **PR gating**: failed status check links to `{CLAContributorv2Base}/#/cla/project/{claGroupID}/user/{userID}?redirect=<PR URL>`; the base URL is an SSM parameter per environment — **a console→SS cutover would be a config flip**, though no milestone through M3 changes it (M2 deliberately left it unchanged). Rollback is *not* instant: SSM is read at process init and the value is copied into long-lived services (`config/config.go`, `cmd/server.go`), so warm Lambdas keep the old destination and produce mixed redirects until they recycle.
 - **Sanctions screening (SSS)**: corporate flows are gated by a live compliance check (`check-prepare-employee-signature`, and re-screen at CCLA finalization); enabled/required per environment.
 
 ### 2.2 UIs being absorbed
@@ -101,7 +101,7 @@ Beyond the five milestones as described, the program must also account for:
 - **Signature invalidation** semantics (PCC feature, M4).
 - **Metrics/insights endpoints** consumed by the Corporate Console (M3).
 - **API consumers beyond the consoles** (anyone calling v3/v4 directly; audit before M5 contract changes).
-- **v1 user-service/org-service IDs inside v4 payloads** (both services are being deprecated in the LFX v2 transition): audit where they appear and resolve for rendering via the `lfx.lookup_v1_user_sfid.by_username` / `.by_email` NATS RPCs (lfx-v1-sync-helper) (users) and the v1 org service over the api-gw secondary token (orgs) — architecture-review action 2026-07-20.
+- **v1 user-service/org-service IDs inside v4 payloads** (user-service deprecation is anticipated in the LFX v2 transition; org-service has no announced deprecation): audit where they appear and resolve for rendering via the `lfx.lookup_v1_user_sfid.by_username` / `.by_email` NATS RPCs (lfx-v1-sync-helper) (users) and the v1 org service over the api-gw secondary token (orgs) — architecture-review action 2026-07-20.
 - **Decommission work as first-class scope**: DNS/CDN teardown, redirect stubs for bookmarked console URLs, support-doc updates in lfx-product-documentation.
 - **Parity long-tail from the product documentation** (lfx-product-documentation/easycla/v2-current, reviewed 2026-07-11):
   - **Email-based CCLA signatory signing**: the CLA signatory signs via an emailed DocuSign link and **does not need an LF SSO account** — a distinct UX path that must survive M3 (don't force signatories into SS).
