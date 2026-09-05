@@ -27,7 +27,7 @@ production traffic. The program aims to complete M1–M3; **M4 and M5 are not pl
 ## 1. Shape of the system
 
 **Strangler pattern (P1)**: Self Serve becomes a *new client* of the existing EasyCLA APIs. No business logic
-is reimplemented in SS, and **enforcement — roles, approval lists, sanctions, PR gating — stays in EasyCLA**
+is reimplemented in SS, and **enforcement — roles, Approved Lists, sanctions, PR gating — stays in EasyCLA**
 through M1–M3. SS holds no CLA storage and caches no agreement data beyond request scope.
 
 ```mermaid
@@ -112,7 +112,7 @@ Three ACS properties leak into UX and cannot be designed away here: assignment i
 responses are cached **~30 minutes** (so revocations linger), and grants are **one-company-at-a-time**.
 Separately, whether a **staff-admin scope** satisfies a check is **per endpoint, not a blanket rule** —
 handlers pass `utils.ALLOW_ADMIN_SCOPE` or `utils.DISALLOW_ADMIN_SCOPE`, and ALLOW dominates (~79 call sites
-vs ~10). Approval-list writes disallow it; most CLA writes do not. Clients must not assume it is excluded.
+vs ~10). Approved List writes disallow it; most CLA writes do not. Clients must not assume it is excluded.
 
 Rejected, for the record: copying CLA into OpenFGA now (non-enforcing, and a third eventually-consistent truth
 on an async pipeline), and mapping org-admin to CLA-manager (`b2b_org#writer` has no project dimension).
@@ -150,7 +150,8 @@ directly.
 ### SS → EasyCLA (`/cla-service/v3|v4` through lfx-gateway)
 
 All integration goes through **one SS server-side `cla` module**, so an M5 re-platform has a single adapter
-to rework. The browser never sees raw EasyCLA user IDs.
+to rework. API responses carry no raw EasyCLA user IDs — with one exception: M2's `prepare-sign`
+hand-off returns a `signUrl` containing the user's UUID, which the browser navigates to.
 
 | Endpoint | Milestone | Contract |
 |---|---|---|
@@ -164,7 +165,7 @@ to rework. The browser never sees raw EasyCLA user IDs.
 | `POST /v4/self-serve/request-corporate-signature` | M3 | initiates CCLA signing; 400 unless both `authority_acked` and `embargo_acked` are set |
 
 **M3's inventory is not yet complete.** Beyond the endpoint above, the org lens absorbs the Corporate
-Console's existing v4 operations (approval-list CRUD, employee acknowledgements, CLA-manager
+Console's existing v4 operations (Approved List CRUD, employee acknowledgements, CLA-manager
 add/remove/designee, signed-CLA and activity views) plus the v3 org search and CLA metrics its BFF aggregates.
 Those stay enumerated in the [M3 brief](specs/001-easycla-ss-integration-fable/03-milestone-ccla-org-lens-fable.md)
 until settled.
@@ -176,14 +177,20 @@ goes through `prepare-sign` (the server verifies the returned `githubId` matches
 **Gerrit** redirects directly, signing under LF SSO; **GitLab-only CLA groups are blocked by design** — SS
 cannot yet verify a GitLab identity. The return URL is host-validated.
 
-### Guardrails that hold through M3
+### Guardrails
 
-- SS runs **no signing ceremony** and makes **no signing-initiation calls**; `prepare-sign` only prepares the
-  hand-off.
-- SS makes **no invalidation writes of any kind** (legal decision, 2026-08). Invalidation is a CLA-manager
-  action in the Corporate Console (`signature_approved = false`). **Sanctions screening is separate**: it sets
-  the company's `is_sanctioned` flag, surfacing as **Revoked**, not Invalidated — the two must never share
-  wording.
+The first two are **M2 scope**, not program-wide: M3 moves the Corporate Console's manager-facing operations
+into SS, which includes both server-side CCLA signing initiation
+(`POST /v4/self-serve/request-corporate-signature`, above) and manager-initiated ECLA invalidation. The rest
+hold through M3.
+
+- **M2 only** — SS runs **no signing ceremony** and makes **no signing-initiation calls**; `prepare-sign` only
+  prepares the hand-off.
+- **M2 only** — SS makes **no invalidation writes** from the My CLAs surface (legal decision, 2026-08):
+  a contributor cannot invalidate their own agreement. Invalidation is a CLA-manager action
+  (`signature_approved = false`), in the Corporate Console today and in the M3 org lens after.
+  **Sanctions screening is separate**: it sets the company's `is_sanctioned` flag, surfacing as **Revoked**,
+  not Invalidated — the two must never share wording.
 - **DocuSign never moves** (P4): envelope state, webhooks, and PDF storage stay in `v2/sign`; clients only
   fetch a `sign_url` and redirect. **Email-based CCLA signatory signing is preserved** (P8) — the signatory is
   never forced into SS or LF SSO.

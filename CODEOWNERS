@@ -6,7 +6,8 @@
 # There is deliberately no `*` rule here: this file exists only to guard
 # ARCHITECTURE.md, not to impose review on the rest of the repository.
 #
-# Note: GitHub silently skips code owners that lack read access to the
-# repository. If the team below cannot read this repo, this rule will not fire.
+# Note: GitHub silently skips code owners that lack **write** access to the
+# repository. If the team below does not have write access, this rule will not
+# fire -- read access is not enough.
 
 /ARCHITECTURE.md @linuxfoundation/lfx-architecture-team
