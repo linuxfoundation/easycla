@@ -149,8 +149,8 @@ directly.
 
 ### SS → EasyCLA (`/cla-service/v3|v4` through lfx-gateway)
 
-All integration goes through **one SS server-side `cla` module** (Express routes, mirroring the crowdfunding
-pattern), so an M5 re-platform has a single adapter to rework. The browser never sees raw EasyCLA user IDs.
+All integration goes through **one SS server-side `cla` module**, so an M5 re-platform has a single adapter
+to rework. The browser never sees raw EasyCLA user IDs.
 
 | Endpoint | Milestone | Contract |
 |---|---|---|
