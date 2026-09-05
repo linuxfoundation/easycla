@@ -201,7 +201,7 @@ Candidate read paths, assessed:
 
 **B. OpenFGA copy now — rejected, evidence strengthened.** The copy would be non-enforcing (v4 checks X-ACL/ACS and signature ACLs; no FGA CLA types exist — `lfx-v2-fga-sync/docs/fga-catalog.md`), and there are *two* upstream truths to sync (§1), doubling the divergence surface. ACS's 30-min cache already causes UI-vs-enforcement drift today; adding a third eventually-consistent copy on top of an async assignment pipeline is the "SS says I can, EasyCLA says I can't" scenario. Model CLA in FGA at M5, when enforcement itself moves.
 
-**C. Org-admin = CLA manager — rejected.** Beyond the legal/product semantics change (who may alter Approved Lists and sign CCLAs): v4's write paths check **project|organization tuple scopes** with staff-admin explicitly disallowed (§3). `b2b_org#writer` has no project dimension, so the mapping either grants Approved List control per-company-across-all-projects (a semantics change) or requires rewriting v4 enforcement — which is M5, not a UI milestone.
+**C. Org-admin = CLA manager — rejected.** Beyond the legal/product semantics change (who may alter Approved Lists and sign CCLAs): v4's write paths check **project|organization tuple scopes**, and the Approved List writes at issue here are among the endpoints that explicitly disallow staff-admin (§3 — the rule is per endpoint, not blanket). `b2b_org#writer` has no project dimension, so the mapping either grants Approved List control per-company-across-all-projects (a semantics change) or requires rewriting v4 enforcement — which is M5, not a UI milestone.
 
 **Net: the role difference is a contained adapter in the SS `cla` server module**, consistent with the program strategy (strangler with v4 as enforcement core until M5).
 
@@ -217,7 +217,7 @@ Context **[verified]**: SS permission management is already federated per domain
 | Role model | `writer`/`auditor` per org | `cla-manager`/`signatory`/`designee` per **company × project/CLA group** | Own screens; can't reuse the Access tab |
 | org-admin ≠ CLA-manager | Adding a `writer` grants org-wide abilities | Grants **no** CLA authority | Explicit UX copy in both places — the likeliest user surprise |
 | People views | Access tab lists org roles | CLA managers invisible there | Decide: surface CLA roles read-only in People (cheap — the cla-managers endpoint is public, §5) or keep them in the CLA module |
-| Eligibility/limits | none comparable | LF SSO required for new managers; one-company-at-a-time role; staff-admin disallowed on *some* CLA writes (per endpoint — approval-list writes disallow it, most do not) | Support docs + error copy |
+| Eligibility/limits | none comparable | LF SSO required for new managers; one-company-at-a-time role; staff-admin disallowed on *some* CLA writes (per endpoint — Approved List writes disallow it, most do not) | Support docs + error copy |
 | Support runbook | SS → member-service → FGA | SS → v4 → org-service → ACS | Feeds M3's exit criterion "role-bridge behavior documented for support" |
 
 Mitigating fact: all of this is the **status quo** — the Corporate Console behaves this way today. The new risk is contrast, not regression: SS-native modules set a faster baseline that makes the bridged CLA module look worse unless its pending/error states are deliberately designed.
