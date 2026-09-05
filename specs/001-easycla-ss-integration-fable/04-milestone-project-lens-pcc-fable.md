@@ -3,6 +3,8 @@
 **Status**: **DECISION-GATED** (2026-07-15 review): whether project-level EasyCLA administration moves to Self Serve or stays in PCC is an open product decision (Kieran/Manish/Heather) — this document describes the move-to-SS option; do not start until the placement decision lands | **Depends on**: M3 patterns (role bridge, reporting components) | **Retires**: PCC EasyCLA module (v1-frontend) | **Effort**: L
 **Spec**: [spec.md](spec.md) | **Overview**: [00-overview-fable.md](00-overview-fable.md)
 
+> **Not planned.** The program aims to complete **M1–M3**; M4 and M5 are not scheduled and may never be implemented. This document is a design option retained for reference, not committed scope.
+
 ## Goal
 
 Project administrators configure EasyCLA from Self Serve's Project lens: CLA groups, templates, GitHub/GitLab/Gerrit enrollment, signature reporting, events. The EasyCLA module is then removed from PCC.

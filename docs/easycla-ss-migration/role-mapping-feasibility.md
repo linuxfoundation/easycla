@@ -3,7 +3,7 @@ SPDX-License-Identifier: CC-BY-4.0 -->
 
 # Roles/Permissions Mapping Feasibility — EasyCLA ↔ LFX Self Serve
 
-**For**: Heather (PM), Kieran (strategy), architecture review | **From**: Michal (engineering) | **Date**: 2026-07-15 | **Renumbering note (2026-09-01)**: after the 2026-09-01 revision, old M4→M3 (org lens), M5→M4 (project lens), M6→M5 (K8s V2 API), and the old M2/M3 are the merged, implemented M2. This memo predates the renumbering and **mixes both schemes**: §2 and §7 were updated to current numbers (each marked "now Mx"), while §6 and the option-assessment tables still carry the original M3–M6 labels. Read any unqualified `M4`/`M5`/`M6` in those sections as the **original** scheme — subtract one for the current number. The analysis and verdicts are unchanged.
+**For**: Heather (PM), Kieran (strategy), architecture review | **From**: Michal (engineering) | **Date**: 2026-07-15 | **Renumbering note (2026-09-01)**: after the 2026-09-01 revision, old M4→M3 (org lens), M5→M4 (project lens), M6→M5 (K8s V2 API), and the old M2/M3 are the merged, implemented M2. This memo predates the renumbering; §2, §6, §7 and the option-assessment tables have since been updated to the current numbering (some carry an explicit "now Mx" marker). All milestone references below are current. The analysis and verdicts are unchanged.
 **Basis**: [00-overview-fable.md](../../specs/001-easycla-ss-integration-fable/00-overview-fable.md) §2.4/§3, [03-milestone-ccla-org-lens-fable.md](../../specs/001-easycla-ss-integration-fable/03-milestone-ccla-org-lens-fable.md) (formerly 04) role options; code citations verified 2026-07-15, re-checked 2026-07-20
 **Answers**: the open engineering action from the 2026-07-15 leadership review ([spec.md](../../specs/001-easycla-ss-integration-fable/spec.md) "Program review outcomes")
 
@@ -52,7 +52,7 @@ flowchart TB
     ORG -.->|"Option A bridge:<br/>SS calls v4 as another client,<br/>v4 + gateway keep enforcing"| V4
 ```
 
-Key mismatch (from milestone 04): an org-lens admin (`b2b_org#writer`) is **not** a CLA manager, and CLA authority is per **company × project/CLA group** — finer-grained than anything the org lens models. Note also that the EasyCLA side has **two** stores of manager truth (ACS scopes *and* the signature ACL) — this matters for UI gating (§5) and the OpenFGA option (§6).
+Key mismatch (from the org-lens milestone, now M3): an org-lens admin (`b2b_org#writer`) is **not** a CLA manager, and CLA authority is per **company × project/CLA group** — finer-grained than anything the org lens models. Note also that the EasyCLA side has **two** stores of manager truth (ACS scopes *and* the signature ACL) — this matters for UI gating (§5) and the OpenFGA option (§6).
 
 ---
 
@@ -190,35 +190,35 @@ Candidate read paths, assessed:
 
 ---
 
-## 6. Options assessment (confirming/overturning milestone 04)
+## 6. Options assessment (confirming/overturning the org-lens milestone)
 
 | | A. Bridge | B. Model CLA in OpenFGA now | C. Org-admin = CLA manager |
 |---|---|---|---|
-| Verdict | **Confirmed — recommended** | Rejected for M3–M5 (revisit at M6) | Rejected — hard technical blocker |
-| Cost vs. milestone-04 estimate | **Lower** | Higher (two upstream truths to sync) | Higher (requires rewriting v4 enforcement) |
+| Verdict | **Confirmed — recommended** | Rejected for M3–M4 (revisit at M5) | Rejected — hard technical blocker |
+| Cost vs. the original org-lens estimate | **Lower** | Higher (two upstream truths to sync) | Higher (requires rewriting v4 enforcement) |
 
-**A. Bridge — confirmed, cheaper than assumed.** The milestone-04 concern "v4 might not accept SS tokens without gateway changes" is resolved negatively: no gateway change, no EasyCLA auth change, no new token infrastructure (§4). Residual costs: the spikes' outcomes (possibly a small ACS policy addition), and inheriting today's failure modes unchanged — async ACS assignment (server-side retries stay in SS), the documented **one-company-at-a-time role limitation** (the bridge surfaces but cannot fix it), and the enforcement unevenness in §3, which SS must mirror, not mask.
+**A. Bridge — confirmed, cheaper than assumed.** The org-lens milestone's concern "v4 might not accept SS tokens without gateway changes" is resolved negatively: no gateway change, no EasyCLA auth change, no new token infrastructure (§4). Residual costs: the spikes' outcomes (possibly a small ACS policy addition), and inheriting today's failure modes unchanged — async ACS assignment (server-side retries stay in SS), the documented **one-company-at-a-time role limitation** (the bridge surfaces but cannot fix it), and the enforcement unevenness in §3, which SS must mirror, not mask.
 
-**B. OpenFGA copy now — rejected, evidence strengthened.** The copy would be non-enforcing (v4 checks X-ACL/ACS and signature ACLs; no FGA CLA types exist — `lfx-v2-fga-sync/docs/fga-catalog.md`), and there are *two* upstream truths to sync (§1), doubling the divergence surface. ACS's 30-min cache already causes UI-vs-enforcement drift today; adding a third eventually-consistent copy on top of an async assignment pipeline is the "SS says I can, EasyCLA says I can't" scenario. Model CLA in FGA at M6, when enforcement itself moves.
+**B. OpenFGA copy now — rejected, evidence strengthened.** The copy would be non-enforcing (v4 checks X-ACL/ACS and signature ACLs; no FGA CLA types exist — `lfx-v2-fga-sync/docs/fga-catalog.md`), and there are *two* upstream truths to sync (§1), doubling the divergence surface. ACS's 30-min cache already causes UI-vs-enforcement drift today; adding a third eventually-consistent copy on top of an async assignment pipeline is the "SS says I can, EasyCLA says I can't" scenario. Model CLA in FGA at M5, when enforcement itself moves.
 
-**C. Org-admin = CLA manager — rejected.** Beyond the legal/product semantics change (who may alter Approved Lists and sign CCLAs): v4's write paths check **project|organization tuple scopes** with staff-admin explicitly disallowed (§3). `b2b_org#writer` has no project dimension, so the mapping either grants Approved List control per-company-across-all-projects (a semantics change) or requires rewriting v4 enforcement — which is M6, not a UI milestone.
+**C. Org-admin = CLA manager — rejected.** Beyond the legal/product semantics change (who may alter Approved Lists and sign CCLAs): v4's write paths check **project|organization tuple scopes** with staff-admin explicitly disallowed (§3). `b2b_org#writer` has no project dimension, so the mapping either grants Approved List control per-company-across-all-projects (a semantics change) or requires rewriting v4 enforcement — which is M5, not a UI milestone.
 
-**Net: the role difference is a contained adapter in the SS `cla` server module**, consistent with the program strategy (strangler with v4 as enforcement core until M6).
+**Net: the role difference is a contained adapter in the SS `cla` server module**, consistent with the program strategy (strangler with v4 as enforcement core until M5).
 
 ### 6.1 UX consistency: how the bridge differs from SS-native permission management
 
-Concern raised in review: SS users may expect to manage permissions "the same way" everywhere, while CLA authority is managed through ACS. Assessment: **the storage split is invisible to users, but the *behavioral* differences are real and need explicit M4 design.**
+Concern raised in review: SS users may expect to manage permissions "the same way" everywhere, while CLA authority is managed through ACS. Assessment: **the storage split is invisible to users, but the *behavioral* differences are real and need explicit M3 design.**
 
 Context **[verified]**: SS permission management is already federated per domain — org admins via member-service (`lfx-self-serve/apps/lfx-one/src/server/services/org-lens-access.service.ts:60-102`), committee seats via committee-service, key contacts via member-service — each publishing OpenFGA tuples over NATS (`lfx-v2-fga-sync/docs/fga-catalog.md`; grants effective near-instantly). There is no unified permissions console. EasyCLA-in-SS follows the same shape (SS UI → domain service owns the grant); ACS is plumbing users never see, like member-service. What *does* leak to users:
 
-| Difference | SS-native modules | CLA module (bridged) | M4 design consequence |
+| Difference | SS-native modules | CLA module (bridged) | M3 design consequence |
 |---|---|---|---|
 | Grant latency | Near-instant (sync write + NATS) | **Async** (org-service → ACS; console polls 30×; 30-min warden cache — affects revocations too) | Honest **pending states** — no other SS module needs them |
 | Role model | `writer`/`auditor` per org | `cla-manager`/`signatory`/`designee` per **company × project/CLA group** | Own screens; can't reuse the Access tab |
 | org-admin ≠ CLA-manager | Adding a `writer` grants org-wide abilities | Grants **no** CLA authority | Explicit UX copy in both places — the likeliest user surprise |
 | People views | Access tab lists org roles | CLA managers invisible there | Decide: surface CLA roles read-only in People (cheap — the cla-managers endpoint is public, §5) or keep them in the CLA module |
 | Eligibility/limits | none comparable | LF SSO required for new managers; one-company-at-a-time role; staff-admin disallowed on CLA writes | Support docs + error copy |
-| Support runbook | SS → member-service → FGA | SS → v4 → org-service → ACS | Feeds M4's exit criterion "role-bridge behavior documented for support" |
+| Support runbook | SS → member-service → FGA | SS → v4 → org-service → ACS | Feeds M3's exit criterion "role-bridge behavior documented for support" |
 
 Mitigating fact: all of this is the **status quo** — the Corporate Console behaves this way today. The new risk is contrast, not regression: SS-native modules set a faster baseline that makes the bridged CLA module look worse unless its pending/error states are deliberately designed.
 
@@ -230,7 +230,7 @@ Mitigating fact: all of this is the **status quo** — the Corporate Console beh
 2. **Role-less user → M1 read path.** ~~Same exchange for a user with no ACS roles; `GET /cla-service/v4/signatures/user/{their-userID}`.~~ **Resolved by the shipped M1 — no longer a spike.** M1 does not use `/signatures/user/{userID}` (an older operation that also filters out ECLAs); it ships a purpose-built `GET /cla-service/v4/my-clas` whose ACS policy admits any authenticated user, with ownership enforced inside the endpoint. User tokens work as designed and no M2M fallback was needed. See [docs/MY_CLAS_API.md](../MY_CLAS_API.md).
 3. **Write path end-to-end.** As a dev CLA manager with an SS-minted token, `PUT /cla-service/v4/signatures/project/{projectSFID}/company/{companyID}/clagroup/{claGroupID}/approval-list` (note the path segment is `clagroup`, not `claGroupID`) adding a test email → expect 200. Repeat as a non-manager → expect 403 **at the gateway** (not v4), confirming where denial surfaces for UX copy.
 4. **X-ACL forgery check (hardening).** The v4 Lambda (`cla-easycla-api-v4-lambda`, us-east-2) has **no HTTP/API-Gateway event** — it is invoked lambda-to-lambda by the platform gateway (`cla-backend-go/serverless.yml:334-352`). So this is an **IAM review, not a curl**: audit who holds `lambda:InvokeFunction` on that function, and confirm whether the gateway's invoke path signs/derives `X-ACL` in a way a direct invoker could not forge (v4 trusts `X-ACL` unconditionally — §3). If any principal beyond the gateway can invoke it with an arbitrary payload, file a security issue (independent of this program).
-5. **Designee propagation clock.** `POST …/cla-manager-designee` for a test user, then poll user-service `me/permissions/checks` **and** the cla-managers endpoint, timestamping when each turns positive. Include a revocation timing check (the 30-min warden cache means removals may also linger). The numbers calibrate SS's retry budget and "pending" UX for M3/M4.
+5. **Designee propagation clock.** `POST …/cla-manager-designee` for a test user, then poll user-service `me/permissions/checks` **and** the cla-managers endpoint, timestamping when each turns positive. Include a revocation timing check (the 30-min warden cache means removals may also linger). The numbers calibrate SS's retry budget and "pending" UX for M3.
 
 ---
 

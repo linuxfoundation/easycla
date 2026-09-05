@@ -17,6 +17,8 @@
 | [04-milestone-project-lens-pcc-fable.md](04-milestone-project-lens-pcc-fable.md) | M4 — EasyCLA project administration in Project lens; remove from PCC |
 | [05-milestone-k8s-v2-api-fable.md](05-milestone-k8s-v2-api-fable.md) | M5 — EasyCLA API on Kubernetes as a V2 service; DynamoDB → Postgres evaluation |
 
+> **Program scope**: the program aims to complete **M1–M3** (M1 and M2 implemented and dark-launched; M3 in progress). **M4 and M5 are not planned yet** — they remain decision-gated and may never be implemented. Requirements below that are labelled M4 or M5 are specified but unscheduled. The target architecture through M3 is summarized in [ARCHITECTURE.md](../../ARCHITECTURE.md).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 (Milestone 1, implemented) - Contributor views their CLAs in Self Serve (Priority: P1)

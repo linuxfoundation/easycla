@@ -7,8 +7,7 @@ SPDX-License-Identifier: CC-BY-4.0
 Backend for the **M1 "My CLAs" (Me lens)** and **M2 "My CLAs actions"** milestones of the
 EasyCLA → LFX Self Serve program
 ([M1 epic linuxfoundation/lfx-self-serve#1157](https://github.com/linuxfoundation/lfx-self-serve/issues/1157),
-specs in [`specs/001-easycla-ss-integration-fable/m1-my-cla/`](https://github.com/linuxfoundation/easycla/tree/001-easycla-ss-integration/specs/001-easycla-ss-integration-fable/m1-my-cla)
-on the `001-easycla-ss-integration` branch).
+milestone specs in [`specs/001-easycla-ss-integration-fable/`](../specs/001-easycla-ss-integration-fable/spec.md)).
 
 Five EasyCLA v2 endpoints — four read-only plus the M2 contact-request POST — under `/v4`
 (`/cla-service/v4/...` through lfx-gateway). They let the authenticated user list **all
@@ -830,7 +829,7 @@ the latency envelope is to be confirmed on dev.
   ICLA. So allow-list only a client whose tokens are never surfaced to a user; SS needs a
   dedicated client for this hop first. The same caveat is recorded in code at the `azp` check.
 - **Both the caller-supplied identity list and the `azp` allow-list are transitional (P3/P9
-  of the trust-SS decision).** At M6, once EasyCLA runs on K8s, it should call
+  of the trust-SS decision).** At M5, once EasyCLA runs on K8s, it should call
   `lfx.auth-service.user_identity.list` itself over NATS for the token's subject — at which
   point the `githubId`/`githubUsername`/… parameters, the allow-list and the in-handler JWT
   verification all go away together. `swagger/cla.v2.yaml` carries the same note.
@@ -841,4 +840,4 @@ the latency envelope is to be confirmed on dev.
   allow-listed `azp`. A forged `X-ACL` can still assert a username, or the admin flag that
   bypasses ownership checks — both pre-existing, both now additionally requiring a valid
   token. Binding the principal to a token claim belongs to the v4 invoke-path trust work
-  (spike 4); the M6 move removes the header trust entirely.
+  (spike 4); the M5 move removes the header trust entirely.
