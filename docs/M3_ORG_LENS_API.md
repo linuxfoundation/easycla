@@ -80,6 +80,30 @@ existing last-CLA-manager guard is unchanged: a signed CCLA always keeps at leas
 manager. Probe: `utils/cla_manager_requests_ops.sh` — approve/deny/invalidate mutate;
 list/get and the 400/403/404/409 probes are side-effect free.
 
+## Sanctioned-company write gating ([lfx-self-serve#2153](https://github.com/linuxfoundation/lfx-self-serve/issues/2153))
+
+Every M3-surface write op targeting a company whose stored `is_sanctioned` flag is set —
+regardless of sanction origin (SSS or manual); no live SSS call is made — is rejected with
+HTTP 403 and a typed body: `code: "company_sanctioned"`, a trade-compliance `message`,
+`company_id`, `company_sfid`. Gated ops (11): `updateApprovalList`, `eclaAutoCreate` (both
+enable **and** disable — supersedes the M2 handler-local 400 on enable), `invalidateECLA`,
+`createCLAManager`, `deleteCLAManager`, `createCLAManagerDesignee`,
+`createCLAManagerDesigneeByGroup`, `inviteCompanyAdmin`, `createCLAManagerRequest`,
+`approveCLAManagerRequest`, `denyCLAManagerRequest`. Reads are unchanged and the CCLA
+signing path was already gated in M2. Invalidating a company's **existing** ECLAs when it
+becomes sanctioned stays blocked pending the product decision in
+[lfx-self-serve#2051](https://github.com/linuxfoundation/lfx-self-serve/issues/2051).
+Related fix ([lfx-self-serve#2186](https://github.com/linuxfoundation/lfx-self-serve/issues/2186)):
+removing an email from the approval list now invalidates **all** matching employee
+acknowledgements instead of paging by 10. Probe: `utils/sanctioned_write_gate.sh` —
+PASS = 403 `company_sanctioned` per op; payloads use bogus targets so probes are
+side-effect free even where the gate is broken, except eclaAutoCreate (no bogus
+placeholder exists for it, so it is skipped unless `ECLA_AUTO_CREATE_OK=1` — a broken
+gate then persists `auto_create_ecla=false` on the real CCLA) and updateApprovalList
+(targets the real CCLA — a broken gate rewrites its email approval-list column
+unchanged and adds an inactive approval-history row for the bogus email; junk only,
+no approval-state change).
+
 ## Deployment & validation notes (dev validated 2026-09-04, Githash 1979904)
 
 All endpoints above were validated end-to-end on dev (status codes, response shapes,

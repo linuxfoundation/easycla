@@ -498,6 +498,11 @@ func (s *Service) InvalidateECLA(ctx context.Context, claGroupID string, signatu
 		return nil, errEclaForbidden
 	}
 
+	if sanctionedErr := utils.CheckCompanySanctioned(companyModel); sanctionedErr != nil {
+		log.WithFields(f).Warnf("company %s is sanctioned - rejecting InvalidateECLA", companyModel.CompanyID)
+		return nil, sanctionedErr
+	}
+
 	if !sig.SignatureApproved {
 		return nil, errEclaAlreadyInvalidated
 	}

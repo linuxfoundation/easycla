@@ -3352,7 +3352,6 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		CompanyID:               companyID,
 	}
 
-	// Just grab and use the first one - need to figure out conflict resolution if more than one
 	expressionAttributeNames := map[string]*string{}
 	expressionAttributeValues := map[string]*dynamodb.AttributeValue{}
 	haveAdditions := false
@@ -3361,7 +3360,6 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 	employeeSignatureParams := signatures.GetProjectCompanyEmployeeSignaturesParams{
 		ProjectID: projectID,
 		CompanyID: companyID,
-		PageSize:  utils.Int64(10),
 	}
 
 	//authUser := auth.User{
