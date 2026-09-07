@@ -17,7 +17,13 @@ properties:
     x-omitempty: false
   github_id:
     type: string
+    description: the contributor's GitHub username (login)
     example: "123456"
+    x-omitempty: false
+  gitlab_id:
+    type: string
+    description: the contributor's GitLab username (login), mirroring github_id
+    example: "jdoe"
     x-omitempty: false
   email:
     type: string

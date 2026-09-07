@@ -5091,111 +5091,15 @@ func (h *Handlers) GetUnsignedProjectsForCompanyV1(w http.ResponseWriter, r *htt
 	respond.JSON(w, http.StatusOK, unsigned)
 }
 
-// POST /v1/company
-// Python: cla/routes.py:1189 post_company()
-// Calls: cla.controllers.company.create_company
-
+// POST /v1/company — retired (#2055): this path persisted companies without
+// company_external_id, producing orphans that never sync to Salesforce/org-service.
+// Company creation is v2-only now (v2/company.Service.CreateCompany -> orgClient.CreateOrg,
+// which always sets the external id). Kept registered (not unregistered) so every
+// caller gets an explicit, permanent signal instead of a generic 404/405.
 func (h *Handlers) PostCompanyV1(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	authUser, authErrResp, err := h.authValidator.Authenticate(r.Header)
-	if err != nil {
-		respond.JSON(w, http.StatusUnauthorized, authErrResp)
-		return
-	}
-
-	type request struct {
-		CompanyName string `json:"company_name"`
-		// CompanyManagerUserName, CompanyManagerUserEmail, CompanyManagerID are parsed for
-		// API compatibility but not used in company creation (mirrors Python behavior)
-		IsSanctioned *bool `json:"is_sanctioned"`
-	}
-	var req request
-	body, err := parseFlexibleParams(r)
-	if err != nil {
-		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"body": "invalid json"}})
-		return
-	}
-	if v, ok := flexibleStringParam(r, body, "company_name"); ok {
-		req.CompanyName = v
-	}
-	// Note: company_manager_* fields are parsed for API compatibility but not used in company creation
-	// This mirrors the Python behavior where these fields exist in the API but are not stored
-	if b, ok, err := flexibleBoolParam(r, body, "is_sanctioned"); err != nil {
-		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"is_sanctioned": err.Error()}})
-		return
-	} else if ok {
-		req.IsSanctioned = &b
-	}
-	companyName := strings.TrimSpace(req.CompanyName)
-	if companyName == "" {
-		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"company_name": "Missing required value"}})
-		return
-	}
-
-	isSanctioned := false
-	if req.IsSanctioned != nil {
-		isSanctioned = *req.IsSanctioned
-	}
-
-	// Manager is always the authenticated user in the legacy Python controller.
-	managerItem, _, err := h.getOrCreateUser(ctx, authUser)
-	if err != nil {
-		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
-		return
-	}
-	managerID := getAttrString(managerItem, "user_id")
-
-	// Duplicate check matches Python: iterate all companies and compare company_name exactly.
-	companies, err := h.companies.ScanAll(ctx)
-	if err != nil {
-		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
-		return
-	}
-	for _, c := range companies {
-		if getAttrString(c, "company_name") == companyName {
-			respond.JSON(w, http.StatusConflict, map[string]any{
-				"error":      "Company already exists.",
-				"company_id": getAttrString(c, "company_id"),
-			})
-			return
-		}
-	}
-
-	now := time.Now().UTC()
-	companyID := uuid.New().String()
-	item := map[string]types.AttributeValue{
-		"company_id":          &types.AttributeValueMemberS{Value: companyID},
-		"company_name":        &types.AttributeValueMemberS{Value: companyName},
-		"signing_entity_name": &types.AttributeValueMemberS{Value: companyName},
-		"company_manager_id":  &types.AttributeValueMemberS{Value: managerID},
-		"company_acl":         &types.AttributeValueMemberSS{Value: []string{authUser.Username}},
-		"is_sanctioned":       &types.AttributeValueMemberBOOL{Value: isSanctioned},
-		"date_created":        &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)},
-		"date_modified":       &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)},
-		"version":             &types.AttributeValueMemberS{Value: "v1"},
-	}
-	if isSanctioned {
-		item["sanctioned_date"] = &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)}
-	}
-
-	if err := h.companies.PutItem(ctx, item); err != nil {
-		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
-		return
-	}
-
-	// Audit event (best-effort), matches controller wording.
-	eventData := fmt.Sprintf("User %s created company %s with company_id: %s.", authUser.Username, companyName, companyID)
-	eventSummary := fmt.Sprintf("User %s created company %s.", authUser.Username, companyName)
-	h.putAuditEventBestEffort(ctx, auditEventInput{
-		EventType:      "CreateCompany",
-		EventCompanyID: companyID,
-		EventData:      eventData,
-		EventSummary:   eventSummary,
-		ContainsPII:    false,
+	respond.JSON(w, http.StatusGone, respond.ErrorBody{
+		Message: "This endpoint has been retired and no longer creates companies. Use the EasyCLA v2 API instead: POST /v4/user/{userID}/company (createCompany).",
 	})
-
-	respond.JSON(w, http.StatusOK, store.ItemToInterfaceMap(item))
 }
 
 // PUT /v1/company

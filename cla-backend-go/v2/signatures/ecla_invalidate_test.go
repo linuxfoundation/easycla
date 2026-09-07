@@ -281,6 +281,41 @@ func TestService_InvalidateECLAValidation(t *testing.T) {
 		{name: "already invalidated ecla conflicts", sig: invalidated, authUser: managerUser, expectedErr: errEclaAlreadyInvalidated},
 	}
 
+	// the panic-after-write regression lock: GetCLAGroupByID returning (nil, nil) must error
+	// out BEFORE the signature is invalidated
+	t.Run("cla group lookup returning nil without error is rejected before any mutation", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ctx := context.Background()
+
+		mockRepo := mock_v1_signatures.NewMockSignatureRepository(ctrl)
+		mockRepo.EXPECT().GetItemSignature(ctx, "sig-1").Return(eclaItemSignature(), nil)
+		mockRepo.EXPECT().InvalidateProjectRecordWithMetadata(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+		mockCompanyService := mock_company.NewMockIService(ctrl)
+		mockCompanyService.EXPECT().GetCompany(ctx, "company-1").
+			Return(&v1Models.Company{CompanyID: "company-1", CompanyExternalID: "comp-sfid", CompanyName: "Acme"}, nil)
+
+		mockProjectClaGroupsRepo := mock_projects_cla_groups.NewMockRepository(ctrl)
+		mockProjectClaGroupsRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-1").
+			Return([]*projects_cla_groups.ProjectClaGroup{{ProjectSFID: "proj-sfid"}}, nil)
+
+		mockUserService := mock_users.NewMockService(ctrl)
+		mockUserService.EXPECT().GetUser("user-1").
+			Return(&v1Models.User{UserID: "user-1", LfUsername: "contributor"}, nil)
+
+		mockProjectService := mock_project.NewMockService(ctrl)
+		mockProjectService.EXPECT().GetCLAGroupByID(ctx, "cla-group-1").Return(nil, nil)
+
+		service := NewService(awsSession, "", mockProjectService, mockCompanyService, nil, mockProjectClaGroupsRepo, mockRepo, mockUserService, nil)
+
+		result, err := service.InvalidateECLA(ctx, "cla-group-1", "sig-1", managerUser, nil, eclaEventArgs(), nil)
+		assert.Nil(t, result)
+		if assert.Error(t, err) {
+			assert.Contains(t, err.Error(), "cla group not found for claGroupID: cla-group-1")
+		}
+	})
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)

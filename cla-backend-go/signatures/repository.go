@@ -5257,6 +5257,7 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 			out.List = append(out.List, &models.CorporateContributor{
 				SignatureID:            sig.SignatureID,
 				GithubID:               sig.UserGithubUsername,
+				GitlabID:               sig.UserGitlabUsername,
 				LinuxFoundationID:      sig.UserLFUsername,
 				Name:                   sigName,
 				SignatureVersion:       signatureVersion,
