@@ -1684,6 +1684,7 @@ func fillCorporateContributorModel(wg *sync.WaitGroup, usersRepo users.UserRepos
 	var contributor models.CorporateContributor
 	var sigSignedTime = sig.SignatureCreated
 	contributor.GithubID = user.GithubUsername
+	contributor.GitlabID = user.GitlabUsername
 	contributor.LinuxFoundationID = user.LfUsername
 	contributor.SignatureApproved = sig.SignatureApproved
 	contributor.SignatureSigned = sig.SignatureSigned

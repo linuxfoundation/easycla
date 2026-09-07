@@ -24,6 +24,7 @@ func corporateContributorsFixture() *v1Models.CorporateContributorList {
 				SignatureID:       "sig-1",
 				SignatureVersion:  "2",
 				GithubID:          "gh-alice",
+				GitlabID:          "gl-alice",
 				LinuxFoundationID: "alice-lfid",
 				Name:              "Alice Smith",
 				Email:             "alice@example.com",
@@ -122,6 +123,7 @@ func TestService_GetClaGroupCorporateContributors(t *testing.T) {
 	assert.Equal(t, "2", result.List[0].SignatureVersion, "signature_version must survive the v1 to v2 conversion")
 	assert.Equal(t, "alice-lfid", result.List[0].LinuxFoundationID)
 	assert.Equal(t, "gh-alice", result.List[0].GithubID)
+	assert.Equal(t, "gl-alice", result.List[0].GitlabID, "gitlab_id must survive the v1 to v2 conversion")
 	assert.Equal(t, "sig-2", result.List[1].SignatureID)
 	assert.Empty(t, result.List[1].LinuxFoundationID, "a contributor without an LF login must not be dropped")
 	assert.Equal(t, "bob@example.com", result.List[1].Email)

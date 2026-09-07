@@ -167,6 +167,7 @@ func TestGetCompanyProjectContributors(t *testing.T) {
 				mockUserRepo.EXPECT().GetUser(sig.SignatureReferenceID).Return(&v1Models.User{
 					Username:       "username",
 					GithubUsername: "github-username",
+					GitlabUsername: "gitlab-username",
 					LfUsername:     "lf-username",
 					UserID:         sig.SignatureReferenceID,
 				}, nil)
@@ -190,6 +191,7 @@ func TestGetCompanyProjectContributors(t *testing.T) {
 			// check the timestamp order
 			for i, expected := range tc.expectedOrder {
 				assert.Equal(t, expected, response.List[i].Timestamp)
+				assert.Equal(t, "gitlab-username", response.List[i].GitlabID)
 			}
 		})
 	}

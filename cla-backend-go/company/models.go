@@ -5,6 +5,7 @@ package company
 
 import (
 	"context"
+	"time"
 
 	"github.com/go-openapi/strfmt"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
@@ -104,7 +105,10 @@ func (dbCompanyModel *DBModel) toModel() (*models.Company, error) {
 	}, nil
 }
 
-// dbModelsToResponseModels is a helper routine to convert the (internal) database model to a (public) swagger model
+// dbModelsToResponseModels converts DB rows to swagger models. includeChildCompanies=true
+// returns every row (the org lens). includeChildCompanies=false returns exactly one
+// deterministic "parent" row: duplicate rows per SFID are a known data issue (separate merge
+// runbook), so ties are broken by oldest date_created then smallest company_id, and are logged.
 func dbModelsToResponseModels(ctx context.Context, dbModels []DBModel, includeChildCompanies bool) ([]*models.Company, error) {
 	f := logrus.Fields{
 		"functionName":          "company.models.dbModelsToResponseModels",
@@ -113,27 +117,64 @@ func dbModelsToResponseModels(ctx context.Context, dbModels []DBModel, includeCh
 	}
 
 	var companyModels []*models.Company
+	var all, candidates []*models.Company
 	var err error
 	for _, dbModel := range dbModels {
 		respModel, conversionErr := dbModel.toModel()
 		if conversionErr != nil {
 			log.WithFields(f).WithError(conversionErr).Warn("unable to convert db model to company model")
 			err = conversionErr
-		} else {
-			// log.WithFields(f).Debugf("Converted %+v to %+v", dbModel, respModel)
-			if includeChildCompanies {
-				companyModels = append(companyModels, respModel)
-			} else {
-				// only include if company is not a signing entity name with different name
-				if respModel.SigningEntityName == "" || respModel.CompanyName == respModel.SigningEntityName {
-					companyModels = append(companyModels, respModel)
-					break // no need to continue
-				}
-			}
+			continue
+		}
+		if includeChildCompanies {
+			companyModels = append(companyModels, respModel)
+			continue
+		}
+		all = append(all, respModel)
+		// only a candidate if company is not a signing entity name with a different name
+		if respModel.SigningEntityName == "" || respModel.CompanyName == respModel.SigningEntityName {
+			candidates = append(candidates, respModel)
 		}
 	}
+	if includeChildCompanies {
+		return companyModels, err
+	}
+	if len(all) == 0 {
+		return companyModels, err // every row (if any) failed conversion
+	}
 
-	return companyModels, err
+	pick := candidates
+	if len(pick) == 0 {
+		// Rows exist for this SFID, just none look like a bare "parent" record - still a real
+		// company (the org lens lists these same rows), so fall back across all of them instead
+		// of reporting company-not-found.
+		log.WithFields(f).Warnf("no parent-like company record for this SFID - falling back across %d signing-entity row(s)", len(all))
+		pick = all
+	}
+	winner := pick[0]
+	for _, c := range pick[1:] {
+		if companyIsOlder(c, winner) {
+			winner = c
+		}
+	}
+	if len(pick) > 1 {
+		ids := make([]string, 0, len(pick))
+		for _, c := range pick {
+			ids = append(ids, c.CompanyID)
+		}
+		log.WithFields(f).WithField("candidateCompanyIDs", ids).Warn("multiple company records share this external SFID - picked deterministically, remaining need a data merge")
+	}
+	return []*models.Company{winner}, nil
+}
+
+// companyIsOlder reports whether c predates winner, tie-breaking on the smaller company_id so
+// repeated calls return the same row.
+func companyIsOlder(c, winner *models.Company) bool {
+	ct, wt := time.Time(c.Created), time.Time(winner.Created)
+	if !ct.Equal(wt) {
+		return ct.Before(wt)
+	}
+	return c.CompanyID < winner.CompanyID
 }
 
 // toModel is a helper routine to convert the (internal) database model to a (public) swagger model

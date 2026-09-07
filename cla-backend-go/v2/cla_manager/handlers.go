@@ -49,7 +49,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"CompanyID":      params.CompanyID,
 			"ProjectSFID":    params.ProjectSFID,
-			"authUser":       *params.XUSERNAME,
+			"authUser":       utils.StringValue(params.XUSERNAME),
 		}
 
 		// Lookup the company by internal ID
@@ -101,7 +101,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			"CompanyID":      params.CompanyID,
 			"ProjectSFID":    params.ProjectSFID,
 			"userLFID":       params.UserLFID,
-			"authUser":       *params.XUSERNAME,
+			"authUser":       utils.StringValue(params.XUSERNAME),
 		}
 
 		// Lookup the company by internal ID
@@ -144,7 +144,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 			"CompanyID":      params.CompanyID,
 			"ProjectSFID":    params.ProjectSFID,
-			"authUser":       *params.XUSERNAME,
+			"authUser":       utils.StringValue(params.XUSERNAME),
 		}
 
 		// Lookup the company by internal ID

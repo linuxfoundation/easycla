@@ -19,6 +19,10 @@ properties:
     type: string
     example: "123456"
     x-omitempty: false
+  gitlab_id:
+    type: string
+    example: "789012"
+    x-omitempty: false
   email:
     type: string
     example: "v1"

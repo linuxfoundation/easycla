@@ -217,6 +217,7 @@ func (s service) AddClaManager(ctx context.Context, authUser *auth.User, company
 	if projectErr != nil || claGroupModel == nil {
 		return nil, projectErr
 	}
+	projectSFName = claGroupModel.ProjectName
 
 	// Look up signature ACL to ensure the user can add cla manager
 
@@ -337,6 +338,7 @@ func (s service) RemoveClaManager(ctx context.Context, authUser *auth.User, comp
 	if projectErr != nil || claGroupModel == nil {
 		return nil, projectErr
 	}
+	projectSFName = claGroupModel.ProjectName
 
 	signed := true
 	approved := true

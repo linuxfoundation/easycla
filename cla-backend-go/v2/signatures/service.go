@@ -514,6 +514,9 @@ func (s *Service) InvalidateECLA(ctx context.Context, claGroupID string, signatu
 	if claGrpErr != nil {
 		return nil, claGrpErr
 	}
+	if claGroup == nil {
+		return nil, fmt.Errorf("cla group not found for claGroupID: %s", claGroupID)
+	}
 
 	log.WithFields(f).Debug("invalidating signature record ...")
 	note := fmt.Sprintf("Signature invalidated (approved set to false) by %s for %s ", authUser.UserName, utils.GetBestUsername(user))

@@ -5411,7 +5411,7 @@ parameters:
     required: true
   myClasLfUsername:
     name: lfUsername
-    description: The LF username (LFID) of the user - when omitted, the authenticated principal's username is used; unless the caller is an admin or a trusted LFX Self Serve client, a different value is not searched and is reported in skippedIdentities. The caller-supplied identity list is transitional - at M6, once EasyCLA runs on the K8s cluster, it should call lfx.auth-service.user_identity.list over NATS itself and drop both the list and the azp allow-list authorizing it
+    description: The LF username (LFID) of the user - when omitted, the authenticated principal's username is used; unless the caller is an admin or a trusted LFX Self Serve client, a different value is not searched and is reported in skippedIdentities. The caller-supplied identity list is transitional - at M5, once EasyCLA runs on the K8s cluster, it should call lfx.auth-service.user_identity.list over NATS itself and drop both the list and the azp allow-list authorizing it
     in: query
     type: string
     required: false
