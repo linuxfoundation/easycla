@@ -68,7 +68,7 @@ classify () {
     return
   fi
   local code
-  code="$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer ${TOKEN}" "${GW}/organization-service/v1/orgs/${sfid}")"
+  code="$(curl -s -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 20 -H "Authorization: Bearer ${TOKEN}" "${GW}/organization-service/v1/orgs/${sfid}")"
   [ -n "$SLEEP_S" ] && sleep "$SLEEP_S"
   case "$code" in
     200) echo "SFID_OK" ;;
@@ -77,7 +77,7 @@ classify () {
   esac
 }
 
-echo -e "company_id\tcompany_name\tsigning_entity_name\tcompany_external_id\tsfid_status\tactive_ccla_count\tactive_ecla_count"
+printf 'company_id\tcompany_name\tsigning_entity_name\tcompany_external_id\tsfid_status\tactive_ccla_count\tactive_ecla_count\n'
 
 total=0
 missing=0
@@ -104,6 +104,9 @@ do
     company_name="$(echo "$item" | jq -r '.company_name.S // ""')"
     signing_entity_name="$(echo "$item" | jq -r '.signing_entity_name.S // ""')"
     sfid="$(echo "$item" | jq -r '.company_external_id.S // ""')"
+    # trim so a whitespace-only SFID is tiered MISSING_SFID (authoritative), not queried
+    sfid="${sfid#"${sfid%%[![:space:]]*}"}"
+    sfid="${sfid%"${sfid##*[![:space:]]}"}"
 
     status="$(classify "$sfid")"
     ccla_count="$(count_query reference-signature-index "signature_reference_id = :cid" \
@@ -113,7 +116,7 @@ do
       "signature_approved = :b AND signature_signed = :b" \
       "{\":cid\":{\"S\":\"${company_id}\"},\":b\":{\"BOOL\":true}}")"
 
-    echo -e "${company_id}\t${company_name}\t${signing_entity_name}\t${sfid}\t${status}\t${ccla_count}\t${ecla_count}"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "${company_id}" "${company_name}" "${signing_entity_name}" "${sfid}" "${status}" "${ccla_count}" "${ecla_count}"
 
     { [ "$ccla_count" = "-1" ] || [ "$ecla_count" = "-1" ]; } && count_failures=$((count_failures + 1))
     total=$((total + 1))

@@ -5098,7 +5098,7 @@ func (h *Handlers) GetUnsignedProjectsForCompanyV1(w http.ResponseWriter, r *htt
 // caller gets an explicit, permanent signal instead of a generic 404/405.
 func (h *Handlers) PostCompanyV1(w http.ResponseWriter, r *http.Request) {
 	respond.JSON(w, http.StatusGone, respond.ErrorBody{
-		Message: "This endpoint has been retired and no longer creates companies. Create companies through the EasyCLA v2 API.",
+		Message: "This endpoint has been retired and no longer creates companies. Use the EasyCLA v2 API instead: POST /v4/user/{userID}/company (createCompany).",
 	})
 }
 

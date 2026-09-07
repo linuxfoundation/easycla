@@ -137,6 +137,9 @@ func dbModelsToResponseModels(ctx context.Context, dbModels []DBModel, includeCh
 		}
 	}
 	if includeChildCompanies {
+		if len(companyModels) > 0 {
+			return companyModels, nil
+		}
 		return companyModels, err
 	}
 	if len(all) == 0 {

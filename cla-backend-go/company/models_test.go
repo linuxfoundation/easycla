@@ -95,6 +95,29 @@ func TestDbModelsToResponseModels(t *testing.T) {
 		assert.Equal(t, "id-3", result[2].CompanyID)
 	})
 
+	t.Run("includeChildCompanies true skips bad rows and returns the rest without error", func(t *testing.T) {
+		rows := []DBModel{
+			parent("id-bad", "Acme", "not-a-date"),
+			parent("id-1", "Acme", "2019-01-01T00:00:00Z"),
+			signingEntity("id-2", "Acme", "Acme Sub LLC", "2020-01-01T00:00:00Z"),
+		}
+		result, err := dbModelsToResponseModels(ctx, rows, true)
+		require.NoError(t, err, "one corrupt row must not poison the org-lens listing")
+		require.Len(t, result, 2)
+		assert.Equal(t, "id-1", result[0].CompanyID)
+		assert.Equal(t, "id-2", result[1].CompanyID)
+	})
+
+	t.Run("includeChildCompanies true all rows fail conversion returns error and empty list", func(t *testing.T) {
+		rows := []DBModel{
+			parent("id-1", "Acme", "not-a-date"),
+			parent("id-2", "Acme", "also-not-a-date"),
+		}
+		result, err := dbModelsToResponseModels(ctx, rows, true)
+		assert.Error(t, err)
+		assert.Empty(t, result)
+	})
+
 	t.Run("unparsable date row skipped and valid rows still resolve without error", func(t *testing.T) {
 		rows := []DBModel{
 			parent("id-bad", "Acme", "not-a-date"),
