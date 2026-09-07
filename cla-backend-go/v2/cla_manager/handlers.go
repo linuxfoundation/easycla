@@ -68,6 +68,11 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			return cla_manager.NewCreateCLAManagerForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
+		if sanctionedResp := utils.RejectIfCompanySanctioned(ctx, v1CompanyModel); sanctionedResp != nil {
+			log.WithFields(f).Warnf("company %s is sanctioned - rejecting CreateCLAManager", v1CompanyModel.CompanyID)
+			return sanctionedResp
+		}
+
 		log.WithFields(f).Debug("looking up CLA Group for projectSFID...")
 		cginfo, err := projectClaGroupRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
 		if err != nil {
@@ -120,6 +125,11 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			return cla_manager.NewDeleteCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
+		if sanctionedResp := utils.RejectIfCompanySanctioned(ctx, v1CompanyModel); sanctionedResp != nil {
+			log.WithFields(f).Warnf("company %s is sanctioned - rejecting DeleteCLAManager", v1CompanyModel.CompanyID)
+			return sanctionedResp
+		}
+
 		cginfo, err := projectClaGroupRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
 		if err != nil {
 			msg := fmt.Sprintf("no CLA Group associated with this project: %s", params.ProjectSFID)
@@ -154,6 +164,11 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			msg := fmt.Sprintf("unable to lookup company by ID: %s", params.CompanyID)
 			log.WithFields(f).WithError(err).Warn(msg)
 			return cla_manager.NewCreateCLAManagerDesigneeBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+		}
+
+		if sanctionedResp := utils.RejectIfCompanySanctioned(ctx, v1CompanyModel); sanctionedResp != nil {
+			log.WithFields(f).Warnf("company %s is sanctioned - rejecting CreateCLAManagerDesignee", v1CompanyModel.CompanyID)
+			return sanctionedResp
 		}
 
 		// Note: anyone create assign a CLA manager designee...no permissions checks
@@ -206,6 +221,13 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 				return cla_manager.NewCreateCLAManagerDesigneeByGroupNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 			}
 
+			if v1CompanyModel, companyErr := v1CompanyService.GetCompany(ctx, params.CompanyID); companyErr == nil {
+				if sanctionedResp := utils.RejectIfCompanySanctioned(ctx, v1CompanyModel); sanctionedResp != nil {
+					log.WithFields(f).Warnf("company %s is sanctioned - rejecting CreateCLAManagerDesigneeByGroup", params.CompanyID)
+					return sanctionedResp
+				}
+			}
+
 			designeeScopes, msg, err := service.CreateCLAManagerDesigneeByGroup(ctx, params, projectCLAGroups)
 			if err != nil {
 				log.WithFields(f).WithError(err).Warnf("problem creating cla manager designee for CLA Group: %s with user email: %s", params.ClaGroupID, params.Body.UserEmail)
@@ -247,6 +269,14 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 		if userErr != nil {
 			msg := fmt.Sprintf("Problem getting user by ID : %s, error: %+v ", params.UserID, userErr)
 			return cla_manager.NewInviteCompanyAdminBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, userErr))
+		}
+
+		if params.Body.CompanyID != "" {
+			if v1CompanyModel, companyErr := v1CompanyService.GetCompany(ctx, params.Body.CompanyID); companyErr == nil {
+				if sanctionedResp := utils.RejectIfCompanySanctioned(ctx, v1CompanyModel); sanctionedResp != nil {
+					return sanctionedResp
+				}
+			}
 		}
 
 		claManagerDesignees, err := service.InviteCompanyAdmin(ctx, params.Body.ContactAdmin, params.Body.CompanyID, *params.Body.ClaGroupID, params.Body.UserEmail.String(), params.Body.Name, &user, params.Body.PullRequestURL)
@@ -326,6 +356,11 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 				authUser.UserName, params.ProjectSFID, v1CompanyModel.CompanyExternalID)
 			log.WithFields(f).Warn(msg)
 			return cla_manager.NewCreateCLAManagerRequestForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+		}
+
+		if sanctionedResp := utils.RejectIfCompanySanctioned(ctx, v1CompanyModel); sanctionedResp != nil {
+			log.WithFields(f).Warnf("company %s is sanctioned - rejecting CreateCLAManagerRequest", v1CompanyModel.CompanyID)
+			return sanctionedResp
 		}
 
 		claManagerDesignee, err := service.CreateCLAManagerRequest(ctx, params.Body.ContactAdmin, v1CompanyModel.CompanyID, params.ProjectSFID, params.Body.UserEmail.String(),
@@ -519,6 +554,11 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			return cla_manager.NewApproveCLAManagerRequestForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
+		if sanctionedResp := utils.RejectIfCompanySanctioned(ctx, v1CompanyModel); sanctionedResp != nil {
+			log.WithFields(f).Warnf("company %s is sanctioned - rejecting ApproveCLAManagerRequest", v1CompanyModel.CompanyID)
+			return sanctionedResp
+		}
+
 		log.WithFields(f).Debug("looking up CLA Group for projectSFID...")
 		cginfo, err := projectClaGroupRepo.GetClaGroupIDForProject(ctx, params.ProjectSFID)
 		if err != nil || cginfo == nil {
@@ -568,6 +608,11 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			msg := fmt.Sprintf("user %s does not have access to DenyCLAManagerRequest with Project|Organization scope of %s | %s", authUser.UserName, params.ProjectSFID, params.CompanyID)
 			log.WithFields(f).Warn(msg)
 			return cla_manager.NewDenyCLAManagerRequestForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+		}
+
+		if sanctionedResp := utils.RejectIfCompanySanctioned(ctx, v1CompanyModel); sanctionedResp != nil {
+			log.WithFields(f).Warnf("company %s is sanctioned - rejecting DenyCLAManagerRequest", v1CompanyModel.CompanyID)
+			return sanctionedResp
 		}
 
 		log.WithFields(f).Debug("looking up CLA Group for projectSFID...")
