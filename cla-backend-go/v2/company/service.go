@@ -1410,6 +1410,7 @@ func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string) (
 			})
 			row.ClaManagersCount = int64(len(row.ClaManagers))
 			row.NeedsClaManager = row.Signed && row.ClaManagersCount == 0
+			row.ApprovalCriteriaCount = approvalCriteriaCount(sig)
 			contributors, eclaErr := s.signatureRepo.GetClaGroupCorporateContributors(ctx, claGroupID, &comp.CompanyID, aws.Int64(1), nil, nil)
 			if eclaErr != nil {
 				return nil, eclaErr
@@ -1451,6 +1452,18 @@ func (s *service) getCompanyCCLASignaturesWithACL(ctx context.Context, companyID
 		lastScannedKey = aws.String(sigModels.LastKeyScanned)
 	}
 	return sigs, nil
+}
+
+// approvalCriteriaCount totals the approval rules on a CCLA across all six criteria lists.
+// Relies on the signature having been loaded with the full projection, which is the only
+// one carrying the approval-list columns.
+func approvalCriteriaCount(sig *v1Models.Signature) int64 {
+	return int64(len(sig.EmailApprovalList) +
+		len(sig.DomainApprovalList) +
+		len(sig.GithubUsernameApprovalList) +
+		len(sig.GithubOrgApprovalList) +
+		len(sig.GitlabUsernameApprovalList) +
+		len(sig.GitlabOrgApprovalList))
 }
 
 func newerSignature(a, b *v1Models.Signature) bool {

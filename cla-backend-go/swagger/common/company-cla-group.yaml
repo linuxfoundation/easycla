@@ -65,6 +65,15 @@ properties:
     format: int64
     x-omitempty: false
     description: Number of employee acknowledgements (ECLAs) under this CCLA
+  approvalCriteriaCount:
+    type: integer
+    format: int64
+    x-omitempty: false
+    description: >-
+      Number of approval criteria entries on the CCLA, summed across all six lists
+      (email, email domain, GitHub username, GitHub org, GitLab username, GitLab group).
+      These are rules granting coverage, not people - one domain rule can cover a whole
+      company, so this is unrelated to approvedContributorsCount
   claManagersCount:
     type: integer
     format: int64

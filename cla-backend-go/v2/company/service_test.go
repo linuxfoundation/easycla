@@ -242,6 +242,9 @@ func TestGetCompanyClaGroups(t *testing.T) {
 					{UserID: "user-id-bob", LfUsername: "bob"},
 					{UserID: "user-id-alice", LfUsername: "alice"},
 				},
+				DomainApprovalList:         []string{"acme.example"},
+				GithubOrgApprovalList:      []string{"acme-oss", "acme-labs"},
+				GitlabUsernameApprovalList: []string{"acme-dev"},
 			},
 		},
 	}, nil)
@@ -312,6 +315,7 @@ func TestGetCompanyClaGroups(t *testing.T) {
 	assert.Equal(t, "signature-id-1", first.SignatureID)
 	assert.False(t, first.Sanctioned)
 	assert.Equal(t, int64(3), first.ApprovedContributorsCount)
+	assert.Equal(t, int64(4), first.ApprovalCriteriaCount)
 	assert.Equal(t, int64(2), first.ClaManagersCount)
 	assert.Equal(t, []models.CompanyClaGroupManager{
 		{UserID: "user-id-alice", LfUsername: "alice"},
@@ -327,9 +331,49 @@ func TestGetCompanyClaGroups(t *testing.T) {
 	assert.Equal(t, "2023-05-06T07:08:09Z", second.SignedOn)
 	assert.True(t, second.Sanctioned)
 	assert.Equal(t, int64(0), second.ApprovedContributorsCount)
+	assert.Equal(t, int64(0), second.ApprovalCriteriaCount)
 	assert.Equal(t, int64(0), second.ClaManagersCount)
 	assert.True(t, second.NeedsClaManager)
 	assert.False(t, second.AutoCreateECLA)
+}
+
+func TestApprovalCriteriaCount(t *testing.T) {
+	tests := []struct {
+		name     string
+		sig      *v1Models.Signature
+		expected int64
+	}{
+		{
+			name:     "no approval lists",
+			sig:      &v1Models.Signature{},
+			expected: 0,
+		},
+		{
+			name: "all six lists contribute",
+			sig: &v1Models.Signature{
+				EmailApprovalList:          []string{"dev@acme.example"},
+				DomainApprovalList:         []string{"acme.example", "acme.test"},
+				GithubUsernameApprovalList: []string{"acme-dev", "acme-ops", "acme-qa"},
+				GithubOrgApprovalList:      []string{"acme-oss"},
+				GitlabUsernameApprovalList: []string{"acme-gl-dev", "acme-gl-ops"},
+				GitlabOrgApprovalList:      []string{"acme-gl"},
+			},
+			expected: 10,
+		},
+		{
+			name: "a single domain rule counts once regardless of who it covers",
+			sig: &v1Models.Signature{
+				DomainApprovalList: []string{"acme.example"},
+			},
+			expected: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, approvalCriteriaCount(tt.sig))
+		})
+	}
 }
 
 func TestGetCompanyClaGroupsCompanyNotFound(t *testing.T) {
@@ -547,7 +591,7 @@ func TestNewerSignature(t *testing.T) {
 func TestCompanyClaGroupsJSONContract(t *testing.T) {
 	b, err := json.Marshal(models.CompanyClaGroup{})
 	assert.Nil(t, err)
-	for _, key := range []string{"companyID", "companySFID", "companyName", "signingEntityName", "claGroupID", "claGroupName", "foundationSFID", "foundationName", "projects", "signed", "signedOn", "signatureID", "sanctioned", "approvedContributorsCount", "claManagersCount", "claManagers", "needsClaManager", "autoCreateECLA"} {
+	for _, key := range []string{"companyID", "companySFID", "companyName", "signingEntityName", "claGroupID", "claGroupName", "foundationSFID", "foundationName", "projects", "signed", "signedOn", "signatureID", "sanctioned", "approvedContributorsCount", "approvalCriteriaCount", "claManagersCount", "claManagers", "needsClaManager", "autoCreateECLA"} {
 		assert.Contains(t, string(b), fmt.Sprintf("%q:", key))
 	}
 
