@@ -23,8 +23,15 @@ carrying the given external `companySFID`. Each entry carries all its ids
 `signingEntityName`, `claGroupName`, `foundationName`, the covered `projects`,
 `signed`/`signedOn`, the stored `sanctioned` flag, `approvedContributorsCount` (employee
 acknowledgements under the CCLA, same count as the corporate-console contributors list),
-`claManagers` (from the signature ACL) with `claManagersCount`,
+`approvalCriteriaCount`, `claManagers` (from the signature ACL) with `claManagersCount`,
 `needsClaManager` (= signed with zero managers) and `autoCreateECLA`.
+
+`approvalCriteriaCount` ([lfx-self-serve#2222](https://github.com/linuxfoundation/lfx-self-serve/issues/2222))
+sums the CCLA's six approval lists (email, email domain, GitHub username, GitHub org,
+GitLab username, GitLab group) off the signature already loaded for this response, so it
+costs no extra query. It counts **rules**, not people, and is therefore unrelated to
+`approvedContributorsCount` — one domain rule can cover an entire company. The Org Lens
+CLA Group card renders it as its own stat alongside `claManagersCount`.
 
 An unknown company or a company with no CCLAs returns HTTP 200 with an empty `list` —
 the endpoint never auto-creates the company record. Auth: LF admin, `organization`
