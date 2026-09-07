@@ -9,6 +9,8 @@
 # except eclaAutoCreate, which has no bogus placeholder (the payload IS the real CCLA's flag; bogus
 # company/CLA-group IDs 404 before the gate), so it only runs with ECLA_AUTO_CREATE_OK=1: if the gate
 # is broken it persists auto_create_ecla=false on the real COMPANY_ID/CLA_GROUP_ID CCLA (re-enable afterwards).
+# updateApprovalList also targets the real CCLA: a broken gate rewrites its email approval-list column
+# unchanged and adds an inactive approval-history row for the bogus email (junk only, no approval-state change).
 # Gated ops probed: updateApprovalList, createCLAManager, deleteCLAManager,
 # createCLAManagerDesignee, createCLAManagerDesigneeByGroup, createCLAManagerRequest,
 # approveCLAManagerRequest, denyCLAManagerRequest, and optionally eclaAutoCreate (needs

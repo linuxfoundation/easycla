@@ -99,7 +99,10 @@ acknowledgements instead of paging by 10. Probe: `utils/sanctioned_write_gate.sh
 PASS = 403 `company_sanctioned` per op; payloads use bogus targets so probes are
 side-effect free even where the gate is broken, except eclaAutoCreate (no bogus
 placeholder exists for it, so it is skipped unless `ECLA_AUTO_CREATE_OK=1` — a broken
-gate then persists `auto_create_ecla=false` on the real CCLA).
+gate then persists `auto_create_ecla=false` on the real CCLA) and updateApprovalList
+(targets the real CCLA — a broken gate rewrites its email approval-list column
+unchanged and adds an inactive approval-history row for the bogus email; junk only,
+no approval-state change).
 
 ## Deployment & validation notes (dev validated 2026-09-04, Githash 1979904)
 
