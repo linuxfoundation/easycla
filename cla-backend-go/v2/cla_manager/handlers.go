@@ -221,11 +221,16 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 				return cla_manager.NewCreateCLAManagerDesigneeByGroupNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 			}
 
-			if v1CompanyModel, companyErr := v1CompanyService.GetCompany(ctx, params.CompanyID); companyErr == nil {
-				if sanctionedResp := utils.RejectIfCompanySanctioned(ctx, v1CompanyModel); sanctionedResp != nil {
-					log.WithFields(f).Warnf("company %s is sanctioned - rejecting CreateCLAManagerDesigneeByGroup", params.CompanyID)
-					return sanctionedResp
-				}
+			v1CompanyModel, companyErr := v1CompanyService.GetCompany(ctx, params.CompanyID)
+			if companyErr != nil || v1CompanyModel == nil {
+				msg := fmt.Sprintf("unable to lookup company by ID: %s", params.CompanyID)
+				log.WithFields(f).WithError(companyErr).Warn(msg)
+				return cla_manager.NewCreateCLAManagerDesigneeByGroupBadRequest().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseBadRequestWithError(reqID, msg, companyErr))
+			}
+			if sanctionedResp := utils.RejectIfCompanySanctioned(ctx, v1CompanyModel); sanctionedResp != nil {
+				log.WithFields(f).Warnf("company %s is sanctioned - rejecting CreateCLAManagerDesigneeByGroup", params.CompanyID)
+				return sanctionedResp
 			}
 
 			designeeScopes, msg, err := service.CreateCLAManagerDesigneeByGroup(ctx, params, projectCLAGroups)
@@ -272,10 +277,13 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 		}
 
 		if params.Body.CompanyID != "" {
-			if v1CompanyModel, companyErr := v1CompanyService.GetCompany(ctx, params.Body.CompanyID); companyErr == nil {
-				if sanctionedResp := utils.RejectIfCompanySanctioned(ctx, v1CompanyModel); sanctionedResp != nil {
-					return sanctionedResp
-				}
+			v1CompanyModel, companyErr := v1CompanyService.GetCompany(ctx, params.Body.CompanyID)
+			if companyErr != nil || v1CompanyModel == nil {
+				msg := fmt.Sprintf("Problem getting company by ID : %s, error: %+v ", params.Body.CompanyID, companyErr)
+				return cla_manager.NewInviteCompanyAdminBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, companyErr))
+			}
+			if sanctionedResp := utils.RejectIfCompanySanctioned(ctx, v1CompanyModel); sanctionedResp != nil {
+				return sanctionedResp
 			}
 		}
 

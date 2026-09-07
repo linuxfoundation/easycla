@@ -6,6 +6,7 @@ package cla_manager
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -238,6 +239,42 @@ func TestClaManagerWriteHandlersSanctionsGate(t *testing.T) {
 				assert.Equal(t, "company-1", payload["company_id"])
 				assert.Equal(t, "comp-sfid", payload["company_sfid"])
 				assert.Contains(t, payload["message"], "trade compliance")
+			})
+		}
+	}
+}
+
+// the ops whose company lookup exists only for the sanctions gate must fail closed, not skip the gate
+func TestClaManagerCompanyLookupFailureFailsClosed(t *testing.T) {
+	t.Setenv("DISABLE_LOCAL_PERMISSION_CHECKS", "false")
+
+	lookupCases := []struct {
+		name    string
+		company *v1Models.Company
+		err     error
+	}{
+		{name: "lookup error", company: nil, err: errors.New("company lookup timeout")},
+		{name: "nil company without error", company: nil, err: nil},
+	}
+
+	for _, op := range []string{opDesigneeByGroup, opInviteAdmin} {
+		for _, lc := range lookupCases {
+			t.Run(op+" "+lc.name, func(t *testing.T) {
+				api := operations.NewEasyclaAPI(nil)
+				service := &fakeWriteOpsService{}
+				companyService := &fakeV1CompanyService{company: lc.company, err: lc.err}
+				pcgRepo := &fakePCGRepoWithProjects{fakeProjectClaGroupRepo{cginfo: &projects_cla_groups.ProjectClaGroup{ClaGroupID: "cla-group-1"}}}
+				userRepo := &fakeEasyCLAUserRepo{}
+				Configure(api, service, companyService, "", "", pcgRepo, userRepo)
+
+				var authUser *auth.User
+				if op != opInviteAdmin {
+					authUser = &auth.User{UserName: "lookup-tester", Email: "lookup-tester@example.com", ACL: auth.ACL{Allowed: true}}
+				}
+				status, body, _ := callWriteOp(t, api, op, authUser)
+
+				assert.Equal(t, http.StatusBadRequest, status, body)
+				assert.Equal(t, 0, service.calls, "failed company lookup must never reach the service")
 			})
 		}
 	}

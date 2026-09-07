@@ -123,7 +123,7 @@ do
       probe "$op" PUT "/signatures/project/${PROJECT_SFID}/company/${COMPANY_ID}/clagroup/${CLA_GROUP_ID}/approval-list" "{\"RemoveEmailApprovalList\":[\"${PROBE_EMAIL}\"]}"
       ;;
     eclaAutoCreate)
-      if [ -z "$ECLA_AUTO_CREATE_OK" ]
+      if [ "$ECLA_AUTO_CREATE_OK" != "1" ]
       then
         echo "SKIP ${op}: set ECLA_AUTO_CREATE_OK=1 to probe it - no bogus placeholder exists for this op, so a broken gate persists auto_create_ecla=false on the real CCLA"
         skip=$((skip+1))
