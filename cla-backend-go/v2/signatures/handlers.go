@@ -125,6 +125,11 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 			return signatures.NewUpdateApprovalListForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
+		if sanctionedResp := utils.RejectIfCompanySanctioned(ctx, companyModel); sanctionedResp != nil {
+			log.WithFields(f).Warnf("company %s is sanctioned - rejecting UpdateApprovalList", companyModel.CompanyID)
+			return sanctionedResp
+		}
+
 		// Valid the payload input - the validator will return a middleware.Responder response/error type
 		validationError := validateApprovalListInput(reqID, params)
 		if validationError != nil {
@@ -1302,7 +1307,10 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		if err != nil {
 			msg := "unable to invalidate ecla"
 			log.WithFields(f).Warn(msg)
+			var sanctionedErr *utils.SanctionedCompanyError
 			switch {
+			case errors.As(err, &sanctionedErr):
+				return utils.CompanySanctionedResponder(reqID, sanctionedErr)
 			case errors.Is(err, errEclaNotFound):
 				return signatures.NewInvalidateECLANotFound().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseNotFoundWithError(reqID, msg, err))
@@ -1382,14 +1390,9 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 				utils.ErrorResponseForbidden(reqID, msg))
 		}
 
-		// Sanctions gate: do not enable ECLA auto-create for a sanctioned company. By design
-		// this enforces the persisted is_sanctioned flag, not a live SSS call (the live screen
-		// at the sign/request entry points keeps it fresh).
-		if eacp.Body.AutoCreateEcla && companyRecord.IsSanctioned {
-			msg := fmt.Sprintf("company %s is sanctioned (origin=%q); cannot enable ECLA auto-create", companyRecord.CompanyID, companyRecord.SanctionOrigin)
-			log.WithFields(f).Warn(msg)
-			return signatures.NewEclaAutoCreateBadRequest().WithXRequestID(reqID).WithPayload(
-				utils.ErrorResponseBadRequestWithError(reqID, msg, fmt.Errorf("company is sanctioned")))
+		if sanctionedResp := utils.RejectIfCompanySanctioned(ctx, companyRecord); sanctionedResp != nil {
+			log.WithFields(f).Warnf("company %s is sanctioned - rejecting EclaAutoCreate", companyRecord.CompanyID)
+			return sanctionedResp
 		}
 
 		err = v2SignatureService.EclaAutoCreate(ctx, cclaSignature.SignatureID, eacp.Body.AutoCreateEcla)

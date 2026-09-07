@@ -2550,7 +2550,7 @@ paths:
         '401':
           $ref: '#/responses/unauthorized'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '404':
           $ref: '#/responses/not-found'
         '500':
@@ -2619,7 +2619,7 @@ paths:
         '401':
           $ref: '#/responses/unauthorized'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '404':
           $ref: '#/responses/not-found'
         '500':
@@ -2716,7 +2716,7 @@ paths:
         '400':
           $ref: '#/responses/invalid-request'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '404':
           $ref: '#/responses/not-found'
         '409':
@@ -3226,7 +3226,7 @@ paths:
         '404':
           $ref: '#/responses/not-found'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '409':
           $ref: '#/responses/conflict'
       tags:
@@ -3298,7 +3298,7 @@ paths:
         '400':
           $ref: '#/responses/invalid-request'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '404':
           $ref: '#/responses/not-found'
         '500':
@@ -3335,7 +3335,7 @@ paths:
         '400':
           $ref: '#/responses/invalid-request'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '404':
           $ref: '#/responses/not-found'
         '500':
@@ -3374,7 +3374,7 @@ paths:
         '401':
           $ref: '#/responses/unauthorized'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '409':
           $ref: '#/responses/conflict'
         '500':
@@ -3443,7 +3443,7 @@ paths:
         '401':
           $ref: '#/responses/unauthorized'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '409':
           $ref: '#/responses/conflict'
       tags:
@@ -3487,7 +3487,7 @@ paths:
         '401':
           $ref: '#/responses/unauthorized'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '404':
           $ref: '#/responses/not-found'
         '409':
@@ -3533,7 +3533,7 @@ paths:
         '401':
           $ref: '#/responses/unauthorized'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '409':
           $ref: '#/responses/conflict'
       tags:
@@ -4040,7 +4040,7 @@ paths:
         '400':
           $ref: '#/responses/invalid-request'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '404':
           $ref: '#/responses/not-found'
         '409':
@@ -5063,6 +5063,21 @@ responses:
       $ref: '#/definitions/error-response'
   forbidden:
     description: Insufficient privilege to execute action
+    headers:
+      x-request-id:
+        type: string
+        description: The unique request ID value - assigned/set by the API Gateway based on the session
+    schema:
+      $ref: '#/definitions/error-response'
+  forbidden-or-company-sanctioned:
+    description: |
+      Insufficient privilege to execute action, or the company is blocked for trade
+      compliance. Only the plain permissions failure follows the declared error-response
+      schema; the trade-compliance body deviates from it (swagger 2.0 cannot express the
+      union) and is exactly
+      `{"code": "company_sanctioned", "message": "...", "company_id": "...", "company_sfid": "...", "x-request-id": "..."}`
+      - parse it from the raw body and key off lowercase `code` to distinguish the
+      sanctions case from a plain permissions failure.
     headers:
       x-request-id:
         type: string

@@ -174,6 +174,67 @@ func TestService_InvalidateECLA(t *testing.T) {
 	}
 }
 
+func TestService_InvalidateECLASanctionedCompany(t *testing.T) {
+	t.Setenv("DISABLE_LOCAL_PERMISSION_CHECKS", "false")
+
+	awsSession, err := ini.GetAWSSession()
+	if err != nil {
+		assert.Fail(t, "unable to create AWS session")
+	}
+
+	sanctionedCompany := &v1Models.Company{CompanyID: "company-1", CompanyExternalID: "comp-sfid", CompanyName: "Acme", IsSanctioned: true, SanctionOrigin: "sss"}
+	managerUser := &auth.User{UserName: "org-admin", Email: "org-admin@example.com", ACL: auth.ACL{Allowed: true, Scopes: []auth.Scope{{Type: auth.ProjectOrganization, ID: "proj-sfid|comp-sfid"}}}}
+	noScopeUser := &auth.User{UserName: "no-scope", Email: "no-scope@example.com", ACL: auth.ACL{Allowed: true}}
+
+	t.Run("authorized manager is rejected with a sanctions error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ctx := context.Background()
+
+		// no InvalidateProjectRecordWithMetadata EXPECT - invalidating a sanctioned company's ECLA fails the test
+		mockRepo := mock_v1_signatures.NewMockSignatureRepository(ctrl)
+		mockRepo.EXPECT().GetItemSignature(ctx, "sig-1").Return(eclaItemSignature(), nil)
+
+		mockCompanyService := mock_company.NewMockIService(ctrl)
+		mockCompanyService.EXPECT().GetCompany(ctx, "company-1").Return(sanctionedCompany, nil)
+
+		mockProjectClaGroupsRepo := mock_projects_cla_groups.NewMockRepository(ctrl)
+		mockProjectClaGroupsRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-1").
+			Return([]*projects_cla_groups.ProjectClaGroup{{ProjectSFID: "proj-sfid"}}, nil)
+
+		service := NewService(awsSession, "", nil, mockCompanyService, nil, mockProjectClaGroupsRepo, mockRepo, nil, nil)
+
+		result, err := service.InvalidateECLA(ctx, "cla-group-1", "sig-1", managerUser, nil, eclaEventArgs(), nil)
+		assert.Nil(t, result)
+		var sanctionedErr *utils.SanctionedCompanyError
+		require.True(t, errors.As(err, &sanctionedErr))
+		assert.Equal(t, "company-1", sanctionedErr.CompanyID)
+		assert.Equal(t, "comp-sfid", sanctionedErr.CompanySFID)
+	})
+
+	t.Run("authorization is checked before the sanctions gate", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ctx := context.Background()
+
+		mockRepo := mock_v1_signatures.NewMockSignatureRepository(ctrl)
+		mockRepo.EXPECT().GetItemSignature(ctx, "sig-1").Return(eclaItemSignature(), nil)
+
+		mockCompanyService := mock_company.NewMockIService(ctrl)
+		mockCompanyService.EXPECT().GetCompany(ctx, "company-1").Return(sanctionedCompany, nil)
+
+		mockProjectClaGroupsRepo := mock_projects_cla_groups.NewMockRepository(ctrl)
+		mockProjectClaGroupsRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-1").
+			Return([]*projects_cla_groups.ProjectClaGroup{{ProjectSFID: "proj-sfid"}}, nil)
+
+		service := NewService(awsSession, "", nil, mockCompanyService, nil, mockProjectClaGroupsRepo, mockRepo, nil, nil)
+
+		result, err := service.InvalidateECLA(ctx, "cla-group-1", "sig-1", noScopeUser, nil, eclaEventArgs(), nil)
+		assert.Nil(t, result)
+		assert.ErrorIs(t, err, errEclaForbidden, "an unauthorized caller must not learn the sanction status")
+	})
+}
+
 func TestService_InvalidateECLAValidation(t *testing.T) {
 	t.Setenv("DISABLE_LOCAL_PERMISSION_CHECKS", "false")
 
@@ -311,6 +372,7 @@ func TestInvalidateECLAHandlerMapping(t *testing.T) {
 		{name: "wrong cla group", serviceErr: errEclaWrongClaGroup, expectedStatus: http.StatusBadRequest},
 		{name: "forbidden", serviceErr: errEclaForbidden, expectedStatus: http.StatusForbidden},
 		{name: "already invalidated", serviceErr: errEclaAlreadyInvalidated, expectedStatus: http.StatusConflict},
+		{name: "sanctioned company", serviceErr: &utils.SanctionedCompanyError{CompanyID: "company-1", CompanySFID: "comp-sfid", CompanyName: "Acme"}, expectedStatus: http.StatusForbidden},
 		{name: "unexpected failure", serviceErr: errors.New("dynamo down"), expectedStatus: http.StatusInternalServerError},
 	}
 
@@ -343,6 +405,13 @@ func TestInvalidateECLAHandlerMapping(t *testing.T) {
 			}
 			if tc.expectedStatus == http.StatusOK {
 				assert.JSONEq(t, `{"signature_id":"sig-1","cla_group_id":"cla-group-1","company_id":"company-1","user_id":"user-1"}`, recorder.Body.String())
+			}
+			if tc.name == "sanctioned company" {
+				var payload map[string]interface{}
+				require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
+				assert.Equal(t, "company_sanctioned", payload["code"])
+				assert.Equal(t, "company-1", payload["company_id"])
+				assert.Equal(t, "comp-sfid", payload["company_sfid"])
 			}
 		})
 	}
