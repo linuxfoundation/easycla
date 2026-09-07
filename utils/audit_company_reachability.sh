@@ -5,12 +5,14 @@
 # Audits companies-table reachability (#2054): classifies every cla-{STAGE}-companies row by
 # whether its company_external_id (SFID) is missing, resolves in the org-service, or no longer
 # does, and counts active (signed+approved) CCLAs/ECLAs per row so data fixes can be prioritized.
-# Tiers: MISSING_SFID | SFID_OK | SFID_DANGLING_OR_DELETED | UNKNOWN (org-service 404s both a
-# never-existed SFID and a soft-deleted SF Account, so those collapse into one tier).
+# Tiers: MISSING_SFID | INVALID_SFID_FORMAT | SFID_OK | SFID_DANGLING_OR_DELETED | UNKNOWN
+# (org-service 404s both a never-existed SFID and a soft-deleted SF Account, so those collapse
+# into one tier).
 # TSV rows go to stdout ('#'-prefixed summary at the end), progress goes to stderr.
 # STAGE: dev (default) | test | staging | prod. AWS_REGION defaults to us-east-1.
 # TOKEN: optional bearer token for the org-service SFID liveness check - without it every row
-# that has an SFID is tiered UNKNOWN (only MISSING_SFID is authoritative in that mode).
+# that has a valid-format SFID is tiered UNKNOWN (only MISSING_SFID and INVALID_SFID_FORMAT
+# are authoritative in that mode).
 # SLEEP_S: optional seconds to sleep after each org-service call.
 # Usage: [STAGE=dev] [TOKEN=...] ./utils/audit_company_reachability.sh > companies_audit.tsv
 
@@ -62,6 +64,14 @@ classify () {
     echo "MISSING_SFID"
     return
   fi
+  # the platform SFID rule from utils/v4/shared/validate_params.sh (validate_sfid), inlined to
+  # keep this script standalone; a malformed value would corrupt the org-service URL path and
+  # 404 as a false SFID_DANGLING_OR_DELETED
+  if ! [[ $sfid =~ ^[0-9A-Za-z]{15}$|^[0-9A-Za-z]{18}$ ]]
+  then
+    echo "INVALID_SFID_FORMAT"
+    return
+  fi
   if [ -z "$TOKEN" ]
   then
     echo "UNKNOWN"
@@ -81,10 +91,13 @@ printf 'company_id\tcompany_name\tsigning_entity_name\tcompany_external_id\tsfid
 
 total=0
 missing=0
+invalid=0
 ok=0
 dangling=0
 unknown=0
 missing_with_active_ccla=0
+invalid_with_active_ccla=0
+dangling_with_active_ccla=0
 count_failures=0
 lek=""
 while :
@@ -125,8 +138,15 @@ do
         missing=$((missing + 1))
         [ "$ccla_count" -gt 0 ] 2>/dev/null && missing_with_active_ccla=$((missing_with_active_ccla + 1))
         ;;
+      INVALID_SFID_FORMAT)
+        invalid=$((invalid + 1))
+        [ "$ccla_count" -gt 0 ] 2>/dev/null && invalid_with_active_ccla=$((invalid_with_active_ccla + 1))
+        ;;
       SFID_OK) ok=$((ok + 1)) ;;
-      SFID_DANGLING_OR_DELETED) dangling=$((dangling + 1)) ;;
+      SFID_DANGLING_OR_DELETED)
+        dangling=$((dangling + 1))
+        [ "$ccla_count" -gt 0 ] 2>/dev/null && dangling_with_active_ccla=$((dangling_with_active_ccla + 1))
+        ;;
       *) unknown=$((unknown + 1)) ;;
     esac
     if [ $((total % 100)) -eq 0 ]
@@ -141,17 +161,18 @@ done
 echo "#"
 echo "# total companies scanned: ${total}"
 echo "# MISSING_SFID: ${missing} (of which with active CCLA: ${missing_with_active_ccla})"
+echo "# INVALID_SFID_FORMAT: ${invalid} (of which with active CCLA: ${invalid_with_active_ccla})"
 echo "# SFID_OK: ${ok}"
 if [ -z "$TOKEN" ]
 then
   echo "# SFID_DANGLING_OR_DELETED: ${dangling} (TOKEN unset - liveness not checked)"
-  echo "# UNKNOWN: ${unknown} (TOKEN unset - every row with an SFID lands here)"
+  echo "# UNKNOWN: ${unknown} (TOKEN unset - every row with a valid-format SFID lands here)"
 else
-  echo "# SFID_DANGLING_OR_DELETED: ${dangling}"
+  echo "# SFID_DANGLING_OR_DELETED: ${dangling} (of which with active CCLA: ${dangling_with_active_ccla})"
   echo "# UNKNOWN: ${unknown}"
 fi
 if [ "$count_failures" -gt 0 ]
 then
   echo "# rows with FAILED signature count queries (-1 in TSV, excluded from the active-CCLA tally - re-run these): ${count_failures}"
 fi
-echo "# total unreachable (authoritative = MISSING_SFID + SFID_DANGLING_OR_DELETED): $((missing + dangling))"
+echo "# total unreachable (authoritative = MISSING_SFID + INVALID_SFID_FORMAT + SFID_DANGLING_OR_DELETED): $((missing + invalid + dangling)) (of which with active CCLA: $((missing_with_active_ccla + invalid_with_active_ccla + dangling_with_active_ccla)))"
