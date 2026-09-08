@@ -1370,6 +1370,9 @@ func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string) (
 			if row.SignedOn == "" {
 				row.SignedOn = sig.SignatureCreated
 			}
+			if sig.SignatoryName != "" {
+				row.SignedBy = sig.SignatoryName
+			}
 			if len(pcgs) > 0 {
 				row.ClaGroupName = pcgs[0].ClaGroupName
 				row.FoundationSFID = pcgs[0].FoundationSFID
