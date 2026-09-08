@@ -21,7 +21,7 @@ carrying the given external `companySFID`. Each entry carries all its ids
 (`companyID`, `companySFID`, `claGroupID`, `foundationSFID`, `signatureID`, project
 `projectSFID`, manager `userID`) plus `companyName`,
 `signingEntityName`, `claGroupName`, `foundationName`, the covered `projects`,
-`signed`/`signedOn`, the stored `sanctioned` flag, `approvedContributorsCount` (employee
+`signed`/`signedOn`/`signedBy`, the stored `sanctioned` flag, `approvedContributorsCount` (employee
 acknowledgements under the CCLA, same count as the corporate-console contributors list),
 `approvalCriteriaCount`, `claManagers` (from the signature ACL) with `claManagersCount`,
 `needsClaManager` (= signed with zero managers) and `autoCreateECLA`.
@@ -32,6 +32,11 @@ GitLab username, GitLab group) off the signature already loaded for this respons
 costs no extra query. It counts **rules**, not people, and is therefore unrelated to
 `approvedContributorsCount` — one domain rule can cover an entire company. The Org Lens
 CLA Group card renders it as its own stat alongside `claManagersCount`.
+
+`signedBy` ([lfx-self-serve#2231](https://github.com/linuxfoundation/lfx-self-serve/issues/2231))
+is the CCLA `SignatoryName` already on the signature this handler loads. It is omitted
+when that name is empty; there is no CLA-manager fallback. The Org Lens overview can
+then render `Signed by {name} on {date}`.
 
 An unknown company or a company with no CCLAs returns HTTP 200 with an empty `list` —
 the endpoint never auto-creates the company record. Auth: LF admin, `organization`

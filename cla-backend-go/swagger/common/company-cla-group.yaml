@@ -52,6 +52,11 @@ properties:
     type: string
     x-omitempty: false
     description: Date/time the CCLA was signed
+  signedBy:
+    type: string
+    description: >-
+      Name on the CCLA signature (SignatoryName). Omitted when that
+      name is empty. There is no CLA-manager fallback.
   signatureID:
     type: string
     x-omitempty: false

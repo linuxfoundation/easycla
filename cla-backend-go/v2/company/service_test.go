@@ -237,6 +237,7 @@ func TestGetCompanyClaGroups(t *testing.T) {
 				ProjectID:       "cla-group-id",
 				SignatureSigned: true,
 				SignedOn:        "2023-01-02T03:04:05Z",
+				SignatoryName:   "Alex Signer",
 				AutoCreateECLA:  true,
 				SignatureACL: []v1Models.User{
 					{UserID: "user-id-bob", LfUsername: "bob"},
@@ -312,6 +313,7 @@ func TestGetCompanyClaGroups(t *testing.T) {
 	}, first.Projects)
 	assert.True(t, first.Signed)
 	assert.Equal(t, "2023-01-02T03:04:05Z", first.SignedOn)
+	assert.Equal(t, "Alex Signer", first.SignedBy)
 	assert.Equal(t, "signature-id-1", first.SignatureID)
 	assert.False(t, first.Sanctioned)
 	assert.Equal(t, int64(3), first.ApprovedContributorsCount)
@@ -329,12 +331,66 @@ func TestGetCompanyClaGroups(t *testing.T) {
 	assert.Equal(t, "Acme Sub", second.SigningEntityName)
 	assert.Equal(t, "signature-id-2", second.SignatureID)
 	assert.Equal(t, "2023-05-06T07:08:09Z", second.SignedOn)
+	assert.Equal(t, "", second.SignedBy)
 	assert.True(t, second.Sanctioned)
 	assert.Equal(t, int64(0), second.ApprovedContributorsCount)
 	assert.Equal(t, int64(0), second.ApprovalCriteriaCount)
 	assert.Equal(t, int64(0), second.ClaManagersCount)
 	assert.True(t, second.NeedsClaManager)
 	assert.False(t, second.AutoCreateECLA)
+}
+
+func TestGetCompanyClaGroupsSignedByOmitsBlankWithManagers(t *testing.T) {
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	companySFID := "0014100000Te0000AAG"
+	mockCompanyRepo := mock_company_repo.NewMockIRepository(ctrl)
+	mockCompanyRepo.EXPECT().GetCompaniesByExternalID(ctx, companySFID, true).Return([]*v1Models.Company{
+		{
+			CompanyID:         "company-id-1",
+			CompanyExternalID: companySFID,
+			CompanyName:       "Acme",
+			SigningEntityName: "Acme",
+		},
+	}, nil)
+
+	mockSignatureRepo := mock_signature_repo.NewMockSignatureRepository(ctrl)
+	mockSignatureRepo.EXPECT().GetCompanySignatures(ctx, cclaSignaturesParams("company-id-1", nil), HugePageSize, signatures.LoadACLDetails).Return(&v1Models.Signatures{
+		Signatures: []*v1Models.Signature{
+			{
+				SignatureID:     "signature-id-1",
+				ProjectID:       "cla-group-id",
+				SignatureSigned: true,
+				SignedOn:        "2023-01-02T03:04:05Z",
+				SignatureACL: []v1Models.User{
+					{UserID: "user-id-alice", LfUsername: "alice"},
+				},
+			},
+		},
+	}, nil)
+	mockSignatureRepo.EXPECT().GetClaGroupCorporateContributors(ctx, "cla-group-id", aws.String("company-id-1"), aws.Int64(1), nil, nil).Return(&v1Models.CorporateContributorList{TotalCount: 0}, nil)
+
+	mockProjectClaGroupRepo := mock_pcg_repo.NewMockRepository(ctrl)
+	mockProjectClaGroupRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-id").Return([]*projects_cla_groups.ProjectClaGroup{
+		{
+			ClaGroupID:     "cla-group-id",
+			ClaGroupName:   "Test CLA Group",
+			FoundationSFID: "foundation-sfid",
+			FoundationName: "Test Foundation",
+			ProjectSFID:    "project-sfid-1",
+			ProjectName:    "Alpha",
+		},
+	}, nil)
+
+	service := NewService(nil, mockSignatureRepo, mock_project_repo.NewMockProjectRepository(ctrl), mock_user_repo.NewMockUserRepository(ctrl), mockCompanyRepo, mockProjectClaGroupRepo, nil)
+	result, err := service.GetCompanyClaGroups(ctx, companySFID)
+
+	assert.Nil(t, err)
+	assert.Len(t, result.List, 1)
+	assert.Equal(t, int64(1), result.List[0].ClaManagersCount)
+	assert.Equal(t, "", result.List[0].SignedBy)
 }
 
 func TestApprovalCriteriaCount(t *testing.T) {
@@ -594,6 +650,11 @@ func TestCompanyClaGroupsJSONContract(t *testing.T) {
 	for _, key := range []string{"companyID", "companySFID", "companyName", "signingEntityName", "claGroupID", "claGroupName", "foundationSFID", "foundationName", "projects", "signed", "signedOn", "signatureID", "sanctioned", "approvedContributorsCount", "approvalCriteriaCount", "claManagersCount", "claManagers", "needsClaManager", "autoCreateECLA"} {
 		assert.Contains(t, string(b), fmt.Sprintf("%q:", key))
 	}
+	assert.NotContains(t, string(b), `"signedBy"`)
+
+	named, err := json.Marshal(models.CompanyClaGroup{SignedBy: "Alex Signer"})
+	assert.Nil(t, err)
+	assert.Contains(t, string(named), `"signedBy":"Alex Signer"`)
 
 	lb, err := json.Marshal(models.CompanyClaGroups{List: make([]models.CompanyClaGroup, 0)})
 	assert.Nil(t, err)
