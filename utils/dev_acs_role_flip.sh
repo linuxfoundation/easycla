@@ -84,15 +84,15 @@ ssm() {
 }
 
 mint_token() {
-  local url cid sec aud resp
-  check_aws_account
+  local url cid sec aud
   url=$(ssm url); cid=$(ssm client-id); sec=$(ssm client-secret); aud=$(ssm audience)
-  resp=$(CID="$cid" SEC="$sec" AUD="$aud" python3 -c 'import json,os;print(json.dumps({"grant_type":"client_credentials","client_id":os.environ["CID"],"client_secret":os.environ["SEC"],"audience":os.environ["AUD"]}))' \
-    | curl -s --max-time 20 -X POST "$url" -H "Content-Type: application/json" --data-binary @-)
-  python3 -c "import json,sys;d=json.loads(sys.argv[1]);tok=d.get('access_token') or sys.exit('token mint failed: '+str(d));print(tok)" "$resp"
+  CID="$cid" SEC="$sec" AUD="$aud" python3 -c 'import json,os;print(json.dumps({"grant_type":"client_credentials","client_id":os.environ["CID"],"client_secret":os.environ["SEC"],"audience":os.environ["AUD"]}))' \
+    | curl -s --max-time 20 -X POST "$url" -H "Content-Type: application/json" --data-binary @- \
+    | python3 -c "import json,sys;d=json.load(sys.stdin);tok=d.get('access_token') or sys.exit('token mint failed: '+str(d));print(tok)"
 }
 
 get_token() {
+  check_aws_account
   if [ -f "$TOKEN_CACHE" ] && [ -n "$(find "$TOKEN_CACHE" -mmin -50 2>/dev/null)" ]; then
     cat "$TOKEN_CACHE"
     return
