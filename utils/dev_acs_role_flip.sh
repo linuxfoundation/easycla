@@ -21,19 +21,24 @@
 #  - after flipping, pass -H 'Cache-Control: no-cache' on your first API call
 #    through the gateway to bypass its cached X-ACL for that path.
 #
-# Usage:
+# Usage (mutating commands require an explicit username arg or ACS_USER env;
+# read-only commands default to ACS_USER, then lgryglicki):
 #   ./dev_acs_role_flip.sh status [username]
 #   ./dev_acs_role_flip.sh roles [username]                 # full rolescopes JSON
-#   ./dev_acs_role_flip.sh admin on|off [username]
-#   ./dev_acs_role_flip.sh grant <role> <object_type> <object_id> [username]
-#   ./dev_acs_role_flip.sh revoke <role> <object_id> [username]   # object_id '*' allowed
+#   ./dev_acs_role_flip.sh admin on|off <username>
+#   ./dev_acs_role_flip.sh grant <role> <object_type> <object_id> <username>
+#   ./dev_acs_role_flip.sh revoke <role> <object_id> <username>   # object_id '*' allowed
 #   ./dev_acs_role_flip.sh warden <resource> [method] [username]  # raw warden probe
 #
 # Examples:
-#   ./dev_acs_role_flip.sh admin off
-#   ./dev_acs_role_flip.sh grant cla-manager 'project|organization' 'a09P000000DsCE5IAN|0014100000Te0G7AAJ'
-#   ./dev_acs_role_flip.sh revoke cla-manager 'a09P000000DsCE5IAN|0014100000Te0G7AAJ'
+#   ./dev_acs_role_flip.sh admin off lgryglicki
+#   ./dev_acs_role_flip.sh grant cla-manager 'project|organization' 'a09P000000DsCE5IAN|0014100000Te0G7AAJ' lgryglicki
+#   ./dev_acs_role_flip.sh revoke cla-manager 'a09P000000DsCE5IAN|0014100000Te0G7AAJ' lgryglicki
 #   ./dev_acs_role_flip.sh warden /v4/company/external/0014100000Te0yqAAB/cla-groups GET
+#
+# Safety: refuses to run unless the AWS profile resolves to the LF dev account
+# (override with EXPECTED_AWS_ACCOUNT). M2M token is cached under
+# $XDG_RUNTIME_DIR or ~/.cache in a mode-0700 dir, written atomically.
 #
 # Common roles: cla-manager, cla-manager-designee, cla-signatory (object_type
 # 'project|organization', object_id '<projectSFID>|<orgSFID>'), system-admin
@@ -50,8 +55,28 @@ fi
 PROFILE="${AWS_PROFILE_OVERRIDE:-lfproduct-dev}"
 REGION="${AWS_REGION_OVERRIDE:-us-east-1}"
 ACS="https://api-gw.dev.platform.linuxfoundation.org/acs/v1/api"
-DEFAULT_USER="${ACS_USER:-lgryglicki}"
-TOKEN_CACHE="/tmp/.lfx_m2m_token_${STAGE}"
+DEFAULT_USER="${ACS_USER:-lgryglicki}"   # read-only commands only
+EXPECTED_AWS_ACCOUNT="${EXPECTED_AWS_ACCOUNT:-395594542180}"   # LF dev account
+CACHE_DIR="${XDG_RUNTIME_DIR:-$HOME/.cache}/easycla-acs-flip"
+TOKEN_CACHE="$CACHE_DIR/m2m_${PROFILE}_${REGION}_${STAGE}.token"
+
+require_user() {  # explicit-arg-or-ACS_USER for mutating commands
+  local u="${1:-${ACS_USER:-}}"
+  if [ -z "$u" ]; then
+    echo "mutating command: pass <username> explicitly or set ACS_USER" >&2
+    exit 1
+  fi
+  echo "$u"
+}
+
+check_aws_account() {
+  local acct
+  acct=$(aws sts get-caller-identity --profile "$PROFILE" --region "$REGION" --query Account --output text)
+  if [ "$acct" != "$EXPECTED_AWS_ACCOUNT" ]; then
+    echo "refusing to run: AWS profile '$PROFILE' is account $acct, expected dev account $EXPECTED_AWS_ACCOUNT" >&2
+    exit 1
+  fi
+}
 
 ssm() {
   aws ssm get-parameter --profile "$PROFILE" --region "$REGION" \
@@ -60,9 +85,10 @@ ssm() {
 
 mint_token() {
   local url cid sec aud resp
+  check_aws_account
   url=$(ssm url); cid=$(ssm client-id); sec=$(ssm client-secret); aud=$(ssm audience)
-  resp=$(curl -s --max-time 20 -X POST "$url" -H "Content-Type: application/json" \
-    -d "{\"grant_type\":\"client_credentials\",\"client_id\":\"$cid\",\"client_secret\":\"$sec\",\"audience\":\"$aud\"}")
+  resp=$(CID="$cid" SEC="$sec" AUD="$aud" python3 -c 'import json,os;print(json.dumps({"grant_type":"client_credentials","client_id":os.environ["CID"],"client_secret":os.environ["SEC"],"audience":os.environ["AUD"]}))' \
+    | curl -s --max-time 20 -X POST "$url" -H "Content-Type: application/json" --data-binary @-)
   python3 -c "import json,sys;d=json.loads(sys.argv[1]);tok=d.get('access_token') or sys.exit('token mint failed: '+str(d));print(tok)" "$resp"
 }
 
@@ -71,13 +97,18 @@ get_token() {
     cat "$TOKEN_CACHE"
     return
   fi
-  local tok
+  local tok tmp
   tok=$(mint_token)
-  (umask 077; echo "$tok" > "$TOKEN_CACHE")
+  mkdir -p "$CACHE_DIR"
+  chmod 700 "$CACHE_DIR"
+  tmp=$(mktemp "$CACHE_DIR/.m2m.XXXXXX")
+  printf '%s\n' "$tok" > "$tmp"
+  chmod 600 "$tmp"
+  mv -f "$tmp" "$TOKEN_CACHE"
   echo "$tok"
 }
 
-acs_get()    { curl -s --max-time 20 -H "Authorization: Bearer $TOKEN" "$ACS$1"; }
+acs_get()    { curl -sfS --max-time 20 -H "Authorization: Bearer $TOKEN" "$ACS$1"; }
 acs_post()   { curl -s --max-time 20 -X POST "$ACS$1" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$2" -w "\n%{http_code}"; }
 acs_delete() { curl -s --max-time 20 -X DELETE "$ACS$1" -H "Authorization: Bearer $TOKEN" -o /dev/null -w "%{http_code}"; }
 
@@ -150,11 +181,11 @@ do_revoke() {  # role objid user
   fi
   while read -r rid gid rest; do
     code=$(acs_delete "/roles/$rid/members/users/$gid")
-    if [ "$code" = "404" ]; then
-      echo "revoke $1 grant $gid ($rest): already gone (404 - ACS read lag)"
-    else
-      echo "revoke $1 grant $gid ($rest): HTTP $code"
-    fi
+    case "$code" in
+      204) echo "revoke $1 grant $gid ($rest): HTTP 204";;
+      404) echo "revoke $1 grant $gid ($rest): already gone (404 - ACS read lag)";;
+      *) echo "revoke $1 grant $gid ($rest) failed: HTTP $code" >&2; return 1;;
+    esac
   done <<< "$found"
 }
 
@@ -164,11 +195,11 @@ warden_probe() {  # resource method user
     -d "{\"username\":\"$3\",\"resource\":\"$1\",\"action\":\"$2\"}"
 }
 
-admin_state() {  # user -> prints true/false from rolescopes
+admin_state() {  # user -> prints true/false; isAdmin comes from system-admin only
   rolescopes "$1" | python3 -c "
 import json,sys
 names=[r['role_name'] for r in json.load(sys.stdin).get(sys.argv[1],[])]
-print('true' if ('system-admin' in names or 'lf-staff' in names) else 'false')" "$1"
+print('true' if 'system-admin' in names else 'false')" "$1"
 }
 
 wait_admin_state() {  # user expected(true|false)
@@ -195,9 +226,9 @@ user=sys.argv[1]
 d=json.load(sys.stdin)
 roles=d.get(user,[])
 names=[r['role_name'] for r in roles]
-admin='system-admin' in names or 'lf-staff' in names
+admin='system-admin' in names
 print(f'user: {user}')
-print(f'LF admin (rolescopes-derived): {admin}  (system-admin: {\"system-admin\" in names}, lf-staff: {\"lf-staff\" in names})')
+print(f'LF admin (isAdmin source = system-admin): {admin}  (lf-staff present: {\"lf-staff\" in names})')
 print('roles:', ', '.join(sorted(names)) or '(none)')
 for r in roles:
     if r['role_name'] in ('cla-manager','cla-manager-designee','cla-signatory'):
@@ -210,7 +241,7 @@ for r in roles:
     rolescopes "$USER_NAME" | python3 -m json.tool
     ;;
   admin)
-    ONOFF="${1:-}"; USER_NAME="${2:-$DEFAULT_USER}"; TOKEN=$(get_token)
+    ONOFF="${1:-}"; USER_NAME=$(require_user "${2:-}"); TOKEN=$(get_token)
     case "$ONOFF" in
       off)
         do_revoke system-admin '*' "$USER_NAME"
@@ -224,17 +255,17 @@ for r in roles:
         wait_admin_state "$USER_NAME" true || true
         echo "admin ON for $USER_NAME"
         ;;
-      *) echo "usage: $0 admin on|off [username]" >&2; exit 1;;
+      *) echo "usage: $0 admin on|off <username>" >&2; exit 1;;
     esac
     ;;
   grant)
-    [ $# -ge 3 ] || { echo "usage: $0 grant <role> <object_type> <object_id> [username]" >&2; exit 1; }
-    USER_NAME="${4:-$DEFAULT_USER}"; TOKEN=$(get_token)
+    [ $# -ge 3 ] || { echo "usage: $0 grant <role> <object_type> <object_id> <username>" >&2; exit 1; }
+    USER_NAME=$(require_user "${4:-}"); TOKEN=$(get_token)
     do_grant "$1" "$2" "$3" "$USER_NAME"
     ;;
   revoke)
-    [ $# -ge 2 ] || { echo "usage: $0 revoke <role> <object_id> [username]" >&2; exit 1; }
-    USER_NAME="${3:-$DEFAULT_USER}"; TOKEN=$(get_token)
+    [ $# -ge 2 ] || { echo "usage: $0 revoke <role> <object_id> <username>" >&2; exit 1; }
+    USER_NAME=$(require_user "${3:-}"); TOKEN=$(get_token)
     do_revoke "$1" "$2" "$USER_NAME"
     ;;
   warden)
