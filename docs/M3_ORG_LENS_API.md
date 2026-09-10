@@ -39,10 +39,27 @@ when that name is empty; there is no CLA-manager fallback. The Org Lens overview
 then render `Signed by {name} on {date}`.
 
 An unknown company or a company with no CCLAs returns HTTP 200 with an empty `list` —
-the endpoint never auto-creates the company record. Auth: LF admin, `organization`
+the endpoint never auto-creates the company record. Optional `pageSize`/`offset` query
+parameters page the sorted list (`totalCount` = size before paging, `resultCount` = rows
+returned); when omitted the full list is returned. Auth: LF admin, `organization`
 scope for the `companySFID`, or any `project|organization` scope whose organization half
 matches (ACS resource `company_cla_groups`, action `view_all`). Probe:
 `utils/company_cla_groups.sh`.
+
+## `GET /v4/company/external/{companySFID}/cla-group/{claGroupID}/corporate-contributors` ([lfx-self-serve#1978](https://github.com/linuxfoundation/lfx-self-serve/issues/1978))
+
+Organization-scoped alias of the pre-existing `GET /v4/cla-group/{claGroupID}/corporate-contributors`
+(whose path has no SFID segment, so `organization`/`project|organization` scopes can never
+match at the gateway — effectively admin-only; note the EasyCLA `azp` trusted-caller
+allow-list is my-clas-only and not enabled). Resolves the company by SFID, enforces the
+same in-handler project/organization access check as the original, then delegates to the
+same service; `searchTerm`, `pageSize` and `nextKey` pass through unchanged. The new path
+needs the same ACS resource registration (organization object on `{companySFID}`) as the
+other org-lens paths before gateway scope-matching works. Done on dev: resource
+`company_cla_group_corporate_contributors` (type-2 + type-1 twin, `view_all`) bound into
+`ViewCompanyClaGroups`, plus the OPA bundle-data refresh described below — verified: a
+non-admin cla-manager token now passes the gateway (pre-deploy proof = lambda 404 instead
+of gateway 403). Declared in acs-cli `services/11-cla-service.yaml` for prod.
 
 ## `POST /v4/self-serve/request-corporate-signature` ([lfx-self-serve#2150](https://github.com/linuxfoundation/lfx-self-serve/issues/2150))
 
@@ -68,7 +85,9 @@ DocuSign envelope**; attestation/auth probes (400/403) are side-effect free.
 
 CLA-manager request lifecycle under
 `/v4/company/{companyID}/project/{projectSFID}/cla-manager/requests`: `GET` (list — HTTP
-200 with an empty `requests` array when none), `GET .../{requestID}`,
+200 with an empty `requests` array when none; optional `pageSize`/`offset` query
+parameters page the created-date-sorted list with `totalCount` set to the pre-paging
+size), `GET .../{requestID}`,
 `PUT .../{requestID}/approve` and `PUT .../{requestID}/deny`. The v4 surface wraps the v1
 request service verbatim: approve flips the request to `approved`, adds the requester to
 the CCLA signature ACL and emails the CLA managers + requester; deny flips it to `denied`
@@ -133,12 +152,21 @@ that matter again at **prod rollout**:
   `company_cla_groups` → type 2 (organization) plus a type-1 twin resource wired into
   `ViewCompanyClaGroups` (`view_all`) so `project|organization` pair holders pass too,
   and an extra `CLAManagerRequestAdmin` statement binding the type-1
-  `cla_manager_request` row. After edits, flush: `POST /warden/invalidate/cache
-  {"type":"resource"}` + `POST /cache/flush`. **Repeat the same surgery on prod ACS
-  before M3 goes live**, then verify with warden v1
-  `GET /acs/v1/api/warden/subjects/authorize?resource=<path>&actions=<action>` (returns
-  computed scopes per resource row). Quirk: statements POST works only **without** the
-  trailing slash (`/policies/{id}/statements`).
+  `cla_manager_request` row. **DB edits alone do not propagate**: the live gateway
+  authorizer is OPA reading a bundle from S3 (`s3://lf-opa-bundle-{stage}`), not the
+  warden DB — `POST /warden/invalidate/cache` + `/cache/flush` are NOT sufficient. To
+  propagate: refresh `bundle-data/resources.json` (= `GET /opa/resources`) and
+  `bundle-data/role_permissions.json` (= `GET /opa/role/permission?limit=100&offset=0`)
+  in that bucket — either via an acs-cli deploy run (`make opa-bundle`) or by fetching
+  both with an admin M2M token, diffing against the current S3 objects (expect only your
+  additions), and uploading. A bundler lambda re-tars `bundle.tar.gz` within seconds of
+  upload; OPA picks it up in ~1–2 min. **Repeat the surgery + bundle refresh on prod ACS
+  before M3 goes live.** Verification that works pre-deploy: call a to-be-added path via
+  the real gateway with a non-admin token — gateway 403 = not registered, lambda-style
+  404 = authorized. (Direct warden v1/v2 probes do not reflect gateway decisions for
+  non-admin users.) Quirks: statements POST works only **without** the trailing slash
+  (`/policies/{id}/statements`) and wants action **UUIDs**, not names; actions attach via
+  `PUT /resources/{id}/actions` (POST = 405).
 - **acs-cli deploy workflows have no `concurrency:` group**: concurrent merge-triggered
   runs race on the S3 `bundle-data/` upload (last writer wins with its own checkout's
   snapshot — the two 2026-09-04 dev runs collided; the complete checkout won by ~3 s).

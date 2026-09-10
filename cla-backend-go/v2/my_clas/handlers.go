@@ -65,7 +65,7 @@ func Configure(api *operations.EasyclaAPI, service Service, callerVerifier Calle
 			}
 			logCallerIdentity(f, trustedCaller, requested)
 
-			result, err := service.GetMyClas(ctx, &Caller{Username: currentUsername, Admin: admin, Trusted: trusted}, requested)
+			result, err := service.GetMyClas(ctx, &Caller{Username: currentUsername, Admin: admin, Trusted: trusted}, requested, params.PageSize, params.Offset)
 			if err != nil {
 				msg := "unable to lookup the CLAs for the provided identity"
 				log.WithFields(f).WithError(err).Warn(msg)
@@ -156,7 +156,7 @@ func Configure(api *operations.EasyclaAPI, service Service, callerVerifier Calle
 			}
 			logCallerIdentity(f, trustedCaller, requested)
 
-			result, err := service.GetMyClaManagers(ctx, &Caller{Username: currentUsername, Admin: admin, Trusted: trusted}, requested, params.SignatureID)
+			result, err := service.GetMyClaManagers(ctx, &Caller{Username: currentUsername, Admin: admin, Trusted: trusted}, requested, params.SignatureID, params.PageSize, params.Offset)
 			if err != nil {
 				msg := "unable to lookup the CLA managers for the given signature"
 				log.WithFields(f).WithError(err).Warn(msg)
@@ -246,7 +246,7 @@ func Configure(api *operations.EasyclaAPI, service Service, callerVerifier Calle
 				return myClasOps.NewGetMyIdentitiesUnauthorized().WithXRequestID(reqID).WithPayload(utils.ErrorResponseUnauthorized(reqID, missingUsernameMsg))
 			}
 
-			result, err := service.GetMyIdentities(ctx, currentUsername)
+			result, err := service.GetMyIdentities(ctx, currentUsername, params.PageSize, params.Offset)
 			if err != nil {
 				msg := "unable to lookup the identities for the authenticated user"
 				log.WithFields(f).WithError(err).Warn(msg)

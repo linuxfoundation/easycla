@@ -12,3 +12,7 @@ properties:
     x-omitempty: false
     items:
       $ref: '#/definitions/cla-manager-request'
+  totalCount:
+    type: integer
+    format: int64
+    description: Total number of requests before optional pageSize/offset paging was applied - only set by the v2 API

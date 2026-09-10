@@ -48,7 +48,7 @@ func (f *fakeRequestsService) record(companyModel *v1Models.Company, claGroupID 
 	f.claGroups = append(f.claGroups, claGroupID)
 }
 
-func (f *fakeRequestsService) GetCLAManagerRequests(_ context.Context, companyModel *v1Models.Company, claGroupID string) (*models.ClaManagerRequestList, error) {
+func (f *fakeRequestsService) GetCLAManagerRequests(_ context.Context, companyModel *v1Models.Company, claGroupID string, _, _ *int64) (*models.ClaManagerRequestList, error) {
 	f.record(companyModel, claGroupID)
 	if f.list != nil || f.listErr != nil {
 		return f.list, f.listErr

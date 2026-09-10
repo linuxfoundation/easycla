@@ -138,7 +138,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 				return company.NewGetCompanyClaGroupsForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 			}
 
-			result, err := service.GetCompanyClaGroups(ctx, params.CompanySFID)
+			result, err := service.GetCompanyClaGroups(ctx, params.CompanySFID, params.PageSize, params.Offset)
 			if err != nil {
 				msg := fmt.Sprintf("unable to load CLA groups for company SFID: %s", params.CompanySFID)
 				log.WithFields(f).WithError(err).Warn(msg)

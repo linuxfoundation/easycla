@@ -90,7 +90,7 @@ type Service interface {
 	GetCompanyProjectActiveCLAs(ctx context.Context, companyID string, projectSFID string) (*models.ActiveClaList, error)
 	GetCompanyProjectContributors(ctx context.Context, params *v2Ops.GetCompanyProjectContributorsParams) (*models.CorporateContributorList, error)
 	GetCompanyProjectCLA(ctx context.Context, authUser *auth.User, companySFID, projectSFID string, companyID *string) (*models.CompanyProjectClaList, error)
-	GetCompanyClaGroups(ctx context.Context, companySFID string) (*models.CompanyClaGroups, error)
+	GetCompanyClaGroups(ctx context.Context, companySFID string, pageSize, offset *int64) (*models.CompanyClaGroups, error)
 	CreateCompany(ctx context.Context, params *v2Ops.CreateCompanyParams) (*models.CompanyOutput, error)
 	CreateCompanyFromSFModel(ctx context.Context, orgModel *orgModels.Organization, authUser *auth.User) (*models.CompanyOutput, error)
 	GetCompanyByName(ctx context.Context, companyName string) (*models.Company, error)
@@ -1311,7 +1311,7 @@ func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, proj
 	return result, nil
 }
 
-func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string) (*models.CompanyClaGroups, error) {
+func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string, pageSize, offset *int64) (*models.CompanyClaGroups, error) {
 	f := logrus.Fields{
 		"functionName":   "v2.company.service.GetCompanyClaGroups",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -1431,6 +1431,9 @@ func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string) (
 		}
 		return result.List[i].ClaGroupID < result.List[j].ClaGroupID
 	})
+	result.TotalCount = int64(len(result.List))
+	start, end := utils.PageBounds(len(result.List), pageSize, offset)
+	result.List = result.List[start:end]
 	result.ResultCount = int64(len(result.List))
 	return result, nil
 }

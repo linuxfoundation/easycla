@@ -2768,6 +2768,8 @@ paths:
         - $ref: "#/parameters/myClasGitlabId"
         - $ref: "#/parameters/myClasGitlabUsername"
         - $ref: "#/parameters/myClasGerritUsername"
+        - $ref: "#/parameters/pageSize"
+        - $ref: "#/parameters/offset"
       responses:
         '200':
           description: 'Success'
@@ -2858,6 +2860,8 @@ paths:
         - $ref: "#/parameters/myClasGitlabId"
         - $ref: "#/parameters/myClasGitlabUsername"
         - $ref: "#/parameters/myClasGerritUsername"
+        - $ref: "#/parameters/pageSize"
+        - $ref: "#/parameters/offset"
       responses:
         '200':
           description: 'Success'
@@ -2941,6 +2945,8 @@ paths:
         - $ref: "#/parameters/x-acl"
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/pageSize"
+        - $ref: "#/parameters/offset"
       responses:
         '200':
           description: 'Success'
@@ -3154,6 +3160,8 @@ paths:
         - $ref: "#/parameters/x-email"
         - $ref: "#/parameters/path-companyID"
         - $ref: "#/parameters/path-projectSFID"
+        - $ref: "#/parameters/pageSize"
+        - $ref: "#/parameters/offset"
       responses:
         '200':
           description: 'Success'
@@ -4130,6 +4138,8 @@ paths:
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
         - $ref: '#/parameters/path-companySFID'
+        - $ref: '#/parameters/pageSize'
+        - $ref: '#/parameters/offset'
       produces:
         - application/json
       responses:
@@ -4149,6 +4159,41 @@ paths:
           $ref: '#/responses/forbidden'
       tags:
         - company
+
+  /company/external/{companySFID}/cla-group/{claGroupID}/corporate-contributors:
+    get:
+      summary: List corporate contributors by company SFID
+      description: Returns the corporate contributors (employee acknowledgements) of the CLA Group for the company identified by its SFID - the same data as /cla-group/{claGroupID}/corporate-contributors on an organization-scoped path, so organization-scoped (CLA manager) tokens are authorized at the API gateway
+      operationId: listCompanyClaGroupCorporateContributors
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: '#/parameters/path-companySFID'
+        - $ref: "#/parameters/path-claGroupID"
+        - $ref: '#/parameters/searchTerm'
+        - $ref: '#/parameters/pageSize'
+        - $ref: '#/parameters/nextKey'
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/corporate-contributor-list'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - signatures
 
   /company/name/{companyName}:
     get:
@@ -5157,6 +5202,13 @@ parameters:
     required: false
     minimum: 0
     exclusiveMinimum: true
+  offset:
+    name: offset
+    description: The optional number of leading results to skip before assembling the page - when omitted no results are skipped
+    in: query
+    type: integer
+    required: false
+    minimum: 0
   returnAllEvents:
     name: returnAllEvents
     description: The optional parameter which would avoid pagination and it will return all data

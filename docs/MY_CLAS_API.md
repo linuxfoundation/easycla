@@ -145,11 +145,15 @@ trusting blindly. Each request logs `callerClientID` (`azp`), `callerSubject` (`
 | `gitlabId` | integer | yes | GitLab numeric user IDs linked to the LF identity. |
 | `gitlabUsername` | string | yes | GitLab usernames (hint only). |
 | `gerritUsername` | string | yes | Gerrit usernames. Gerrit authenticates via LF SSO, so these are (current or historical) **LF usernames** — matched against the records' `lf_username`. Useful for gerrit-era records tied to an older LDAP/LF username on the account. |
+| `pageSize` | integer | no | Optional page size. When neither `pageSize` nor `offset` is provided the full list is returned exactly as before (no paging). |
+| `offset` | integer | no | Optional 0-based row offset. Paged responses use a deterministic order (`signedOn` desc, then `signatureID`); `totalCount` always carries the pre-paging row count. |
 
 If the token carries no username and the caller is neither an admin nor a trusted Self
-Serve client, the endpoint returns `401`. There is deliberately **no pagination**: a
-person's CLA set is small (typically well under 50 records) and the upstream queries
-paginate internally.
+Serve client, the endpoint returns `401`. Paging is optional and off by default: without
+`pageSize`/`offset` every row is returned (the upstream queries paginate internally). The
+same optional `pageSize`/`offset` pair exists on `/my-clas/identities` (slices the sorted
+identity list) and `/my-clas/{signatureID}/cla-managers` (paged windows are sorted by LF
+username; the unpaged response keeps the stored ACL order).
 
 Example (through the gateway):
 

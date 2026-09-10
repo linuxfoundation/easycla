@@ -28,7 +28,7 @@ type fakeService struct {
 	invalidRecipients bool
 }
 
-func (f *fakeService) GetMyClaManagers(_ context.Context, caller *Caller, _ *Identity, _ string) (*models.MyClaManagerList, error) {
+func (f *fakeService) GetMyClaManagers(_ context.Context, caller *Caller, _ *Identity, _ string, _, _ *int64) (*models.MyClaManagerList, error) {
 	f.callers = append(f.callers, caller)
 	if f.err != nil {
 		return nil, f.err
@@ -53,7 +53,7 @@ func (f *fakeService) CreateMyClaManagerRequest(_ context.Context, caller *Calle
 	return &models.MyClaManagerRequestResult{}, nil
 }
 
-func (f *fakeService) GetMyClas(_ context.Context, caller *Caller, _ *Identity) (*models.MyClaList, error) {
+func (f *fakeService) GetMyClas(_ context.Context, caller *Caller, _ *Identity, _, _ *int64) (*models.MyClaList, error) {
 	f.callers = append(f.callers, caller)
 	if f.err != nil {
 		return nil, f.err
@@ -72,7 +72,7 @@ func (f *fakeService) GetMyClaPdfURL(_ context.Context, caller *Caller, _ *Ident
 	return &models.MyClaPdf{}, nil
 }
 
-func (f *fakeService) GetMyIdentities(_ context.Context, currentUsername string) (*models.MyIdentityList, error) {
+func (f *fakeService) GetMyIdentities(_ context.Context, currentUsername string, _, _ *int64) (*models.MyIdentityList, error) {
 	f.callers = append(f.callers, &Caller{Username: currentUsername})
 	if f.err != nil {
 		return nil, f.err
