@@ -4163,7 +4163,7 @@ paths:
   /company/external/{companySFID}/cla-group/{claGroupID}/corporate-contributors:
     get:
       summary: List corporate contributors by company SFID
-      description: Returns the corporate contributors (employee acknowledgements) of the CLA Group for the company identified by its SFID - the same data as /cla-group/{claGroupID}/corporate-contributors on an organization-scoped path, so organization-scoped (CLA manager) tokens are authorized at the API gateway
+      description: Returns the corporate contributors (employee acknowledgements) of the CLA Group for the company identified by its SFID - the same data as /cla-group/{claGroupID}/corporate-contributors on an organization-scoped path, so organization-scoped (CLA manager) tokens are authorized at the API gateway. The optional companyID query parameter selects one signing-entity record of the company - when omitted the parent record is used
       operationId: listCompanyClaGroupCorporateContributors
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -4172,6 +4172,7 @@ paths:
         - $ref: "#/parameters/x-email"
         - $ref: '#/parameters/path-companySFID'
         - $ref: "#/parameters/path-claGroupID"
+        - $ref: '#/parameters/companyID'
         - $ref: '#/parameters/searchTerm'
         - $ref: '#/parameters/pageSize'
         - $ref: '#/parameters/nextKey'

@@ -51,15 +51,28 @@ matches (ACS resource `company_cla_groups`, action `view_all`). Probe:
 Organization-scoped alias of the pre-existing `GET /v4/cla-group/{claGroupID}/corporate-contributors`
 (whose path has no SFID segment, so `organization`/`project|organization` scopes can never
 match at the gateway — effectively admin-only; note the EasyCLA `azp` trusted-caller
-allow-list is my-clas-only and not enabled). Resolves the company by SFID, enforces the
-same in-handler project/organization access check as the original, then delegates to the
-same service; `searchTerm`, `pageSize` and `nextKey` pass through unchanged. The new path
+allow-list is my-clas-only and not enabled). Resolves the company by SFID with a
+read-only lookup — no record auto-creation; an unknown SFID is a 404 — selecting the
+parent signing-entity record by default, or a specific one via the optional `companyID`
+query parameter (an ID outside that SFID's records is a 404). Enforces the same
+in-handler project/organization access check as the original, then delegates to the same
+service; `searchTerm`, `pageSize` and `nextKey` pass through unchanged. The new path
 needs the same ACS resource registration (organization object on `{companySFID}`) as the
 other org-lens paths before gateway scope-matching works. Done on dev: resource
 `company_cla_group_corporate_contributors` (type-2 + type-1 twin, `view_all`) bound into
 `ViewCompanyClaGroups`, plus the OPA bundle-data refresh described below — verified: a
 non-admin cla-manager token now passes the gateway (pre-deploy proof = lambda 404 instead
-of gateway 403). Declared in acs-cli `services/11-cla-service.yaml` for prod.
+of gateway 403). Declared in acs-cli `services/11-cla-service.yaml` for prod. Probe
+(read-only, non-admin cla-manager token):
+
+```bash
+BASE="https://api-gw.dev.platform.linuxfoundation.org/cla-service"
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$BASE/v4/company/external/$COMPANY_SFID/cla-group/$CLA_GROUP_ID/corporate-contributors"
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "$BASE/v4/company/external/$COMPANY_SFID/cla-group/$CLA_GROUP_ID/corporate-contributors?companyID=$COMPANY_ID"
+# gateway-shaped 403 = ACS resource not registered; JSON list or lambda 404 = authorized
+```
 
 ## `POST /v4/self-serve/request-corporate-signature` ([lfx-self-serve#2150](https://github.com/linuxfoundation/lfx-self-serve/issues/2150))
 
@@ -149,8 +162,9 @@ that matter again at **prod rollout**:
   hand-fixed via `PUT /resources/{id}` (honors the field; body needs `name`, `path`,
   `object_type_id`, `any_role`): `cla_manager_request_approve`/`_deny`/`_admin`,
   `ecla_invalidate`, `self_serve_request_corporate_signature` → type 1 (project);
-  `company_cla_groups` → type 2 (organization) plus a type-1 twin resource wired into
-  `ViewCompanyClaGroups` (`view_all`) so `project|organization` pair holders pass too,
+  `company_cla_groups` and `company_cla_group_corporate_contributors` → type 2
+  (organization), each plus a type-1 twin resource wired into `ViewCompanyClaGroups`
+  (`view_all`) so `project|organization` pair holders pass too,
   and an extra `CLAManagerRequestAdmin` statement binding the type-1
   `cla_manager_request` row. **DB edits alone do not propagate**: the live gateway
   authorizer is OPA reading a bundle from S3 (`s3://lf-opa-bundle-{stage}`), not the

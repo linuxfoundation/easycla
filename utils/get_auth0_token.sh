@@ -71,6 +71,13 @@ fi
 # parse KEY=VALUE lines instead of sourcing, so the secret file can never execute code
 secret_get() { sed -n "s/^$1=//p" "$SECRET_FILE" | tail -1 | tr -d '\r'; }
 
+# warn when the credentials file is readable by anyone but the owner (GNU stat, then BSD stat)
+SECRET_MODE="$(stat -c '%a' "$SECRET_FILE" 2>/dev/null || stat -f '%Lp' "$SECRET_FILE" 2>/dev/null || echo '')"
+case "$SECRET_MODE" in
+  "" | *00) ;;
+  *) echo "warning: $SECRET_FILE is group/other-accessible (mode $SECRET_MODE) - run: chmod 600 $SECRET_FILE" >&2 ;;
+esac
+
 AUTH0_USERNAME="$(secret_get AUTH0_USERNAME)"
 AUTH0_PASSWORD="$(secret_get AUTH0_PASSWORD)"
 for key in AUTH0_DOMAIN AUTH0_CLIENT_ID AUTH0_AUDIENCE AUTH0_TENANT AUTH0_REDIRECT_URI; do
@@ -84,6 +91,23 @@ if [ -z "${AUTH0_USERNAME:-}" ] || [ -z "${AUTH0_PASSWORD:-}" ]; then
 fi
 
 dbg() { [ -n "${DEBUG:-}" ] && echo "$@" >&2 || true; }
+
+# every curl call is bounded so a wedged Auth0 endpoint cannot hang the script
+CURL=(curl -sS --connect-timeout 15 --max-time 60)
+
+# tolerant JSON field reader: empty output (never a traceback) on a non-JSON body,
+# so the callers' own error paths report the raw response instead
+json_field() { python3 -c '
+import json
+import sys
+
+try:
+    doc = json.load(sys.stdin)
+except ValueError:
+    sys.exit(0)
+if isinstance(doc, dict):
+    print(doc.get(sys.argv[1], ""))
+' "$1"; }
 
 umask 077
 JAR="$(mktemp)"
@@ -99,7 +123,7 @@ CHALLENGE="$(printf %s "$VERIFIER" | openssl dgst -sha256 -binary | b64url)"
 AUTHORIZE_URL="https://$AUTH0_DOMAIN/authorize?client_id=$AUTH0_CLIENT_ID&response_type=code&redirect_uri=$(urlenc "$AUTH0_REDIRECT_URI")&scope=$(urlenc "openid profile email access:api")&audience=$(urlenc "$AUTH0_AUDIENCE")&state=$STATE&code_challenge=$CHALLENGE&code_challenge_method=S256"
 
 # step 1: /authorize -> 302 to the hosted login page carrying the interaction state
-LOGIN_URL="$(curl -sS -c "$JAR" -o /dev/null -w '%{redirect_url}' "$AUTHORIZE_URL")"
+LOGIN_URL="$("${CURL[@]}" -c "$JAR" -o /dev/null -w '%{redirect_url}' "$AUTHORIZE_URL")"
 dbg "step1 authorize -> $LOGIN_URL"
 case "$LOGIN_URL" in
   *state=*) ;;
@@ -108,7 +132,7 @@ esac
 LOGIN_STATE="$(printf %s "$LOGIN_URL" | sed -n 's/.*[?&]state=\([^&]*\).*/\1/p')"
 
 # step 2: fetch the login page to obtain the _csrf cookie
-curl -sS -b "$JAR" -c "$JAR" -o /dev/null "$LOGIN_URL"
+"${CURL[@]}" -b "$JAR" -c "$JAR" -o /dev/null "$LOGIN_URL"
 CSRF="$(awk '$6=="_csrf"{print $7}' "$JAR" | tail -1)"
 dbg "step2 login page fetched, csrf present: $([ -n "$CSRF" ] && echo yes || echo no)"
 
@@ -140,7 +164,7 @@ print(json.dumps({
 }))
 PYEOF
 )"
-UPL_HTML="$(printf %s "$UPL_BODY" | curl -sS -b "$JAR" -c "$JAR" -X POST "https://$AUTH0_DOMAIN/usernamepassword/login" \
+UPL_HTML="$(printf %s "$UPL_BODY" | "${CURL[@]}" -b "$JAR" -c "$JAR" -X POST "https://$AUTH0_DOMAIN/usernamepassword/login" \
   -H "Content-Type: application/json" -H "Origin: https://$AUTH0_DOMAIN" -H "Referer: $LOGIN_URL" \
   --data @-)"
 if ! printf %s "$UPL_HTML" | grep -q 'name="wresult"'; then
@@ -167,7 +191,7 @@ if not field("wresult"):
     sys.exit("error: no wresult field on the WS-Fed page - login flow changed?")
 print(urllib.parse.urlencode({"wa": field("wa"), "wresult": field("wresult"), "wctx": field("wctx")}))
 ')"
-RESUME_URL="$(printf %s "$CALLBACK_FORM" | curl -sS -b "$JAR" -c "$JAR" -o /dev/null -w '%{redirect_url}' -X POST "https://$AUTH0_DOMAIN/login/callback" \
+RESUME_URL="$(printf %s "$CALLBACK_FORM" | "${CURL[@]}" -b "$JAR" -c "$JAR" -o /dev/null -w '%{redirect_url}' -X POST "https://$AUTH0_DOMAIN/login/callback" \
   -H "Content-Type: application/x-www-form-urlencoded" -H "Origin: https://$AUTH0_DOMAIN" --data @-)"
 dbg "step4 login callback -> $RESUME_URL"
 case "$RESUME_URL" in
@@ -176,7 +200,7 @@ case "$RESUME_URL" in
 esac
 
 # step 5: resume -> 302 to redirect_uri with ?code= (no local listener needed)
-FINAL_URL="$(curl -sS -b "$JAR" -c "$JAR" -o /dev/null -w '%{redirect_url}' "$RESUME_URL")"
+FINAL_URL="$("${CURL[@]}" -b "$JAR" -c "$JAR" -o /dev/null -w '%{redirect_url}' "$RESUME_URL")"
 CODE="$(printf %s "$FINAL_URL" | sed -n 's/.*[?&]code=\([^&]*\).*/\1/p')"
 dbg "step5 resume -> code present: $([ -n "$CODE" ] && echo yes || echo no)"
 if [ -z "$CODE" ]; then
@@ -185,7 +209,7 @@ if [ -z "$CODE" ]; then
 fi
 
 # step 6: PKCE code exchange (code and verifier via stdin, not argv)
-TOKEN_JSON="$(A0_CLIENT_ID="$AUTH0_CLIENT_ID" A0_CODE="$CODE" A0_REDIRECT_URI="$AUTH0_REDIRECT_URI" A0_VERIFIER="$VERIFIER" python3 << 'PYEOF' | curl -sS -X POST "https://$AUTH0_DOMAIN/oauth/token" -H "Content-Type: application/json" --data @-
+TOKEN_JSON="$(A0_CLIENT_ID="$AUTH0_CLIENT_ID" A0_CODE="$CODE" A0_REDIRECT_URI="$AUTH0_REDIRECT_URI" A0_VERIFIER="$VERIFIER" python3 << 'PYEOF' | "${CURL[@]}" -X POST "https://$AUTH0_DOMAIN/oauth/token" -H "Content-Type: application/json" --data @-
 import json
 import os
 
@@ -199,7 +223,7 @@ print(json.dumps({
 }))
 PYEOF
 )"
-ACCESS_TOKEN="$(printf %s "$TOKEN_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))')"
+ACCESS_TOKEN="$(printf %s "$TOKEN_JSON" | json_field access_token)"
 if [ -z "$ACCESS_TOKEN" ]; then
   echo "error: token exchange failed: $(printf %s "$TOKEN_JSON" | head -c 300)" >&2
   exit 1
@@ -207,6 +231,6 @@ fi
 
 printf '%s\n' "$ACCESS_TOKEN" > "$TOKEN_FILE"
 chmod 600 "$TOKEN_FILE"
-EXPIRES_IN="$(printf %s "$TOKEN_JSON" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("expires_in",""))')"
+EXPIRES_IN="$(printf %s "$TOKEN_JSON" | json_field expires_in)"
 echo "token for stage '$STAGE' saved to $TOKEN_FILE (expires in ${EXPIRES_IN}s)" >&2
 printf '%s\n' "$ACCESS_TOKEN"

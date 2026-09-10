@@ -1755,11 +1755,12 @@ func TestGetMyClasPaging(t *testing.T) {
 	repo := &fakeRepo{
 		byUserID: map[string][]*signatures.ItemSignature{
 			"user-a": {
-				icla("sig-c", "user-a", "cla-group-1", "2024-03-01T00:00:00Z", true),
+				// SignedOn tie between sig-c and sig-d - listed d-before-c so only
+				// the signature-ID tiebreak can produce the expected order
+				icla("sig-d", "user-a", "cla-group-1", "2024-03-01T00:00:00Z", true),
 				icla("sig-e", "user-a", "cla-group-1", "2024-01-01T00:00:00Z", true),
 				icla("sig-b", "user-a", "cla-group-1", "2024-04-01T00:00:00Z", true),
-				// SignedOn tie with sig-c - the paged order falls back to the signature ID
-				icla("sig-d", "user-a", "cla-group-1", "2024-03-01T00:00:00Z", true),
+				icla("sig-c", "user-a", "cla-group-1", "2024-03-01T00:00:00Z", true),
 				icla("sig-a", "user-a", "cla-group-1", "2024-05-01T00:00:00Z", true),
 			},
 		},

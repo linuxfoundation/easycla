@@ -993,12 +993,43 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 				utils.ErrorResponseBadRequest(reqID, problemLoadingCLAGroupByID))
 		}
 
-		companyModel, err := companyService.GetCompanyByExternalID(ctx, params.CompanySFID)
-		if err != nil || companyModel == nil {
+		// non-mutating lookup - the singular GetCompanyByExternalID auto-creates a company
+		// record on miss, which a GET must never do; one SFID maps to one company record per
+		// signing entity, so the optional companyID query parameter selects a specific record
+		// (default: the parent record, matching the original endpoint's resolution)
+		selectByCompanyID := params.CompanyID != nil && *params.CompanyID != ""
+		companyRecords, err := companyService.GetCompaniesByExternalID(ctx, params.CompanySFID, selectByCompanyID)
+		if err != nil {
 			msg := fmt.Sprintf("company lookup by SFID: %s failed", params.CompanySFID)
 			log.WithFields(f).WithError(err).Warn(msg)
+			if _, notFound := err.(*utils.CompanyNotFound); notFound {
+				return signatures.NewListCompanyClaGroupCorporateContributorsNotFound().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseNotFoundWithError(reqID, msg, err))
+			}
+			return signatures.NewListCompanyClaGroupCorporateContributorsInternalServerError().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
+		}
+		if len(companyRecords) == 0 || companyRecords[0] == nil {
+			msg := fmt.Sprintf("no company records found for SFID: %s", params.CompanySFID)
+			log.WithFields(f).Warn(msg)
 			return signatures.NewListCompanyClaGroupCorporateContributorsNotFound().WithXRequestID(reqID).WithPayload(
-				utils.ErrorResponseNotFoundWithError(reqID, msg, err))
+				utils.ErrorResponseNotFound(reqID, msg))
+		}
+		companyModel := companyRecords[0]
+		if selectByCompanyID {
+			companyModel = nil
+			for _, companyRecord := range companyRecords {
+				if companyRecord != nil && companyRecord.CompanyID == *params.CompanyID {
+					companyModel = companyRecord
+					break
+				}
+			}
+			if companyModel == nil {
+				msg := fmt.Sprintf("company with ID: %s was not found under SFID: %s", *params.CompanyID, params.CompanySFID)
+				log.WithFields(f).Warn(msg)
+				return signatures.NewListCompanyClaGroupCorporateContributorsNotFound().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseNotFound(reqID, msg))
+			}
 		}
 
 		if !claGroupModel.ProjectCCLAEnabled {

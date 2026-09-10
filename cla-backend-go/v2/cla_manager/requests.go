@@ -31,16 +31,20 @@ func (s *service) GetCLAManagerRequests(ctx context.Context, companyModel *v1Mod
 	for i := range result.Requests {
 		result.Requests[i].CompanyExternalID = companyModel.CompanyExternalID
 	}
-	// deterministic order so the optional pageSize/offset windows are stable
-	sort.Slice(result.Requests, func(i, j int) bool {
-		if result.Requests[i].Created != result.Requests[j].Created {
-			return result.Requests[i].Created < result.Requests[j].Created
-		}
-		return result.Requests[i].RequestID < result.Requests[j].RequestID
-	})
+	if pageSize != nil || offset != nil {
+		// deterministic order so the optional pageSize/offset windows are stable - the
+		// unpaged response keeps the stored (GSI) order
+		sort.Slice(result.Requests, func(i, j int) bool {
+			if result.Requests[i].Created != result.Requests[j].Created {
+				return result.Requests[i].Created < result.Requests[j].Created
+			}
+			return result.Requests[i].RequestID < result.Requests[j].RequestID
+		})
+	}
 	result.TotalCount = int64(len(result.Requests))
 	start, end := utils.PageBounds(len(result.Requests), pageSize, offset)
 	result.Requests = result.Requests[start:end]
+	result.ResultCount = int64(len(result.Requests))
 	return result, nil
 }
 

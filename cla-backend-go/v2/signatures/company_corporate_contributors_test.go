@@ -19,8 +19,10 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
 	sigOps "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/signatures"
 	mock_project_repo "github.com/linuxfoundation/easycla/cla-backend-go/project/mocks"
+	"github.com/linuxfoundation/easycla/cla-backend-go/project/repository"
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	mock_projects_cla_groups "github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups/mocks"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -79,7 +81,7 @@ func TestListCompanyClaGroupCorporateContributors(t *testing.T) {
 		mockProjectRepo.EXPECT().GetCLAGroupByID(gomock.Any(), claGroupID, false).Return(&v1Models.ClaGroup{ProjectID: claGroupID, ProjectCCLAEnabled: true}, nil)
 
 		mockCompanyService := mock_company.NewMockIService(ctrl)
-		mockCompanyService.EXPECT().GetCompanyByExternalID(gomock.Any(), companySFID).Return(&v1Models.Company{CompanyID: companyID, CompanyExternalID: companySFID}, nil)
+		mockCompanyService.EXPECT().GetCompaniesByExternalID(gomock.Any(), companySFID, false).Return([]*v1Models.Company{{CompanyID: companyID, CompanyExternalID: companySFID}}, nil)
 
 		mockPcgRepo := mock_projects_cla_groups.NewMockRepository(ctrl)
 		mockPcgRepo.EXPECT().GetProjectsIdsForClaGroup(gomock.Any(), claGroupID).Return([]*projects_cla_groups.ProjectClaGroup{{ClaGroupID: claGroupID, FoundationSFID: foundation}}, nil)
@@ -117,7 +119,7 @@ func TestListCompanyClaGroupCorporateContributors(t *testing.T) {
 		mockProjectRepo.EXPECT().GetCLAGroupByID(gomock.Any(), claGroupID, false).Return(&v1Models.ClaGroup{ProjectID: claGroupID, ProjectCCLAEnabled: true}, nil)
 
 		mockCompanyService := mock_company.NewMockIService(ctrl)
-		mockCompanyService.EXPECT().GetCompanyByExternalID(gomock.Any(), companySFID).Return(&v1Models.Company{CompanyID: companyID, CompanyExternalID: companySFID}, nil)
+		mockCompanyService.EXPECT().GetCompaniesByExternalID(gomock.Any(), companySFID, false).Return([]*v1Models.Company{{CompanyID: companyID, CompanyExternalID: companySFID}}, nil)
 
 		mockPcgRepo := mock_projects_cla_groups.NewMockRepository(ctrl)
 		mockPcgRepo.EXPECT().GetProjectsIdsForClaGroup(gomock.Any(), claGroupID).Return([]*projects_cla_groups.ProjectClaGroup{{ClaGroupID: claGroupID, FoundationSFID: foundation}}, nil)
@@ -147,7 +149,8 @@ func TestListCompanyClaGroupCorporateContributors(t *testing.T) {
 		mockProjectRepo.EXPECT().GetCLAGroupByID(gomock.Any(), claGroupID, false).Return(&v1Models.ClaGroup{ProjectID: claGroupID, ProjectCCLAEnabled: true}, nil)
 
 		mockCompanyService := mock_company.NewMockIService(ctrl)
-		mockCompanyService.EXPECT().GetCompanyByExternalID(gomock.Any(), companySFID).Return(nil, errors.New("company not found"))
+		mockCompanyService.EXPECT().GetCompaniesByExternalID(gomock.Any(), companySFID, false).Return(nil,
+			&utils.CompanyNotFound{Message: "no company records found with matching external SFID", CompanySFID: companySFID})
 
 		v2Service := &fakeCorporateContributorsService{}
 		api := operations.NewEasyclaAPI(nil)
@@ -159,6 +162,148 @@ func TestListCompanyClaGroupCorporateContributors(t *testing.T) {
 		assert.Equal(t, 0, v2Service.calls)
 	})
 
+	t.Run("company lookup operational error is an internal server error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockProjectRepo := mock_project_repo.NewMockProjectRepository(ctrl)
+		mockProjectRepo.EXPECT().GetCLAGroupByID(gomock.Any(), claGroupID, false).Return(&v1Models.ClaGroup{ProjectID: claGroupID, ProjectCCLAEnabled: true}, nil)
+
+		mockCompanyService := mock_company.NewMockIService(ctrl)
+		mockCompanyService.EXPECT().GetCompaniesByExternalID(gomock.Any(), companySFID, false).Return(nil, errors.New("dynamodb unavailable"))
+
+		v2Service := &fakeCorporateContributorsService{}
+		api := operations.NewEasyclaAPI(nil)
+		Configure(api, nil, mockProjectRepo, mockCompanyService, nil, nil, nil, v2Service, mock_projects_cla_groups.NewMockRepository(ctrl))
+
+		recorder := serve(t, api, orgScopedUser(), sigOps.ListCompanyClaGroupCorporateContributorsParams{ClaGroupID: claGroupID, CompanySFID: companySFID})
+
+		assert.Equal(t, http.StatusInternalServerError, recorder.Code, recorder.Body.String())
+		assert.Equal(t, 0, v2Service.calls, "a failed lookup must never reach the service")
+	})
+
+	t.Run("companyID query parameter selects the signing-entity record", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		const childCompanyID = "company-cc-child"
+
+		mockProjectRepo := mock_project_repo.NewMockProjectRepository(ctrl)
+		mockProjectRepo.EXPECT().GetCLAGroupByID(gomock.Any(), claGroupID, false).Return(&v1Models.ClaGroup{ProjectID: claGroupID, ProjectCCLAEnabled: true}, nil)
+
+		mockCompanyService := mock_company.NewMockIService(ctrl)
+		mockCompanyService.EXPECT().GetCompaniesByExternalID(gomock.Any(), companySFID, true).Return([]*v1Models.Company{
+			{CompanyID: companyID, CompanyName: "Acme", CompanyExternalID: companySFID},
+			{CompanyID: childCompanyID, CompanyName: "Acme", SigningEntityName: "Acme Sub", CompanyExternalID: companySFID},
+		}, nil)
+
+		mockPcgRepo := mock_projects_cla_groups.NewMockRepository(ctrl)
+		mockPcgRepo.EXPECT().GetProjectsIdsForClaGroup(gomock.Any(), claGroupID).Return([]*projects_cla_groups.ProjectClaGroup{{ClaGroupID: claGroupID, FoundationSFID: foundation}}, nil)
+
+		requestedCompanyID := childCompanyID
+		v2Service := &fakeCorporateContributorsService{result: &models.CorporateContributorList{List: []*models.CorporateContributor{{LinuxFoundationID: "child-lfid"}}}}
+
+		api := operations.NewEasyclaAPI(nil)
+		Configure(api, nil, mockProjectRepo, mockCompanyService, nil, nil, nil, v2Service, mockPcgRepo)
+
+		recorder := serve(t, api, orgScopedUser(), sigOps.ListCompanyClaGroupCorporateContributorsParams{
+			ClaGroupID: claGroupID, CompanySFID: companySFID, CompanyID: &requestedCompanyID,
+		})
+
+		assert.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+		require.Equal(t, 1, v2Service.calls)
+		require.NotNil(t, v2Service.gotParams.CompanyID)
+		assert.Equal(t, childCompanyID, *v2Service.gotParams.CompanyID, "the selected signing-entity record is delegated, not the parent")
+	})
+
+	t.Run("companyID query parameter without a matching record is not found", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockProjectRepo := mock_project_repo.NewMockProjectRepository(ctrl)
+		mockProjectRepo.EXPECT().GetCLAGroupByID(gomock.Any(), claGroupID, false).Return(&v1Models.ClaGroup{ProjectID: claGroupID, ProjectCCLAEnabled: true}, nil)
+
+		mockCompanyService := mock_company.NewMockIService(ctrl)
+		mockCompanyService.EXPECT().GetCompaniesByExternalID(gomock.Any(), companySFID, true).Return([]*v1Models.Company{
+			{CompanyID: companyID, CompanyExternalID: companySFID},
+		}, nil)
+
+		requestedCompanyID := "company-of-some-other-sfid"
+		v2Service := &fakeCorporateContributorsService{}
+		api := operations.NewEasyclaAPI(nil)
+		Configure(api, nil, mockProjectRepo, mockCompanyService, nil, nil, nil, v2Service, mock_projects_cla_groups.NewMockRepository(ctrl))
+
+		recorder := serve(t, api, orgScopedUser(), sigOps.ListCompanyClaGroupCorporateContributorsParams{
+			ClaGroupID: claGroupID, CompanySFID: companySFID, CompanyID: &requestedCompanyID,
+		})
+
+		assert.Equal(t, http.StatusNotFound, recorder.Code, recorder.Body.String())
+		assert.Equal(t, 0, v2Service.calls, "a company ID outside the SFID's records must never be delegated")
+	})
+
+	t.Run("unknown CLA group is not found", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockProjectRepo := mock_project_repo.NewMockProjectRepository(ctrl)
+		mockProjectRepo.EXPECT().GetCLAGroupByID(gomock.Any(), claGroupID, false).Return(nil, repository.ErrProjectDoesNotExist)
+
+		v2Service := &fakeCorporateContributorsService{}
+		api := operations.NewEasyclaAPI(nil)
+		Configure(api, nil, mockProjectRepo, mock_company.NewMockIService(ctrl), nil, nil, nil, v2Service, mock_projects_cla_groups.NewMockRepository(ctrl))
+
+		recorder := serve(t, api, orgScopedUser(), sigOps.ListCompanyClaGroupCorporateContributorsParams{ClaGroupID: claGroupID, CompanySFID: companySFID})
+
+		assert.Equal(t, http.StatusNotFound, recorder.Code, recorder.Body.String())
+		assert.Equal(t, 0, v2Service.calls)
+	})
+
+	t.Run("missing project CLA group mappings is a bad request", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockProjectRepo := mock_project_repo.NewMockProjectRepository(ctrl)
+		mockProjectRepo.EXPECT().GetCLAGroupByID(gomock.Any(), claGroupID, false).Return(&v1Models.ClaGroup{ProjectID: claGroupID, ProjectCCLAEnabled: true}, nil)
+
+		mockCompanyService := mock_company.NewMockIService(ctrl)
+		mockCompanyService.EXPECT().GetCompaniesByExternalID(gomock.Any(), companySFID, false).Return([]*v1Models.Company{{CompanyID: companyID, CompanyExternalID: companySFID}}, nil)
+
+		mockPcgRepo := mock_projects_cla_groups.NewMockRepository(ctrl)
+		mockPcgRepo.EXPECT().GetProjectsIdsForClaGroup(gomock.Any(), claGroupID).Return([]*projects_cla_groups.ProjectClaGroup{}, nil)
+
+		v2Service := &fakeCorporateContributorsService{}
+		api := operations.NewEasyclaAPI(nil)
+		Configure(api, nil, mockProjectRepo, mockCompanyService, nil, nil, nil, v2Service, mockPcgRepo)
+
+		recorder := serve(t, api, orgScopedUser(), sigOps.ListCompanyClaGroupCorporateContributorsParams{ClaGroupID: claGroupID, CompanySFID: companySFID})
+
+		assert.Equal(t, http.StatusBadRequest, recorder.Code, recorder.Body.String())
+		assert.Equal(t, 0, v2Service.calls)
+	})
+
+	t.Run("delegate service error is an internal server error", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+
+		mockProjectRepo := mock_project_repo.NewMockProjectRepository(ctrl)
+		mockProjectRepo.EXPECT().GetCLAGroupByID(gomock.Any(), claGroupID, false).Return(&v1Models.ClaGroup{ProjectID: claGroupID, ProjectCCLAEnabled: true}, nil)
+
+		mockCompanyService := mock_company.NewMockIService(ctrl)
+		mockCompanyService.EXPECT().GetCompaniesByExternalID(gomock.Any(), companySFID, false).Return([]*v1Models.Company{{CompanyID: companyID, CompanyExternalID: companySFID}}, nil)
+
+		mockPcgRepo := mock_projects_cla_groups.NewMockRepository(ctrl)
+		mockPcgRepo.EXPECT().GetProjectsIdsForClaGroup(gomock.Any(), claGroupID).Return([]*projects_cla_groups.ProjectClaGroup{{ClaGroupID: claGroupID, FoundationSFID: foundation}}, nil)
+
+		v2Service := &fakeCorporateContributorsService{err: errors.New("signature query blew up")}
+		api := operations.NewEasyclaAPI(nil)
+		Configure(api, nil, mockProjectRepo, mockCompanyService, nil, nil, nil, v2Service, mockPcgRepo)
+
+		recorder := serve(t, api, orgScopedUser(), sigOps.ListCompanyClaGroupCorporateContributorsParams{ClaGroupID: claGroupID, CompanySFID: companySFID})
+
+		assert.Equal(t, http.StatusInternalServerError, recorder.Code, recorder.Body.String())
+		assert.Equal(t, 1, v2Service.calls)
+	})
+
 	t.Run("CLA group without CCLA support is a bad request", func(t *testing.T) {
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
@@ -167,7 +312,7 @@ func TestListCompanyClaGroupCorporateContributors(t *testing.T) {
 		mockProjectRepo.EXPECT().GetCLAGroupByID(gomock.Any(), claGroupID, false).Return(&v1Models.ClaGroup{ProjectID: claGroupID, ProjectCCLAEnabled: false}, nil)
 
 		mockCompanyService := mock_company.NewMockIService(ctrl)
-		mockCompanyService.EXPECT().GetCompanyByExternalID(gomock.Any(), companySFID).Return(&v1Models.Company{CompanyID: companyID, CompanyExternalID: companySFID}, nil)
+		mockCompanyService.EXPECT().GetCompaniesByExternalID(gomock.Any(), companySFID, false).Return([]*v1Models.Company{{CompanyID: companyID, CompanyExternalID: companySFID}}, nil)
 
 		v2Service := &fakeCorporateContributorsService{}
 		api := operations.NewEasyclaAPI(nil)

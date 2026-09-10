@@ -213,7 +213,7 @@ func TestGetCLAManagerRequests(t *testing.T) {
 		assert.Nil(t, err)
 		body, marshalErr := json.Marshal(result)
 		assert.Nil(t, marshalErr)
-		assert.JSONEq(t, `{"requests":[]}`, string(body))
+		assert.JSONEq(t, `{"requests":[],"resultCount":0,"totalCount":0}`, string(body))
 	})
 
 	t.Run("propagates the v1 service error", func(t *testing.T) {
@@ -243,21 +243,25 @@ func TestGetCLAManagerRequests(t *testing.T) {
 		full, err := s.GetCLAManagerRequests(context.Background(), acmeCompany(), "cla-group-1", nil, nil)
 		assert.Nil(t, err)
 		assert.Equal(t, int64(3), full.TotalCount)
+		assert.Equal(t, int64(3), full.ResultCount)
 		if assert.Len(t, full.Requests, 3) {
-			assert.Equal(t, []string{"req-a", "req-b", "req-c"},
-				[]string{full.Requests[0].RequestID, full.Requests[1].RequestID, full.Requests[2].RequestID}, "sorted by created date")
+			assert.Equal(t, []string{"req-c", "req-a", "req-b"},
+				[]string{full.Requests[0].RequestID, full.Requests[1].RequestID, full.Requests[2].RequestID},
+				"the unpaged response keeps the stored order - no re-sorting without paging params")
 		}
 
 		page, err := s.GetCLAManagerRequests(context.Background(), acmeCompany(), "cla-group-1", aws.Int64(1), aws.Int64(1))
 		assert.Nil(t, err)
 		assert.Equal(t, int64(3), page.TotalCount)
+		assert.Equal(t, int64(1), page.ResultCount)
 		if assert.Len(t, page.Requests, 1) {
-			assert.Equal(t, "req-b", page.Requests[0].RequestID)
+			assert.Equal(t, "req-b", page.Requests[0].RequestID, "paged windows use the deterministic created-date order")
 		}
 
 		beyond, err := s.GetCLAManagerRequests(context.Background(), acmeCompany(), "cla-group-1", aws.Int64(5), aws.Int64(10))
 		assert.Nil(t, err)
 		assert.Equal(t, int64(3), beyond.TotalCount)
+		assert.Equal(t, int64(0), beyond.ResultCount)
 		assert.Len(t, beyond.Requests, 0)
 	})
 }
@@ -474,5 +478,5 @@ func TestClaManagerRequestJSONContract(t *testing.T) {
 
 	listBody, err := json.Marshal(v2ClaManagerRequestList(nil))
 	assert.Nil(t, err)
-	assert.JSONEq(t, `{"requests":[]}`, string(listBody))
+	assert.JSONEq(t, `{"requests":[],"resultCount":0,"totalCount":0}`, string(listBody))
 }

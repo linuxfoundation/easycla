@@ -22,14 +22,18 @@ import (
 
 type fakeService struct {
 	callers           []*Caller
+	pageSizes         []*int64
+	offsets           []*int64
 	err               error
 	nilPdf            bool
 	nilManagers       bool
 	invalidRecipients bool
 }
 
-func (f *fakeService) GetMyClaManagers(_ context.Context, caller *Caller, _ *Identity, _ string, _, _ *int64) (*models.MyClaManagerList, error) {
+func (f *fakeService) GetMyClaManagers(_ context.Context, caller *Caller, _ *Identity, _ string, pageSize, offset *int64) (*models.MyClaManagerList, error) {
 	f.callers = append(f.callers, caller)
+	f.pageSizes = append(f.pageSizes, pageSize)
+	f.offsets = append(f.offsets, offset)
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -53,8 +57,10 @@ func (f *fakeService) CreateMyClaManagerRequest(_ context.Context, caller *Calle
 	return &models.MyClaManagerRequestResult{}, nil
 }
 
-func (f *fakeService) GetMyClas(_ context.Context, caller *Caller, _ *Identity, _, _ *int64) (*models.MyClaList, error) {
+func (f *fakeService) GetMyClas(_ context.Context, caller *Caller, _ *Identity, pageSize, offset *int64) (*models.MyClaList, error) {
 	f.callers = append(f.callers, caller)
+	f.pageSizes = append(f.pageSizes, pageSize)
+	f.offsets = append(f.offsets, offset)
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -72,8 +78,10 @@ func (f *fakeService) GetMyClaPdfURL(_ context.Context, caller *Caller, _ *Ident
 	return &models.MyClaPdf{}, nil
 }
 
-func (f *fakeService) GetMyIdentities(_ context.Context, currentUsername string, _, _ *int64) (*models.MyIdentityList, error) {
+func (f *fakeService) GetMyIdentities(_ context.Context, currentUsername string, pageSize, offset *int64) (*models.MyIdentityList, error) {
 	f.callers = append(f.callers, &Caller{Username: currentUsername})
+	f.pageSizes = append(f.pageSizes, pageSize)
+	f.offsets = append(f.offsets, offset)
 	if f.err != nil {
 		return nil, f.err
 	}
@@ -188,6 +196,42 @@ func TestClaManagerHandlers(t *testing.T) {
 	service.err = errors.New("boom")
 	assert.Equal(t, http.StatusInternalServerError, statusOf(t, api.MyClasGetMyClaManagersHandler.Handle(myClasOps.GetMyClaManagersParams{HTTPRequest: req, SignatureID: "sig-1"}, authUser)))
 	assert.Equal(t, http.StatusInternalServerError, statusOf(t, api.MyClasCreateMyClaManagerRequestHandler.Handle(myClasOps.CreateMyClaManagerRequestParams{HTTPRequest: req, SignatureID: "sig-1", Body: body}, authUser)))
+}
+
+// the optional paging query parameters must reach the service untouched - and stay
+// nil when the caller omits them, which is what keeps the legacy response shape
+func TestListHandlersForwardPagingParams(t *testing.T) {
+	api, service := configuredAPI(t, nil)
+	authUser := &auth.User{UserName: "someone"}
+	req := request(t, "")
+	pageSize, offset := int64(25), int64(50)
+
+	assert.Equal(t, http.StatusOK, statusOf(t, api.MyClasGetMyClasHandler.Handle(
+		myClasOps.GetMyClasParams{HTTPRequest: req, PageSize: &pageSize, Offset: &offset}, authUser)))
+	assert.Equal(t, http.StatusOK, statusOf(t, api.MyClasGetMyClaManagersHandler.Handle(
+		myClasOps.GetMyClaManagersParams{HTTPRequest: req, SignatureID: "sig-1", PageSize: &pageSize, Offset: &offset}, authUser)))
+	assert.Equal(t, http.StatusOK, statusOf(t, api.MyClasGetMyIdentitiesHandler.Handle(
+		myClasOps.GetMyIdentitiesParams{HTTPRequest: req, PageSize: &pageSize, Offset: &offset}, authUser)))
+
+	require.Len(t, service.pageSizes, 3)
+	require.Len(t, service.offsets, 3)
+	for i := range service.pageSizes {
+		require.NotNil(t, service.pageSizes[i], "call %d must forward pageSize", i)
+		require.NotNil(t, service.offsets[i], "call %d must forward offset", i)
+		assert.Equal(t, pageSize, *service.pageSizes[i])
+		assert.Equal(t, offset, *service.offsets[i])
+	}
+
+	assert.Equal(t, http.StatusOK, statusOf(t, api.MyClasGetMyClasHandler.Handle(myClasOps.GetMyClasParams{HTTPRequest: req}, authUser)))
+	assert.Equal(t, http.StatusOK, statusOf(t, api.MyClasGetMyClaManagersHandler.Handle(myClasOps.GetMyClaManagersParams{HTTPRequest: req, SignatureID: "sig-1"}, authUser)))
+	assert.Equal(t, http.StatusOK, statusOf(t, api.MyClasGetMyIdentitiesHandler.Handle(myClasOps.GetMyIdentitiesParams{HTTPRequest: req}, authUser)))
+
+	require.Len(t, service.pageSizes, 6)
+	require.Len(t, service.offsets, 6)
+	for i := 3; i < 6; i++ {
+		assert.Nil(t, service.pageSizes[i], "call %d must forward a nil pageSize when omitted", i)
+		assert.Nil(t, service.offsets[i], "call %d must forward a nil offset when omitted", i)
+	}
 }
 
 func TestHandlersTrustAllowListedCallers(t *testing.T) {
