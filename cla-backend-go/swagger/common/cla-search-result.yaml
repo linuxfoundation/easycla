@@ -21,6 +21,12 @@ properties:
   foundationSFID:
     type: string
     description: The Salesforce ID of the foundation the CLA Group belongs to, omitted when unknown
+  projects:
+    type: array
+    x-omitempty: false
+    description: All Salesforce projects covered by the CLA Group, one per project mapping and sorted by projectName - presentation data only, the CLA Group remains the signing unit
+    items:
+      $ref: '#/definitions/company-cla-group-project'
   projectExternalID:
     type: string
     description: The external (Salesforce) ID stored on the CLA Group record, omitted when unset
