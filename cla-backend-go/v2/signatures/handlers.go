@@ -968,6 +968,121 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		return signatures.NewListClaGroupCorporateContributorsOK().WithXRequestID(reqID).WithPayload(result)
 	})
 
+	// Organization-scoped alias of listClaGroupCorporateContributors - the companySFID path segment
+	// lets the API gateway authorize organization-scoped (CLA manager) tokens, which the
+	// /cla-group/{claGroupID}/corporate-contributors path cannot
+	api.SignaturesListCompanyClaGroupCorporateContributorsHandler = signatures.ListCompanyClaGroupCorporateContributorsHandlerFunc(func(params signatures.ListCompanyClaGroupCorporateContributorsParams, authUser *auth.User) middleware.Responder {
+		reqID := utils.GetRequestID(params.XREQUESTID)
+		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+		f := logrus.Fields{
+			"functionName":   "v2.signatures.handlers.SignaturesListCompanyClaGroupCorporateContributorsHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"claGroupID":     params.ClaGroupID,
+			"companySFID":    params.CompanySFID,
+		}
+
+		claGroupModel, err := projectRepo.GetCLAGroupByID(ctx, params.ClaGroupID, repository.DontLoadRepoDetails)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn(problemLoadingCLAGroupByID)
+			var claGroupNotFound *utils.CLAGroupNotFound
+			if errors.As(err, &claGroupNotFound) || errors.Is(err, repository.ErrProjectDoesNotExist) {
+				return signatures.NewListCompanyClaGroupCorporateContributorsNotFound().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseNotFoundWithError(reqID, problemLoadingCLAGroupByID, err))
+			}
+			return signatures.NewListCompanyClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseBadRequest(reqID, problemLoadingCLAGroupByID))
+		}
+
+		// non-mutating lookup - the singular GetCompanyByExternalID auto-creates a company
+		// record on miss, which a GET must never do; one SFID maps to one company record per
+		// signing entity, so the optional companyID query parameter selects a specific record
+		// (default: the parent record, matching the original endpoint's resolution)
+		selectByCompanyID := params.CompanyID != nil && *params.CompanyID != ""
+		companyRecords, err := companyService.GetCompaniesByExternalID(ctx, params.CompanySFID, selectByCompanyID)
+		if err != nil {
+			msg := fmt.Sprintf("company lookup by SFID: %s failed", params.CompanySFID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			if _, notFound := err.(*utils.CompanyNotFound); notFound {
+				return signatures.NewListCompanyClaGroupCorporateContributorsNotFound().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseNotFoundWithError(reqID, msg, err))
+			}
+			return signatures.NewListCompanyClaGroupCorporateContributorsInternalServerError().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
+		}
+		if len(companyRecords) == 0 || companyRecords[0] == nil {
+			msg := fmt.Sprintf("no company records found for SFID: %s", params.CompanySFID)
+			log.WithFields(f).Warn(msg)
+			return signatures.NewListCompanyClaGroupCorporateContributorsNotFound().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseNotFound(reqID, msg))
+		}
+		companyModel := companyRecords[0]
+		if selectByCompanyID {
+			companyModel = nil
+			for _, companyRecord := range companyRecords {
+				if companyRecord != nil && companyRecord.CompanyID == *params.CompanyID {
+					companyModel = companyRecord
+					break
+				}
+			}
+			if companyModel == nil {
+				msg := fmt.Sprintf("company with ID: %s was not found under SFID: %s", *params.CompanyID, params.CompanySFID)
+				log.WithFields(f).Warn(msg)
+				return signatures.NewListCompanyClaGroupCorporateContributorsNotFound().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseNotFound(reqID, msg))
+			}
+		}
+
+		if !claGroupModel.ProjectCCLAEnabled {
+			msg := fmt.Sprintf("CLA Group with ID '%s' does not support corporate contribution", params.ClaGroupID)
+			log.WithFields(f).Warn(msg)
+			return signatures.NewListCompanyClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, errors.New(msg)))
+		}
+
+		projectCLAGroupEntries, projectCLAGroupErr := projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, params.ClaGroupID)
+		if projectCLAGroupErr != nil || len(projectCLAGroupEntries) == 0 {
+			msg := fmt.Sprintf("unable to load project CLA Group mappings for CLA Group: %s - has this project been migrated to v2?", params.ClaGroupID)
+			log.WithFields(f).Warn(msg)
+			return signatures.NewListCompanyClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
+		}
+		f["foundationSFID"] = projectCLAGroupEntries[0].FoundationSFID
+
+		log.WithFields(f).Debug("checking access control permissions for user...")
+		if !isUserHaveAccessToCLAProjectOrganization(ctx, authUser, projectCLAGroupEntries[0].FoundationSFID, companyModel.CompanyExternalID, projectClaGroupsRepo) {
+			msg := fmt.Sprintf("user '%s' is not authorized to view project CCLA signatures project scope or project|organization scope for company ID: %s",
+				authUser.UserName, companyModel.CompanyID)
+			log.Warn(msg)
+			return signatures.NewListCompanyClaGroupCorporateContributorsForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+		}
+		log.WithFields(f).Debug("user has access for this query")
+
+		result, err := v2SignatureService.GetClaGroupCorporateContributors(ctx, signatures.ListClaGroupCorporateContributorsParams{
+			HTTPRequest: params.HTTPRequest,
+			XREQUESTID:  params.XREQUESTID,
+			XACL:        params.XACL,
+			XEMAIL:      params.XEMAIL,
+			XUSERNAME:   params.XUSERNAME,
+			ClaGroupID:  params.ClaGroupID,
+			CompanyID:   &companyModel.CompanyID,
+			SearchTerm:  params.SearchTerm,
+			PageSize:    params.PageSize,
+			NextKey:     params.NextKey,
+		})
+		if err != nil {
+			msg := fmt.Sprintf("problem getting corporate contributors for CLA Group: %s with company: %s", params.ClaGroupID, companyModel.CompanyID)
+			if _, ok := err.(*organizations.GetOrgNotFound); ok {
+				formatErr := errors.New("error retrieving company using companySFID")
+				return signatures.NewListCompanyClaGroupCorporateContributorsNotFound().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseNotFoundWithError(reqID, msg, formatErr))
+			}
+			return signatures.NewListCompanyClaGroupCorporateContributorsInternalServerError().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseInternalServerErrorWithError(reqID, "unexpected error when searching for corporate contributors", err))
+		}
+
+		log.WithFields(f).Debugf("returning %d Corporate contributors to caller...", len(result.List))
+		return signatures.NewListCompanyClaGroupCorporateContributorsOK().WithXRequestID(reqID).WithPayload(result)
+	})
+
 	api.SignaturesGetSignatureSignedDocumentHandler = signatures.GetSignatureSignedDocumentHandlerFunc(func(params signatures.GetSignatureSignedDocumentParams, authUser *auth.User) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint

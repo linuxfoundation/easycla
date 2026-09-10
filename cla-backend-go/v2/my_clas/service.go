@@ -152,11 +152,11 @@ var ErrMissingMessage = errors.New("message is required for a contact request an
 
 // Service interface defines the My CLAs service methods
 type Service interface {
-	GetMyClas(ctx context.Context, caller *Caller, requested *Identity) (*models.MyClaList, error)
+	GetMyClas(ctx context.Context, caller *Caller, requested *Identity, pageSize, offset *int64) (*models.MyClaList, error)
 	GetMyClaPdfURL(ctx context.Context, caller *Caller, requested *Identity, signatureID string) (*models.MyClaPdf, error)
-	GetMyIdentities(ctx context.Context, currentUsername string) (*models.MyIdentityList, error)
+	GetMyIdentities(ctx context.Context, currentUsername string, pageSize, offset *int64) (*models.MyIdentityList, error)
 	AuthorizeIdentity(ctx context.Context, currentUsername string, admin bool, requested *Identity) (*Identity, []string, error)
-	GetMyClaManagers(ctx context.Context, caller *Caller, requested *Identity, signatureID string) (*models.MyClaManagerList, error)
+	GetMyClaManagers(ctx context.Context, caller *Caller, requested *Identity, signatureID string, pageSize, offset *int64) (*models.MyClaManagerList, error)
 	CreateMyClaManagerRequest(ctx context.Context, caller *Caller, requested *Identity, signatureID string, input *models.MyClaManagerRequest) (*models.MyClaManagerRequestResult, error)
 }
 
@@ -203,7 +203,7 @@ type projectInfo struct {
 
 // GetMyClas returns the signed ICLAs and ECLAs of every EasyCLA user record matching the identity,
 // with validity evaluated against the current CCLA approval lists
-func (s *service) GetMyClas(ctx context.Context, caller *Caller, requested *Identity) (*models.MyClaList, error) {
+func (s *service) GetMyClas(ctx context.Context, caller *Caller, requested *Identity, pageSize, offset *int64) (*models.MyClaList, error) {
 	f := logrus.Fields{
 		"functionName":    "v2.my_clas.service.GetMyClas",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
@@ -296,6 +296,18 @@ func (s *service) GetMyClas(ctx context.Context, caller *Caller, requested *Iden
 	sort.SliceStable(result.Clas, func(i, j int) bool {
 		return result.Clas[i].SignedOn > result.Clas[j].SignedOn
 	})
+	result.TotalCount = int64(len(result.Clas))
+	if pageSize != nil || offset != nil {
+		// deterministic tiebreak so paged windows never overlap or skip rows across calls
+		sort.SliceStable(result.Clas, func(i, j int) bool {
+			if result.Clas[i].SignedOn != result.Clas[j].SignedOn {
+				return result.Clas[i].SignedOn > result.Clas[j].SignedOn
+			}
+			return result.Clas[i].SignatureID < result.Clas[j].SignatureID
+		})
+		start, end := utils.PageBounds(len(result.Clas), pageSize, offset)
+		result.Clas = result.Clas[start:end]
+	}
 	result.ResultCount = int64(len(result.Clas))
 
 	log.WithFields(f).Debugf("resolved %d user records with %d CLA records (%d identity keys skipped)", len(result.UserIds), result.ResultCount, len(skipped))
@@ -368,7 +380,7 @@ func (s *service) GetMyClaPdfURL(ctx context.Context, caller *Caller, requested 
 
 // GetMyClaManagers returns the CLA managers of the CCLA covering the given ECLA - nil means
 // unknown, not-owned, unsigned or ICLA signature ID
-func (s *service) GetMyClaManagers(ctx context.Context, caller *Caller, requested *Identity, signatureID string) (*models.MyClaManagerList, error) {
+func (s *service) GetMyClaManagers(ctx context.Context, caller *Caller, requested *Identity, signatureID string, pageSize, offset *int64) (*models.MyClaManagerList, error) {
 	identity, sig, _, err := s.findOwnedEcla(ctx, caller, requested, signatureID)
 	if err != nil || sig == nil {
 		return nil, err
@@ -379,6 +391,17 @@ func (s *service) GetMyClaManagers(ctx context.Context, caller *Caller, requeste
 		return nil, err
 	}
 
+	managers := details.managers
+	if pageSize != nil || offset != nil {
+		// deterministic order for paged windows - the unpaged response keeps the stored ACL order
+		managers = append([]models.MyClaManager{}, managers...)
+		sort.SliceStable(managers, func(i, j int) bool {
+			return managers[i].LfUsername < managers[j].LfUsername
+		})
+		start, end := utils.PageBounds(len(managers), pageSize, offset)
+		managers = managers[start:end]
+	}
+
 	return &models.MyClaManagerList{
 		SignatureID:  sig.SignatureID,
 		ClaGroupID:   sig.SignatureProjectID,
@@ -387,8 +410,9 @@ func (s *service) GetMyClaManagers(ctx context.Context, caller *Caller, requeste
 		CompanyID:    sig.SignatureUserCompanyID,
 		CompanyName:  details.companyName,
 		ClaManager:   details.callerIsManager,
-		Managers:     details.managers,
-		ResultCount:  int64(len(details.managers)),
+		Managers:     managers,
+		ResultCount:  int64(len(managers)),
+		TotalCount:   int64(len(details.managers)),
 	}, nil
 }
 
@@ -788,7 +812,7 @@ func precedenceIdentity(githubAs, gitlabAs, gerritAs string) (string, string) {
 // GetMyIdentities returns the deduplicated "<type>:<value>" identities the authenticated user
 // owns - the union of their EasyCLA records and platform account, the two sources
 // authorizeIdentity checks
-func (s *service) GetMyIdentities(ctx context.Context, currentUsername string) (*models.MyIdentityList, error) {
+func (s *service) GetMyIdentities(ctx context.Context, currentUsername string, pageSize, offset *int64) (*models.MyIdentityList, error) {
 	if currentUsername == "" {
 		return nil, errors.New("no username on the authenticated principal")
 	}
@@ -844,10 +868,16 @@ func (s *service) GetMyIdentities(ctx context.Context, currentUsername string) (
 	}
 
 	sort.Strings(identities)
+	totalCount := int64(len(identities))
+	if pageSize != nil || offset != nil {
+		start, end := utils.PageBounds(len(identities), pageSize, offset)
+		identities = identities[start:end]
+	}
 	return &models.MyIdentityList{
 		LfUsername:  currentUsername,
 		Identities:  identities,
 		ResultCount: int64(len(identities)),
+		TotalCount:  totalCount,
 	}, nil
 }
 

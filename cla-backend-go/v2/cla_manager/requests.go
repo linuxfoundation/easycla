@@ -6,6 +6,7 @@ package cla_manager
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/aws/aws-sdk-go/aws"
@@ -20,7 +21,7 @@ import (
 )
 
 // GetCLAManagerRequests returns the list of CLA manager requests for the given company and CLA group
-func (s *service) GetCLAManagerRequests(ctx context.Context, companyModel *v1Models.Company, claGroupID string) (*models.ClaManagerRequestList, error) {
+func (s *service) GetCLAManagerRequests(ctx context.Context, companyModel *v1Models.Company, claGroupID string, pageSize, offset *int64) (*models.ClaManagerRequestList, error) {
 	requestList, err := s.managerService.GetRequests(companyModel.CompanyID, claGroupID)
 	if err != nil {
 		return nil, err
@@ -30,6 +31,20 @@ func (s *service) GetCLAManagerRequests(ctx context.Context, companyModel *v1Mod
 	for i := range result.Requests {
 		result.Requests[i].CompanyExternalID = companyModel.CompanyExternalID
 	}
+	if pageSize != nil || offset != nil {
+		// deterministic order so the optional pageSize/offset windows are stable - the
+		// unpaged response keeps the stored (GSI) order
+		sort.Slice(result.Requests, func(i, j int) bool {
+			if result.Requests[i].Created != result.Requests[j].Created {
+				return result.Requests[i].Created < result.Requests[j].Created
+			}
+			return result.Requests[i].RequestID < result.Requests[j].RequestID
+		})
+	}
+	result.TotalCount = int64(len(result.Requests))
+	start, end := utils.PageBounds(len(result.Requests), pageSize, offset)
+	result.Requests = result.Requests[start:end]
+	result.ResultCount = int64(len(result.Requests))
 	return result, nil
 }
 

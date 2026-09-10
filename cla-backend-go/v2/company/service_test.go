@@ -291,11 +291,12 @@ func TestGetCompanyClaGroups(t *testing.T) {
 	}, nil)
 
 	service := NewService(nil, mockSignatureRepo, mock_project_repo.NewMockProjectRepository(ctrl), mock_user_repo.NewMockUserRepository(ctrl), mockCompanyRepo, mockProjectClaGroupRepo, nil)
-	result, err := service.GetCompanyClaGroups(ctx, companySFID)
+	result, err := service.GetCompanyClaGroups(ctx, companySFID, nil, nil)
 
 	assert.Nil(t, err)
 	assert.Equal(t, companySFID, result.CompanySFID)
 	assert.Equal(t, int64(2), result.ResultCount)
+	assert.Equal(t, int64(2), result.TotalCount)
 	assert.Len(t, result.List, 2)
 
 	first := result.List[0]
@@ -338,6 +339,49 @@ func TestGetCompanyClaGroups(t *testing.T) {
 	assert.Equal(t, int64(0), second.ClaManagersCount)
 	assert.True(t, second.NeedsClaManager)
 	assert.False(t, second.AutoCreateECLA)
+}
+
+func TestGetCompanyClaGroupsPaging(t *testing.T) {
+	ctx := context.Background()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	companySFID := "0014100000Te0000AAH"
+	mockCompanyRepo := mock_company_repo.NewMockIRepository(ctrl)
+	mockCompanyRepo.EXPECT().GetCompaniesByExternalID(ctx, companySFID, true).Return([]*v1Models.Company{
+		{CompanyID: "company-id-1", CompanyExternalID: companySFID, CompanyName: "Acme"},
+		{CompanyID: "company-id-2", CompanyExternalID: companySFID, CompanyName: "Acme", SigningEntityName: "Acme Sub"},
+	}, nil)
+
+	mockSignatureRepo := mock_signature_repo.NewMockSignatureRepository(ctrl)
+	mockSignatureRepo.EXPECT().GetCompanySignatures(ctx, cclaSignaturesParams("company-id-1", nil), HugePageSize, signatures.LoadACLDetails).Return(&v1Models.Signatures{
+		Signatures: []*v1Models.Signature{
+			{SignatureID: "signature-id-1", ProjectID: "cla-group-id", SignatureSigned: true},
+		},
+	}, nil)
+	mockSignatureRepo.EXPECT().GetCompanySignatures(ctx, cclaSignaturesParams("company-id-2", nil), HugePageSize, signatures.LoadACLDetails).Return(&v1Models.Signatures{
+		Signatures: []*v1Models.Signature{
+			{SignatureID: "signature-id-2", ProjectID: "cla-group-id", SignatureSigned: true},
+		},
+	}, nil)
+	mockSignatureRepo.EXPECT().GetClaGroupCorporateContributors(ctx, "cla-group-id", aws.String("company-id-1"), aws.Int64(1), nil, nil).Return(&v1Models.CorporateContributorList{}, nil)
+	mockSignatureRepo.EXPECT().GetClaGroupCorporateContributors(ctx, "cla-group-id", aws.String("company-id-2"), aws.Int64(1), nil, nil).Return(&v1Models.CorporateContributorList{}, nil)
+
+	mockProjectClaGroupRepo := mock_pcg_repo.NewMockRepository(ctrl)
+	mockProjectClaGroupRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-id").Times(1).Return([]*projects_cla_groups.ProjectClaGroup{
+		{ClaGroupID: "cla-group-id", ClaGroupName: "Test CLA Group", FoundationSFID: "foundation-sfid", FoundationName: "Test Foundation", ProjectSFID: "foundation-sfid", ProjectName: "Test Foundation"},
+	}, nil)
+
+	service := NewService(nil, mockSignatureRepo, mock_project_repo.NewMockProjectRepository(ctrl), mock_user_repo.NewMockUserRepository(ctrl), mockCompanyRepo, mockProjectClaGroupRepo, nil)
+	result, err := service.GetCompanyClaGroups(ctx, companySFID, aws.Int64(1), aws.Int64(1))
+
+	assert.Nil(t, err)
+	assert.Equal(t, int64(2), result.TotalCount, "total before paging")
+	assert.Equal(t, int64(1), result.ResultCount, "returned page size")
+	if assert.Len(t, result.List, 1) {
+		assert.Equal(t, "company-id-2", result.List[0].CompanyID, "second row by signing entity sort order")
+		assert.Equal(t, "Acme Sub", result.List[0].SigningEntityName)
+	}
 }
 
 func TestGetCompanyClaGroupsSignedByOmitsBlankWithManagers(t *testing.T) {
@@ -385,7 +429,7 @@ func TestGetCompanyClaGroupsSignedByOmitsBlankWithManagers(t *testing.T) {
 	}, nil)
 
 	service := NewService(nil, mockSignatureRepo, mock_project_repo.NewMockProjectRepository(ctrl), mock_user_repo.NewMockUserRepository(ctrl), mockCompanyRepo, mockProjectClaGroupRepo, nil)
-	result, err := service.GetCompanyClaGroups(ctx, companySFID)
+	result, err := service.GetCompanyClaGroups(ctx, companySFID, nil, nil)
 
 	assert.Nil(t, err)
 	assert.Len(t, result.List, 1)
@@ -441,7 +485,7 @@ func TestGetCompanyClaGroupsCompanyNotFound(t *testing.T) {
 	mockCompanyRepo.EXPECT().GetCompaniesByExternalID(ctx, "0014100000Te0000AAB", true).Return(nil, &utils.CompanyNotFound{CompanySFID: "0014100000Te0000AAB"})
 
 	service := NewService(nil, mock_signature_repo.NewMockSignatureRepository(ctrl), mock_project_repo.NewMockProjectRepository(ctrl), mock_user_repo.NewMockUserRepository(ctrl), mockCompanyRepo, mock_pcg_repo.NewMockRepository(ctrl), nil)
-	result, err := service.GetCompanyClaGroups(ctx, "0014100000Te0000AAB")
+	result, err := service.GetCompanyClaGroups(ctx, "0014100000Te0000AAB", nil, nil)
 
 	assert.Nil(t, err)
 	assert.Equal(t, "0014100000Te0000AAB", result.CompanySFID)
@@ -484,7 +528,7 @@ func TestGetCompanyClaGroupsOrphanClaGroup(t *testing.T) {
 	mockProjectRepo.EXPECT().GetCLAGroupByID(ctx, "orphan-cla-group-id", DontLoadRepoDetails).Return(&v1Models.ClaGroup{ProjectName: "Orphan Group", FoundationSFID: "orphan-foundation-sfid"}, nil)
 
 	service := NewService(nil, mockSignatureRepo, mockProjectRepo, mock_user_repo.NewMockUserRepository(ctrl), mockCompanyRepo, mockProjectClaGroupRepo, nil)
-	result, err := service.GetCompanyClaGroups(ctx, companySFID)
+	result, err := service.GetCompanyClaGroups(ctx, companySFID, nil, nil)
 
 	assert.Nil(t, err)
 	assert.Len(t, result.List, 1)
@@ -540,7 +584,7 @@ func TestGetCompanyClaGroupsOrphanClaGroupErrors(t *testing.T) {
 			mockProjectRepo.EXPECT().GetCLAGroupByID(ctx, "orphan-cla-group-id", DontLoadRepoDetails).Return(nil, tc.cgErr)
 			mockSignatureRepo.EXPECT().GetClaGroupCorporateContributors(ctx, "orphan-cla-group-id", aws.String("company-id-1"), aws.Int64(1), nil, nil).Return(&v1Models.CorporateContributorList{TotalCount: 0}, nil)
 
-			result, err := service.GetCompanyClaGroups(ctx, companySFID)
+			result, err := service.GetCompanyClaGroups(ctx, companySFID, nil, nil)
 
 			assert.Nil(t, err)
 			assert.Len(t, result.List, 1)
@@ -558,7 +602,7 @@ func TestGetCompanyClaGroupsOrphanClaGroupErrors(t *testing.T) {
 		repoErr := errors.New("dynamodb failure")
 		mockProjectRepo.EXPECT().GetCLAGroupByID(ctx, "orphan-cla-group-id", DontLoadRepoDetails).Return(nil, repoErr)
 
-		result, err := service.GetCompanyClaGroups(ctx, companySFID)
+		result, err := service.GetCompanyClaGroups(ctx, companySFID, nil, nil)
 
 		assert.Nil(t, result)
 		assert.Equal(t, repoErr, err)
@@ -618,7 +662,7 @@ func TestGetCompanyClaGroupsSignaturePagination(t *testing.T) {
 	}, nil)
 
 	service := NewService(nil, mockSignatureRepo, mock_project_repo.NewMockProjectRepository(ctrl), mock_user_repo.NewMockUserRepository(ctrl), mockCompanyRepo, mockProjectClaGroupRepo, nil)
-	result, err := service.GetCompanyClaGroups(ctx, companySFID)
+	result, err := service.GetCompanyClaGroups(ctx, companySFID, nil, nil)
 
 	assert.Nil(t, err)
 	assert.Len(t, result.List, 2)
@@ -658,7 +702,7 @@ func TestCompanyClaGroupsJSONContract(t *testing.T) {
 
 	lb, err := json.Marshal(models.CompanyClaGroups{List: make([]models.CompanyClaGroup, 0)})
 	assert.Nil(t, err)
-	for _, key := range []string{"companySFID", "resultCount", "list"} {
+	for _, key := range []string{"companySFID", "resultCount", "totalCount", "list"} {
 		assert.Contains(t, string(lb), fmt.Sprintf("%q:", key))
 	}
 	assert.Contains(t, string(lb), `"list":[]`)

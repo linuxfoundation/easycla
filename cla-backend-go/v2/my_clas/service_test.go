@@ -306,7 +306,7 @@ func TestGetMyClasUnionAndDedupe(t *testing.T) {
 	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{
 		Emails:    []string{"Someone@Example.org ", "someone@example.org"},
 		GithubIDs: []int64{12345, 12345},
-	})
+	}, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"user-a", "user-b"}, result.UserIds)
 	assert.Empty(t, result.SkippedIdentities)
@@ -407,7 +407,7 @@ func TestGetMyClasProjectNameAndLogo(t *testing.T) {
 		"found-sfid":  {ProjectOutput: v2ProjectServiceModels.ProjectOutput{ProjectCommon: v2ProjectServiceModels.ProjectCommon{Name: "Cloud Native Computing Foundation", ProjectLogo: "https://logos.example.org/cncf.png"}}},
 	}}
 
-	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, result.Clas, 2)
 
@@ -449,7 +449,7 @@ func TestGetMyClasProjectLookupDegradesGracefully(t *testing.T) {
 	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, claGroups)
 	svc.projectService = &fakeProjectService{byID: map[string]*v2ProjectServiceModels.ProjectOutputDetailed{}}
 
-	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 	require.NoError(t, err, "a project-service miss must not fail the listing")
 	require.Len(t, result.Clas, 1)
 	assert.Equal(t, "Kubernetes", result.Clas[0].ProjectName, "the mapping-table name is kept when the project-service has no record")
@@ -484,7 +484,7 @@ func TestGetMyClasMultiProjectNonFoundation(t *testing.T) {
 		"proj-alpha": {ProjectOutput: v2ProjectServiceModels.ProjectOutput{ProjectCommon: v2ProjectServiceModels.ProjectCommon{Name: "Alpha", ProjectLogo: "https://logos.example.org/alpha.png"}}},
 	}}
 
-	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, result.Clas, 1)
 	assert.Empty(t, result.Clas[0].ProjectName, "an ambiguous multi-project non-foundation group invents no project name")
@@ -520,7 +520,7 @@ func TestGetMyClasProjectCacheHitPerRequest(t *testing.T) {
 	}
 	svc.projectService = projectSvc
 
-	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, result.Clas, 2)
 	assert.Equal(t, 1, projectSvc.calls["proj-sfid-1"], "the project-service is queried once per distinct CLA group within a request")
@@ -551,7 +551,7 @@ func TestGetMyClasProjectServiceErrorAndNilClient(t *testing.T) {
 		svc := newTestService(newRepo(), &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, newClaGroups())
 		svc.projectService = &fakeProjectService{err: errors.New("project-service unavailable")}
 
-		result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+		result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 		require.NoError(t, err, "a project-service error must not fail the listing")
 		require.Len(t, result.Clas, 1)
 		assert.Equal(t, "Kubernetes", result.Clas[0].ProjectName, "the mapping-table name is kept on a project-service error")
@@ -562,7 +562,7 @@ func TestGetMyClasProjectServiceErrorAndNilClient(t *testing.T) {
 		svc := newTestService(newRepo(), &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, newClaGroups())
 		svc.projectService = nil
 
-		result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+		result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 		require.NoError(t, err, "a nil project-service client must not fail the listing")
 		require.Len(t, result.Clas, 1)
 		assert.Equal(t, "Kubernetes", result.Clas[0].ProjectName, "the mapping-table name is kept with no project-service client")
@@ -586,7 +586,7 @@ func TestGetMyClasMultipleRecordsSameLFID(t *testing.T) {
 	}
 	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
-	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "alice"}, &Identity{GithubIDs: []int64{12345}})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "alice"}, &Identity{GithubIDs: []int64{12345}}, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, result.SkippedIdentities, "a numeric ID stored on any of the caller's LFID records is authorized")
 	assert.ElementsMatch(t, []string{"user-a1", "user-a2", "user-a3"}, result.UserIds, "all records per key are unioned")
@@ -600,7 +600,7 @@ func TestGetMyClasMultipleRecordsSameLFID(t *testing.T) {
 func TestGetMyClasNoMatches(t *testing.T) {
 	svc := newTestService(&fakeRepo{}, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
-	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "missing"}, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "missing"}, &Identity{}, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, result.UserIds)
 	assert.Empty(t, result.Clas)
@@ -634,7 +634,7 @@ func TestGetMyClasOwnershipRejectsForeignIdentities(t *testing.T) {
 		GitlabIDs:       []int64{7},
 		GitlabUsernames: []string{"victim-gl"},
 		GerritUsernames: []string{"victim"},
-	})
+	}, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"user-a"}, result.UserIds, "only the caller's own record is searched")
 	require.Len(t, result.Clas, 1)
@@ -676,7 +676,7 @@ func TestGetMyClasOwnershipViaEasyCLARecord(t *testing.T) {
 	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{
 		SecondaryEmails: []string{"Alt@Example.org", "alt2@example.org", "alt@example.org"},
 		GitlabIDs:       []int64{777},
-	})
+	}, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, result.SkippedIdentities)
 	assert.ElementsMatch(t, []string{"user-a", "user-b", "user-c"}, result.UserIds)
@@ -711,7 +711,7 @@ func TestGetMyClasOwnershipViaPlatformIdentities(t *testing.T) {
 	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{
 		GithubUsernames: []string{"octocat"},
 		GerritUsernames: []string{"old-ldap-id"},
-	})
+	}, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, result.SkippedIdentities)
 	assert.ElementsMatch(t, []string{"user-a", "user-gh", "user-gerrit"}, result.UserIds,
@@ -720,14 +720,14 @@ func TestGetMyClasOwnershipViaPlatformIdentities(t *testing.T) {
 
 	result, err = svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{
 		GithubUsernames: []string{"not-a-code-identity"},
-	})
+	}, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"githubUsername:not-a-code-identity"}, result.SkippedIdentities,
 		"a slack username must not authorize a github search")
 
 	result, err = svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{
 		GithubUsernames: []string{"lakecat"},
-	})
+	}, nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"githubUsername:lakecat"}, result.SkippedIdentities,
 		"a non-platform (datalake) identity must not authorize a search")
@@ -743,7 +743,7 @@ func TestGetMyClasAdminBypass(t *testing.T) {
 	}
 	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
-	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "staff-admin", Admin: true}, &Identity{LfUsername: "victim"})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "staff-admin", Admin: true}, &Identity{LfUsername: "victim"}, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, result.SkippedIdentities)
 	assert.Equal(t, "victim", result.LfUsername)
@@ -768,7 +768,7 @@ func TestGetMyClasTrustedCallerBypass(t *testing.T) {
 	result, err := svc.GetMyClas(context.Background(), &Caller{Trusted: true}, &Identity{
 		GithubIDs:       []int64{999},
 		GithubUsernames: []string{"octocat"},
-	})
+	}, nil, nil)
 	require.NoError(t, err)
 	assert.Empty(t, result.SkippedIdentities)
 	assert.Equal(t, []string{"user-gh"}, result.UserIds)
@@ -785,10 +785,10 @@ func TestGetMyClasTrustedCallerBypass(t *testing.T) {
 func TestEffectiveIdentityRequiresACaller(t *testing.T) {
 	svc := newTestService(&fakeRepo{}, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
-	_, err := svc.GetMyClas(context.Background(), nil, &Identity{GithubIDs: []int64{999}})
+	_, err := svc.GetMyClas(context.Background(), nil, &Identity{GithubIDs: []int64{999}}, nil, nil)
 	assert.Error(t, err, "a nil caller must never be treated as authorized")
 
-	_, err = svc.GetMyClas(context.Background(), &Caller{}, &Identity{GithubIDs: []int64{999}})
+	_, err = svc.GetMyClas(context.Background(), &Caller{}, &Identity{GithubIDs: []int64{999}}, nil, nil)
 	assert.Error(t, err, "an untrusted caller without a username must never be treated as authorized")
 
 	_, err = svc.GetMyClaPdfURL(context.Background(), &Caller{}, &Identity{GithubIDs: []int64{999}}, "sig-1")
@@ -864,7 +864,7 @@ func TestGetMyClasIclaValidity(t *testing.T) {
 	}
 	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
-	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, result.Clas, 2, "unsigned records must be excluded")
 
@@ -914,7 +914,7 @@ func TestGetMyClasEclaValidity(t *testing.T) {
 	}
 	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
-	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, result.Clas, 5)
 
@@ -961,7 +961,7 @@ func TestGetMyClasEclaNotOnCurrentApprovalList(t *testing.T) {
 	}
 	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
-	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, result.Clas, 1)
 	assert.True(t, result.Clas[0].Approved)
@@ -988,7 +988,7 @@ func TestGetMyClasEclaGitlabGroupFallback(t *testing.T) {
 	}
 	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
-	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, result.Clas, 1)
 	assert.True(t, result.Clas[0].Valid, "GitLab-group-approved ECLAs defer to the signature_approved flag")
@@ -1014,7 +1014,7 @@ func TestGetMyClasEclaApprovalEvaluationError(t *testing.T) {
 	}
 	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
-	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 	require.NoError(t, err, "approval-list evaluation problems must not fail the listing")
 	require.Len(t, result.Clas, 1)
 	assert.False(t, result.Clas[0].Valid, "evaluation errors leave the ECLA not covered - no GitLab fallback")
@@ -1044,7 +1044,7 @@ func TestGetMyClasStatus(t *testing.T) {
 	}
 	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
-	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 	require.NoError(t, err)
 	require.Len(t, result.Clas, 4)
 	assert.Equal(t, models.MyClaListSssModeDisabled, result.SssMode, "no screener configured reports disabled")
@@ -1078,7 +1078,7 @@ func TestGetMyClasStatusNeedsAttentionAndUnknown(t *testing.T) {
 
 	t.Run("completed approval-list miss", func(t *testing.T) {
 		svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{cclas: ccla}, companies, &fakeClaGroups{})
-		result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+		result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, result.Clas, 1)
 		assert.Equal(t, models.MyClaStatusNeedsAttention, result.Clas[0].Status)
@@ -1087,7 +1087,7 @@ func TestGetMyClasStatusNeedsAttentionAndUnknown(t *testing.T) {
 
 	t.Run("github organization lookup failed", func(t *testing.T) {
 		svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{cclas: ccla, orgLookupFailed: true}, companies, &fakeClaGroups{})
-		result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+		result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 		require.NoError(t, err)
 		require.Len(t, result.Clas, 1)
 		assert.Equal(t, models.MyClaStatusUnknown, result.Clas[0].Status, "a failed org lookup must not read as an approval-list miss")
@@ -1119,7 +1119,7 @@ func TestGetMyClasDegradesFailedLookups(t *testing.T) {
 		}
 		svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
-		result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+		result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 		require.NoError(t, err, "one unresolvable employer must not fail the whole list")
 		require.Len(t, result.Clas, 3)
 
@@ -1153,7 +1153,7 @@ func TestGetMyClasDegradesFailedLookups(t *testing.T) {
 		}
 		svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
-		result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+		result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 		require.NoError(t, err, "an unresolvable CCLA must not fail the whole list")
 		require.Len(t, result.Clas, 2)
 		for _, row := range result.Clas {
@@ -1198,7 +1198,7 @@ func TestGetMyClasLiveSanctionsScreening(t *testing.T) {
 	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 	svc.sanctions = screener
 
-	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 	require.NoError(t, err, "a screening failure must never fail the listing")
 	require.Len(t, result.Clas, 4)
 	assert.Equal(t, models.MyClaListSssModeRequired, result.SssMode)
@@ -1286,7 +1286,7 @@ func TestGetMyClasPersistsFirstLiveSanction(t *testing.T) {
 			svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 			svc.sanctions = &fakeScreener{mode: models.MyClaListSssModeRequired, flagged: map[string]bool{"company-1": true}}
 
-			result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+			result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 			require.NoError(t, err, "persisting must never fail the listing")
 			require.Len(t, result.Clas, 1)
 			row := result.Clas[0]
@@ -1399,7 +1399,7 @@ func TestGetMyClasScreensDistinctEmployersInParallel(t *testing.T) {
 	}
 	done := make(chan outcome, 1)
 	go func() {
-		list, listErr := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+		list, listErr := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 		done <- outcome{list: list, err: listErr}
 	}()
 
@@ -1505,7 +1505,7 @@ func TestGetMyIdentities(t *testing.T) {
 		{Provider: "github", UserID: "9218699"},
 	}}
 
-	result, err := svc.GetMyIdentities(context.Background(), "someone")
+	result, err := svc.GetMyIdentities(context.Background(), "someone", nil, nil)
 	require.NoError(t, err)
 	assert.Equal(t, "someone", result.LfUsername)
 	assert.Equal(t, []string{
@@ -1522,7 +1522,7 @@ func TestGetMyIdentities(t *testing.T) {
 	}, result.Identities)
 	assert.Equal(t, int64(len(result.Identities)), result.ResultCount)
 
-	_, err = svc.GetMyIdentities(context.Background(), "")
+	_, err = svc.GetMyIdentities(context.Background(), "", nil, nil)
 	assert.Error(t, err)
 }
 
@@ -1595,7 +1595,7 @@ func TestGetMyClasEmitsCompanySanctionedEvent(t *testing.T) {
 			eventsLog := &fakeEvents{}
 			svc.eventsService = eventsLog
 
-			_, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+			_, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 			require.NoError(t, err)
 
 			require.Len(t, eventsLog.logged, tc.wantEvents)
@@ -1625,7 +1625,7 @@ func TestGetMyClasInvalidatedAt(t *testing.T) {
 	}
 	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
-	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 	require.NoError(t, err)
 	byID := map[string]models.MyCla{}
 	for _, row := range result.Clas {
@@ -1735,7 +1735,7 @@ func TestGetMyClasSignedAsFallsBackToUserRecord(t *testing.T) {
 	}
 	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
-	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 	require.NoError(t, err)
 	byID := map[string]models.MyCla{}
 	for _, row := range result.Clas {
@@ -1748,4 +1748,84 @@ func TestGetMyClasSignedAsFallsBackToUserRecord(t *testing.T) {
 	// bare rows fall back to the owning user record
 	assert.Equal(t, octocatGithub, byID["sig-bare"].SignedAs)
 	assert.Equal(t, models.MyClaSignedViaGithub, byID["sig-bare"].SignedVia)
+}
+
+func TestGetMyClasPaging(t *testing.T) {
+	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone"}
+	repo := &fakeRepo{
+		byUserID: map[string][]*signatures.ItemSignature{
+			"user-a": {
+				// SignedOn tie between sig-c and sig-d - listed d-before-c so only
+				// the signature-ID tiebreak can produce the expected order
+				icla("sig-d", "user-a", "cla-group-1", "2024-03-01T00:00:00Z", true),
+				icla("sig-e", "user-a", "cla-group-1", "2024-01-01T00:00:00Z", true),
+				icla("sig-b", "user-a", "cla-group-1", "2024-04-01T00:00:00Z", true),
+				icla("sig-c", "user-a", "cla-group-1", "2024-03-01T00:00:00Z", true),
+				icla("sig-a", "user-a", "cla-group-1", "2024-05-01T00:00:00Z", true),
+			},
+		},
+		byLFUsername: map[string][]*v1Models.User{"someone": {userA}},
+	}
+	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+
+	// no paging params - the pre-paging response shape: every row, resultCount == totalCount
+	all, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
+	require.NoError(t, err)
+	require.Len(t, all.Clas, 5)
+	assert.Equal(t, int64(5), all.ResultCount)
+	assert.Equal(t, int64(5), all.TotalCount)
+
+	wantOrder := []string{"sig-a", "sig-b", "sig-c", "sig-d", "sig-e"} // SignedOn desc, signature ID asc on the tie
+	pageSize := int64(2)
+	var got []string
+	for offset := int64(0); ; offset += pageSize {
+		off := offset
+		page, pageErr := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, &pageSize, &off)
+		require.NoError(t, pageErr)
+		assert.Equal(t, int64(5), page.TotalCount, "totalCount is the pre-paging row count")
+		assert.Equal(t, int64(len(page.Clas)), page.ResultCount)
+		assert.LessOrEqual(t, len(page.Clas), 2)
+		if len(page.Clas) == 0 {
+			break
+		}
+		for _, row := range page.Clas {
+			got = append(got, row.SignatureID)
+		}
+	}
+	assert.Equal(t, wantOrder, got, "paged windows join back to the full deterministic order")
+
+	off := int64(50)
+	empty, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, &off)
+	require.NoError(t, err)
+	assert.Empty(t, empty.Clas)
+	assert.Equal(t, int64(0), empty.ResultCount)
+	assert.Equal(t, int64(5), empty.TotalCount)
+}
+
+func TestGetMyIdentitiesPaging(t *testing.T) {
+	userA := &v1Models.User{UserID: "user-a", LfUsername: "someone", LfEmail: "someone@example.org", Emails: []string{"alt@example.org"}, GithubUsername: "octocat"}
+	repo := &fakeRepo{byLFUsername: map[string][]*v1Models.User{"someone": {userA}}}
+	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+
+	all, err := svc.GetMyIdentities(context.Background(), "someone", nil, nil)
+	require.NoError(t, err)
+	require.NotEmpty(t, all.Identities)
+	total := len(all.Identities)
+	assert.Equal(t, int64(total), all.ResultCount)
+	assert.Equal(t, int64(total), all.TotalCount)
+
+	pageSize := int64(3)
+	var got []string
+	for offset := int64(0); ; offset += pageSize {
+		off := offset
+		page, pageErr := svc.GetMyIdentities(context.Background(), "someone", &pageSize, &off)
+		require.NoError(t, pageErr)
+		assert.Equal(t, int64(total), page.TotalCount)
+		assert.Equal(t, int64(len(page.Identities)), page.ResultCount)
+		if len(page.Identities) == 0 {
+			break
+		}
+		got = append(got, page.Identities...)
+	}
+	assert.Equal(t, all.Identities, got, "paged windows join back to the unpaged sorted list")
 }

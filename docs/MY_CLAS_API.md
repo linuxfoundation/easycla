@@ -145,11 +145,15 @@ trusting blindly. Each request logs `callerClientID` (`azp`), `callerSubject` (`
 | `gitlabId` | integer | yes | GitLab numeric user IDs linked to the LF identity. |
 | `gitlabUsername` | string | yes | GitLab usernames (hint only). |
 | `gerritUsername` | string | yes | Gerrit usernames. Gerrit authenticates via LF SSO, so these are (current or historical) **LF usernames** — matched against the records' `lf_username`. Useful for gerrit-era records tied to an older LDAP/LF username on the account. |
+| `pageSize` | integer | no | Optional page size. When neither `pageSize` nor `offset` is provided the full list is returned exactly as before (no paging). |
+| `offset` | integer | no | Optional 0-based row offset. Paged responses use a deterministic order (`signedOn` desc, then `signatureID`); `totalCount` always carries the pre-paging row count. |
 
 If the token carries no username and the caller is neither an admin nor a trusted Self
-Serve client, the endpoint returns `401`. There is deliberately **no pagination**: a
-person's CLA set is small (typically well under 50 records) and the upstream queries
-paginate internally.
+Serve client, the endpoint returns `401`. Paging is optional and off by default: without
+`pageSize`/`offset` every row is returned (the upstream queries paginate internally). The
+same optional `pageSize`/`offset` pair exists on `/my-clas/identities` (slices the sorted
+identity list) and `/my-clas/{signatureID}/cla-managers` (paged windows are sorted by LF
+username; the unpaged response keeps the stored ACL order).
 
 Example (through the gateway):
 
@@ -436,6 +440,7 @@ date), and the listing never clears a flag. The first persist of a new sanction 
   "skippedIdentities": [],
   "sssMode": "optional",
   "resultCount": 2,
+  "totalCount": 2,
   "clas": [
     {
       "signatureID": "3c1e5d7a-...",
@@ -512,7 +517,8 @@ List-level fields: `lfUsername` (the effective username the list was resolved fo
 `userIds` (matched EasyCLA user record IDs), `skippedIdentities` (identity parameters
 dropped by the ownership enforcement, `"<parameter>:<value>"` strings, always present —
 `[]` when nothing was skipped), `sssMode` (the sanctions screening mode in effect, always
-present), `resultCount`.
+present), `resultCount` (rows in this response), `totalCount` (pre-paging row count —
+equals `resultCount` whenever paging is not requested).
 
 Errors: `401` (token carries no username — also returned by the gateway for a
 missing/invalid token before the request reaches EasyCLA), `400` (an admin or trusted
@@ -582,8 +588,9 @@ above: the right model for "download *my own* signed document".
 
 ## `GET /v4/my-clas/identities`
 
-Returns the deduplicated identities the **authenticated user** owns — no query parameters,
-always scoped to the token holder (an admin token returns the admin's own identities). This
+Returns the deduplicated identities the **authenticated user** owns — no identity query
+parameters (`pageSize`/`offset` are the only accepted inputs), always scoped to the token
+holder (an admin token returns the admin's own identities). This
 is the identity-resolution counterpart to
 [lfx-self-serve#1161](https://github.com/linuxfoundation/lfx-self-serve/issues/1161):
 instead of the SS side scanning `cla-*-users` client-side to map an identity back to an
@@ -609,6 +616,7 @@ Each entry is `"<type>:<value>"`, deduplicated and sorted; types are `lf-usernam
 {
   "lfUsername": "lukaszgryglicki",
   "resultCount": 3,
+  "totalCount": 3,
   "identities": [
     "email:lgryglicki@cncf.io",
     "github-id:26589865",

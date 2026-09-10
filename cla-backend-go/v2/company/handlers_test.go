@@ -27,7 +27,7 @@ type fakeCompanyService struct {
 	calls  int
 }
 
-func (f *fakeCompanyService) GetCompanyClaGroups(_ context.Context, companySFID string) (*models.CompanyClaGroups, error) {
+func (f *fakeCompanyService) GetCompanyClaGroups(_ context.Context, companySFID string, _, _ *int64) (*models.CompanyClaGroups, error) {
 	f.calls++
 	if f.err != nil {
 		return nil, f.err

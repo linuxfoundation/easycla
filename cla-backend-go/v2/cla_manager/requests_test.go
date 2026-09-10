@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/go-openapi/strfmt"
 	v1ClaManager "github.com/linuxfoundation/easycla/cla-backend-go/cla_manager"
 	"github.com/linuxfoundation/easycla/cla-backend-go/emails"
@@ -182,7 +183,7 @@ func TestGetCLAManagerRequests(t *testing.T) {
 		mgr := &fakeManagerService{requestList: &v1Models.ClaManagerRequestList{Requests: []v1Models.ClaManagerRequest{*pendingRequest()}}}
 		s := &service{managerService: mgr}
 
-		result, err := s.GetCLAManagerRequests(context.Background(), acmeCompany(), "cla-group-1")
+		result, err := s.GetCLAManagerRequests(context.Background(), acmeCompany(), "cla-group-1", nil, nil)
 		assert.Nil(t, err)
 		assert.Equal(t, [][]string{{"company-1", "cla-group-1"}}, mgr.listCalls)
 		if assert.Len(t, result.Requests, 1) {
@@ -208,20 +209,60 @@ func TestGetCLAManagerRequests(t *testing.T) {
 		mgr := &fakeManagerService{requestList: &v1Models.ClaManagerRequestList{}}
 		s := &service{managerService: mgr}
 
-		result, err := s.GetCLAManagerRequests(context.Background(), acmeCompany(), "cla-group-1")
+		result, err := s.GetCLAManagerRequests(context.Background(), acmeCompany(), "cla-group-1", nil, nil)
 		assert.Nil(t, err)
 		body, marshalErr := json.Marshal(result)
 		assert.Nil(t, marshalErr)
-		assert.JSONEq(t, `{"requests":[]}`, string(body))
+		assert.JSONEq(t, `{"requests":[],"resultCount":0,"totalCount":0}`, string(body))
 	})
 
 	t.Run("propagates the v1 service error", func(t *testing.T) {
 		mgr := &fakeManagerService{listErr: errors.New("dynamo down")}
 		s := &service{managerService: mgr}
 
-		result, err := s.GetCLAManagerRequests(context.Background(), acmeCompany(), "cla-group-1")
+		result, err := s.GetCLAManagerRequests(context.Background(), acmeCompany(), "cla-group-1", nil, nil)
 		assert.Nil(t, result)
 		assert.EqualError(t, err, "dynamo down")
+	})
+
+	t.Run("optional paging returns a stable window and the total count", func(t *testing.T) {
+		var reqs []v1Models.ClaManagerRequest
+		for _, rec := range []struct{ id, created string }{
+			{"req-c", "2026-01-03T00:00:00Z"},
+			{"req-a", "2026-01-01T00:00:00Z"},
+			{"req-b", "2026-01-02T00:00:00Z"},
+		} {
+			r := *pendingRequest()
+			r.RequestID = rec.id
+			r.Created = rec.created
+			reqs = append(reqs, r)
+		}
+		mgr := &fakeManagerService{requestList: &v1Models.ClaManagerRequestList{Requests: reqs}}
+		s := &service{managerService: mgr}
+
+		full, err := s.GetCLAManagerRequests(context.Background(), acmeCompany(), "cla-group-1", nil, nil)
+		assert.Nil(t, err)
+		assert.Equal(t, int64(3), full.TotalCount)
+		assert.Equal(t, int64(3), full.ResultCount)
+		if assert.Len(t, full.Requests, 3) {
+			assert.Equal(t, []string{"req-c", "req-a", "req-b"},
+				[]string{full.Requests[0].RequestID, full.Requests[1].RequestID, full.Requests[2].RequestID},
+				"the unpaged response keeps the stored order - no re-sorting without paging params")
+		}
+
+		page, err := s.GetCLAManagerRequests(context.Background(), acmeCompany(), "cla-group-1", aws.Int64(1), aws.Int64(1))
+		assert.Nil(t, err)
+		assert.Equal(t, int64(3), page.TotalCount)
+		assert.Equal(t, int64(1), page.ResultCount)
+		if assert.Len(t, page.Requests, 1) {
+			assert.Equal(t, "req-b", page.Requests[0].RequestID, "paged windows use the deterministic created-date order")
+		}
+
+		beyond, err := s.GetCLAManagerRequests(context.Background(), acmeCompany(), "cla-group-1", aws.Int64(5), aws.Int64(10))
+		assert.Nil(t, err)
+		assert.Equal(t, int64(3), beyond.TotalCount)
+		assert.Equal(t, int64(0), beyond.ResultCount)
+		assert.Len(t, beyond.Requests, 0)
 	})
 }
 
@@ -437,5 +478,5 @@ func TestClaManagerRequestJSONContract(t *testing.T) {
 
 	listBody, err := json.Marshal(v2ClaManagerRequestList(nil))
 	assert.Nil(t, err)
-	assert.JSONEq(t, `{"requests":[]}`, string(listBody))
+	assert.JSONEq(t, `{"requests":[],"resultCount":0,"totalCount":0}`, string(listBody))
 }
