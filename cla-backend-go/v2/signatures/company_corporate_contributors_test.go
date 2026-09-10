@@ -19,7 +19,6 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
 	sigOps "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/signatures"
 	mock_project_repo "github.com/linuxfoundation/easycla/cla-backend-go/project/mocks"
-	"github.com/linuxfoundation/easycla/cla-backend-go/project/repository"
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	mock_projects_cla_groups "github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups/mocks"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
@@ -246,7 +245,7 @@ func TestListCompanyClaGroupCorporateContributors(t *testing.T) {
 		defer ctrl.Finish()
 
 		mockProjectRepo := mock_project_repo.NewMockProjectRepository(ctrl)
-		mockProjectRepo.EXPECT().GetCLAGroupByID(gomock.Any(), claGroupID, false).Return(nil, repository.ErrProjectDoesNotExist)
+		mockProjectRepo.EXPECT().GetCLAGroupByID(gomock.Any(), claGroupID, false).Return(nil, &utils.CLAGroupNotFound{CLAGroupID: claGroupID})
 
 		v2Service := &fakeCorporateContributorsService{}
 		api := operations.NewEasyclaAPI(nil)

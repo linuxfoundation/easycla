@@ -985,7 +985,8 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		claGroupModel, err := projectRepo.GetCLAGroupByID(ctx, params.ClaGroupID, repository.DontLoadRepoDetails)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn(problemLoadingCLAGroupByID)
-			if err == repository.ErrProjectDoesNotExist {
+			var claGroupNotFound *utils.CLAGroupNotFound
+			if errors.As(err, &claGroupNotFound) || errors.Is(err, repository.ErrProjectDoesNotExist) {
 				return signatures.NewListCompanyClaGroupCorporateContributorsNotFound().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseNotFoundWithError(reqID, problemLoadingCLAGroupByID, err))
 			}
