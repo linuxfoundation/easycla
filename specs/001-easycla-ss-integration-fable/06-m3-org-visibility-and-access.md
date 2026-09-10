@@ -8,32 +8,39 @@
 
 ## The gap, quantified (prod data, Snowflake)
 
+member-service reads the **B2B Salesforce org** (~18.2k accounts, carved out of the old platform Salesforce with record IDs preserved) — not the old platform org (~100k accounts) that EasyCLA's `company_external_id` values point at. Measured against the B2B org:
+
 | Metric | Count |
 |---|---|
 | EasyCLA companies with a Salesforce ID (SFID) | 3,531 |
-| …visible in Self Serve today (member orgs) | **880 (25%)** |
-| …invisible (non-member orgs) | **2,651 (75%)** |
-| Orgs with an **active signed CCLA** | 2,277 |
-| …of those, invisible in Self Serve | **1,581 (69%)** |
+| …with an account in the **B2B Salesforce org** | 1,362 (39%) |
+| ……of those, member → **visible in Self Serve today** | **1,048 (30%)** |
+| ……present in B2B org but non-member | 314 |
+| …with **no account in the B2B org at all** | **2,169 (61%)** |
+| ……of those, still a live account in the old platform org | 2,082 |
+| Orgs with an **active signed CCLA** | 2,278 |
+| …visible today (member in B2B org) | 808 (35%) |
+| …invisible: present-but-non-member / absent from B2B org | **180 / 1,290 (65% combined)** |
 
-Membership was measured with the exact gate member-service uses: Salesforce `Account` having an `Asset` with `Product2.Family = 'Membership'`.
-
-> Eric's B2B-ingest analysis measures differently (domain matching against Salesforce; ~1,700 accounts to bring in, ~50% already mapping to existing Accounts). The two counts need reconciling in his proposal, but they describe the same gap.
+Membership uses the exact gate member-service applies: B2B-org `Account` having an `Asset` with `Product2.Family = 'Membership'` (8,065 accounts qualify). These figures line up with Eric's B2B-ingest ticket (~1,700 accounts to bring in; ~50% domain-matching to existing accounts): his ingest population ≈ the 2,169 absent accounts after domain-matching some to existing B2B accounts.
 
 ## Why they are invisible — two independent gates
 
 ```mermaid
 flowchart LR
-    SF["Salesforce Accounts<br/>(~100k)"] -->|"gate 1: has Membership Asset<br/>(~5,265 accounts)"| MS["member-service"]
+    OLD[("Old platform Salesforce<br/>(~100k accounts — where<br/>EasyCLA SFIDs point)")] -.->|"B2C decouple carved out<br/>18.2k accounts, IDs preserved"| SF
+    SF["B2B Salesforce org<br/>(~18.2k accounts)"] -->|"gate 1b: has Membership Asset<br/>(8,065 accounts)"| MS["member-service"]
     MS -->|"b2b_org docs"| QS["query-service<br/>(OpenSearch)"]
     MS -->|"writer / auditor tuples"| FGA["OpenFGA"]
     QS -->|"org list"| SS["Self Serve<br/>Org Lens"]
     FGA -->|"gate 2: user must hold<br/>a grant on the org"| SS
-    CLA[("EasyCLA DynamoDB<br/>3,531 orgs, 2,651 non-member")] -.->|"no path"| SS
+    CLA[("EasyCLA DynamoDB<br/>3,531 orgs")] -.->|"gate 1a: 2,169 orgs have no<br/>B2B-org account at all"| SF
 ```
 
-1. **The org record does not exist.** member-service only ingests Accounts with a Membership Asset, so a non-member org has no `b2b_org` document — nothing to list, search, or attach permissions to.
+1. **The org record does not exist** — in two layers. (1a) 61% of EasyCLA orgs have **no account in the B2B Salesforce org** — they were left behind in the old platform org during the B2C decouple. No member-service predicate change can surface them; the accounts must be ingested (Eric's proposal). (1b) The 314 that do exist fail the Membership-Asset gate — the predicate widening covers exactly these.
 2. **The user has no grant.** Org Lens eligibility is an OpenFGA relation resolved against `b2b_org` / CLA objects. EasyCLA CLA-manager roles live in ACS/Org Service scopes — OpenFGA knows nothing about them.
+
+> **ID remapping consequence:** accounts newly created in the B2B org get **new SFIDs** (Salesforce cannot create a record with a chosen ID). For those 2,169 orgs, EasyCLA's stored `company_external_id` will no longer resolve — the ingest must produce an old-ID → new-ID map, and EasyCLA (or the CLA service's mapping store) must apply it. The 1,362 already present carried their IDs over and need no remap.
 
 ## Direction agreed on the 2026-09-10 architecture call
 
@@ -78,7 +85,7 @@ flowchart LR
 
 ## Open items
 
-1. **Sales-ops approval** — Eric → Mindy; the blocker for the catalogue change. Heather and Michal to be invited to that conversation.
+1. **Sales-ops approval** — Eric → Mindy; the blocker for the catalogue change. Heather and Michal to be invited to that conversation. Note the ingest is not only a catalogue change: 61% of EasyCLA orgs need an account **created** in the B2B org (new SFIDs → EasyCLA `company_external_id` remap required), and only the 314 already-present non-member accounts are covered by predicate widening alone.
 2. **Architecture review of spec 044's four ADRs** — CLA FGA types, dedicated `cla-v1-objects` bucket, read-plane-first for an external system of record, catalogue predicate + selector rule. Gates the FGA model bump and member-service PR.
 3. **M3 sequencing** — the minimum for M3 is the catalogue change, the FGA model + `cla_ccla` tuple projection/backfill, and the selector union (spec 044 stories A, B, C9, D), with the CLA tabs shipping on the existing bridge. The full read-plane migration (search projections, activity log, My CLAs on the service) follows behind the parity-gated flags and is not an M3 dependency.
 
