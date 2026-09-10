@@ -472,6 +472,7 @@ func buildResult(claGroupID string, m *match, claGroup *ClaGroupRow, mappings []
 		MatchedRepositoryName: m.repoName,
 		MatchedRepositoryURL:  m.repoURL,
 		Organizations:         sortOrgs(orgs),
+		Projects:              coveredProjects(mappings),
 	}
 	if claGroup != nil {
 		result.ClaGroupName = claGroup.Name
@@ -500,6 +501,25 @@ func buildResult(claGroupID string, m *match, claGroup *ClaGroupRow, mappings []
 		result.ProjectSFID, result.ProjectName = mappings[0].ProjectSFID, mappings[0].ProjectName
 	}
 	return result
+}
+
+// coveredProjects lists every project mapped to the CLA Group, including the foundation marker
+// mapping of a foundation-level CLA Group - for most CLA Groups that marker is the only mapping
+func coveredProjects(mappings []*ProjectMappingRow) []models.CompanyClaGroupProject {
+	projects := make([]models.CompanyClaGroupProject, 0, len(mappings))
+	for _, mapping := range mappings {
+		if mapping.ProjectSFID == "" {
+			continue
+		}
+		projects = append(projects, models.CompanyClaGroupProject{ProjectSFID: mapping.ProjectSFID, ProjectName: mapping.ProjectName})
+	}
+	sort.Slice(projects, func(i, j int) bool {
+		if projects[i].ProjectName != projects[j].ProjectName {
+			return projects[i].ProjectName < projects[j].ProjectName
+		}
+		return projects[i].ProjectSFID < projects[j].ProjectSFID
+	})
+	return projects
 }
 
 // enabledOrDefault reads a CLA type flag, a missing attribute meaning enabled - the Pynamo
