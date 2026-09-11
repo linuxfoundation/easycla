@@ -107,7 +107,7 @@ The two "not covered" figures are close, but they are **not the same set**, and 
 ```mermaid
 flowchart LR
     OLD[("Old platform Salesforce<br/>100,592 accounts — where<br/>EasyCLA IDs point")] -.->|"B2C decouple carved out<br/>18.2k accounts, IDs preserved"| SF
-    SF["B2B Salesforce org<br/>18,231 accounts"] -->|"gate 1b: has Membership Asset<br/>(8,064 accounts)"| MS["member-service"]
+    SF["B2B Salesforce org<br/>18,231 accounts"] -->|"gate 1b: has Membership Asset<br/>(8,065 accounts)"| MS["member-service"]
     MS -->|"b2b_org docs"| QS["query-service<br/>(OpenSearch)"]
     MS -->|"writer / auditor tuples"| FGA["OpenFGA"]
     QS -->|"org list"| SS["Self Serve<br/>Org Lens"]
@@ -227,14 +227,14 @@ The 2026-09-10 call reversed the position that CLA object types enter the platfo
 | [`spec.md`](../../specs/001-easycla-ss-integration-fable/spec.md) | line 223 — "deferred to M5 scope… no CLA object types in the platform authorization model" |
 | Epic [lfx-self-serve#1968](https://github.com/linuxfoundation/lfx-self-serve/issues/1968) | same statement |
 
-**P2 is not a passing mention — it is an architecture-review-approved proposal** (Eric, with the endpoint-deprecation risk closed 2026-07-31, ARCH-406). Reversing it means reopening that approval at the spec-044 ADR review (open item 2), not merely editing prose. Until these are updated, two incompatible authorization architectures are documented side by side.
+**P2 is not a passing mention — it is an architecture-review-approved proposal** (Eric, with the endpoint-deprecation risk closed 2026-07-31, ARCH-406). Reversing it means reopening that approval at the spec-044 ADR review (open item 3), not merely editing prose. Until these are updated, two incompatible authorization architectures are documented side by side.
 
 Two further documents describe behavior that changes but are not "superseded" in the same sense:
 
 - [`docs/M3_ORG_LENS_API.md`](../M3_ORG_LENS_API.md) documents per-endpoint **ACS scope** authorization for shipped endpoints. If CLA FGA types land in M3, this describes live behavior that changes — arguably a higher-stakes update than the planning specs.
 - `spec.md` FR-032 pins role-assignment consistency to "the system of record used by EasyCLA's enforcement" (ACS), which an M3 FGA move puts in tension.
 
-**What does not change**: FGA governs **lens entry and UI gating**; EasyCLA v4 via ACS remains the **enforcement** point for every write through M3. Two layers, not two systems of record — but see open item 5 for the parity requirement that makes this safe.
+**What does not change**: FGA governs **lens entry and UI gating**; EasyCLA v4 via ACS remains the **enforcement** point for every write through M3. Two layers, not two systems of record — but see open item 6 for the parity requirement that makes this safe.
 
 ---
 
