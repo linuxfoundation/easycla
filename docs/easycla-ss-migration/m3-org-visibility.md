@@ -5,7 +5,7 @@ SPDX-License-Identifier: CC-BY-4.0 -->
 
 **Status**: Updated after the 2026-09-10 architecture call · data re-measured 2026-09-10
 **Owner**: Michal (engineering)
-**Related**: [architecture-proposal.md](architecture-proposal.md) P2 · [role-mapping-feasibility.md](role-mapping-feasibility.md) §6 · [`specs/044-lfx-v2-cla-service/`](https://github.com/linuxfoundation/lfx-self-serve/tree/main/specs/044-lfx-v2-cla-service) rev 5 (in `lfx-self-serve`, not this repo)
+**Related**: [architecture-proposal.md](architecture-proposal.md) P2 · [role-mapping-feasibility.md](role-mapping-feasibility.md) §6 · spec 044 (`lfx-v2-cla-service`) rev 5 — Luis's CLA-service plan, not in this repo
 
 **The problem in one line**: the Self Serve Org Lens lists LF **member** organizations, most EasyCLA customers are **not** members, so most CLA managers would open Self Serve and see nothing.
 
