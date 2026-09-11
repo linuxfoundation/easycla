@@ -5,7 +5,7 @@ SPDX-License-Identifier: CC-BY-4.0 -->
 
 **Status**: Updated after the 2026-09-10 architecture call · data re-measured 2026-09-10
 **Owner**: Michal (engineering)
-**Related**: [architecture-proposal.md](architecture-proposal.md) P2 · [role-mapping-feasibility.md](role-mapping-feasibility.md) §6 · spec 044 (`lfx-v2-cla-service`) rev 5 — Luis's CLA-service plan, not in this repo
+**Related**: [architecture-proposal.md](architecture-proposal.md) P2 · [role-mapping-feasibility.md](role-mapping-feasibility.md) §6 · [EasyCLA → LFX One recap](https://docs.google.com/document/d/1hyWZUE_kofeAjVSmeXsRXtPSxSsj7uWvRj3tTNgwdik/edit) (Luis, rev 5, 2026-09-10) — the CLA-service plan, spec package `specs/044-lfx-v2-cla-service/` on branch `044-lfx-v2-cla-service`
 
 **The problem in one line**: the Self Serve Org Lens lists LF **member** organizations, most EasyCLA customers are **not** members, so most CLA managers would open Self Serve and see nothing.
 
@@ -24,6 +24,8 @@ Two independent gates keep EasyCLA companies out of the Org Lens, and they need 
 Gate 1a is the critical path: it depends on a sales-ops approval nobody on this team controls. Gates 1b and 2 are engineering work inside LFX.
 
 **This document reverses a previously approved decision.** See §6 — the M5 deferral of CLA-in-OpenFGA is recorded in at least five documents, one of them an architecture-review-approved proposal.
+
+**It also closes an open spike in the CLA-service plan.** Spec 044 rev 5 names the same membership-asset boundary as its "biggest dependency" and defers the sizing to spike item #4, *"catalogue-gap count"* — "CCLA-holding companies whose `company_external_id` is absent from the membership-asset accounts". §2 is that count, with the caveat that the naive form of the query overstates it by 536 (see §2.1).
 
 ---
 
@@ -156,9 +158,9 @@ flowchart LR
 - **Org catalogue** — member-service widens its `b2b_org` predicate from "has a Membership Asset" to "membership **or** CLA-referenced", plus an `lfx.member.b2b_org_ensure` request so an unknown account can be onboarded on demand, then a full `b2b_org` reindex. member-service remains the single Salesforce org service.
 - **Permissions** — new FGA types per spec 044: `cla_group`, `cla_ccla` (`manager`, `signatory`), `cla_ecla`, `cla_icla`. Confirmed on the call as needed **in this milestone**, regardless of where the data plane lands. Manager grants derive from the signature row's `signature_acl` (the synchronous write), not from ACS; ACS roles feed a dry-run drift report only. Org admin ≠ CLA manager.
 - **Lens entry** — the org selector becomes a union: org read (`writer`/`auditor` on `b2b_org`) **or** `manager` on any `cla_ccla`, with a CLA-only view for managers who hold nothing else. Never org-wide read for CLA managers.
-- **Console cutover** — hard cut, no parallel operation of the Corporate Console and the Org Lens. That removes the need for a live ACS↔FGA dual sync; the drift report suffices. The earlier one-time ACS→FGA backfill predates the newly admitted accounts, so a fresh backfill pass over CLA roles is required (spec 044 story H).
+- **Console cutover** — hard cut, no parallel operation of the Corporate Console and the Org Lens. That removes the need for a live ACS↔FGA dual sync; the drift report suffices. The earlier one-time ACS→FGA backfill predates the newly admitted accounts, so a fresh backfill pass over CLA roles is required (spec 044 section H, item 22 — the `--backfill-acs --roles cla --dry-run` drift report).
 
-> **Open question — signatories.** Spec 044 models `cla_ccla` with both `manager` and `signatory`, but the selector union (in rev 5 and above) admits only `manager`. A user holding `signatory` and no `b2b_org` grant could not enter the lens at all, which does not square with the signatory flow M3 must deliver ([`spec.md`](../../specs/001-easycla-ss-integration-fable/spec.md) FR-030 lists CCLA signing initiation in the parity inventory; FR-031 ties org-lens access to "CLA-manager/signatory authority"). Either the union includes `signatory` — with relation-specific screen permissions, so it confers neither manager nor org-wide access — or the signatory flow enters by another route. For Luis and Eric; not decided here.
+> **Open question — how a signatory reaches the lens.** Not a permissions gap: spec 044 computes `cla_ccla#auditor` as `manager or signatory or …`, and the agreement's query-plane gate is `#auditor`, so a signatory **can** read the agreement once inside. The gap is the **org selector**, whose union is "org viewer/admin **or** manages an agreement" — manager-only. A signatory holding no `b2b_org` grant therefore has no organization to select, and so never reaches the CLA data they are authorized to read. That does not square with the signatory flow M3 must deliver ([`spec.md`](../../specs/001-easycla-ss-integration-fable/spec.md) FR-030 lists CCLA signing initiation in the parity inventory; FR-031 ties org-lens access to "CLA-manager/signatory authority"). Either the selector union admits `signatory` — with relation-specific screen permissions, so it confers neither manager nor org-wide access — or the signatory flow enters by another route. Rev 5 lists "selector union + CLA-only view" as an open **Product + Architecture** decision, recommending the no-model-change option; the signatory case is not called out within it. For Luis and Eric; not decided here.
 
 ### 4.3 What changed versus the pre-call version
 
@@ -168,13 +170,27 @@ flowchart LR
 | Admit EasyCLA orgs "tagged non-member" | Sharpened: they become real B2B accounts (sales-ops approval pending), and the predicate widens |
 | CLA tabs call v4 via gateway; no replication in M3 | Converges with spec 044's rollout: pages run on the bridge behind per-env flags, flipping to the CLA service only at zero parity differences |
 
+### 4.4 Second-order effects of admitting these orgs
+
+Admitting ~1,600 non-member companies to the org catalogue changes more than the catalogue. Spec 044's companion note ["What changes if every CLA-signing company becomes a real organization"](https://docs.google.com/document/d/1hyWZUE_kofeAjVSmeXsRXtPSxSsj7uWvRj3tTNgwdik/edit) raises five, none of which have owners yet. They are consequences of the decision this document argues for, so they belong in its scope:
+
+| Effect | Why it matters | Needs deciding |
+|---|---|---|
+| **Company admins appear automatically** | EasyCLA records whoever creates a company as its administrator. The v1-sync-helper already imports company admins as **org admins** — but filters to member companies. Widen the catalogue and that filter decides whether every CLA requester becomes an org admin who can edit People and key contacts. | Import as admins, as viewers, or not at all — relying on the CLA-manager relation only. Product/legal, not technical. Work item sits in the sync helper. |
+| **Staff read extends to them** | LF staff hold blanket read on every org; the new companies inherit it, exposing thousands of non-member companies and their CLA data. The blanket grant was reviewed for member companies only. | Re-confirm the grant covers non-member orgs; record it in the decision. |
+| **"CLA-only organization" state** | Memberships, key contacts, ROI, meetings are all empty for a never-member company. Rev 5 covers the *user* who enters as a CLA manager, not the *company kind* — so even a full admin lands on empty pages. | An org-level CLA-only marker: hide or explain the membership sections. |
+| **Volume** | The org list grows by roughly 9.4%. Affects the staff selector (may need search-first), full-rebuild time, and the Salesforce API budget. | Measure rebuild time before launch; adjust the selector if needed. |
+| **Making onboarding stick** | `b2b_org_ensure` is a one-time event. A full rebuild starts from Salesforce again and **drops these companies** unless "referenced by a CLA" is stored durably. | Choose the durable signal — a field on the Salesforce account set by EasyCLA, or a marker LFX keeps — as part of the decision. |
+
+The last one compounds the remap problem in [open item 4](#5-open-items): both are silent failures surfacing only as an org that quietly stops appearing.
+
 ---
 
 ## 5. Open items
 
 1. **Sales-ops approval** — Eric Searcy (LFX architect) → Mindy (sales ops); the blocker for the catalogue change. The proposal is published and tracked in [lfx-self-serve-ops#16](https://github.com/linuxfoundation/lfx-self-serve-ops/issues/16); Eric is opening the conversation. Heather Willson is out the week of 2026-09-14, so her involvement follows. Note the ask is not only a catalogue change: 55% of EasyCLA orgs need an account **created or domain-linked**, and predicate widening alone covers only the 314 already-present non-member accounts.
-2. **Architecture review of spec 044's four ADRs** — CLA FGA types, dedicated `cla-v1-objects` bucket, read-plane-first for an external system of record, catalogue predicate + selector rule. Gates the FGA model bump and the member-service PR. This review is also where the reversal in §6 should be formally recorded.
-3. **M3 sequencing** — the minimum is the catalogue change, the FGA model plus `cla_ccla` tuple projection/backfill, and the selector union (spec 044 stories A, B, C9, D), with CLA tabs shipping on the existing bridge. The full read-plane migration (search projections, activity log, My CLAs on the service) follows behind parity-gated flags and is not an M3 dependency.
+2. **Architecture review of spec 044's four ADRs** — CLA FGA types, dedicated `cla-v1-objects` replica bucket, read-plane-first for an external system of record, and the catalogue boundary + selector rule. Gates the FGA model bump and the member-service PR; rev 5's own recommendation is to approve all four, with #4 being the member-service PR plus a full `b2b_org` reindex. This review is also where the reversal in §6 should be formally recorded, and where the second-order effects in §4.4 need owners.
+3. **M3 sequencing** — the minimum is the catalogue change, the FGA model plus `cla_ccla` tuple projection/backfill, and the selector union — spec 044 epic items **5** (predicate + `b2b_org_ensure` + full reindex), **9** (`model.fga` v+1), **10** (KV projector) and **13** (selector union + CLA-only persona) — with CLA tabs shipping on the existing bridge. The full read-plane migration (search projections, activity log, My CLAs on the service) follows behind parity-gated flags and is not an M3 dependency.
 4. **SFID remap: ordering, scope, and acceptance check.** The old-ID → new-ID map has a required position in the sequence: for every org newly created, domain-linked, or carrying an `lf`-shaped ID, the remap must be applied **before** `b2b_org_ensure`, before query-service indexing, and before `cla_ccla` tuple projection. An SFID-scoped API returns an empty result for an unknown company rather than an error, so an unapplied map **fails silently** — the org simply stays invisible with no signal. Eric's proposal supplies the ongoing mechanism, but ownership of producing and applying the map is unassigned, as is whether the key *is* `company_external_id`, a new EasyCLA field, or the spec-044 mapping store. Acceptance check before selector cutover: an old `company_external_id` resolves to the new SFID and the org appears in the lens.
 5. **Bridge/FGA parity before cutover.** Through M3 the CLA tabs are served by v4 (enforcing via ACS) while lens entry is decided by FGA tuples projected from `signature_acl`. Different inputs, so they can disagree in both directions: a user passing the FGA selector but failing the v4 ACS check sees an empty or erroring tab; a user passing ACS but missing a tuple never reaches the lens. Spec 044's drift report covers detection; still needed is the required parity *behavior* at cutover — which side wins, and what divergence is acceptable when the flags flip.
 
