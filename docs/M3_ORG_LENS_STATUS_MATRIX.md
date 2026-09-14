@@ -124,21 +124,40 @@ Rules:
 
 This is the central gap in the M3 status model, and it is worth being precise about.
 
-Removing an approval criterion **invalidates matching acknowledgments immediately**.
-`invalidateSignatures` in `cla-backend-go/signatures/repository.go` sets
-`signature_approved = false` with invalidation metadata for removals of email, email
-domain, GitHub username, GitHub org, and GitLab username criteria — each guarded by a
-`userStillApproved` veto so a contributor covered by another criterion is left alone. The
-row therefore lands in **Invalidated**, not in a lingering recoverable state.
+Removing an approval criterion **invalidates matching acknowledgments immediately**, for
+most criteria. `invalidateSignatures` in `cla-backend-go/signatures/repository.go` walks
+the CCLA's acknowledgments and delegates each one to `verifyUserApprovals`, which sets
+`signature_approved = false` with invalidation metadata (`InvalidatedBy`, and
+`Reason: "approved list removal (<criteria>)"`). The row therefore lands in
+**Invalidated**, not in a lingering recoverable state.
+
+`verifyUserApprovals` branches on which criterion was removed, and the branches are **not
+uniform** — which matters, because the gaps live in the differences:
+
+| Removed criterion | Behavior | Veto protecting a still-covered contributor |
+|---|---|---|
+| Email, GitHub username, GitLab username | Invalidates | `userStillApproved` — full re-check across emails, domain patterns, and both username lists |
+| Email domain | Invalidates, but only if the user's emails match a *removed* domain pattern | `userStillApproved` |
+| GitHub org | Invalidates if the user's GitHub username is in the removed org's member list | **narrower** — only checks the email and GitHub-username approval lists; a contributor covered solely by a domain rule or a GitLab username is invalidated anyway |
+| **GitLab group** | **Invalidates nothing** — see below | n/a |
+
+`userStillApproved` deliberately does **not** re-check GitHub or GitLab org membership, so
+a contributor covered only by *another* org rule is invalidated when one org is removed.
 
 So a genuine **Not Authorized** can only arise from:
 
-- **GitLab group removals**, which are not handled at all (the same gap M2 records) —
-  group membership cannot be checked without per-group tokens.
-- **Membership drift** — a contributor leaving an approved GitHub org or GitLab group,
-  which changes coverage without any approval-list edit and is never re-evaluated.
-- **Records the invalidation sweep skipped**, e.g. where the underlying user record is
-  gone.
+- **GitLab group removals**, which invalidate nothing at all. The path does call
+  `invalidateSignatures`, but it is a double no-op: it never populates the `ECLAs` it
+  would iterate, and `verifyUserApprovals` has no branch for `GitlabOrgCriteria` — the
+  sixth criterion falls through every branch and returns `invalidated = false`. A
+  contributor removed from an approved GitLab group therefore keeps a fully
+  **Authorized**-looking row. (M2 records the same gap from the contributor's side.)
+- **Membership drift** — a contributor leaving an approved GitHub org or GitLab group.
+  Coverage changes with no approval-list edit at all, so nothing triggers a re-check.
+- **Records the sweep skipped.** `verifyUserApprovals` returns early without invalidating
+  when the user record is missing (`GetUser` returns no record — deliberate, since
+  invalidating what cannot be re-checked would be destructive), and each acknowledgment is
+  processed in a goroutine with a `recover()` that logs and skips on panic.
 
 The prototype's recovery hint — *add the user to the Approval list, or Invalidate to
 remove for good* — is only truthful for those cases. For the common case (a manager
@@ -193,7 +212,8 @@ have no backend at all, others store the data but do not expose it.
 | **Invalidation date, reason and actor are not exposed** | **Invalidated** renders without its date or cause, even where `InvalidationMetadata` recorded both. | metadata is stored; the row model exposes none of it |
 | **The signing refusal is not machine-readable** | The two CCLA signing gates return a plain error (`company requires further review for trade compliance`), not the typed `403 company_sanctioned` body the gated write ops return. The Org lens would have to string-match to tell a sanctions refusal from any other signing failure — the same fragility as today's console `TODO(#5078)`. | needs filing — return the typed sanctions error from the signing path too |
 | **Revoked has no date** | The CLA entry shows the status alone. The Me lens dates it from `flaggedAt`; the list entry carries only the boolean `sanctioned`. | needs filing |
-| **GitLab group removals do not invalidate** | A contributor removed from an approved GitLab group keeps an **Authorized** row. Carried over from M2 unchanged. | needs filing |
+| **GitLab group removals invalidate nothing** | A contributor removed from an approved GitLab group keeps an **Authorized** row. The removal path calls `invalidateSignatures` but never populates the acknowledgments to iterate, and `verifyUserApprovals` has no `GitlabOrgCriteria` branch, so it is a silent no-op rather than a partial one. Carried over from M2 unchanged. | needs filing |
+| **GitHub-org removal over-invalidates** | The `GitHubOrgCriteria` branch checks only the email and GitHub-username approval lists before invalidating, instead of the full `userStillApproved` re-check its sibling branches use — and it compares with exact, case-sensitive `StringInSlice` against a single `getBestEmail(user)`, where `userStillApproved` folds case across *all* the user's emails. A contributor still covered by a domain rule, a GitLab username, a differently-cased entry, or a secondary email is invalidated anyway, landing in **Invalidated** while genuinely still approved. | needs filing — a backend bug, not a display gap |
 | **An invalidated CCLA disappears silently** | The CLA entry vanishes from the list with no trace, so an org admin cannot tell a never-signed CLA group from one whose agreement was voided. | open product question — whether an invalidated CCLA deserves its own entry status |
 | **Sanctioned + never signed is not listable** | The prototype's Revoked-without-agreement case has no list entry; only the catalog preview can show it, and it must run its own sanctions check. | open — depends on the preview's data source |
 | **Invalidating existing ECLAs on sanction is blocked** | A newly sanctioned company keeps **Authorized** acknowledgment rows while every write is refused. | blocked pending [lfx-self-serve#2051](https://github.com/linuxfoundation/lfx-self-serve/issues/2051) |
