@@ -38,14 +38,26 @@ Rules that hold across the table:
   no entry at all. This mirrors M2's rule that unsigned agreements are never shown. A
   consequence: `signed` is always `true` on a returned entry, so it is a sanity check
   rather than a discriminator.
-- **Not started exists only as a preview.** It is reachable solely through the *Sign CLA*
-  catalog search: picking a CLA group the company has not signed opens a transient detail
-  page whose managers and approval tabs are locked. It is never a row in the org's CLA
-  list, and a reload without the search loses it. Treating it as a persisted status would
-  imply the API can return it.
+- **Not started exists only as a preview.** It is reachable solely through **Sign CLA** —
+  the search in the Org lens that lets an admin look up any CLA group in the LF project
+  catalog, including ones their organization has no agreement with, in order to start
+  signing one. Picking an unsigned CLA group there opens a transient detail page whose
+  managers and approval tabs are locked. It is never a row in the org's CLA list, and a
+  reload without the search loses it. Treating it as a persisted status would imply the
+  API can return it.
 - **Revoked wins over Signed.** A sanctioned signing entity with a signed agreement shows
   **Revoked**. It is the more consequential fact and the more restrictive status — the
   entry becomes read-only — so it takes precedence, exactly as in M2.
+- **Signing a CCLA is blocked while the signing entity is sanctioned**, so a **Revoked**
+  entry can never become **Signed** and *Sign CLA* must be unavailable from a **Not
+  started** preview for a sanctioned entity. The backend enforces this at two points in
+  `v2/sign/service.go`, both via `checkCompanyCompliance`, which re-screens against the
+  Sanctions Screening Service rather than trusting the stored flag: once **before** the
+  DocuSign envelope is created, and again in the **completion callback** before
+  `signature_signed` is set — so a company that becomes blocked mid-signing does not get
+  a finalized CCLA. Manual/admin blocks short-circuit without an SSS call; SSS-origin
+  blocks fall through so a now-clean result can clear them. The M3 self-serve endpoint
+  delegates to this same method and inherits both gates.
 - **Invalidated and Revoked must never share wording**, and **"Canceled" and "Invalid"
   remain banned copy**. Both rules carry over from M2 unchanged.
 - **A date is shown only when a real one was recorded.** `signedBy` is omitted when the
@@ -61,14 +73,15 @@ Read top to bottom; the first matching row wins.
 | No signed+approved CCLA | not returned by the list endpoint | *entry does not exist* |
 | Signing entity is sanctioned | company `is_sanctioned = true` → `sanctioned = true` | **Revoked** |
 | A corporate agreement is in force | `signed = true` | **Signed** |
-| Reached only via the *Sign CLA* catalog | — | **Not started** (preview only) |
+| Reached only via **Sign CLA** search | — | **Not started** (preview only) |
 
 A consequence worth stating plainly: a signing entity that is **sanctioned and has never
 signed** cannot appear anywhere in the org's CLA list, because the list is built from
 signatures. The prototype shows exactly this case (a sanctioned CLA group with no
-agreement), and it is only reachable through the catalog preview. The catalog preview
-must therefore apply the sanctions check itself rather than inheriting it from a list
-entry that does not exist.
+agreement), and it is only reachable through the **Sign CLA** preview. That preview must
+therefore apply the sanctions check itself rather than inheriting it from a list entry
+that does not exist — and because signing is gated server-side regardless, an admin who
+gets that far is refused at the API rather than silently creating an envelope.
 
 ## Acknowledgment statuses
 
@@ -165,8 +178,8 @@ Two divergences are load-bearing:
 |---|---|---|
 | Acknowledgment statuses | Authorized / Not Authorized / Not set up, from two booleans | Authorized / Not Authorized / Invalidated; unsigned rows dropped rather than labelled |
 | Voided vs not-covered | Indistinguishable — both read "Not Authorized" | Split, with different colors, copy and recoverability |
-| CLA entry status | Signed / Not Signed per project | Signed / Revoked, with unsigned reachable only via the catalog preview |
-| Sanctions detection | `isSanctioned` plus string matching on error messages — `project-active-cla.component.ts` and `ccla-dialog.component.ts` both carry a `TODO(#5078)` to replace it | Typed `code: "company_sanctioned"` on writes; stored `sanctioned` flag on reads |
+| CLA entry status | Signed / Not Signed per project | Signed / Revoked, with unsigned reachable only via the **Sign CLA** preview |
+| Sanctions detection | `isSanctioned` plus string matching on error messages — `project-active-cla.component.ts` and `ccla-dialog.component.ts` both carry a `TODO(#5078)` to replace it | Typed `code: "company_sanctioned"` on the gated write ops; stored `sanctioned` flag on reads; live SSS re-screening on the CCLA signing path |
 
 ## Not yet implemented
 
@@ -178,6 +191,7 @@ have no backend at all, others store the data but do not expose it.
 | **Unsigned acknowledgments are not filtered server-side** | Rows with `signatureSigned = false` come back from the API, so the Org lens must drop them itself or it will show statusless rows. The CCLA list query filters on signed+approved; the employee signature query filters only on company and project. | needs filing — either filter in the query or confirm the frontend owns it |
 | **No coverage verdict on an acknowledgment row** | **Not Authorized** cannot be rendered for the case the prototype describes. `corporate-contributor` carries only `signatureSigned` and `signatureApproved`; there is no equivalent of the M2 coverage check. | needs filing — a per-row coverage verdict, or a documented decision that removal stops auto-invalidating |
 | **Invalidation date, reason and actor are not exposed** | **Invalidated** renders without its date or cause, even where `InvalidationMetadata` recorded both. | metadata is stored; the row model exposes none of it |
+| **The signing refusal is not machine-readable** | The two CCLA signing gates return a plain error (`company requires further review for trade compliance`), not the typed `403 company_sanctioned` body the gated write ops return. The Org lens would have to string-match to tell a sanctions refusal from any other signing failure — the same fragility as today's console `TODO(#5078)`. | needs filing — return the typed sanctions error from the signing path too |
 | **Revoked has no date** | The CLA entry shows the status alone. The Me lens dates it from `flaggedAt`; the list entry carries only the boolean `sanctioned`. | needs filing |
 | **GitLab group removals do not invalidate** | A contributor removed from an approved GitLab group keeps an **Authorized** row. Carried over from M2 unchanged. | needs filing |
 | **An invalidated CCLA disappears silently** | The CLA entry vanishes from the list with no trace, so an org admin cannot tell a never-signed CLA group from one whose agreement was voided. | open product question — whether an invalidated CCLA deserves its own entry status |
