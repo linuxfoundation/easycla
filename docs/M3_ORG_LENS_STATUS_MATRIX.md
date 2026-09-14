@@ -16,7 +16,23 @@ Corporate CLA Console moves into LFX Self Serve. Two surfaces carry a status: th
 entry** (one signing entity × CLA group) and each **employee acknowledgment** row beneath
 it. Every status names its **backend basis** — several have none yet.
 
-## CLA entry statuses
+### Terminology
+
+Two objects, and the names this document uses for them:
+
+| Object | This document | Backend / code | Do not use |
+|---|---|---|---|
+| A signing entity's agreement with one CLA group | **CLA entry**, **corporate agreement** | CCLA, `signature_signed`, `corporate-signature` | — |
+| One employee's coverage under that agreement | **employee acknowledgment**, **acknowledgment** | ECLA, `employee_signature`, `autoCreateECLA` | **"Employee CLA"**, **"ECLA"** in prose |
+
+An employee does not sign a separate agreement — they **acknowledge** the company's corporate
+agreement. "Employee CLA" implies otherwise and is not used in user-facing text: documentation,
+emails and UI all say *employee acknowledgment*. **ECLA** survives only as an internal
+abbreviation in code identifiers, URL paths and schema names (`autoCreateECLA`,
+`/cla-group/{id}/ecla/{sigID}/invalidate`), which this document quotes verbatim where it cites
+them. Spelling is American throughout — *acknowledgment*, not *acknowledgement*.
+
+## CLA entry statuses (corporate agreement)
 
 Shown on the CLA group card and on its detail page header.
 
@@ -86,9 +102,9 @@ reachable only through the **Sign CLA** preview — so the preview must apply th
 itself rather than inheriting it from an entry that does not exist. Signing is gated
 server-side regardless, so an admin who gets that far is refused at the API.
 
-## Acknowledgment statuses
+## Acknowledgment statuses (employee acknowledgment)
 
-Shown per contributor row in the acknowledgments (employee CLA) table of a CLA entry.
+Shown per contributor row in the employee acknowledgment table of a CLA entry.
 
 | Status | What it means | Backend basis | Dated? |
 |---|---|---|---|
@@ -159,16 +175,16 @@ needs to translate.
 | Acknowledged, not covered by criteria | **Needs attention** | Not Authorized | **Not Authorized** |
 | Acknowledgment voided | **Invalidated** | Not Authorized *(collapsed)* | **Invalidated** |
 | Coverage could not be determined | **—** (dash) | *never determined — no coverage check runs* | *no equivalent — see gaps* |
-| Company under sanctions | **Revoked** (on the ECLA row) | "Unable to Sign" / "Unable to Prepare CCLA" error states | **Revoked** (on the CLA entry) |
+| Company under sanctions | **Revoked** (on the acknowledgment row) | "Unable to Sign" / "Unable to Prepare CCLA" error states | **Revoked** (on the CLA entry) |
 | Not acknowledged / not signed | *row hidden* | Not set up | *row hidden* |
 
 Two divergences are load-bearing:
 
 - **"Needs attention" ≡ "Not Authorized".** Same state, different audience — an instruction to
   the contributor versus a fact about a person. Neither name is being changed.
-- **"Revoked" sits on a different object in each lens** — one contributor's ECLA in the Me lens,
-  the whole signing entity's CLA entry in the Org lens. The sanction is company-level in both;
-  only the object carrying the label differs.
+- **"Revoked" sits on a different object in each lens** — one contributor's acknowledgment in
+  the Me lens, the whole signing entity's CLA entry in the Org lens. The sanction is
+  company-level in both; only the object carrying the label differs.
 
 ## What changes from today's console
 
@@ -185,7 +201,7 @@ Two divergences are load-bearing:
 A first Org-lens EasyCLA build exists in `lfx-self-serve` behind the `org-lens-cla-m3-enabled`
 feature flag (list, card, detail page, approval list, Sign CLA flow). It is not user-visible
 and diverges from this document in the first two rows below. Acknowledgment statuses have no UI
-there at all, so everything in [Acknowledgment statuses](#acknowledgment-statuses) is unbuilt.
+there at all, so everything in [Acknowledgment statuses](#acknowledgment-statuses-employee-acknowledgment) is unbuilt.
 
 | Gap | Effect in the Org lens | Backend status |
 |---|---|---|
@@ -204,7 +220,7 @@ there at all, so everything in [Acknowledgment statuses](#acknowledgment-statuse
 | **GitHub-org removal over-invalidates** | When it runs, the `GitHubOrgCriteria` branch checks only the email and GitHub-username lists instead of the full `userStillApproved` re-check, comparing case-sensitively against a single `getBestEmail(user)`. A contributor still covered by a domain rule, a GitLab username, a differently-cased entry or a secondary email is invalidated anyway. | needs filing — backend bug, not a display gap |
 | **An invalidated CCLA disappears silently** | The entry vanishes from the list, so an admin cannot tell a never-signed CLA group from one whose agreement was voided. | open product question |
 | **Sanctioned + never signed is not listable** | Only the **Sign CLA** preview can show it, and `GET /cla-group/search` carries no `sanctioned` field, so the preview must resolve the sanctions state separately. | needs filing — add the flag to the search result, or have the preview resolve the company |
-| **Invalidating existing ECLAs on sanction is blocked** | A newly sanctioned company keeps **Authorized** acknowledgment rows while every write is refused. | blocked pending [lfx-self-serve#2051](https://github.com/linuxfoundation/lfx-self-serve/issues/2051) |
+| **Invalidating existing acknowledgments on sanction is blocked** | A newly sanctioned company keeps **Authorized** acknowledgment rows while every write is refused. | blocked pending [lfx-self-serve#2051](https://github.com/linuxfoundation/lfx-self-serve/issues/2051) |
 | **`needsClaManager` and `autoCreateECLA` are flags, not statuses** | Both are on the list entry and render as their own affordances on the card; they do not participate in the status model. | done — out of scope |
 
 ## Related tickets
@@ -213,7 +229,7 @@ there at all, so everything in [Acknowledgment statuses](#acknowledgment-statuse
 - [lfx-self-serve#2231](https://github.com/linuxfoundation/lfx-self-serve/issues/2231) — `signedBy` on the list entry
 - [lfx-self-serve#2222](https://github.com/linuxfoundation/lfx-self-serve/issues/2222) — `approvalCriteriaCount`
 - [lfx-self-serve#2150](https://github.com/linuxfoundation/lfx-self-serve/issues/2150) — self-serve corporate signature (the *Sign CLA* path)
-- [lfx-self-serve#2151](https://github.com/linuxfoundation/lfx-self-serve/issues/2151) — CLA manager requests + ECLA invalidate (`reason` enum)
+- [lfx-self-serve#2151](https://github.com/linuxfoundation/lfx-self-serve/issues/2151) — CLA manager requests + acknowledgment invalidate (`reason` enum)
 - [lfx-self-serve#2153](https://github.com/linuxfoundation/lfx-self-serve/issues/2153) — sanctioned-company write gating
 - [lfx-self-serve#2186](https://github.com/linuxfoundation/lfx-self-serve/issues/2186) — email removal invalidates all matching acknowledgments
-- [lfx-self-serve#2051](https://github.com/linuxfoundation/lfx-self-serve/issues/2051) — invalidating existing ECLAs when a company becomes sanctioned
+- [lfx-self-serve#2051](https://github.com/linuxfoundation/lfx-self-serve/issues/2051) — invalidating existing acknowledgments when a company becomes sanctioned
