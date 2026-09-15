@@ -1206,6 +1206,95 @@ func TestUpdateApprovalListGitHubOrgRemovalFailsBeforeWritingWhenLookupsFail(t *
 	}
 }
 
+// the approval list carries the organization as the CLA manager typed it while the repositories
+// table carries GitHub's canonical casing; the gate approves members case-insensitively, so the
+// removal has to find the organization the same way or nobody is re-checked
+func TestUpdateApprovalListGitHubOrgRemovalMatchesTheRepositoryOrganizationCaseInsensitively(t *testing.T) {
+	items := []map[string]interface{}{{
+		"signature_id":             fakeS("ccla-sig"),
+		"signature_project_id":     fakeS("cla-group-1"),
+		"signature_reference_id":   fakeS("company-1"),
+		"signature_reference_type": fakeS("company"),
+		"signature_reference_name": fakeS("Acme"),
+		"signature_type":           fakeS("ccla"),
+		"signature_approved":       fakeTrue(),
+		"signature_signed":         fakeTrue(),
+		"github_org_whitelist":     fakeStringList("removed-org", "kept-org"),
+		"signature_acl":            fakeStringList("manager-lf"),
+		"date_created":             fakeS("2023-01-01T00:00:00Z"),
+		"date_modified":            fakeS("2023-01-01T00:00:00Z"),
+	}, fakeEclaItem(1, "alice@corp.example")}
+
+	table := &fakeSignaturesTable{items: items, invalidated: map[string]int{}}
+	awsSession, closeServer := newApprovalRemovalSession(t, table)
+	defer closeServer()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockUsers := mock_users.NewMockUserRepository(ctrl)
+	mockUsers.EXPECT().GetUser("user-001").
+		Return(&models.User{UserID: "user-001", GithubUsername: "alice", LfEmail: "alice@corp.example"}, nil).AnyTimes()
+	mockUsers.EXPECT().GetUserByUserName("manager-lf", true).
+		Return(&models.User{LfUsername: "manager-lf", LfEmail: "manager@example.com"}, nil).AnyTimes()
+	mockCompanyRepo := mock_company.NewMockIRepository(ctrl)
+	mockCompanyRepo.EXPECT().GetCompany(gomock.Any(), "company-1").
+		Return(&models.Company{CompanyID: "company-1", CompanyName: "Acme"}, nil).AnyTimes()
+	mockRepositories := mock.NewMockRepositoryInterface(ctrl)
+	mockRepositories.EXPECT().GitHubGetRepositoriesByCLAGroup(gomock.Any(), "cla-group-1", true).
+		Return([]*models.GithubRepository{
+			{RepositoryID: "repo-1", RepositoryOrganizationName: "Removed-Org"},
+			{RepositoryID: "repo-2", RepositoryOrganizationName: "Kept-Org"},
+		}, nil)
+	// the organization record is looked up under the repositories table's canonical name
+	mockGitHubOrgs := githubOrgMock.NewMockRepositoryInterface(ctrl)
+	mockGitHubOrgs.EXPECT().GetGitHubOrganization(gomock.Any(), "Removed-Org").
+		Return(&models.GithubOrganization{OrganizationName: "Removed-Org", OrganizationInstallationID: 4242}, nil)
+	originalMembers := getOrganizationMembers
+	getOrganizationMembers = func(_ context.Context, orgName string, _ int64) ([]string, error) {
+		assert.Equal(t, "Removed-Org", orgName)
+		return []string{"alice"}, nil
+	}
+	defer func() { getOrganizationMembers = originalMembers }()
+	stubListUserPublicOrgs(t, []string{"hobby-org"}, nil)
+	mockEvents := eventsMock.NewMockService(ctrl)
+	mockEvents.EXPECT().LogEventWithContext(gomock.Any(), gomock.Any()).Times(1)
+	approvalRepo := &fakeApprovalRepo{}
+	previousSender := utils.GetEmailSender()
+	utils.SetEmailSender(&recordingEmailSender{})
+	defer utils.SetEmailSender(previousSender)
+
+	repo := repository{
+		stage:              "test",
+		dynamoDBClient:     dynamodb.New(awsSession),
+		companyRepo:        mockCompanyRepo,
+		usersRepo:          mockUsers,
+		eventsService:      mockEvents,
+		repositoriesRepo:   mockRepositories,
+		ghOrgRepo:          mockGitHubOrgs,
+		signatureTableName: "cla-test-signatures",
+		approvalRepo:       approvalRepo,
+	}
+
+	updated, err := repo.UpdateApprovalList(context.Background(),
+		&models.User{LfUsername: "manager-lf", LfEmail: "manager@example.com"},
+		&models.ClaGroup{ProjectID: "cla-group-1", ProjectName: "My Project", Version: "v2"},
+		"company-1",
+		&models.ApprovalList{RemoveGithubOrgApprovalList: []string{"removed-org"}},
+		&events.LogEventArgs{EventType: events.InvalidatedSignature})
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+
+	table.mu.Lock()
+	defer table.mu.Unlock()
+	assert.Equal(t, map[string]int{"sig-001": 1}, table.invalidated, "the member of the differently-cased organization loses the acknowledgment")
+	assert.Equal(t, "Signature invalidated (approved set to false) by manager-lf due to GitHub Org Criteria  removal", fakeItemString(table.find("sig-001"), "note"))
+	require.Len(t, table.ccla, 1)
+	assert.Contains(t, table.ccla[0], "#GHO = :gho")
+	require.Len(t, approvalRepo.added, 1)
+	assert.Equal(t, "removed-org", approvalRepo.added[0].ApprovalName)
+	assert.False(t, approvalRepo.added[0].Active)
+}
+
 // an add-only organization request resolves none of the removal dependencies - whether the
 // removal list is omitted or decoded as an explicitly empty array - so an outage isolated to
 // the employee acknowledgment index cannot block the addition.

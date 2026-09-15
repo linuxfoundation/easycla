@@ -4767,8 +4767,9 @@ func (repo repository) gitHubOrgRemovalTargets(ctx context.Context, projectID, c
 	var ghOrgRepositories []*models.GithubRepository
 	var ghOrgs []*models.GithubOrganization
 	for _, repository := range repositories {
-		// Check for matching organization name in repositories table against approvalList removal GitHub organizations
-		if utils.StringInSlice(repository.RepositoryOrganizationName, removedOrgs) {
+		// Check for matching organization name in repositories table against approvalList removal GitHub organizations -
+		// GitHub organization names are case-insensitive and the gate approves members that way too
+		if containsFold(removedOrgs, repository.RepositoryOrganizationName) {
 			ghOrgRepositories = append(ghOrgRepositories, repository)
 		}
 	}
