@@ -283,13 +283,20 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		if !wasSanctioned {
 			s.logCompanySanctionedEvent(ctx, comp, nil, lfUsername)
 		}
-		if input.CompanySfid != nil {
-			err = fmt.Errorf("company %s requires further review for trade compliance", *input.CompanySfid)
-		} else {
-			err = fmt.Errorf("company requires further review for trade compliance")
+		sanctionedErr := &utils.SanctionedCompanyError{
+			CompanyID:   comp.CompanyID,
+			CompanySFID: comp.CompanyExternalID,
+			CompanyName: comp.CompanyName,
+			Guidance:    utils.CompanySanctionedSigningGuidance,
 		}
-		log.WithFields(f).WithError(err).Error("company requires further review for trade compliance")
-		return nil, err
+		if sanctionedErr.CompanySFID == "" {
+			sanctionedErr.CompanySFID = utils.StringValue(input.CompanySfid)
+		}
+		if sanctionedErr.CompanyName == "" {
+			sanctionedErr.CompanyName = sanctionedErr.CompanySFID
+		}
+		log.WithFields(f).WithError(sanctionedErr).Error("company requires further review for trade compliance")
+		return nil, sanctionedErr
 	}
 
 	// 2. Ensure this is a valid project

@@ -50,8 +50,9 @@ properties:
     description: Whether the CCLA is signed
   signedOn:
     type: string
-    x-omitempty: false
-    description: Date/time the CCLA was signed
+    description: >-
+      Stored signing date/time of the CCLA (signed_on). Omitted when the
+      signature carries none - there is no creation-date fallback.
   signedBy:
     type: string
     description: >-
@@ -65,11 +66,16 @@ properties:
     type: boolean
     x-omitempty: false
     description: Stored sanctions flag of the signing entity company
+  sanctionedAt:
+    type: string
+    description: >-
+      Date/time the signing entity company was flagged as sanctioned
+      (stored sanctionedDate). Only present while sanctioned is true.
   approvedContributorsCount:
     type: integer
     format: int64
     x-omitempty: false
-    description: Number of employee acknowledgements (ECLAs) under this CCLA
+    description: Number of approved and signed employee acknowledgments under this CCLA
   approvalCriteriaCount:
     type: integer
     format: int64
@@ -97,4 +103,4 @@ properties:
   autoCreateECLA:
     type: boolean
     x-omitempty: false
-    description: Whether employee acknowledgements are created automatically for approved contributors
+    description: Whether employee acknowledgments are created automatically for approved contributors

@@ -46,7 +46,7 @@ var (
 	ErrZipNotPresent = errors.New("zip file not present")
 
 	errEclaNotFound           = errors.New("ecla signature not found")
-	errNotEcla                = errors.New("signature is not an employee acknowledgement (ECLA)")
+	errNotEcla                = errors.New("signature is not an employee acknowledgment (ecla)")
 	errEclaWrongClaGroup      = errors.New("ecla does not belong to the specified cla group")
 	errEclaAlreadyInvalidated = errors.New("ecla already invalidated")
 	errEclaForbidden          = errors.New("not authorized for the ecla company and project scope")
@@ -450,7 +450,7 @@ func (s *Service) InvalidateICLA(ctx context.Context, claGroupID string, userID 
 	return nil
 }
 
-// InvalidateECLA invalidates the specified employee acknowledgement (ECLA) signature record -
+// InvalidateECLA invalidates the specified employee acknowledgment (ECLA) signature record -
 // input optionally carries the invalidation reason and note recorded on the record
 func (s *Service) InvalidateECLA(ctx context.Context, claGroupID string, signatureID string, authUser *auth.User, eventsService events.Service, eventArgs *events.LogEventArgs, input *models.EclaInvalidationInput) (*models.EclaInvalidateResult, error) {
 	f := logrus.Fields{
@@ -539,7 +539,7 @@ func (s *Service) InvalidateECLA(ctx context.Context, claGroupID string, signatu
 
 	email := utils.GetBestEmail(user)
 	log.WithFields(f).Debugf("sending invalidation email to : %s ", email)
-	subject := fmt.Sprintf("EasyCLA: ECLA invalidated for %s ", claGroup.ProjectName)
+	subject := fmt.Sprintf("EasyCLA: Employee acknowledgment invalidated for %s", claGroup.ProjectName)
 	params := signatures.InvalidateSignatureTemplateParams{
 		RecipientName: utils.GetBestUsername(user),
 		CLAGroupName:  claGroup.ProjectName,

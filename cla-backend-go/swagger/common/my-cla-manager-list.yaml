@@ -4,11 +4,11 @@
 type: object
 x-nullable: false
 title: My CLA Manager List
-description: The CLA managers of the CCLA covering the given ECLA signature
+description: The CLA managers of the CCLA covering the given employee acknowledgment signature
 properties:
   signatureID:
     type: string
-    description: ECLA signature ID (UUID)
+    description: Employee acknowledgment signature ID (UUID)
   claGroupID:
     type: string
     description: CLA Group ID (UUID)

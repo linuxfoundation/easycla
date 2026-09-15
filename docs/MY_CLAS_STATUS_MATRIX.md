@@ -5,15 +5,24 @@
 
 Single source of truth for the status a My CLAs row shows. The status model is **shipped and settled** — the backend status fields (`easycla` `dev`, including [easycla#5156](https://github.com/linuxfoundation/easycla/pull/5156)) and the frontend rendering ([lfx-self-serve#1440](https://github.com/linuxfoundation/lfx-self-serve/pull/1440), merged 2026-08-21). [Not yet implemented](#not-yet-implemented) lists everything a contributor cannot do or see today, so nobody builds to it by mistake.
 
+## Terminology
+
+An **employee acknowledgment** is one employee's coverage under their employer's corporate
+agreement (the CLA entry) — the employee acknowledges that agreement rather than signing one of
+their own. Prose here therefore never says "Employee CLA" or "ECLA"; the abbreviation survives
+only in code identifiers, URL paths and JSON values quoted verbatim (`claType: ecla`,
+`autoCreateECLA`), and the spelling is American — *acknowledgment*
+([lfx-self-serve#2435](https://github.com/linuxfoundation/lfx-self-serve/issues/2435)).
+
 ## The five statuses
 
 | Status | Applies to | What it means | Dated? | What the contributor can do |
 |---|---|---|---|---|
-| **Valid** | ICLA + ECLA | Signed and in force. For an ECLA, the employer's agreement covers the contributor. | no | ICLA: download the PDF. ECLA: Contact CLA Manager, Request Removal |
-| **Needs attention** | ECLA only | The agreement is intact, but a completed check proved it does **not** cover the contributor — they are no longer on the employer's approved list. | no | Request approval, Contact CLA Manager, Request Removal |
-| **Invalidated** | ICLA + ECLA | The agreement itself was made void — by a CLA manager removing the contributor from an approved list, a project admin invalidating an ICLA, or a CLA group being deleted. In the data this is `signature_approved = false`. | yes — *Invalidated · date* | ICLA: nothing. ECLA: Request Removal |
-| **Revoked** | ECLA only | The employer is under a sanctions block, so the agreement cannot be relied on. Set by the system, never by a person in the product. | yes — *Revoked · date* | Nothing — the row is read-only |
-| **—** | ECLA only | Coverage could not be confirmed. Shown as a plain dash, **not** a labelled pill, because this is an absence of information rather than a verdict. | no | Request Removal |
+| **Valid** | ICLA + employee acknowledgment | Signed and in force. For an employee acknowledgment, the employer's agreement covers the contributor. | no | ICLA: download the PDF. Employee acknowledgment: Contact CLA Manager, Request Removal |
+| **Needs attention** | Employee acknowledgment only | The agreement is intact, but a completed check proved it does **not** cover the contributor — they are no longer on the employer's approved list. | no | Request approval, Contact CLA Manager, Request Removal |
+| **Invalidated** | ICLA + employee acknowledgment | The agreement itself was made void — by a CLA manager removing the contributor from an approved list, a project admin invalidating an ICLA, or a CLA group being deleted. In the data this is `signature_approved = false`. | yes — *Invalidated · date* | ICLA: nothing. Employee acknowledgment: Request Removal |
+| **Revoked** | Employee acknowledgment only | The employer is under a sanctions block, so the agreement cannot be relied on. Set by the system, never by a person in the product. | yes — *Revoked · date* | Nothing — the row is read-only |
+| **—** | Employee acknowledgment only | Coverage could not be confirmed. Shown as a plain dash, **not** a labelled pill, because this is an absence of information rather than a verdict. | no | Request Removal |
 
 Four rules that hold across the table:
 
@@ -22,11 +31,11 @@ Four rules that hold across the table:
 - **"Canceled" and "Invalid" are banned copy.** "Invalidated" is the approved term.
 - **A date is shown only when a real one was recorded.** Invalidated reads its date from `invalidatedAt`, Revoked from `flaggedAt`. Neither is ever invented: agreements invalidated, and employers sanctioned, before those fields existed have no date, and their rows show the status on its own. A wrong date is worse than none.
 
-### Why Invalidated never names who did it
+### Why the Invalidated status names nobody
 
-Three different events produce Invalidated, and the stored record is **identical** for all three — it does not capture which one occurred. So the status deliberately attributes nothing.
+Three different events produce Invalidated. Records invalidated before M2 are **identical** for all three — they do not capture which one occurred — so the contributor-facing status deliberately attributes nothing, and wording like "your CLA manager removed you" would be wrong whenever the cause was actually a project admin or a deleted CLA group.
 
-This is a constraint, not a copy choice: wording like "your CLA manager removed you" would be wrong whenever the cause was actually a project admin or a deleted CLA group. Naming a cause requires a backend change first.
+Since M2 the backend stamps attribution on **new** invalidations (`date_invalidated`, `invalidated_by`, optional `invalidation_reason`/`invalidation_note` — the admin ICLA/acknowledgment invalidation and, since M3, approval-list removals too). My CLAs exposes only the date (`invalidatedAt`, present on records invalidated after the field was introduced — the *Invalidated · date* pill); the org lens's corporate-contributors rows carry the full set where it exists. Old records stay unattributed rather than being back-filled with a guess, so any cause-naming copy must still tolerate rows with nothing but the legacy `note`.
 
 ### Revoked wins over Invalidated
 
@@ -64,17 +73,17 @@ Actions are driven by the underlying situation, not by the status label:
 
 | Action | Offered when |
 |---|---|
-| **Request approval** | ECLA, and the contributor is specifically off the approved list |
-| **Request Removal** | Any ECLA except Revoked — so Valid, Needs attention, Invalidated and "—" all keep it |
-| **Contact CLA Manager** | ECLA showing **Valid or Needs attention**. Sends a free-form message to the chosen managers and changes nothing — the email says so explicitly |
+| **Request approval** | Employee acknowledgment, and the contributor is specifically off the approved list |
+| **Request Removal** | Any employee acknowledgment except Revoked — so Valid, Needs attention, Invalidated and "—" all keep it |
+| **Contact CLA Manager** | Employee acknowledgment showing **Valid or Needs attention**. Sends a free-form message to the chosen managers and changes nothing — the email says so explicitly |
 
 Consequences worth stating plainly:
 
 - **ICLA rows never offer a CLA-manager action** — there is no employer or manager involved.
-- **Revoked is the only ECLA state with no actions.**
+- **Revoked is the only employee-acknowledgment state with no actions.**
 - **Request approval is deliberately withheld** from a row whose employer has no active agreement. There would be nothing to be approved onto, so the button would send the contributor to a manager who cannot help.
 
-Contact is offered only where a manager could actually help. A **Valid** row has nothing wrong, but the contributor may still have a question (a team change, an acquisition, another project) — a message-only action fits that. It is withheld from **Invalidated**, because a manager's only lever is the approved list and removal from it produces Needs attention, not Invalidated; and from **"—"**, because the system could not work out what is wrong, and where no company or corporate agreement exists no managers resolve at all.
+Contact is offered only where a manager could actually help. A **Valid** row has nothing wrong, but the contributor may still have a question (a team change, an acquisition, another project) — a message-only action fits that. It is withheld from **Invalidated**, because a manager cannot undo it from the approved list — removal from the list is what invalidates an acknowledgment, and re-adding the contributor does not re-approve it; the contributor re-acknowledges instead; and from **"—"**, because the system could not work out what is wrong, and where no company or corporate agreement exists no managers resolve at all.
 
 ## Not yet implemented
 

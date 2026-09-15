@@ -4,19 +4,19 @@
 type: object
 x-nullable: false
 title: ECLA Invalidate Result
-description: Identifiers of the invalidated employee acknowledgement
+description: Identifiers of the invalidated employee acknowledgment
 properties:
   signature_id:
     type: string
-    description: The invalidated ECLA signature ID
+    description: The invalidated employee acknowledgment signature ID
     x-omitempty: false
   cla_group_id:
     type: string
-    description: The CLA Group ID the ECLA belongs to
+    description: The CLA Group ID the employee acknowledgment belongs to
     x-omitempty: false
   company_id:
     type: string
-    description: The company internal ID from the ECLA record
+    description: The company internal ID from the employee acknowledgment record
     x-omitempty: false
   user_id:
     type: string

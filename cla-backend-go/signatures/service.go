@@ -879,8 +879,8 @@ func (s service) processEmployeeSignatures(ctx context.Context, companyModel *mo
 
 	var responseErr error
 	var wg sync.WaitGroup
-	resultChan := make(chan *EmployeeModel)
-	errChan := make(chan error)
+	resultChan := make(chan *EmployeeModel, len(userList))
+	errChan := make(chan error, len(userList))
 
 	// For each item in the email approval list...
 	for _, employeeUserModel := range userList {
@@ -901,10 +901,12 @@ func (s service) processEmployeeSignatures(ctx context.Context, companyModel *mo
 			employeeUserModel := employeeModel.User
 			log.WithFields(f).Debugf("processing employee signature record for user: %+s", employeeUserModel.UserID)
 			if employeeSignatureModel != nil {
-				if !employeeSignatureModel.SignatureApproved || !employeeSignatureModel.SignatureSigned {
+				if employeeModel.Invalidated {
+					log.WithFields(f).Debugf("employee signature record %s for user %s was invalidated - leaving it alone, it needs an explicit re-approval", employeeSignatureModel.SignatureID, employeeUserModel.UserID)
+				} else if !employeeSignatureModel.SignatureApproved || !employeeSignatureModel.SignatureSigned {
 					// If record exists, this will update the record
 					log.WithFields(f).Debugf("updating employee signature record for: %+v", employeeSignatureModel)
-					updateErr := s.repo.ValidateProjectRecord(ctx, employeeSignatureModel.SignatureID, "signed and approved employee acknowledgement since auto_create_ecla feature flag set to true")
+					updateErr := s.repo.ValidateProjectRecordUnlessInvalidated(ctx, employeeSignatureModel.SignatureID, "signed and approved employee acknowledgment since auto_create_ecla feature flag set to true")
 					if updateErr != nil {
 						log.WithFields(f).WithError(updateErr).Warnf("problem updating employee signature record for: %+v", employeeSignatureModel)
 						responseErr = updateErr
@@ -913,7 +915,7 @@ func (s service) processEmployeeSignatures(ctx context.Context, companyModel *mo
 					log.WithFields(f).Debugf("employee signature record already exists for: %+v", employeeUserModel)
 				}
 			} else {
-				// Ok, auto-create the employee acknowledgement record
+				// Ok, auto-create the employee acknowledgment record
 				log.WithFields(f).Debugf("creating employee signature record for user: %+s", employeeUserModel.UserID)
 				createErr := s.repo.CreateProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, employeeUserModel)
 				if createErr != nil {
@@ -1495,7 +1497,7 @@ func (s service) HasUserSigned(ctx context.Context, user *models.User, projectID
 		companyAffiliation = true
 
 		// Get employee signature
-		log.WithFields(f).Debugf("ECLA signature check - user has a company: %s - looking for user's employee acknowledgement...", companyID)
+		log.WithFields(f).Debugf("ECLA signature check - user has a company: %s - looking for user's employee acknowledgment...", companyID)
 
 		// Load the company - make sure it is valid
 		companyModel, compModelErr := s.companyService.GetCompany(ctx, companyID)
@@ -1539,19 +1541,19 @@ func (s service) ProcessEmployeeSignature(ctx context.Context, companyModel *mod
 
 	// Sanctions gate: a sanctioned company's employees are not authorized. is_sanctioned
 	// is the persisted gate (SSS origin="sss" or a manual/admin block); honor it here so
-	// employee-acknowledgement (ECLA) authorization fails for sanctioned companies on
+	// employee-acknowledgment (ECLA) authorization fails for sanctioned companies on
 	// GitHub PR checks and authorization queries. By design this enforces the persisted
 	// flag, not a live SSS call (the live screen at the sign/request entry points keeps it
 	// fresh).
 	if companyModel.IsSanctioned {
-		log.WithFields(f).Warnf("company %s is sanctioned (origin=%q); employee acknowledgement not authorized", companyModel.CompanyID, companyModel.SanctionOrigin)
+		log.WithFields(f).Warnf("company %s is sanctioned (origin=%q); employee acknowledgment not authorized", companyModel.CompanyID, companyModel.SanctionOrigin)
 		notSigned := false
 		return &notSigned, nil
 	}
 
 	var wg sync.WaitGroup
-	resultChannel := make(chan *EmployeeModel)
-	errorChannel := make(chan error)
+	resultChannel := make(chan *EmployeeModel, 1)
+	errorChannel := make(chan error, 1)
 	hasSigned := false
 	projectID := claGroupModel.ProjectID
 	companyID := companyModel.CompanyID
@@ -1571,7 +1573,7 @@ func (s service) ProcessEmployeeSignature(ctx context.Context, companyModel *mod
 		if result != nil {
 			employeeSignature := result.Signature
 			if employeeSignature != nil {
-				// log.WithFields(f).Debugf("ECLA Signature check - located employee acknowledgement - signature id: %s", employeeSignature.SignatureID)
+				// log.WithFields(f).Debugf("ECLA Signature check - located employee acknowledgment - signature id: %s", employeeSignature.SignatureID)
 				log.WithFields(f).Debugf("ecla signature check -  :%+v", employeeSignature)
 
 				// Get corporate ccla signature of company to access the approval list
@@ -1598,7 +1600,7 @@ func (s service) ProcessEmployeeSignature(ctx context.Context, companyModel *mod
 					}
 				}
 			} else {
-				log.WithFields(f).Debugf("ECLA Signature check - unable to locate employee acknowledgement for user: %s, company: %s, project: %s", user.UserID, companyID, projectID)
+				log.WithFields(f).Debugf("ECLA Signature check - unable to locate employee acknowledgment for user: %s, company: %s, project: %s", user.UserID, companyID, projectID)
 			}
 		}
 	}

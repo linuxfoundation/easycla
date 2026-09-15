@@ -43,6 +43,18 @@ func buildProjection() expression.ProjectionBuilder {
 	)
 }
 
+// buildInvalidationAwareProjection extends the common projection with the note and the invalidation
+// attribution attributes so a caller can tell an invalidated record from a never-approved one
+func buildInvalidationAwareProjection() expression.ProjectionBuilder {
+	return buildProjection().AddNames(
+		expression.Name("note"),
+		expression.Name("date_invalidated"),
+		expression.Name("invalidated_by"),
+		expression.Name("invalidation_reason"),
+		expression.Name("invalidation_note"),
+	)
+}
+
 // buildCountProject is a helper function to build a simple count projection for the total count query
 func buildCountProjection() expression.ProjectionBuilder {
 	// These are the columns we want returned - we only care about the signature_id

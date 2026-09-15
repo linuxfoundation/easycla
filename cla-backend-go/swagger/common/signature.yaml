@@ -13,7 +13,7 @@ properties:
     description: >
       CLA Type field - identifies the specify signature type - individual, employee or corporate signature, valid options:
       * `icla` - for individual contributor signature records (individuals not associated with a corporation)
-      * `ecla` - for employee contributor signature records (acknowledgements from corporate contributors)
+      * `ecla` - for employee contributor signature records (acknowledgments from corporate contributors)
       * `ccla` - for corporate contributor signature records (created by CLA Signatories and managed by CLA Managers)
     enum: [ icla,ecla,ccla ]
   signatureCreated:
@@ -188,6 +188,6 @@ properties:
     description: docusign signature date
   autoCreateECLA:
     type: boolean
-    description: flag to indicate if the product should automatically create an employee acknowledgement for a given user when the CLA manager adds the user to the email, GitLab username, or GitLab username approval list
+    description: flag to indicate if the product should automatically create an employee acknowledgment for a given user when the CLA manager adds the user to the email, GitLab username, or GitLab username approval list
     example: true
     x-omitempty: false
