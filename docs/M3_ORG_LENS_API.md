@@ -164,7 +164,7 @@ before delegation. A company blocked for trade compliance is rejected — on thi
 and on `/v4/request-corporate-signature` alike — with the typed 403 body described under
 "Sanctioned-company write gating" below (`code: "company_sanctioned"`); its `message`
 additionally carries the contributor-facing guidance sentence after a newline, so existing
-consumers that display `message` keep the same text while new ones key off `code`. Response echoes all ids: `signature_id`, `sign_url`
+consumers that display `message` keep the same leading text (the full value is longer) while new ones key off `code`. Response echoes all ids: `signature_id`, `sign_url`
 (empty for `send_as_email`), `cla_group_id`, `project_sfid`, `company_id` (the signing
 entity's EasyCLA company record), `company_sfid`. Auth mirrors the console:
 `project|organization` tree scope for the (`project_sfid`, `company_sfid`) pair, LF admin
@@ -222,7 +222,15 @@ Related fix ([lfx-self-serve#2186](https://github.com/linuxfoundation/lfx-self-s
 removing an email from the approval list now invalidates **all** matching employee
 acknowledgments instead of paging by 10. Related M3 fixes on the same path: an
 email/GitHub-username/GitHub-org removal leaves an acknowledgment approved while another
-list entry still covers the user (`userStillApproved`), and the auto-create flow
+list entry still covers the user (`userStillApproved`) or while the user's public GitHub
+organizations still include an approved one (the gate's own check; a failed lookup defers the
+invalidation); a standalone GitHub-org removal now actually loads the company's approved
+acknowledgments before re-checking the removed organization's members (before, it loaded none
+and invalidated nothing), reads every page of the organization's member list (before, only the
+first 30 members) and resolves every lookup it depends on (repositories, organization
+records, members, acknowledgments) before writing anything - a failure fails the request
+instead of dropping the criterion while its members stay approved, while an add-only request
+(no removal list, or an explicitly empty one) resolves none of them - and the auto-create flow
 (`autoCreateECLA`) never re-approves an invalidated acknowledgment — a record carrying
 invalidation evidence (any attribution attribute, or the legacy "Signature invalidated"
 note) is skipped, so re-adding someone to a list does not silently undo a CLA-manager or

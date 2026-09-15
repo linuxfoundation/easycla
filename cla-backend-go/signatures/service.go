@@ -110,6 +110,10 @@ const (
 // github.ListUserPublicOrgs.
 var listUserPublicOrgs = github.ListUserPublicOrgs
 
+// getOrganizationMembers is the same indirection for the GitHub App /orgs/<org>/members
+// call the approval list organization removal uses to pick the acknowledgments to re-check
+var getOrganizationMembers = github.GetOrganizationMembers
+
 // NewService creates a new signature service
 func NewService(repo SignatureRepository, companyService company.IService, usersService users.Service, eventsService events.Service, githubOrgValidation bool, repositoryService repositories.Service, githubOrgService github_organizations.ServiceInterface, claGroupService service2.Service, gitLabApp *gitlab_api.App, CLABaseAPIURL, CLALandingPage, CLALogoURL string) SignatureService {
 	return service{

@@ -3860,6 +3860,21 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 
 	if len(params.AddGithubOrgApprovalList) > 0 || len(params.RemoveGithubOrgApprovalList) > 0 {
 		columnName := SignatureGitHubOrgApprovalListColumn
+
+		// everything the removal depends on is resolved before this branch writes anything:
+		// removing the last organization drops the column right away, and a lookup failing
+		// afterwards would leave the criterion gone with every member still approved.
+		// An add-only request (no removal list, or an explicitly empty one) resolves nothing.
+		var removedOrgMembers []string
+		var removedOrgECLAs []*models.Signature
+		if len(params.RemoveGithubOrgApprovalList) > 0 {
+			var targetsErr error
+			removedOrgMembers, removedOrgECLAs, targetsErr = repo.gitHubOrgRemovalTargets(ctx, projectID, companyID, params.RemoveGithubOrgApprovalList)
+			if targetsErr != nil {
+				return nil, targetsErr
+			}
+		}
+
 		attrList := buildApprovalAttributeList(ctx, cclaSignature.GithubOrgApprovalList, params.AddGithubOrgApprovalList, params.RemoveGithubOrgApprovalList)
 		// If no entries after consolidating all the updates, we need to remove the column
 		if attrList == nil || attrList.L == nil {
@@ -3882,48 +3897,15 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			repo.updateApprovalTable(ctx, params.AddGithubOrgApprovalList, utils.GithubOrgApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, true)
 		}
 
-		if params.RemoveGithubOrgApprovalList != nil {
+		if len(params.RemoveGithubOrgApprovalList) > 0 {
 			approvalList.Criteria = utils.GitHubOrgCriteria
 			approvalList.ApprovalList = params.RemoveGithubOrgApprovalList
 			approvalList.Action = utils.RemoveApprovals
 			approvalList.Version = claGroupModel.Version
-			// Get repositories by CLAGroup
-			repositories, getRepoByCLAGroupErr := repo.repositoriesRepo.GitHubGetRepositoriesByCLAGroup(ctx, projectID, true)
-			if getRepoByCLAGroupErr != nil {
-				msg := fmt.Sprintf("unable to fetch repositories for cla group ID: %s ", projectID)
-				log.WithFields(f).WithError(getRepoByCLAGroupErr).Warn(msg)
-				return nil, errors.New(msg)
-			}
-			var ghOrgRepositories []*models.GithubRepository
-			var ghOrgs []*models.GithubOrganization
-			for _, repository := range repositories {
-				// Check for matching organization name in repositories table against approvalList removal GitHub organizations
-				if utils.StringInSlice(repository.RepositoryOrganizationName, approvalList.ApprovalList) {
-					ghOrgRepositories = append(ghOrgRepositories, repository)
-				}
-			}
-
-			for _, ghOrgRepo := range ghOrgRepositories {
-				ghOrg, getGHOrgErr := repo.ghOrgRepo.GetGitHubOrganization(ctx, ghOrgRepo.RepositoryOrganizationName)
-				if getGHOrgErr != nil {
-					msg := fmt.Sprintf("unable to get gh org by name: %s ", ghOrgRepo.RepositoryOrganizationName)
-					log.WithFields(f).WithError(getGHOrgErr).Warn(msg)
-					return nil, errors.New(msg)
-				}
-				ghOrgs = append(ghOrgs, ghOrg)
-			}
-
-			var ghUsernames []string
-			for _, ghOrg := range ghOrgs {
-				ghOrgUsers, getOrgMembersErr := github.GetOrganizationMembers(ctx, ghOrg.OrganizationName, ghOrg.OrganizationInstallationID)
-				if getOrgMembersErr != nil {
-					msg := fmt.Sprintf("unable to fetch github organization users for org: %s ", ghOrg.OrganizationName)
-					log.WithFields(f).WithError(getOrgMembersErr).Warnf("%s", msg)
-					return nil, errors.New(msg)
-				}
-				ghUsernames = append(ghUsernames, ghOrgUsers...)
-			}
-			approvalList.GitHubUsernames = utils.RemoveDuplicates(ghUsernames)
+			approvalList.GitHubUsernames = removedOrgMembers
+			// ICLAs carry no company link, so an organization removal never considers them
+			approvalList.ICLAs = nil
+			approvalList.ECLAs = removedOrgECLAs
 
 			repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs)
 			repo.updateApprovalTable(ctx, params.RemoveGithubOrgApprovalList, utils.GithubOrgApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, false)
@@ -4598,7 +4580,7 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 		}
 		// the coverage veto subsumes the earlier per-field email/GH-username checks
 		if matched != nil && *matched {
-			if !userStillApproved(user, approvalList) {
+			if !stillCovered(ctx, f, user, approvalList, signatureID) {
 				//Invalidate record
 				note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), utils.EmailDomainCriteria)
 				err := repo.InvalidateProjectRecordWithMetadata(ctx, signatureID, note, invalidationMetadata)
@@ -4627,7 +4609,7 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 	} else if approvalList.Criteria == utils.GitHubOrgCriteria {
 		// Handle GH Org Approvals
 		if containsFold(approvalList.GitHubUsernames, user.GithubUsername) {
-			if !userStillApproved(user, approvalList) {
+			if !stillCovered(ctx, f, user, approvalList, signatureID) {
 				//Invalidate record
 
 				note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), utils.GitHubOrgCriteria)
@@ -4640,8 +4622,7 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 			}
 		}
 	} else if approvalList.Criteria == utils.GitHubUsernameCriteria || approvalList.Criteria == utils.GitlabUsernameCriteria || approvalList.Criteria == utils.EmailCriteria {
-		if userStillApproved(user, approvalList) {
-			log.WithFields(f).Debugf("user: %s still covered by another approval list criteria - skipping invalidation of signature: %s", userID, signatureID)
+		if stillCovered(ctx, f, user, approvalList, signatureID) {
 			return user, false, nil
 		}
 		note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), approvalList.Criteria)
@@ -4673,8 +4654,9 @@ func effectiveApprovals(current, add, remove []string) []string {
 
 // userStillApproved reports whether the user remains covered by any approval list criteria.
 // The approvalList approval fields must already reflect the full pending update (see
-// effectiveApprovals). GitHub/GitLab org membership is not re-checked here, consistent with
-// the sibling criteria branches.
+// effectiveApprovals). GitHub organization membership is a network lookup and lives in
+// remainingGitHubOrgCoverage; GitLab group membership is not re-checked, like the enforcement
+// gate does not evaluate it.
 func userStillApproved(user *models.User, approvalList *ApprovalList) bool {
 	if user == nil {
 		return false
@@ -4716,6 +4698,135 @@ func containsFold(list []string, value string) bool {
 		}
 	}
 	return false
+}
+
+// remainingGitHubOrgCoverage mirrors the enforcement gate's organization check
+// (EvaluateUserApproval): the user's public GitHub organizations against the approved
+// organizations left after the pending update. undetermined reports a failed lookup, when
+// coverage cannot be told either way. No lookup is made without a GitHub username or without
+// remaining approved organizations.
+func remainingGitHubOrgCoverage(ctx context.Context, user *models.User, approvalList *ApprovalList) (covered bool, undetermined bool) {
+	login := strings.TrimSpace(user.GithubUsername)
+	if login == "" || len(approvalList.GitHubOrgApprovals) == 0 {
+		return false, false
+	}
+	userOrgs, err := listUserPublicOrgs(ctx, login)
+	if err != nil {
+		return false, true
+	}
+	for _, org := range userOrgs {
+		if containsFold(approvalList.GitHubOrgApprovals, org) {
+			return true, false
+		}
+	}
+	return false, false
+}
+
+// stillCovered decides whether an approval list removal leaves the user's acknowledgment
+// covered: the list criteria first, then the remaining approved GitHub organizations the way
+// the enforcement gate evaluates them. A failed organization lookup counts as covered -
+// invalidating what cannot be re-checked would be destructive, and the gate re-evaluates the
+// lists on every check regardless of the stored approval flag.
+func stillCovered(ctx context.Context, f logrus.Fields, user *models.User, approvalList *ApprovalList, signatureID string) bool {
+	if userStillApproved(user, approvalList) {
+		log.WithFields(f).Debugf("user: %s still covered by another approval list criteria - skipping invalidation of signature: %s", user.UserID, signatureID)
+		return true
+	}
+	covered, undetermined := remainingGitHubOrgCoverage(ctx, user, approvalList)
+	if undetermined {
+		log.WithFields(f).Warnf("unable to list the public GitHub organizations of user: %s - cannot tell whether an approved organization still covers signature: %s, skipping its invalidation", user.UserID, signatureID)
+		return true
+	}
+	if covered {
+		log.WithFields(f).Debugf("user: %s still covered by an approved GitHub organization - skipping invalidation of signature: %s", user.UserID, signatureID)
+	}
+	return covered
+}
+
+// gitHubOrgRemovalTargets resolves what an approval list organization removal needs before
+// anything is written: the members of the removed organizations (through the CLA group's
+// repositories and the installed GitHub App) and the company's approved employee
+// acknowledgments they are matched against. Any failed lookup fails the removal - a partial
+// answer would either exempt members or leave the criterion removed without enforcing it.
+func (repo repository) gitHubOrgRemovalTargets(ctx context.Context, projectID, companyID string, removedOrgs []string) ([]string, []*models.Signature, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.gitHubOrgRemovalTargets",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"projectID":      projectID,
+		"companyID":      companyID,
+		"removedOrgs":    removedOrgs,
+	}
+
+	// Get repositories by CLAGroup
+	repositories, getRepoByCLAGroupErr := repo.repositoriesRepo.GitHubGetRepositoriesByCLAGroup(ctx, projectID, true)
+	if getRepoByCLAGroupErr != nil {
+		msg := fmt.Sprintf("unable to fetch repositories for cla group ID: %s ", projectID)
+		log.WithFields(f).WithError(getRepoByCLAGroupErr).Warn(msg)
+		return nil, nil, errors.New(msg)
+	}
+	var ghOrgRepositories []*models.GithubRepository
+	var ghOrgs []*models.GithubOrganization
+	for _, repository := range repositories {
+		// Check for matching organization name in repositories table against approvalList removal GitHub organizations
+		if utils.StringInSlice(repository.RepositoryOrganizationName, removedOrgs) {
+			ghOrgRepositories = append(ghOrgRepositories, repository)
+		}
+	}
+
+	for _, ghOrgRepo := range ghOrgRepositories {
+		ghOrg, getGHOrgErr := repo.ghOrgRepo.GetGitHubOrganization(ctx, ghOrgRepo.RepositoryOrganizationName)
+		if getGHOrgErr != nil {
+			msg := fmt.Sprintf("unable to get gh org by name: %s ", ghOrgRepo.RepositoryOrganizationName)
+			log.WithFields(f).WithError(getGHOrgErr).Warn(msg)
+			return nil, nil, errors.New(msg)
+		}
+		ghOrgs = append(ghOrgs, ghOrg)
+	}
+
+	var ghUsernames []string
+	for _, ghOrg := range ghOrgs {
+		ghOrgUsers, getOrgMembersErr := getOrganizationMembers(ctx, ghOrg.OrganizationName, ghOrg.OrganizationInstallationID)
+		if getOrgMembersErr != nil {
+			msg := fmt.Sprintf("unable to fetch github organization users for org: %s ", ghOrg.OrganizationName)
+			log.WithFields(f).WithError(getOrgMembersErr).Warnf("%s", msg)
+			return nil, nil, errors.New(msg)
+		}
+		ghUsernames = append(ghUsernames, ghOrgUsers...)
+	}
+
+	// the members only select whom to re-check - the acknowledgments themselves have to be
+	// loaded too, otherwise invalidateSignatures has nothing to iterate
+	eclas, eclaErr := repo.approvedEmployeeSignatures(ctx, projectID, companyID)
+	if eclaErr != nil {
+		msg := fmt.Sprintf("unable to load the employee acknowledgments for company ID: %s project ID: %s", companyID, projectID)
+		log.WithFields(f).WithError(eclaErr).Warn(msg)
+		return nil, nil, errors.New(msg)
+	}
+	return utils.RemoveDuplicates(ghUsernames), eclas, nil
+}
+
+// approvedEmployeeSignatures returns the company's employee acknowledgments for the CLA group
+// that are still approved and signed - the only records an approval list removal can
+// invalidate; re-invalidating an already invalid one would only replace its note and notify
+// the contributor again. A failed lookup is returned as such, never as an empty set.
+func (repo repository) approvedEmployeeSignatures(ctx context.Context, projectID, companyID string) ([]*models.Signature, error) {
+	eclas, err := repo.GetProjectCompanyEmployeeSignatures(ctx, signatures.GetProjectCompanyEmployeeSignaturesParams{
+		CompanyID: companyID,
+		ProjectID: projectID,
+	}, &ApprovalCriteria{})
+	if err != nil {
+		return nil, err
+	}
+	if eclas == nil {
+		return nil, nil
+	}
+	approved := make([]*models.Signature, 0, len(eclas.Signatures))
+	for _, ecla := range eclas.Signatures {
+		if ecla != nil && ecla.SignatureApproved && ecla.SignatureSigned {
+			approved = append(approved, ecla)
+		}
+	}
+	return approved, nil
 }
 
 // removeColumn is a helper function to remove a given column when we need to zero out the column value - typically the approval list
