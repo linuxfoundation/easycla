@@ -289,3 +289,4 @@ spans*.json
 .claude/*
 /*user_emails.json
 .venv
+copilot-*.md

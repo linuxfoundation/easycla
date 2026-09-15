@@ -93,7 +93,7 @@ const ProjectOrgScope = "project|organization"
 // ClaTypeICLA represents individual contributor CLA records
 const ClaTypeICLA = "icla"
 
-// ClaTypeECLA represents employee contributor CLA records (acknowledgements)
+// ClaTypeECLA represents employee contributor CLA records (acknowledgments)
 const ClaTypeECLA = "ecla"
 
 // ClaTypeCCLA represents corporate CLA records (includes approval lists)

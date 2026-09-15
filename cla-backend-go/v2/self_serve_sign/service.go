@@ -53,7 +53,7 @@ const activeSignatureTTLDays = 1
 
 // MyClasService is the subset of the My CLAs service used to verify identity ownership
 type MyClasService interface {
-	AuthorizeIdentity(ctx context.Context, currentUsername string, admin bool, requested *my_clas.Identity) (*my_clas.Identity, []string, error)
+	AuthorizeIdentity(ctx context.Context, caller *my_clas.Caller, requested *my_clas.Identity) (*my_clas.Identity, []string, error)
 }
 
 // UsersService is the subset of the users service used to resolve, enrich and create EasyCLA user records
@@ -97,7 +97,7 @@ type CompanyRepository interface {
 
 // Service interface defines the Self Serve signing service methods
 type Service interface {
-	PrepareSign(ctx context.Context, currentUsername, currentEmail string, admin bool, input *models.PrepareSignInput) (*models.PrepareSign, error)
+	PrepareSign(ctx context.Context, caller *my_clas.Caller, currentEmail string, input *models.PrepareSignInput) (*models.PrepareSign, error)
 	RequestCorporateSignature(ctx context.Context, lfUsername, authorizationHeader string, input *models.SelfServeCorporateSignatureInput) (*models.SelfServeCorporateSignatureOutput, error)
 }
 
@@ -128,15 +128,21 @@ func NewService(myClasService MyClasService, usersService UsersService, claGroup
 	}
 }
 
-// PrepareSign verifies the requested identity belongs to the authenticated user, resolves or
-// creates the EasyCLA user record for it, records the signing session and returns the
-// Contributor Console hand-off URL
-func (s *service) PrepareSign(ctx context.Context, currentUsername, currentEmail string, admin bool, input *models.PrepareSignInput) (*models.PrepareSign, error) {
+// PrepareSign verifies the requested identity belongs to the authenticated user - a trusted Self
+// Serve caller's identities are taken as the caller's own without the user-service/Auth0 checks -
+// resolves or creates the EasyCLA user record for it (the record lookup runs in both modes so no
+// duplicate is created), records the signing session and returns the Contributor Console hand-off URL
+func (s *service) PrepareSign(ctx context.Context, caller *my_clas.Caller, currentEmail string, input *models.PrepareSignInput) (*models.PrepareSign, error) {
+	if caller == nil {
+		caller = &my_clas.Caller{}
+	}
+	currentUsername, admin, trusted := caller.Username, caller.Admin, caller.Trusted
 	claGroupID := strings.TrimSpace(utils.StringValue(input.ClaGroupID))
 	f := logrus.Fields{
 		"functionName":    "v2.self_serve_sign.service.PrepareSign",
 		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
 		"currentUsername": currentUsername,
+		"trustedCaller":   trusted,
 		"claGroupID":      claGroupID,
 	}
 
@@ -170,17 +176,18 @@ func (s *service) PrepareSign(ctx context.Context, currentUsername, currentEmail
 	requestedLfUsername := strings.TrimSpace(requested.LfUsername)
 	preparingForSelf := requestedLfUsername != "" && strings.EqualFold(requestedLfUsername, currentUsername)
 
-	allowed, skipped, err := s.myClasService.AuthorizeIdentity(ctx, currentUsername, admin, requested)
+	allowed, skipped, err := s.myClasService.AuthorizeIdentity(ctx, caller, requested)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to verify the provided identity")
 		return nil, err
 	}
 	skipped = s.acceptVerifiedGithubID(ctx, input, allowed, skipped)
 
-	// An admin may prepare for somebody else, and My CLAs fills an unset lfUsername with the caller's
-	// own for read scoping - keep that from binding the caller's LF identity to the signer's record
+	// An untrusted admin may prepare for somebody else, and My CLAs fills an unset lfUsername with the
+	// caller's own for read scoping - keep that from binding the caller's LF identity to the signer's
+	// record. A trusted caller's identities are the caller's own by definition
 	fallbackEmail := currentEmail
-	if admin && !preparingForSelf {
+	if admin && !trusted && !preparingForSelf {
 		if requestedLfUsername == "" {
 			allowed.LfUsername = ""
 		}

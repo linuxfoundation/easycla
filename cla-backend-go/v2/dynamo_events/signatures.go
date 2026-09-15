@@ -293,7 +293,7 @@ func (s *service) SignatureAddSigTypeSignedApprovedID(event events.DynamoDBEvent
 			return err
 		}
 	case newSig.SignatureType == ECLASignatureType && newSig.SignatureUserCompanyID != "":
-		// auto-created employee acknowledgement (approval-list auto_create_ecla flow -
+		// auto-created employee acknowledgment (approval-list auto_create_ecla flow -
 		// signatures/repository.go CreateProjectCompanyEmployeeSignature); same GSI value
 		// shape as the DocuSign employee-ecla case above (ecla#signed#approved#companyID)
 		sigType = ECLASignatureType

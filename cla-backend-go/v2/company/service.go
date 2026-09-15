@@ -1358,7 +1358,6 @@ func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string, p
 				ClaGroupID:        claGroupID,
 				Projects:          make([]models.CompanyClaGroupProject, 0),
 				Signed:            sig.SignatureSigned,
-				SignedOn:          sig.SignedOn,
 				SignatureID:       sig.SignatureID,
 				Sanctioned:        comp.IsSanctioned,
 				ClaManagers:       make([]models.CompanyClaGroupManager, 0),
@@ -1367,8 +1366,16 @@ func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string, p
 			if row.SigningEntityName == "" {
 				row.SigningEntityName = comp.CompanyName
 			}
-			if row.SignedOn == "" {
-				row.SignedOn = sig.SignatureCreated
+			// The shared v1 signature converter substitutes the creation date for a missing signed_on
+			// (a corporate-console contract), so the stored value is read back for this lens: no
+			// date means no signedOn
+			signedOn, signedOnErr := s.storedSignedOn(ctx, sig.SignatureID)
+			if signedOnErr != nil {
+				return nil, signedOnErr
+			}
+			row.SignedOn = signedOn
+			if comp.IsSanctioned && comp.SanctionedDate != "" {
+				row.SanctionedAt = utils.FormatTimeString(comp.SanctionedDate)
 			}
 			if sig.SignatoryName != "" {
 				row.SignedBy = sig.SignatoryName
@@ -1414,11 +1421,11 @@ func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string, p
 			row.ClaManagersCount = int64(len(row.ClaManagers))
 			row.NeedsClaManager = row.Signed && row.ClaManagersCount == 0
 			row.ApprovalCriteriaCount = approvalCriteriaCount(sig)
-			contributors, eclaErr := s.signatureRepo.GetClaGroupCorporateContributors(ctx, claGroupID, &comp.CompanyID, aws.Int64(1), nil, nil)
+			approvedContributors, eclaErr := s.signatureRepo.CountClaGroupCorporateContributors(ctx, claGroupID, &comp.CompanyID, true, nil)
 			if eclaErr != nil {
 				return nil, eclaErr
 			}
-			row.ApprovedContributorsCount = contributors.TotalCount
+			row.ApprovedContributorsCount = approvedContributors
 			result.List = append(result.List, row)
 		}
 	}
@@ -1436,6 +1443,18 @@ func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string, p
 	result.List = result.List[start:end]
 	result.ResultCount = int64(len(result.List))
 	return result, nil
+}
+
+// storedSignedOn returns the CCLA's stored signing date, normalized, or "" when the record has none
+func (s *service) storedSignedOn(ctx context.Context, signatureID string) (string, error) {
+	item, err := s.signatureRepo.GetItemSignature(ctx, signatureID)
+	if err != nil {
+		return "", err
+	}
+	if item == nil || item.SignedOn == "" {
+		return "", nil
+	}
+	return utils.FormatTimeString(item.SignedOn), nil
 }
 
 func (s *service) getCompanyCCLASignaturesWithACL(ctx context.Context, companyID string) ([]*v1Models.Signature, error) {

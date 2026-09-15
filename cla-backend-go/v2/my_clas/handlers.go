@@ -21,7 +21,7 @@ import (
 const missingUsernameMsg = "the authenticated principal carries no username - unable to determine whose CLAs to look up"
 const missingIdentityMsg = "no identity provided - provide at least one of lfUsername, email, secondaryEmail, githubId, githubUsername, gitlabId, gitlabUsername, gerritUsername"
 const unverifiedCallerMsg = "unable to verify the caller's bearer token"
-const notOwnedEclaMsg = "no signed ECLA with the given signature ID belongs to the provided identity"
+const notOwnedEclaMsg = "no signed employee acknowledgment with the given signature ID belongs to the provided identity"
 
 // CallerVerifier re-verifies the request bearer token in-handler - see auth.TrustedCallerVerifier
 type CallerVerifier interface {
@@ -45,7 +45,7 @@ func Configure(api *operations.EasyclaAPI, service Service, callerVerifier Calle
 				"authUserEmail":  utils.StringValue(params.XEMAIL),
 			}
 
-			trustedCaller, err := verifyCaller(callerVerifier, params.HTTPRequest, f)
+			trustedCaller, err := VerifyCaller(callerVerifier, params.HTTPRequest, f)
 			if err != nil {
 				log.WithFields(f).WithError(err).Warn(unverifiedCallerMsg)
 				return myClasOps.NewGetMyClasUnauthorized().WithXRequestID(reqID).WithPayload(utils.ErrorResponseUnauthorized(reqID, unverifiedCallerMsg))
@@ -88,7 +88,7 @@ func Configure(api *operations.EasyclaAPI, service Service, callerVerifier Calle
 				"signatureID":    params.SignatureID,
 			}
 
-			trustedCaller, err := verifyCaller(callerVerifier, params.HTTPRequest, f)
+			trustedCaller, err := VerifyCaller(callerVerifier, params.HTTPRequest, f)
 			if err != nil {
 				log.WithFields(f).WithError(err).Warn(unverifiedCallerMsg)
 				return myClasOps.NewGetMyClaPdfUnauthorized().WithXRequestID(reqID).WithPayload(utils.ErrorResponseUnauthorized(reqID, unverifiedCallerMsg))
@@ -136,7 +136,7 @@ func Configure(api *operations.EasyclaAPI, service Service, callerVerifier Calle
 				"signatureID":    params.SignatureID,
 			}
 
-			trustedCaller, err := verifyCaller(callerVerifier, params.HTTPRequest, f)
+			trustedCaller, err := VerifyCaller(callerVerifier, params.HTTPRequest, f)
 			if err != nil {
 				log.WithFields(f).WithError(err).Warn(unverifiedCallerMsg)
 				return myClasOps.NewGetMyClaManagersUnauthorized().WithXRequestID(reqID).WithPayload(utils.ErrorResponseUnauthorized(reqID, unverifiedCallerMsg))
@@ -184,7 +184,7 @@ func Configure(api *operations.EasyclaAPI, service Service, callerVerifier Calle
 				"signatureID":    params.SignatureID,
 			}
 
-			trustedCaller, err := verifyCaller(callerVerifier, params.HTTPRequest, f)
+			trustedCaller, err := VerifyCaller(callerVerifier, params.HTTPRequest, f)
 			if err != nil {
 				log.WithFields(f).WithError(err).Warn(unverifiedCallerMsg)
 				return myClasOps.NewCreateMyClaManagerRequestUnauthorized().WithXRequestID(reqID).WithPayload(utils.ErrorResponseUnauthorized(reqID, unverifiedCallerMsg))
@@ -235,7 +235,7 @@ func Configure(api *operations.EasyclaAPI, service Service, callerVerifier Calle
 				"authUserEmail":  utils.StringValue(params.XEMAIL),
 			}
 
-			if _, err := verifyCaller(callerVerifier, params.HTTPRequest, f); err != nil {
+			if _, err := VerifyCaller(callerVerifier, params.HTTPRequest, f); err != nil {
 				log.WithFields(f).WithError(err).Warn(unverifiedCallerMsg)
 				return myClasOps.NewGetMyIdentitiesUnauthorized().WithXRequestID(reqID).WithPayload(utils.ErrorResponseUnauthorized(reqID, unverifiedCallerMsg))
 			}
@@ -257,11 +257,11 @@ func Configure(api *operations.EasyclaAPI, service Service, callerVerifier Calle
 		})
 }
 
-// verifyCaller re-verifies the bearer token because /v4 otherwise trusts its invoke path
+// VerifyCaller re-verifies the bearer token because /v4 otherwise trusts its invoke path
 // unconditionally: the gateway-injected X-ACL/X-USERNAME headers are decoded but never
 // signature-checked, so anything able to invoke the lambda directly could forge them. Returns
 // (nil, nil) while no allow-list is configured and no bearer token is required.
-func verifyCaller(callerVerifier CallerVerifier, r *http.Request, f logrus.Fields) (*claAuth.TrustedCaller, error) {
+func VerifyCaller(callerVerifier CallerVerifier, r *http.Request, f logrus.Fields) (*claAuth.TrustedCaller, error) {
 	if callerVerifier == nil || !callerVerifier.Enabled() {
 		return nil, nil
 	}

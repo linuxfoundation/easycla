@@ -26,15 +26,22 @@ type fakeMyClas struct {
 	allowed *my_clas.Identity
 	skipped []string
 	err     error
+	callers []*my_clas.Caller
 }
 
-func (f *fakeMyClas) AuthorizeIdentity(_ context.Context, currentUsername string, _ bool, _ *my_clas.Identity) (*my_clas.Identity, []string, error) {
+// AuthorizeIdentity mirrors my_clas.effectiveIdentity: an admin or trusted caller's identities pass
+// through verbatim, anyone else gets the configured verified subset
+func (f *fakeMyClas) AuthorizeIdentity(_ context.Context, caller *my_clas.Caller, requested *my_clas.Identity) (*my_clas.Identity, []string, error) {
+	f.callers = append(f.callers, caller)
 	if f.err != nil {
 		return nil, nil, f.err
 	}
 	allowed := *f.allowed
+	if caller.Admin || caller.Trusted {
+		allowed = *requested
+	}
 	if allowed.LfUsername == "" {
-		allowed.LfUsername = currentUsername
+		allowed.LfUsername = caller.Username
 	}
 	return &allowed, append([]string{}, f.skipped...), nil
 }
@@ -186,7 +193,7 @@ func TestPrepareSignResolvesExistingUserByGithubID(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{GithubIDs: []int64{26589865}, GithubUsernames: []string{"octocat"}}},
 		users, enabledCLAGroup(), store)
 
-	result, err := svc.PrepareSign(context.Background(), "lgryglicki", "l@example.org", false, &models.PrepareSignInput{
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "l@example.org", &models.PrepareSignInput{
 		ClaGroupID:     stringRef(testCLAGroupID),
 		ReturnURL:      uriRef(testReturnURL),
 		GithubID:       26589865,
@@ -215,7 +222,7 @@ func TestPrepareSignCreatesUserForFirstTimeSigner(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{GithubUsernames: []string{"octocat"}}, skipped: []string{"githubId:26589865"}},
 		users, enabledCLAGroup(), &fakeStore{})
 
-	result, err := svc.PrepareSign(context.Background(), "lgryglicki", "l@example.org", false, &models.PrepareSignInput{
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "l@example.org", &models.PrepareSignInput{
 		ClaGroupID:     stringRef(testCLAGroupID),
 		ReturnURL:      uriRef(testReturnURL),
 		GithubID:       26589865,
@@ -239,7 +246,7 @@ func TestPrepareSignKeepsUnmatchedGithubIDSkipped(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{GithubUsernames: []string{"octocat"}}, skipped: []string{"githubId:999"}},
 		users, enabledCLAGroup(), &fakeStore{})
 
-	result, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 		ClaGroupID:     stringRef(testCLAGroupID),
 		ReturnURL:      uriRef(testReturnURL),
 		GithubID:       999,
@@ -258,7 +265,7 @@ func TestPrepareSignIgnoresARecordBoundToAnotherGithubID(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{GithubUsernames: []string{"octocat"}}},
 		users, enabledCLAGroup(), &fakeStore{})
 
-	result, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 		ClaGroupID:     stringRef(testCLAGroupID),
 		ReturnURL:      uriRef(testReturnURL),
 		GithubID:       26589865,
@@ -276,7 +283,7 @@ func TestPrepareSignRejectsUnverifiedIdentity(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{}, skipped: []string{"githubId:26589865", "githubUsername:octocat"}},
 		&fakeUsers{}, enabledCLAGroup(), &fakeStore{})
 
-	_, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+	_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 		ClaGroupID:     stringRef(testCLAGroupID),
 		ReturnURL:      uriRef(testReturnURL),
 		GithubID:       26589865,
@@ -291,7 +298,7 @@ func TestPrepareSignRejectsAnotherLFUsername(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{LfUsername: "lgryglicki"}, skipped: []string{"lfUsername:someone-else"}},
 		&fakeUsers{}, enabledCLAGroup(), &fakeStore{})
 
-	_, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+	_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 		ClaGroupID: stringRef(testCLAGroupID),
 		ReturnURL:  uriRef(testReturnURL),
 		LfUsername: "someone-else",
@@ -306,7 +313,7 @@ func TestPrepareSignDefaultsToTheAuthenticatedLFUsername(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{}},
 		&fakeUsers{byLFUsername: map[string]*v1Models.User{"lgryglicki": existing}}, enabledCLAGroup(), &fakeStore{})
 
-	result, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 		ClaGroupID: stringRef(testCLAGroupID),
 		ReturnURL:  uriRef(testReturnURL),
 	})
@@ -323,7 +330,7 @@ func TestPrepareSignEnrichesOnlyMissingIdentityFields(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{GithubIDs: []int64{26589865}, GithubUsernames: []string{"octocat"}}},
 		users, enabledCLAGroup(), &fakeStore{})
 
-	_, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+	_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 		ClaGroupID:     stringRef(testCLAGroupID),
 		ReturnURL:      uriRef(testReturnURL),
 		GithubID:       26589865,
@@ -340,7 +347,7 @@ func TestPrepareSignUnknownCLAGroup(t *testing.T) {
 	svc := newTestService(&fakeMyClas{allowed: &my_clas.Identity{}}, &fakeUsers{},
 		&fakeCLAGroups{err: errNotFound}, &fakeStore{})
 
-	_, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+	_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 		ClaGroupID: stringRef(testCLAGroupID),
 		ReturnURL:  uriRef(testReturnURL),
 	})
@@ -352,7 +359,7 @@ func TestPrepareSignSigningNotEnabled(t *testing.T) {
 	svc := newTestService(&fakeMyClas{allowed: &my_clas.Identity{}}, &fakeUsers{},
 		&fakeCLAGroups{claGroup: &v1Models.ClaGroup{ProjectID: testCLAGroupID}}, &fakeStore{})
 
-	_, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+	_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 		ClaGroupID: stringRef(testCLAGroupID),
 		ReturnURL:  uriRef(testReturnURL),
 	})
@@ -363,7 +370,7 @@ func TestPrepareSignSigningNotEnabled(t *testing.T) {
 func TestPrepareSignRequiresAnIdentityForAnAdminWithoutAPrincipal(t *testing.T) {
 	svc := newTestService(&fakeMyClas{allowed: &my_clas.Identity{}}, &fakeUsers{}, enabledCLAGroup(), &fakeStore{})
 
-	_, err := svc.PrepareSign(context.Background(), "", "", true, &models.PrepareSignInput{
+	_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Admin: true}, "", &models.PrepareSignInput{
 		ClaGroupID: stringRef(testCLAGroupID),
 		ReturnURL:  uriRef(testReturnURL),
 	})
@@ -378,7 +385,7 @@ func TestPrepareSignStoresProviderIDsAsNumbers(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{GithubIDs: []int64{26589865}, GithubUsernames: []string{"octocat"}, GitlabIDs: []int64{77}}},
 		users, enabledCLAGroup(), &fakeStore{})
 
-	_, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+	_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 		ClaGroupID:     stringRef(testCLAGroupID),
 		ReturnURL:      uriRef(testReturnURL),
 		GithubID:       26589865,
@@ -396,7 +403,7 @@ func TestPrepareSignRecordsTheVerifiedIdentityACL(t *testing.T) {
 		t.Helper()
 		store := &fakeStore{}
 		svc := newTestService(&fakeMyClas{allowed: allowed}, &fakeUsers{}, enabledCLAGroup(), store)
-		_, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, input)
+		_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", input)
 		assert.NoError(t, err)
 		var metadata map[string]interface{}
 		assert.NoError(t, json.Unmarshal([]byte(store.value), &metadata))
@@ -425,7 +432,7 @@ func TestPrepareSignDoesNotBindTheAdminIdentityToAnotherContributor(t *testing.T
 		&fakeMyClas{allowed: &my_clas.Identity{GithubIDs: []int64{26589865}, GithubUsernames: []string{"octocat"}}},
 		users, enabledCLAGroup(), &fakeStore{})
 
-	result, err := svc.PrepareSign(context.Background(), "lfadmin", "admin@example.org", true, &models.PrepareSignInput{
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lfadmin", Admin: true}, "admin@example.org", &models.PrepareSignInput{
 		ClaGroupID:     stringRef(testCLAGroupID),
 		ReturnURL:      uriRef(testReturnURL),
 		GithubID:       26589865,
@@ -448,7 +455,7 @@ func TestPrepareSignLetsAnAdminPrepareForThemselves(t *testing.T) {
 	users := &fakeUsers{byLFUsername: map[string]*v1Models.User{"lfadmin": admin}}
 	svc := newTestService(&fakeMyClas{allowed: &my_clas.Identity{LfUsername: "lfadmin"}}, users, enabledCLAGroup(), &fakeStore{})
 
-	result, err := svc.PrepareSign(context.Background(), "lfadmin", "admin@example.org", true, &models.PrepareSignInput{
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lfadmin", Admin: true}, "admin@example.org", &models.PrepareSignInput{
 		ClaGroupID: stringRef(testCLAGroupID),
 		ReturnURL:  uriRef(testReturnURL),
 		LfUsername: "lfadmin",
@@ -459,11 +466,144 @@ func TestPrepareSignLetsAnAdminPrepareForThemselves(t *testing.T) {
 	assert.Nil(t, users.created)
 }
 
+// trustedTestService fails on any GitHub API round trip - a trusted caller's identities must be
+// accepted without one
+func trustedTestService(t *testing.T, myClas MyClasService, users UsersService) *service {
+	t.Helper()
+	svc := newTestService(myClas, users, enabledCLAGroup(), &fakeStore{})
+	svc.githubUserDetails = func(username string) (*githubsdk.User, error) {
+		t.Errorf("unexpected GitHub lookup for %s on the trusted path", username)
+		return nil, errNotFound
+	}
+	return svc
+}
+
+func TestPrepareSignTrustedCallerCreatesTheUserWithoutVerification(t *testing.T) {
+	users := &fakeUsers{}
+	// the verified subset is empty on purpose: a trusted caller must not depend on it
+	myClas := &fakeMyClas{allowed: &my_clas.Identity{}}
+	svc := trustedTestService(t, myClas, users)
+
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki", Trusted: true}, "l@example.org", &models.PrepareSignInput{
+		ClaGroupID:     stringRef(testCLAGroupID),
+		ReturnURL:      uriRef(testReturnURL),
+		GithubID:       26589865,
+		GithubUsername: "octocat",
+		Email:          "octocat@example.org",
+	})
+
+	assert.NoError(t, err)
+	assert.True(t, result.UserCreated)
+	assert.Equal(t, "created-user-id", result.UserID)
+	assert.Empty(t, result.SkippedIdentities)
+	assert.Equal(t, "lgryglicki", result.LfUsername)
+	assert.ElementsMatch(t, []string{"github-id:26589865", "github-username:octocat", "email:octocat@example.org", "lf-username:lgryglicki"}, result.Identity)
+	assert.Equal(t, "26589865", users.created.GithubID)
+	assert.Equal(t, "octocat", users.created.GithubUsername)
+	assert.Equal(t, "lgryglicki", users.created.LfUsername)
+	assert.Equal(t, "octocat@example.org", string(users.created.LfEmail))
+	if assert.Len(t, myClas.callers, 1) {
+		assert.Equal(t, &my_clas.Caller{Username: "lgryglicki", Trusted: true}, myClas.callers[0])
+	}
+}
+
+func TestPrepareSignTrustedCallerStillResolvesTheExistingRecord(t *testing.T) {
+	existing := &v1Models.User{UserID: "existing-user-id", GithubID: "26589865", GithubUsername: "octocat"}
+	users := &fakeUsers{byGithubID: map[string]*v1Models.User{"26589865": existing}}
+	svc := trustedTestService(t, &fakeMyClas{allowed: &my_clas.Identity{}}, users)
+
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki", Trusted: true}, "l@example.org", &models.PrepareSignInput{
+		ClaGroupID:     stringRef(testCLAGroupID),
+		ReturnURL:      uriRef(testReturnURL),
+		GithubID:       26589865,
+		GithubUsername: "octocat",
+	})
+
+	assert.NoError(t, err)
+	assert.False(t, result.UserCreated)
+	assert.Equal(t, "existing-user-id", result.UserID)
+	assert.Nil(t, users.created)
+	assert.Equal(t, "lgryglicki", users.updates["lf_username"])
+}
+
+func TestPrepareSignTrustedCallerWithoutAUsernameUsesTheProvidedIdentity(t *testing.T) {
+	users := &fakeUsers{}
+	svc := trustedTestService(t, &fakeMyClas{allowed: &my_clas.Identity{}}, users)
+
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Trusted: true}, "", &models.PrepareSignInput{
+		ClaGroupID:     stringRef(testCLAGroupID),
+		ReturnURL:      uriRef(testReturnURL),
+		LfUsername:     "someone",
+		GitlabID:       77,
+		GitlabUsername: "someone",
+	})
+
+	assert.NoError(t, err)
+	assert.True(t, result.UserCreated)
+	assert.Equal(t, "someone", result.LfUsername)
+	assert.Equal(t, "someone", users.created.LfUsername)
+	assert.Equal(t, "77", users.created.GitlabID)
+	assert.Equal(t, "someone", users.created.GitlabUsername)
+}
+
+func TestPrepareSignTrustedCallerStillRequiresAnIdentity(t *testing.T) {
+	svc := trustedTestService(t, &fakeMyClas{allowed: &my_clas.Identity{}}, &fakeUsers{})
+
+	_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Trusted: true}, "", &models.PrepareSignInput{
+		ClaGroupID: stringRef(testCLAGroupID),
+		ReturnURL:  uriRef(testReturnURL),
+	})
+
+	assert.ErrorIs(t, err, ErrIdentityRequired)
+}
+
+func TestPrepareSignTrustedAdminKeepsTheCallerBinding(t *testing.T) {
+	users := &fakeUsers{}
+	svc := trustedTestService(t, &fakeMyClas{allowed: &my_clas.Identity{}}, users)
+
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lfadmin", Admin: true, Trusted: true}, "admin@example.org", &models.PrepareSignInput{
+		ClaGroupID:     stringRef(testCLAGroupID),
+		ReturnURL:      uriRef(testReturnURL),
+		GithubID:       26589865,
+		GithubUsername: "octocat",
+	})
+
+	assert.NoError(t, err)
+	assert.True(t, result.UserCreated)
+	assert.Equal(t, "lfadmin", users.created.LfUsername)
+	assert.Equal(t, "admin@example.org", string(users.created.LfEmail))
+}
+
+func TestPrepareSignUntrustedCallerStillVerifiesTheGithubID(t *testing.T) {
+	users := &fakeUsers{}
+	lookups := 0
+	svc := newTestService(
+		&fakeMyClas{allowed: &my_clas.Identity{GithubUsernames: []string{"octocat"}}, skipped: []string{"githubId:26589865"}},
+		users, enabledCLAGroup(), &fakeStore{})
+	svc.githubUserDetails = func(username string) (*githubsdk.User, error) {
+		lookups++
+		id := int64(26589865)
+		return &githubsdk.User{ID: &id}, nil
+	}
+
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
+		ClaGroupID:     stringRef(testCLAGroupID),
+		ReturnURL:      uriRef(testReturnURL),
+		GithubID:       26589865,
+		GithubUsername: "octocat",
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, lookups)
+	assert.Empty(t, result.SkippedIdentities)
+	assert.Equal(t, "26589865", users.created.GithubID)
+}
+
 func TestPrepareSignRejectsANonHTTPSReturnURL(t *testing.T) {
 	for _, returnURL := range []string{"http://openprofile.dev/my-clas", "javascript:alert(1)", "/my-clas", "https://"} {
 		svc := newTestService(&fakeMyClas{allowed: &my_clas.Identity{LfUsername: "lgryglicki"}}, &fakeUsers{}, enabledCLAGroup(), &fakeStore{})
 
-		_, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+		_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 			ClaGroupID: stringRef(testCLAGroupID),
 			ReturnURL:  uriRef(returnURL),
 		})
@@ -478,7 +618,7 @@ func TestPrepareSignDoesNotCreateAUserWhenTheLookupFails(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{GithubUsernames: []string{"octocat"}}},
 		users, enabledCLAGroup(), &fakeStore{})
 
-	_, err := svc.PrepareSign(context.Background(), "lgryglicki", "l@example.org", false, &models.PrepareSignInput{
+	_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "l@example.org", &models.PrepareSignInput{
 		ClaGroupID:     stringRef(testCLAGroupID),
 		ReturnURL:      uriRef(testReturnURL),
 		GithubUsername: "octocat",
@@ -502,7 +642,7 @@ func TestPrepareSignTreatsEveryNotFoundShapeAsAMiss(t *testing.T) {
 				&fakeMyClas{allowed: &my_clas.Identity{GithubUsernames: []string{"octocat"}, Emails: []string{"l@example.org"}}},
 				users, enabledCLAGroup(), &fakeStore{})
 
-			result, err := svc.PrepareSign(context.Background(), "lgryglicki", "l@example.org", false, &models.PrepareSignInput{
+			result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "l@example.org", &models.PrepareSignInput{
 				ClaGroupID:     stringRef(testCLAGroupID),
 				ReturnURL:      uriRef(testReturnURL),
 				GithubUsername: "octocat",

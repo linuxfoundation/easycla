@@ -155,7 +155,7 @@ type Service interface {
 	GetMyClas(ctx context.Context, caller *Caller, requested *Identity, pageSize, offset *int64) (*models.MyClaList, error)
 	GetMyClaPdfURL(ctx context.Context, caller *Caller, requested *Identity, signatureID string) (*models.MyClaPdf, error)
 	GetMyIdentities(ctx context.Context, currentUsername string, pageSize, offset *int64) (*models.MyIdentityList, error)
-	AuthorizeIdentity(ctx context.Context, currentUsername string, admin bool, requested *Identity) (*Identity, []string, error)
+	AuthorizeIdentity(ctx context.Context, caller *Caller, requested *Identity) (*Identity, []string, error)
 	GetMyClaManagers(ctx context.Context, caller *Caller, requested *Identity, signatureID string, pageSize, offset *int64) (*models.MyClaManagerList, error)
 	CreateMyClaManagerRequest(ctx context.Context, caller *Caller, requested *Identity, signatureID string, input *models.MyClaManagerRequest) (*models.MyClaManagerRequestResult, error)
 }
@@ -882,9 +882,10 @@ func (s *service) GetMyIdentities(ctx context.Context, currentUsername string, p
 }
 
 // AuthorizeIdentity narrows the requested identity keys to those belonging to the authenticated
-// user and reports the dropped ones - the boundary GET /my-clas enforces
-func (s *service) AuthorizeIdentity(ctx context.Context, currentUsername string, admin bool, requested *Identity) (*Identity, []string, error) {
-	return s.effectiveIdentity(ctx, &Caller{Username: currentUsername, Admin: admin}, requested)
+// user and reports the dropped ones - the boundary GET /my-clas enforces, shared with
+// POST /self-serve/prepare-sign; an admin or trusted Self Serve caller passes them through unverified
+func (s *service) AuthorizeIdentity(ctx context.Context, caller *Caller, requested *Identity) (*Identity, []string, error) {
+	return s.effectiveIdentity(ctx, caller, requested)
 }
 
 // effectiveIdentity resolves which identity keys may be searched. An admin or trusted LFX Self
@@ -1386,7 +1387,7 @@ func (s *service) evaluateApproval(ctx context.Context, userModel *v1Models.User
 			"claGroupID":     ccla.ProjectID,
 			"companyID":      ccla.SignatureReferenceID,
 			"userID":         userModel.UserID,
-		}).WithError(err).Warn("unable to evaluate the approval list for the employee acknowledgement")
+		}).WithError(err).Warn("unable to evaluate the approval list for the employee acknowledgment")
 		return eclaCoverage{unevaluable: true}
 	}
 	// EvaluateUserApproval cannot evaluate GitLab group membership (it needs per-group OAuth

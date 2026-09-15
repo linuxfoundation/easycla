@@ -18,16 +18,29 @@ import (
 // CompanySanctionedCode is the machine-readable error code returned when a write is blocked for a sanctioned company
 const CompanySanctionedCode = "company_sanctioned"
 
+// CompanySanctionedSigningGuidance is the guidance appended to the message of the typed 403 returned by the CCLA signing gates
+const CompanySanctionedSigningGuidance = "We're sorry, but this organization requires additional trade compliance review, so the Contributor License Agreement (CLA) cannot be completed at this time. If you believe this is an error, please contact EasyCLA Support via the chat widget."
+
 // SanctionedCompanyError indicates a write was blocked because the company is flagged as sanctioned
 type SanctionedCompanyError struct {
 	CompanyID   string
 	CompanySFID string
 	CompanyName string
+	// Guidance is optional user-facing text appended (after a newline) to the response message, not to Error()
+	Guidance string
 }
 
 // Error returns the error message
 func (e *SanctionedCompanyError) Error() string {
 	return fmt.Sprintf("company %s requires further review for trade compliance", e.CompanyName)
+}
+
+// ResponseMessage returns the message carried by the typed 403 response: the error text plus the optional guidance
+func (e *SanctionedCompanyError) ResponseMessage() string {
+	if e.Guidance == "" {
+		return e.Error()
+	}
+	return e.Error() + "\n" + e.Guidance
 }
 
 // CheckCompanySanctioned returns a SanctionedCompanyError when the company's stored sanctions flag is set, nil otherwise
@@ -71,7 +84,7 @@ func CompanySanctionedResponder(reqID string, sanctionedErr *SanctionedCompanyEr
 			XRequestID  string `json:"x-request-id,omitempty"`
 		}{
 			Code:        CompanySanctionedCode,
-			Message:     sanctionedErr.Error(),
+			Message:     sanctionedErr.ResponseMessage(),
 			CompanyID:   sanctionedErr.CompanyID,
 			CompanySFID: sanctionedErr.CompanySFID,
 			XRequestID:  reqID,
