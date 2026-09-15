@@ -2753,7 +2753,7 @@ paths:
   /my-clas:
     get:
       summary: Get My CLAs
-      description: Returns the signed ICLAs and employee acknowledgments matching the provided identity - LF username, emails, GitHub/GitLab/Gerrit identities - aggregated across all matching EasyCLA user records, deduplicated, with validity evaluated against the current company CCLA approval lists. Unless the caller is an admin or a trusted LFX Self Serve client, every provided identity must belong to the authenticated user (their EasyCLA user records, or the identities connected to their LF account in the platform user-service); unverifiable ones are not searched and are reported in skippedIdentities. A trusted caller has its Authorization bearer token signature-verified against the Auth0 JWKS in-handler and its azp claim on the configured Self Serve client-ID allow-list; while that allow-list is configured every request needs a verifiable bearer token and a missing or unverifiable one is 401
+      description: Returns the signed ICLAs and employee acknowledgments matching the provided identity - LF username, emails, GitHub/GitLab/Gerrit identities - aggregated across all matching EasyCLA user records, deduplicated, with validity evaluated against the current company CCLA approval lists. Unless the caller is an admin or a trusted LFX Self Serve client, every provided identity must belong to the authenticated user (their EasyCLA user records, or the identities connected to their LF account in the platform user-service); unverifiable ones are not searched and are reported in skippedIdentities. A trusted caller has its Authorization bearer token signature-verified against the Auth0 JWKS in-handler, its azp claim on the configured Self Serve client-ID allow-list and its aud claim carrying the configured platform API audience (both are required - an allow-listed azp with another audience is not trusted); while that allow-list is configured every request needs a verifiable bearer token and a missing or unverifiable one is 401
       operationId: getMyClas
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -6987,7 +6987,7 @@ definitions:
     properties:
       auto_create_ecla:
         type: boolean
-        description: flag to indicate if the product should automatically create an employee acknowledgment for a given user when the CLA manager adds the user to the email, GitLab username, or GitLab username approval list
+        description: flag to indicate if the product should automatically create an employee acknowledgment for a given user when the CLA manager adds the user to the email, GitHub username, or GitLab username approval list
         example: true
 
   project-github-organizations:

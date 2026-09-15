@@ -188,6 +188,6 @@ properties:
     description: docusign signature date
   autoCreateECLA:
     type: boolean
-    description: flag to indicate if the product should automatically create an employee acknowledgment for a given user when the CLA manager adds the user to the email, GitLab username, or GitLab username approval list
+    description: flag to indicate if the product should automatically create an employee acknowledgment for a given user when the CLA manager adds the user to the email, GitHub username, or GitLab username approval list
     example: true
     x-omitempty: false
