@@ -153,14 +153,16 @@ served from an in-process cache with a 30-minute TTL (`CLA_SEARCH_CACHE_TTL` ove
 result is company-agnostic by design — a sanctioned company's state is resolved through
 the cla-groups endpoint above (which only carries it once the company has a CCLA), not here.
 
-## `POST /v4/self-serve/request-corporate-signature` ([lfx-self-serve#2150](https://github.com/linuxfoundation/lfx-self-serve/issues/2150))
+## `POST /v4/self-serve/request-corporate-signature` ([lfx-self-serve#2150](https://github.com/linuxfoundation/lfx-self-serve/issues/2150), [lfx-self-serve#2590](https://github.com/linuxfoundation/lfx-self-serve/issues/2590))
 
 Self Serve front door for starting a CCLA signing session. Input = the corporate-console
 `corporate-signature-input` fields (`project_sfid`, `company_sfid`, optional
 `signing_entity_name`, `send_as_email`, `authority_name`, `authority_email`,
-`return_url`) plus two required-true attestation booleans `authority_acked` and
-`embargo_acked` — HTTP 400 before any DocuSign work unless both are true. With both true
-the request is delegated **verbatim** to the same service method behind
+`return_url`) plus two attestation booleans `authority_acked` and `embargo_acked`.
+On self-sign (`send_as_email` absent or false) both attestations must be true — HTTP 400
+before any DocuSign work otherwise. When `send_as_email` is true the attestations are not
+required and `authority_name` plus `authority_email` are required instead.
+With a valid body the request is delegated **verbatim** to the same service method behind
 `/v4/request-corporate-signature` (company/signing-entity resolution, sanctions gate,
 DocuSign envelope, send-by-email signatory flow all unchanged), so behavior and error
 statuses match the console endpoint — with one hardening on top: a `signing_entity_name`

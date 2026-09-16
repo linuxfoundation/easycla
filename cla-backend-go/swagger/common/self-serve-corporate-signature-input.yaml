@@ -4,7 +4,7 @@
 type: object
 x-nullable: false
 title: Self Serve Corporate Signature Input
-description: The corporate signature request started from LFX Self Serve - the corporate-signature-input fields plus the two Self Serve attestations, both of which must be true
+description: The corporate signature request started from LFX Self Serve - the corporate-signature-input fields plus the two Self Serve attestations. Both attestations must be true on self-sign; when send_as_email is true they are not required and authority_name plus authority_email are required instead
 required:
   - project_sfid
   - company_sfid
@@ -24,7 +24,7 @@ properties:
   send_as_email:
     type: boolean
     example: false
-    description: send signing request as email. This should be set to true when requestor is not signatory.
+    description: send signing request as email. Set to true when the requestor is not the signatory - then authority_name and authority_email are required and the attestations are not
   authority_name:
     type: string
     example: "Derk Miyamoto"
@@ -43,9 +43,9 @@ properties:
     type: boolean
     x-omitempty: false
     example: true
-    description: attestation that the caller is the signing authority for the company, or has named the signing authority via authority_name/authority_email - must be true
+    description: attestation that the caller is the signing authority for the company - must be true unless send_as_email is true
   embargo_acked:
     type: boolean
     x-omitempty: false
     example: true
-    description: attestation that the caller acknowledges the embargo terms - must be true
+    description: attestation that the caller acknowledges the embargo terms - must be true unless send_as_email is true

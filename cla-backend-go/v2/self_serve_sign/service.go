@@ -43,8 +43,11 @@ var ErrSigningNotEnabled = errors.New("the cla group has neither an individual n
 // ErrReturnURLNotSupported is returned when the return URL is not an absolute https URL
 var ErrReturnURLNotSupported = errors.New("returnUrl must be an absolute https URL")
 
-// ErrAttestationRequired is returned when either Self Serve attestation is missing or false
+// ErrAttestationRequired is returned when either Self Serve attestation is missing or false on self-sign
 var ErrAttestationRequired = errors.New("both the authority_acked and embargo_acked attestations must be true")
+
+// ErrSignatoryRequired is returned when send_as_email is set without a named signatory
+var ErrSignatoryRequired = errors.New("send_as_email requires authority_name and authority_email")
 
 // ErrSigningEntityMismatch is returned when the requested signing entity belongs to a different company
 var ErrSigningEntityMismatch = errors.New("signing entity name does not belong to the provided company SFID")
@@ -234,10 +237,11 @@ func (s *service) PrepareSign(ctx context.Context, caller *my_clas.Caller, curre
 	return result, nil
 }
 
-// RequestCorporateSignature verifies both Self Serve attestations, resolves the signing company
-// and the CLA group of the project - rejecting a signing entity that belongs to a different
-// company than the one the caller is authorized for - delegates the request verbatim to the
-// shared corporate signing service, and echoes the identifiers of the created signature
+// RequestCorporateSignature verifies both Self Serve attestations on self-sign, requires the
+// named signatory when sending by email, resolves the signing company and the CLA group of
+// the project - rejecting a signing entity that belongs to a different company than the one
+// the caller is authorized for - delegates the request verbatim to the shared corporate
+// signing service, and echoes the identifiers of the created signature
 func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername, authorizationHeader string, input *models.SelfServeCorporateSignatureInput) (*models.SelfServeCorporateSignatureOutput, error) {
 	f := logrus.Fields{
 		"functionName":      "v2.self_serve_sign.service.RequestCorporateSignature",
@@ -246,9 +250,15 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername, aut
 		"projectSFID":       utils.StringValue(input.ProjectSfid),
 		"companySFID":       utils.StringValue(input.CompanySfid),
 		"signingEntityName": input.SigningEntityName,
+		"sendAsEmail":       input.SendAsEmail,
 	}
 
-	if !input.AuthorityAcked || !input.EmbargoAcked {
+	if input.SendAsEmail {
+		if strings.TrimSpace(input.AuthorityName) == "" || strings.TrimSpace(input.AuthorityEmail.String()) == "" {
+			log.WithFields(f).Warn(ErrSignatoryRequired.Error())
+			return nil, ErrSignatoryRequired
+		}
+	} else if !input.AuthorityAcked || !input.EmbargoAcked {
 		log.WithFields(f).Warn(ErrAttestationRequired.Error())
 		return nil, ErrAttestationRequired
 	}
