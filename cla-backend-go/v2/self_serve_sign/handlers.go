@@ -113,7 +113,7 @@ func requestCorporateSignatureError(reqID string, err error) middleware.Responde
 		return utils.CompanySanctionedResponder(reqID, sanctionedErr)
 	}
 	switch {
-	case errors.Is(err, ErrAttestationRequired):
+	case errors.Is(err, ErrAttestationRequired), errors.Is(err, ErrSignatoryRequired):
 		return selfServeSignOps.NewSelfServeRequestCorporateSignatureBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, err.Error()))
 	case errors.Is(err, ErrSigningEntityMismatch):
 		return selfServeSignOps.NewSelfServeRequestCorporateSignatureForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, err.Error()))

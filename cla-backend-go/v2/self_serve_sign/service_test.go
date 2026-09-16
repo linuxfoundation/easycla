@@ -739,10 +739,13 @@ func TestRequestCorporateSignatureRequiresBothAttestations(t *testing.T) {
 		name           string
 		authorityAcked bool
 		embargoAcked   bool
+		authorityName  string
+		authorityEmail strfmt.Email
 	}{
-		{"both missing", false, false},
-		{"authority only", true, false},
-		{"embargo only", false, true},
+		{"both missing", false, false, "", ""},
+		{"authority only", true, false, "", ""},
+		{"embargo only", false, true, "", ""},
+		{"self-sign with a named signatory still requires both", false, false, "Alex Contributor", "contributor@example.org"},
 	}
 
 	for _, tc := range testCases {
@@ -753,10 +756,84 @@ func TestRequestCorporateSignatureRequiresBothAttestations(t *testing.T) {
 			input := corporateInput()
 			input.AuthorityAcked = tc.authorityAcked
 			input.EmbargoAcked = tc.embargoAcked
+			input.AuthorityName = tc.authorityName
+			input.AuthorityEmail = tc.authorityEmail
 
 			result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", input)
 
 			assert.ErrorIs(t, err, ErrAttestationRequired)
+			assert.Nil(t, result)
+			assert.Zero(t, corporateSign.calls)
+			assert.Zero(t, companies.calls)
+		})
+	}
+}
+
+func TestRequestCorporateSignatureSkipsAttestationsWhenSendAsEmail(t *testing.T) {
+	testCases := []struct {
+		name           string
+		authorityAcked bool
+		embargoAcked   bool
+	}{
+		{"both missing", false, false},
+		{"authority only", true, false},
+		{"embargo only", false, true},
+		{"both true", true, true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{SignatureID: testSignatureID, SignURL: testSignURL}}
+			companies, projectsClaGroups := corporateFakes()
+			svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+			input := corporateInput()
+			input.SendAsEmail = true
+			input.AuthorityAcked = tc.authorityAcked
+			input.EmbargoAcked = tc.embargoAcked
+			input.AuthorityName = "Alex Contributor"
+			input.AuthorityEmail = "contributor@example.org"
+
+			result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", input)
+
+			assert.NoError(t, err)
+			assert.Equal(t, 1, corporateSign.calls)
+			assert.True(t, corporateSign.input.SendAsEmail)
+			assert.Equal(t, "Alex Contributor", corporateSign.input.AuthorityName)
+			assert.Equal(t, strfmt.Email("contributor@example.org"), corporateSign.input.AuthorityEmail)
+			assert.Equal(t, testSignatureID, result.SignatureID)
+			assert.Equal(t, testCLAGroupID, result.ClaGroupID)
+		})
+	}
+}
+
+func TestRequestCorporateSignatureRequiresSignatoryWhenSendAsEmail(t *testing.T) {
+	testCases := []struct {
+		name           string
+		authorityName  string
+		authorityEmail strfmt.Email
+	}{
+		{"name missing", "", "contributor@example.org"},
+		{"name whitespace", "  ", "contributor@example.org"},
+		{"email missing", "Alex Contributor", ""},
+		{"email whitespace", "Alex Contributor", "  "},
+		{"both missing", "", ""},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			corporateSign := &fakeCorporateSign{}
+			companies, projectsClaGroups := corporateFakes()
+			svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+			input := corporateInput()
+			input.SendAsEmail = true
+			input.AuthorityAcked = false
+			input.EmbargoAcked = false
+			input.AuthorityName = tc.authorityName
+			input.AuthorityEmail = tc.authorityEmail
+
+			result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", input)
+
+			assert.ErrorIs(t, err, ErrSignatoryRequired)
 			assert.Nil(t, result)
 			assert.Zero(t, corporateSign.calls)
 			assert.Zero(t, companies.calls)

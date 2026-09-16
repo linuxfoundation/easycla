@@ -5,7 +5,7 @@
 # Calls POST /v4/self-serve/request-corporate-signature through lfx-gateway and reports the HTTP status and total time.
 # WARNING: a 200 response creates a real DocuSign envelope (and sends a signing email when SEND_AS_EMAIL=true) in the targeted environment.
 # PROJECT_SFID (or 1st arg) and COMPANY_SFID (or 2nd arg): required.
-# AUTHORITY_ACKED / EMBARGO_ACKED: default true - set to false to probe the attestation 400 (no DocuSign side effects).
+# AUTHORITY_ACKED / EMBARGO_ACKED: default true - set to false to probe the attestation 400 on self-sign (no DocuSign side effects). SEND_AS_EMAIL=true skips that gate; AUTHORITY_NAME and AUTHORITY_EMAIL are required instead.
 # SIGNING_ENTITY_NAME, SEND_AS_EMAIL, AUTHORITY_NAME, AUTHORITY_EMAIL, RETURN_URL: optional corporate-signature-input passthrough fields.
 # TOKEN: bearer access token (env, or ./self_serve_request_corporate_signature.token.secret / ./auth0.token.secret). Get one with ~/get_oauth_token.sh (dev) or ~/get_oauth_token_prod.sh (prod).
 # STAGE: dev (default) | test | staging | prod - selects the api-gw host.

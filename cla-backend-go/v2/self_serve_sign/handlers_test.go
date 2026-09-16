@@ -383,6 +383,7 @@ func TestSelfServeRequestCorporateSignatureHandlerErrorMapping(t *testing.T) {
 		expectedText   string
 	}{
 		{"attestations missing", ErrAttestationRequired, http.StatusBadRequest, "authority_acked and embargo_acked"},
+		{"signatory missing", ErrSignatoryRequired, http.StatusBadRequest, "authority_name and authority_email"},
 		{"signing entity mismatch", ErrSigningEntityMismatch, http.StatusForbidden, "signing entity name does not belong to the provided company SFID"},
 		{"company unknown", errors.New("company does not exist"), http.StatusNotFound, "company does not exist"},
 		{"platform failure", errors.New("internal server error - docusign unavailable"), http.StatusInternalServerError, "internal server error"},
