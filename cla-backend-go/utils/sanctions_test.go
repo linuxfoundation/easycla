@@ -117,6 +117,26 @@ func TestCompanySanctionedResponderContract(t *testing.T) {
 	}
 }
 
+func TestCompanySanctionedResponderWithGuidance(t *testing.T) {
+	sanctionedErr := &SanctionedCompanyError{
+		CompanyID:   "internal-id",
+		CompanySFID: "external-sfid",
+		CompanyName: "Sanctioned Co",
+		Guidance:    CompanySanctionedSigningGuidance,
+	}
+	assert.Equal(t, "company Sanctioned Co requires further review for trade compliance", sanctionedErr.Error(), "the guidance never leaks into logs")
+
+	recorder := httptest.NewRecorder()
+	CompanySanctionedResponder("req-456", sanctionedErr).WriteResponse(recorder, nil)
+
+	assert.Equal(t, http.StatusForbidden, recorder.Code)
+	var body map[string]interface{}
+	assert.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &body))
+	assert.Equal(t, "company_sanctioned", body["code"])
+	assert.Equal(t, "company Sanctioned Co requires further review for trade compliance\n"+CompanySanctionedSigningGuidance, body["message"])
+	assert.Equal(t, "external-sfid", body["company_sfid"])
+}
+
 func TestCompanySanctionedResponderNoRequestID(t *testing.T) {
 	responder := CompanySanctionedResponder("", &SanctionedCompanyError{
 		CompanyID:   "internal-id",

@@ -88,8 +88,8 @@ func (f *fakeService) GetMyIdentities(_ context.Context, currentUsername string,
 	return &models.MyIdentityList{}, nil
 }
 
-func (f *fakeService) AuthorizeIdentity(_ context.Context, currentUsername string, admin bool, requested *Identity) (*Identity, []string, error) {
-	f.callers = append(f.callers, &Caller{Username: currentUsername, Admin: admin})
+func (f *fakeService) AuthorizeIdentity(_ context.Context, caller *Caller, requested *Identity) (*Identity, []string, error) {
+	f.callers = append(f.callers, caller)
 	if f.err != nil {
 		return nil, nil, f.err
 	}

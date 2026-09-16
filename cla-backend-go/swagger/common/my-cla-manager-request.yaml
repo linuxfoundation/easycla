@@ -4,7 +4,7 @@
 type: object
 x-nullable: false
 title: My CLA Manager Request
-description: A contributor removal, approval or contact request to the CLA managers of the CCLA covering their ECLA, delivered by email - no signature state changes
+description: A contributor removal, approval or contact request to the CLA managers of the CCLA covering their employee acknowledgment, delivered by email - no signature state changes
 required:
   - requestType
 properties:

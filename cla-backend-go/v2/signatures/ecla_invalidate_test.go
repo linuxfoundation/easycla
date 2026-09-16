@@ -77,7 +77,7 @@ func TestService_InvalidateECLA(t *testing.T) {
 		assert.Fail(t, "unable to create AWS session")
 	}
 
-	// the creation path writes signature_type "ecla"; legacy rows carry "cla" - both are acknowledgements
+	// the creation path writes signature_type "ecla"; legacy rows carry "cla" - both are acknowledgments
 	for _, sigType := range []string{"ecla", "cla"} {
 		t.Run("signature type "+sigType, func(t *testing.T) {
 			ctrl := gomock.NewController(t)
@@ -166,7 +166,7 @@ func TestService_InvalidateECLA(t *testing.T) {
 
 			if assert.Len(t, sender.sent, 1, "the employee is notified about the invalidation") {
 				assert.Equal(t, []string{"contributor@example.com"}, sender.sent[0].recipients)
-				assert.Contains(t, sender.sent[0].subject, "ECLA invalidated for My Project")
+				assert.Contains(t, sender.sent[0].subject, "Employee acknowledgment invalidated for My Project")
 				assert.Contains(t, sender.sent[0].body, "My Project")
 				assert.Contains(t, sender.sent[0].body, "Acme")
 			}

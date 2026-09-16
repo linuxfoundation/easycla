@@ -4,7 +4,7 @@
 type: object
 x-nullable: false
 title: My CLA List
-description: The signed ICLAs and ECLAs matching the provided user identity
+description: The signed ICLAs and employee acknowledgments matching the provided user identity
 properties:
   lfUsername:
     type: string

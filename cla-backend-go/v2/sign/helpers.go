@@ -137,7 +137,7 @@ func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID
 		companyAffiliation = true
 
 		// Get employee signature
-		log.WithFields(f).Debugf("ECLA signature check - user has a company: %s - looking for user's employee acknowledgement...", companyID)
+		log.WithFields(f).Debugf("ECLA signature check - user has a company: %s - looking for user's employee acknowledgment...", companyID)
 
 		// Load the company - make sure it is valid
 		companyModel, compModelErr := s.companyService.GetCompany(ctx, companyID)
@@ -151,7 +151,7 @@ func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID
 			return &hasSigned, &companyAffiliation, compModelErr
 		}
 
-		// Check if company is sanctioned before allowing ECLA acknowledgement
+		// Check if company is sanctioned before allowing ECLA acknowledgment
 		wasSanctioned := companyModel.IsSanctioned
 		sanctioned, sanctionErr := s.checkCompanyCompliance(ctx, companyModel)
 		if sanctionErr != nil {

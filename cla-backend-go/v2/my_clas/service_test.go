@@ -324,7 +324,7 @@ func TestAuthorizeIdentityViaAuth0(t *testing.T) {
 		{Provider: "gitlab", UserID: "777", Username: "someone-gl"},
 	}}
 
-	allowed, skipped, err := svc.AuthorizeIdentity(context.Background(), "someone", false, &Identity{
+	allowed, skipped, err := svc.AuthorizeIdentity(context.Background(), &Caller{Username: "someone"}, &Identity{
 		GithubIDs:       []int64{30514950, 99},
 		GithubUsernames: []string{"AH-MED"},
 		GitlabIDs:       []int64{777},
@@ -347,7 +347,7 @@ func TestAuthorizeIdentitySelfRecordShortCircuit(t *testing.T) {
 	svc := newTestService(repo, platform, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 	svc.auth0Identities = auth0
 
-	allowed, skipped, err := svc.AuthorizeIdentity(context.Background(), "someone", false, &Identity{
+	allowed, skipped, err := svc.AuthorizeIdentity(context.Background(), &Caller{Username: "someone"}, &Identity{
 		Emails:          []string{"someone@example.org"},
 		GithubIDs:       []int64{12345},
 		GithubUsernames: []string{"octocat"},
@@ -367,7 +367,7 @@ func TestAuthorizeIdentityAuth0Failure(t *testing.T) {
 	svc := newTestService(&fakeRepo{}, nil, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 	svc.auth0Identities = &fakeAuth0{err: errors.New("auth0 unavailable")}
 
-	allowed, skipped, err := svc.AuthorizeIdentity(context.Background(), "someone", false, &Identity{
+	allowed, skipped, err := svc.AuthorizeIdentity(context.Background(), &Caller{Username: "someone"}, &Identity{
 		GithubIDs:       []int64{30514950},
 		GithubUsernames: []string{"ah-med"},
 	})

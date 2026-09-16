@@ -2753,7 +2753,7 @@ paths:
   /my-clas:
     get:
       summary: Get My CLAs
-      description: Returns the signed ICLAs and ECLAs (employee acknowledgements) matching the provided identity - LF username, emails, GitHub/GitLab/Gerrit identities - aggregated across all matching EasyCLA user records, deduplicated, with validity evaluated against the current company CCLA approval lists. Unless the caller is an admin or a trusted LFX Self Serve client, every provided identity must belong to the authenticated user (their EasyCLA user records, or the identities connected to their LF account in the platform user-service); unverifiable ones are not searched and are reported in skippedIdentities. A trusted caller has its Authorization bearer token signature-verified against the Auth0 JWKS in-handler and its azp claim on the configured Self Serve client-ID allow-list; while that allow-list is configured every request needs a verifiable bearer token and a missing or unverifiable one is 401
+      description: Returns the signed ICLAs and employee acknowledgments matching the provided identity - LF username, emails, GitHub/GitLab/Gerrit identities - aggregated across all matching EasyCLA user records, deduplicated, with validity evaluated against the current company CCLA approval lists. Unless the caller is an admin or a trusted LFX Self Serve client, every provided identity must belong to the authenticated user (their EasyCLA user records, or the identities connected to their LF account in the platform user-service); unverifiable ones are not searched and are reported in skippedIdentities. A trusted caller has its Authorization bearer token signature-verified against the Auth0 JWKS in-handler, its azp claim on the configured Self Serve client-ID allow-list and its aud claim carrying the configured platform API audience (both are required - an allow-listed azp with another audience is not trusted); while that allow-list is configured every request needs a verifiable bearer token and a missing or unverifiable one is 401
       operationId: getMyClas
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -2793,7 +2793,7 @@ paths:
   /my-clas/{signatureID}/pdf:
     get:
       summary: Get a signed ICLA PDF download link
-      description: Returns a time-limited download URL for a signed ICLA PDF owned by the provided identity - unknown, not-owned and ECLA signature IDs return 404. Identity-ownership enforcement and trusted-caller token verification are as in GET /my-clas, so a caller that is neither an admin nor a trusted LFX Self Serve client can only download its own documents
+      description: Returns a time-limited download URL for a signed ICLA PDF owned by the provided identity - unknown, not-owned and employee-acknowledgment signature IDs return 404. Identity-ownership enforcement and trusted-caller token verification are as in GET /my-clas, so a caller that is neither an admin nor a trusted LFX Self Serve client can only download its own documents
       operationId: getMyClaPdf
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -2838,8 +2838,8 @@ paths:
 
   /my-clas/{signatureID}/cla-managers:
     get:
-      summary: Get the CLA managers for an ECLA
-      description: Returns the CLA managers of the company CCLA covering the given ECLA, so the contributor can pick whom to contact for a removal or approval request - unknown, not-owned and ICLA signature IDs return 404. Identity-ownership enforcement and trusted-caller token verification are as in GET /my-clas
+      summary: Get the CLA managers for an employee acknowledgment
+      description: Returns the CLA managers of the company CCLA covering the given employee acknowledgment, so the contributor can pick whom to contact for a removal or approval request - unknown, not-owned and ICLA signature IDs return 404. Identity-ownership enforcement and trusted-caller token verification are as in GET /my-clas
       operationId: getMyClaManagers
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -2886,8 +2886,8 @@ paths:
 
   /my-clas/{signatureID}/cla-manager-requests:
     post:
-      summary: Request removal or approval from, or send a message to, the CLA managers of an ECLA
-      description: Records a contributor request against their own ECLA and emails it to the selected CLA managers of the covering company CCLA - removal (take me off the coverage), approval (add me back to the approval list) or contact (just deliver the contributor's free-form message, required and non-blank for this type, no change requested). recipients must be a non-empty subset of the managers from GET /my-clas/{signatureID}/cla-managers; empty only when none resolves, and the request is then recorded without email. No signature state changes. Unknown, not-owned and ICLA signature IDs return 404. An ECLA flagged for a sanctioned company is deliberately still accepted - a removal request is legitimate there. Identity-ownership enforcement and trusted-caller token verification are as in GET /my-clas
+      summary: Request removal or approval from, or send a message to, the CLA managers of an employee acknowledgment
+      description: Records a contributor request against their own employee acknowledgment and emails it to the selected CLA managers of the covering company CCLA - removal (take me off the coverage), approval (add me back to the approval list) or contact (just deliver the contributor's free-form message, required and non-blank for this type, no change requested). recipients must be a non-empty subset of the managers from GET /my-clas/{signatureID}/cla-managers; empty only when none resolves, and the request is then recorded without email. No signature state changes. Unknown, not-owned and ICLA signature IDs return 404. An employee acknowledgment flagged for a sanctioned company is deliberately still accepted - a removal request is legitimate there. Identity-ownership enforcement and trusted-caller token verification are as in GET /my-clas
       operationId: createMyClaManagerRequest
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -2968,7 +2968,7 @@ paths:
   /self-serve/prepare-sign:
     post:
       summary: Prepare Sign
-      description: Prepares a proactive (no pull/merge request) signing session started from LFX Self Serve - verifies that the provided identity belongs to the authenticated user with the same rules as GET /my-clas (their EasyCLA user records first, then the identities connected to their LF account in the platform user-service), creates the EasyCLA user record when the verified identity has none, records the return URL for the signing session, and returns the Contributor Console URL to hand off to so the contributor can choose ICLA or ECLA there
+      description: Prepares a proactive (no pull/merge request) signing session started from LFX Self Serve - verifies that the provided identity belongs to the authenticated user with the same rules as GET /my-clas (their EasyCLA user records first, then the identities connected to their LF account in the platform user-service and Auth0; a trusted Self Serve caller - bearer token with an allow-listed azp and the expected audience - has the provided identity accepted as its own without those checks), looks the identity up in the existing EasyCLA user records in both cases, creates the EasyCLA user record when none matches, records the return URL for the signing session, and returns the Contributor Console URL to hand off to so the contributor can choose an ICLA or an employee acknowledgment there
       operationId: prepareSign
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -3005,7 +3005,7 @@ paths:
   /self-serve/request-corporate-signature:
     post:
       summary: Requests and generates a new Corporate Signature from LFX Self Serve
-      description: Creates a new corporate signature given project and company IDs, exactly as /request-corporate-signature does, after verifying the two Self Serve attestations - the request is rejected with a 400 unless both authority_acked and embargo_acked are true
+      description: Creates a new corporate signature given project and company IDs, exactly as /request-corporate-signature does, after verifying the two Self Serve attestations - the request is rejected with a 400 unless both authority_acked and embargo_acked are true. A company blocked for trade compliance is rejected with the typed 403 `company_sanctioned` body described by the 403 response
       operationId: selfServeRequestCorporateSignature
       parameters:
         - $ref: "#/parameters/authorization"
@@ -3032,7 +3032,7 @@ paths:
         '401':
           $ref: '#/responses/unauthorized'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '404':
           $ref: '#/responses/not-found'
         '409':
@@ -4021,8 +4021,8 @@ paths:
 
   /cla-group/{claGroupID}/ecla/{signatureID}/invalidate:
     put:
-      summary: Invalidate ECLA record
-      description: Invalidates a given employee acknowledgement (ECLA) record - also stamps date_invalidated, invalidated_by and the optional invalidation_reason/invalidation_note from the body
+      summary: Invalidate an employee acknowledgment record
+      description: Invalidates a given employee acknowledgment (`ecla` signature) record - also stamps date_invalidated, invalidated_by and the optional invalidation_reason/invalidation_note from the body
       operationId: invalidateECLA
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -4163,7 +4163,7 @@ paths:
   /company/external/{companySFID}/cla-group/{claGroupID}/corporate-contributors:
     get:
       summary: List corporate contributors by company SFID
-      description: Returns the corporate contributors (employee acknowledgements) of the CLA Group for the company identified by its SFID - the same data as /cla-group/{claGroupID}/corporate-contributors on an organization-scoped path, so organization-scoped (CLA manager) tokens are authorized at the API gateway. The optional companyID query parameter selects one signing-entity record of the company - when omitted the parent record is used
+      description: Returns the corporate contributors (employee acknowledgments) of the CLA Group for the company identified by its SFID - the same data as /cla-group/{claGroupID}/corporate-contributors on an organization-scoped path, so organization-scoped (CLA manager) tokens are authorized at the API gateway. The optional companyID query parameter selects one signing-entity record of the company - when omitted the parent record is used
       operationId: listCompanyClaGroupCorporateContributors
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -4592,7 +4592,8 @@ paths:
     post:
       summary: Requests and generates a new Corporate Signature
       description: Creates a new signature given project and company IDs. The manager will be redirected to the
-        return_url once signature is complete.
+        return_url once signature is complete. A company blocked for trade compliance is rejected with the typed
+        403 `company_sanctioned` body described by the 403 response.
       operationId: requestCorporateSignature
       parameters:
         - $ref: "#/parameters/authorization"
@@ -4619,7 +4620,7 @@ paths:
         '401':
           $ref: '#/responses/unauthorized'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '404':
           $ref: '#/responses/not-found'
         '500':
@@ -5281,7 +5282,7 @@ parameters:
     description: >
       CLA Type query parameter - allows the caller to specify either individual, employee or corporate signature, valid options:
       * `icla` - for individual contributor signature records (individuals not associated with a corporation)
-      * `ecla` - for employee contributor signature records (acknowledgements from corporate contributors)
+      * `ecla` - for employee contributor signature records (acknowledgments from corporate contributors)
       * `ccla` - for corporate contributor signature records (created by CLA Signatories and managed by CLA Managers)
     in: query
     type: string
@@ -5292,7 +5293,7 @@ parameters:
     description: >
       CLA Type query parameter - allows the caller to specify either individual, employee or corporate signature, valid options:
       * `icla` - for individual contributor signature records (individuals not associated with a corporation)
-      * `ecla` - for employee contributor signature records (acknowledgements from corporate contributors)
+      * `ecla` - for employee contributor signature records (acknowledgments from corporate contributors)
       * `ccla` - for corporate contributor signature records (created by CLA Signatories and managed by CLA Managers)
     in: query
     type: string
@@ -6986,7 +6987,7 @@ definitions:
     properties:
       auto_create_ecla:
         type: boolean
-        description: flag to indicate if the product should automatically create an employee acknowledgement for a given user when the CLA manager adds the user to the email, GitLab username, or GitLab username approval list
+        description: flag to indicate if the product should automatically create an employee acknowledgment for a given user when the CLA manager adds the user to the email, GitHub username, or GitLab username approval list
         example: true
 
   project-github-organizations:

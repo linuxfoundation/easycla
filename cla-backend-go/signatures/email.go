@@ -79,13 +79,13 @@ const (
 	</ul>
 	`
 
-	//InvalidateECLASignatureTemplateName is email template upon a CLA Manager invalidating an employee acknowledgement
+	//InvalidateECLASignatureTemplateName is email template upon a CLA Manager invalidating an employee acknowledgment
 	InvalidateECLASignatureTemplateName = "InvalidateECLASignatureTemplate"
 	//InvalidateECLASignatureTemplate ...
 	InvalidateECLASignatureTemplate = `
 	<p>Hello {{.RecipientName}}</p>
 	<p>This is a notification email from EasyCLA regarding the CLA Group {{.CLAGroupName}}.</p>
-	<p>You had previously been acknowledged as an employee contributor for {{.Company}} under its signed Corporate CLA (CCLA). However, a CLA Manager has marked your employee acknowledgement as invalidated.</p>
+	<p>You had previously been acknowledged as an employee contributor for {{.Company}} under its signed Corporate CLA (CCLA). However, a CLA Manager has marked your employee acknowledgment as invalidated.</p>
 	<p>As a result, you will no longer be able to contribute until you are again authorized under another signed CLA.</p>
 	<p>Please contact one of the CLA Managers from your company if you have questions about why you were removed.</p>
 	`
@@ -96,7 +96,7 @@ const (
 	InvalidateCCLAECLASignatureTemplate = `
 	<p>Hello {{.RecipientName}}</p>
 	<p>This is a notification email from EasyCLA regarding the CLA Group {{.CLAGroupName}}.</p>
-	<p>You were previously authorized to contribute on behalf of your company {{.Company}} under its CLA. However, a CLA Manager has now removed you from the authorization list. This has additionally resulted in invalidating your acknowledgement.</p>
+	<p>You were previously authorized to contribute on behalf of your company {{.Company}} under its CLA. However, a CLA Manager has now removed you from the authorization list. This has additionally resulted in invalidating your acknowledgment.</p>
 	<p>As a result, you will no longer be able to contribute until you are again authorized under another signed CLA.</p>
 	<p>Please contact one of the CLA Managers from your company if you have questions about why you were removed. The CLA Managers from your company for this CLA are:</p>
 	<ul>
@@ -112,7 +112,7 @@ const (
 	InvalidateCCLAICLAECLASignatureTemplate = `
 	<p>Hello {{.RecipientName}}</p>
 	<p>This is a notification email from EasyCLA regarding the CLA Group {{.CLAGroupName}}.</p>
-	<p>You were previously authorized to contribute on behalf of your company {{.Company}} under its CLA. However, a CLA Manager has now removed you from the authorization list. This has additionally resulted in invalidating your current signed Individual CLA (ICLA) and your acknowledgement.</p>
+	<p>You were previously authorized to contribute on behalf of your company {{.Company}} under its CLA. However, a CLA Manager has now removed you from the authorization list. This has additionally resulted in invalidating your current signed Individual CLA (ICLA) and your acknowledgment.</p>
 	<p>As a result, you will no longer be able to contribute until you are again authorized under another signed CLA.</p>
 	<p>Please contact one of the CLA Managers from your company if you have questions about why you were removed. The CLA Managers from your company for this CLA are:</p>
 	<ul>

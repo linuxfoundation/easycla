@@ -84,7 +84,7 @@ const (
 )
 
 // SignatureDynamoDB is a data model for the signature table. Most of the record create/update happens in the old
-// Python code, however, we needed to add this data model after we added the auto-enable feature for employee acknowledgements.
+// Python code, however, we needed to add this data model after we added the auto-enable feature for employee acknowledgments.
 //
 // | Type of Signature      | `project_id`       |`signature_reference_type`|`signature_type`|`signature_reference_id`|`signature_user_ccla_company_id`| PDF? | Auto Create ECLA Flag |
 // |:-----------------------|:-------------------|:-------------------------|:---------------|:-----------------------|:-------------------------------|------|-----------------------|

@@ -54,3 +54,18 @@ properties:
     type: boolean
     description: the flag for contributor that has not yet been approved
     x-omitempty: false
+  invalidatedAt:
+    type: string
+    description: Stored date_invalidated, stamped at the first invalidation - only present on records invalidated after this field was introduced
+  invalidatedBy:
+    type: string
+    description: Who invalidated the acknowledgment (the acting CLA manager's or admin's username) - only present on records invalidated after this field was introduced
+  invalidationReason:
+    type: string
+    description: Invalidation reason - "approved list removal (<criteria>)" for approval-list removals, or the reason given by the invalidating manager/admin - only present on records invalidated with a reason
+  invalidationNote:
+    type: string
+    description: Free-text invalidation note - only present on records invalidated with a note
+  note:
+    type: string
+    description: The signature note - approval-list removals and PCC invalidations record what happened here, including on records predating the invalidation attributes above
