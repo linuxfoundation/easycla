@@ -67,7 +67,12 @@ the endpoint never auto-creates the company record. Limitation: an empty list ca
 company-level data, so the sanctions state of a company that never signed anything cannot
 be read from this endpoint. Optional `pageSize`/`offset` query
 parameters page the sorted list (`totalCount` = size before paging, `resultCount` = rows
-returned); when omitted the full list is returned. Auth: LF admin, `organization`
+returned); when omitted the full list is returned. The list is sorted by
+`signingEntityName`, `claGroupName`, `claGroupID` and finally `signatureID`, so paging is
+stable even when two company records share a signing entity name on one CLA group. Per-row
+lookups (stored `signed_on`, CLA-group record fallback, approved acknowledgment count) run
+concurrently, at most 8 in flight, after one project-mapping lookup per distinct CLA group;
+the first failing lookup fails the whole request, as before. Auth: LF admin, `organization`
 scope for the `companySFID`, or any `project|organization` scope whose organization half
 matches (ACS resource `company_cla_groups`, action `view_all`). Probe:
 `utils/company_cla_groups.sh`.

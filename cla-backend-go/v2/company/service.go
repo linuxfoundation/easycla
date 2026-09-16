@@ -17,6 +17,7 @@ import (
 	"github.com/go-openapi/strfmt"
 
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
@@ -1329,7 +1330,13 @@ func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string, p
 		}
 		return nil, err
 	}
-	claGroupProjects := make(map[string][]*projects_cla_groups.ProjectClaGroup)
+	// One row per (signing entity × CLA group), built from the newest CCLA of each company record
+	// on that CLA group. The rows are collected first so that their per-row lookups can run
+	// concurrently below - an organization with dozens of CLA groups otherwise pays three
+	// sequential DynamoDB round trips per row.
+	rows := make([]companyClaGroupRow, 0)
+	claGroupIDs := make([]string, 0)
+	seenClaGroup := make(map[string]bool)
 	for _, comp := range companies {
 		sigs, sigErr := s.getCompanyCCLASignaturesWithACL(ctx, comp.CompanyID)
 		if sigErr != nil {
@@ -1342,93 +1349,45 @@ func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string, p
 			}
 		}
 		for claGroupID, sig := range newestSigs {
-			pcgs, found := claGroupProjects[claGroupID]
-			if !found {
-				pcgs, err = s.projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, claGroupID)
-				if err != nil {
-					return nil, err
-				}
-				claGroupProjects[claGroupID] = pcgs
+			rows = append(rows, companyClaGroupRow{company: comp, claGroupID: claGroupID, signature: sig})
+			if !seenClaGroup[claGroupID] {
+				seenClaGroup[claGroupID] = true
+				claGroupIDs = append(claGroupIDs, claGroupID)
 			}
-			row := models.CompanyClaGroup{
-				CompanyID:         comp.CompanyID,
-				CompanySFID:       comp.CompanyExternalID,
-				CompanyName:       comp.CompanyName,
-				SigningEntityName: comp.SigningEntityName,
-				ClaGroupID:        claGroupID,
-				Projects:          make([]models.CompanyClaGroupProject, 0),
-				Signed:            sig.SignatureSigned,
-				SignatureID:       sig.SignatureID,
-				Sanctioned:        comp.IsSanctioned,
-				ClaManagers:       make([]models.CompanyClaGroupManager, 0),
-				AutoCreateECLA:    sig.AutoCreateECLA,
-			}
-			if row.SigningEntityName == "" {
-				row.SigningEntityName = comp.CompanyName
-			}
-			// The shared v1 signature converter substitutes the creation date for a missing signed_on
-			// (a corporate-console contract), so the stored value is read back for this lens: no
-			// date means no signedOn
-			signedOn, signedOnErr := s.storedSignedOn(ctx, sig.SignatureID)
-			if signedOnErr != nil {
-				return nil, signedOnErr
-			}
-			row.SignedOn = signedOn
-			if comp.IsSanctioned && comp.SanctionedDate != "" {
-				row.SanctionedAt = utils.FormatTimeString(comp.SanctionedDate)
-			}
-			if sig.SignatoryName != "" {
-				row.SignedBy = sig.SignatoryName
-			}
-			if len(pcgs) > 0 {
-				row.ClaGroupName = pcgs[0].ClaGroupName
-				row.FoundationSFID = pcgs[0].FoundationSFID
-				row.FoundationName = pcgs[0].FoundationName
-				for _, pcg := range pcgs {
-					if pcg.ProjectSFID == pcg.FoundationSFID {
-						continue
-					}
-					row.Projects = append(row.Projects, models.CompanyClaGroupProject{
-						ProjectSFID: pcg.ProjectSFID,
-						ProjectName: pcg.ProjectName,
-					})
-				}
-				sort.Slice(row.Projects, func(i, j int) bool {
-					return row.Projects[i].ProjectName < row.Projects[j].ProjectName
-				})
-			} else {
-				claGroup, cgErr := s.projectRepo.GetCLAGroupByID(ctx, claGroupID, DontLoadRepoDetails)
-				if cgErr != nil {
-					var nf *utils.CLAGroupNotFound
-					if !errors.As(cgErr, &nf) && !errors.Is(cgErr, repository.ErrProjectDoesNotExist) {
-						return nil, cgErr
-					}
-					log.WithFields(f).WithError(cgErr).Warnf("unable to load CLA group: %s", claGroupID)
-				} else {
-					row.ClaGroupName = claGroup.ProjectName
-					row.FoundationSFID = claGroup.FoundationSFID
-				}
-			}
-			for _, aclUser := range sig.SignatureACL {
-				row.ClaManagers = append(row.ClaManagers, models.CompanyClaGroupManager{
-					UserID:     aclUser.UserID,
-					LfUsername: aclUser.LfUsername,
-				})
-			}
-			sort.Slice(row.ClaManagers, func(i, j int) bool {
-				return row.ClaManagers[i].LfUsername < row.ClaManagers[j].LfUsername
-			})
-			row.ClaManagersCount = int64(len(row.ClaManagers))
-			row.NeedsClaManager = row.Signed && row.ClaManagersCount == 0
-			row.ApprovalCriteriaCount = approvalCriteriaCount(sig)
-			approvedContributors, eclaErr := s.signatureRepo.CountClaGroupCorporateContributors(ctx, claGroupID, &comp.CompanyID, true, nil)
-			if eclaErr != nil {
-				return nil, eclaErr
-			}
-			row.ApprovedContributorsCount = approvedContributors
-			result.List = append(result.List, row)
 		}
 	}
+	// The project mapping of a CLA group is shared by every signing entity that signed it, so it
+	// is loaded once per CLA group
+	claGroupProjects, mappingErr := s.claGroupProjectMappings(ctx, claGroupIDs)
+	if mappingErr != nil {
+		return nil, mappingErr
+	}
+	list := make([]models.CompanyClaGroup, len(rows))
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(companyClaGroupsConcurrency)
+	for i, row := range rows {
+		group.Go(func() error {
+			// The request was cancelled or a sibling lookup already failed: skip the remaining work.
+			// The cancellation is returned rather than swallowed so that the row cannot silently stay
+			// blank - errgroup keeps the first error it saw, so a real repository failure still wins.
+			if ctxErr := groupCtx.Err(); ctxErr != nil {
+				log.WithFields(f).WithError(ctxErr).Debug(skippedRowLookupsMessage)
+				return ctxErr
+			}
+			// The repositories get the request context rather than groupCtx: the first failure is
+			// reported as-is instead of turning the in-flight sibling lookups into context-canceled noise
+			built, rowErr := s.buildCompanyClaGroup(ctx, f, row, claGroupProjects[row.claGroupID])
+			if rowErr != nil {
+				return rowErr
+			}
+			list[i] = built
+			return nil
+		})
+	}
+	if waitErr := group.Wait(); waitErr != nil {
+		return nil, waitErr
+	}
+	result.List = append(result.List, list...)
 	sort.Slice(result.List, func(i, j int) bool {
 		if result.List[i].SigningEntityName != result.List[j].SigningEntityName {
 			return result.List[i].SigningEntityName < result.List[j].SigningEntityName
@@ -1436,13 +1395,148 @@ func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string, p
 		if result.List[i].ClaGroupName != result.List[j].ClaGroupName {
 			return result.List[i].ClaGroupName < result.List[j].ClaGroupName
 		}
-		return result.List[i].ClaGroupID < result.List[j].ClaGroupID
+		if result.List[i].ClaGroupID != result.List[j].ClaGroupID {
+			return result.List[i].ClaGroupID < result.List[j].ClaGroupID
+		}
+		// two company records with the same signing entity name on the same CLA group: keep the
+		// order (and therefore the paging) stable
+		return result.List[i].SignatureID < result.List[j].SignatureID
 	})
 	result.TotalCount = int64(len(result.List))
 	start, end := utils.PageBounds(len(result.List), pageSize, offset)
 	result.List = result.List[start:end]
 	result.ResultCount = int64(len(result.List))
 	return result, nil
+}
+
+// companyClaGroupsConcurrency caps the per-row lookups GetCompanyClaGroups keeps in flight
+const companyClaGroupsConcurrency = 8
+
+// skippedRowLookupsMessage is logged for every organization CLA list row whose lookups were skipped
+// because the request was cancelled or a sibling row's lookup had already failed
+const skippedRowLookupsMessage = "skipping the CLA group row lookups - request cancelled or a sibling lookup failed"
+
+// companyClaGroupRow is one (signing entity × CLA group) row of the organization CLA list before
+// its lookups: the company record and its newest CCLA on the CLA group
+type companyClaGroupRow struct {
+	company    *v1Models.Company
+	signature  *v1Models.Signature
+	claGroupID string
+}
+
+// claGroupProjectMappings loads the project mappings of the given CLA groups concurrently, one
+// lookup per CLA group, keyed by CLA group id
+func (s *service) claGroupProjectMappings(ctx context.Context, claGroupIDs []string) (map[string][]*projects_cla_groups.ProjectClaGroup, error) {
+	mappings := make([][]*projects_cla_groups.ProjectClaGroup, len(claGroupIDs))
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(companyClaGroupsConcurrency)
+	for i, claGroupID := range claGroupIDs {
+		group.Go(func() error {
+			// cancelled request or failed sibling: return the cancellation instead of leaving the
+			// mapping silently unresolved (errgroup keeps the first error, so a real failure wins)
+			if ctxErr := groupCtx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+			pcgs, err := s.projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, claGroupID)
+			if err != nil {
+				return err
+			}
+			mappings[i] = pcgs
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+	byClaGroup := make(map[string][]*projects_cla_groups.ProjectClaGroup, len(claGroupIDs))
+	for i, claGroupID := range claGroupIDs {
+		byClaGroup[claGroupID] = mappings[i]
+	}
+	return byClaGroup, nil
+}
+
+// buildCompanyClaGroup fills one organization CLA list row: the CCLA's stored signing date, the
+// CLA group's name/foundation/projects (from the mapping, or the CLA group record when the group
+// has no mapping) and the approved employee acknowledgment count
+func (s *service) buildCompanyClaGroup(ctx context.Context, f logrus.Fields, in companyClaGroupRow, pcgs []*projects_cla_groups.ProjectClaGroup) (models.CompanyClaGroup, error) {
+	comp, sig, claGroupID := in.company, in.signature, in.claGroupID
+	row := models.CompanyClaGroup{
+		CompanyID:         comp.CompanyID,
+		CompanySFID:       comp.CompanyExternalID,
+		CompanyName:       comp.CompanyName,
+		SigningEntityName: comp.SigningEntityName,
+		ClaGroupID:        claGroupID,
+		Projects:          make([]models.CompanyClaGroupProject, 0),
+		Signed:            sig.SignatureSigned,
+		SignatureID:       sig.SignatureID,
+		Sanctioned:        comp.IsSanctioned,
+		ClaManagers:       make([]models.CompanyClaGroupManager, 0),
+		AutoCreateECLA:    sig.AutoCreateECLA,
+	}
+	if row.SigningEntityName == "" {
+		row.SigningEntityName = comp.CompanyName
+	}
+	// The shared v1 signature converter substitutes the creation date for a missing signed_on
+	// (a corporate-console contract), so the stored value is read back for this lens: no
+	// date means no signedOn
+	signedOn, signedOnErr := s.storedSignedOn(ctx, sig.SignatureID)
+	if signedOnErr != nil {
+		return models.CompanyClaGroup{}, signedOnErr
+	}
+	row.SignedOn = signedOn
+	if comp.IsSanctioned && comp.SanctionedDate != "" {
+		row.SanctionedAt = utils.FormatTimeString(comp.SanctionedDate)
+	}
+	if sig.SignatoryName != "" {
+		row.SignedBy = sig.SignatoryName
+	}
+	if len(pcgs) > 0 {
+		row.ClaGroupName = pcgs[0].ClaGroupName
+		row.FoundationSFID = pcgs[0].FoundationSFID
+		row.FoundationName = pcgs[0].FoundationName
+		for _, pcg := range pcgs {
+			if pcg.ProjectSFID == pcg.FoundationSFID {
+				continue
+			}
+			row.Projects = append(row.Projects, models.CompanyClaGroupProject{
+				ProjectSFID: pcg.ProjectSFID,
+				ProjectName: pcg.ProjectName,
+			})
+		}
+		sort.Slice(row.Projects, func(i, j int) bool {
+			return row.Projects[i].ProjectName < row.Projects[j].ProjectName
+		})
+	} else {
+		claGroup, cgErr := s.projectRepo.GetCLAGroupByID(ctx, claGroupID, DontLoadRepoDetails)
+		if cgErr != nil {
+			var nf *utils.CLAGroupNotFound
+			if !errors.As(cgErr, &nf) && !errors.Is(cgErr, repository.ErrProjectDoesNotExist) {
+				return models.CompanyClaGroup{}, cgErr
+			}
+			log.WithFields(f).WithError(cgErr).Warnf("unable to load CLA group: %s", claGroupID)
+		} else {
+			row.ClaGroupName = claGroup.ProjectName
+			row.FoundationSFID = claGroup.FoundationSFID
+		}
+	}
+	for _, aclUser := range sig.SignatureACL {
+		row.ClaManagers = append(row.ClaManagers, models.CompanyClaGroupManager{
+			UserID:     aclUser.UserID,
+			LfUsername: aclUser.LfUsername,
+		})
+	}
+	sort.Slice(row.ClaManagers, func(i, j int) bool {
+		return row.ClaManagers[i].LfUsername < row.ClaManagers[j].LfUsername
+	})
+	row.ClaManagersCount = int64(len(row.ClaManagers))
+	row.NeedsClaManager = row.Signed && row.ClaManagersCount == 0
+	row.ApprovalCriteriaCount = approvalCriteriaCount(sig)
+	approvedContributors, eclaErr := s.signatureRepo.CountClaGroupCorporateContributors(ctx, claGroupID, &comp.CompanyID, true, nil)
+	if eclaErr != nil {
+		return models.CompanyClaGroup{}, eclaErr
+	}
+	row.ApprovedContributorsCount = approvedContributors
+	return row, nil
 }
 
 // storedSignedOn returns the CCLA's stored signing date, normalized, or "" when the record has none
