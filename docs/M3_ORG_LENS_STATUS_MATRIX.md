@@ -54,8 +54,11 @@ Rules:
   sanctions fields. Picking an unsigned CLA group there opens a transient detail page with
   managers and approval tabs locked; it is never a row in the org's CLA list and a reload
   loses it. Treating it as a persisted status would imply the list API can return it.
-- **Revoked wins over Signed**, exactly as in M2 — the more consequential fact and the more
-  restrictive status, since the entry becomes read-only.
+- **Revoked wins over every other status.** Revoked means the signing entity is under a
+  sanctions block — a fact about the whole organization, not about any one agreement — so it
+  outranks Signed and Not started alike and is evaluated first. M2 applies the same reasoning
+  where it ranks Revoked above Invalidated: the sanction is the more consequential fact and
+  Revoked is the more restrictive status, since the entry becomes read-only.
 - **Signing a CCLA is blocked while the signing entity is sanctioned**, so a **Revoked** entry
   can never become **Signed**, and *Sign CLA* must be unavailable from a **Not started**
   preview for a sanctioned entity. `v2/sign/service.go` enforces this at two points via
@@ -110,7 +113,7 @@ Shown per contributor row in the employee acknowledgment table of a CLA entry.
 |---|---|---|---|
 | **Authorized** | The employee acknowledged the corporate agreement and the company's approval criteria still cover them. | `signatureSigned = true` **and** `signatureApproved = true` | no |
 | **Not Authorized** | The acknowledgment is intact, but the contributor is no longer covered by the approval criteria. Nobody revoked access deliberately — a criterion they matched was removed, or their membership of an approved org or group changed. **Recoverable**: adding them back restores them. | **none today** — no coverage verdict is computed, see [Not yet implemented](#not-yet-implemented) | no |
-| **Invalidated** | The acknowledgment itself was made void — deliberately by a CLA manager, or as a side effect of an approval-criterion removal. **Not recoverable** by re-adding the contributor; they must acknowledge again. One exception today: `autoCreateECLA`, below. | `signatureApproved = false` | yes — *Invalidated · date* (not exposed on this row today) |
+| **Invalidated** | The acknowledgment itself was made void — deliberately by a CLA manager, or as a side effect of an approval-criterion removal. **Not recoverable** by re-adding the contributor; they must acknowledge again. One exception today: `autoCreateECLA`, below. | `signatureApproved = false` | yes — *Invalidated · date*, from `invalidatedAt` |
 
 Rules:
 
@@ -129,10 +132,13 @@ Rules:
   **Invalidated** row silently returns to **Authorized** on the next approval-list edit,
   including one a CLA manager invalidated deliberately. The target model treats Invalidated as
   final; see [Not yet implemented](#not-yet-implemented).
-- **Invalidated does not name who did it** unless the record says so. New invalidations store
-  `InvalidationMetadata` (`InvalidatedBy`, `Reason`, `Note`) and the M3 invalidate endpoint
-  takes a `reason` enum plus a free-text `note`, but older records carry nothing — attribution
-  is per-record, never assumed. Same constraint as M2, narrower blast radius.
+- **Only the invalidation date is shown; the row names nobody.** The API exposes the full set —
+  `corporate-contributor` carries `invalidatedAt`, `invalidatedBy`, `invalidationReason`,
+  `invalidationNote` and the legacy `note`, all populated by `GetClaGroupCorporateContributors`
+  — but the Org lens renders the **date alone**, matching the M3 prototype and M2's
+  *Invalidated · date* pill. Actor and reason stay available for support and the activity log,
+  not the status cell. Older records carry nothing at all, so attribution is per-record and
+  never assumed — the same constraint as M2.
 
 ### Which status an acknowledgment row gets
 
@@ -149,11 +155,12 @@ Removing an approval criterion **invalidates matching acknowledgments immediatel
 criteria — `invalidateSignatures` sets `signature_approved = false` with invalidation metadata
 — so the row lands in **Invalidated** rather than in a recoverable state. What **Not
 Authorized** is meant to name is the residue: cases where coverage went stale and nothing
-recorded it, so the row keeps reading **Authorized**. Those are GitLab group removals
-(which invalidate nothing), membership drift in an approved GitHub org or GitLab group (no
-approval-list edit occurs, so nothing triggers a re-check), and records the sweep skipped
-(missing user record, or a panic recovered per acknowledgment). The specific backend defects
-behind each are listed in [Not yet implemented](#not-yet-implemented).
+recorded it, so the row keeps reading **Authorized**. Those are membership drift in an approved
+GitHub org (no approval-list edit occurs, so nothing triggers a re-check) and records the sweep
+skipped (missing user record, or a panic recovered per acknowledgment). GitLab groups are not a
+source of residue because they are never evaluated in either direction — they are out of scope
+for M3 entirely. The specific backend defects behind each are listed in
+[Not yet implemented](#not-yet-implemented).
 
 Consequently the prototype's recovery hint — *add the user to the approval list, or Invalidate
 to remove for good* — is untruthful for the common case: the acknowledgment is already voided,
@@ -205,17 +212,17 @@ there at all, so everything in [Acknowledgment statuses](#acknowledgment-statuse
 
 | Gap | Effect in the Org lens | Backend status |
 |---|---|---|
-| **Shipped build labels the sanctions state "Sanctioned", not "Revoked"** | Card pill reads *Sanctioned*, detail heading reads *Unavailable* — one company-level fact, three words across two lenses. | frontend copy only — rename to **Revoked** |
+| **Shipped build labels the sanctions state "Sanctioned", not "Revoked"** | `cla.constants.ts` renders the card pill as *Sanctioned* and the detail heading as *Unavailable* — two words for one company-level fact, neither matching the Me lens. The M3 prototype has since adopted **Revoked** for the pill, so the build is now the only holdout. | frontend copy only — rename to **Revoked**, matching this document and the prototype |
 | **Shipped build derives the entry status from two booleans in the BFF** | `signed` and `sanctioned` are collapsed in the Self Serve server layer, relocating the two-boolean derivation this matrix criticizes. The Me lens consumes an authoritative `status` from the producer. | open — whether the entry status should become a producer-side field |
 | **Unsigned acknowledgments are not filtered server-side, and the count disagrees with the page** | Rows with `signatureSigned = false` come back from the API. Worse, the page query filters on company only while `totalCount` also filters `signature_approved` and `signature_signed`, so unsigned and invalidated records consume page slots and cursors while being excluded from the total. Client-side dropping yields short pages and a mismatched count. | needs filing — both queries must select the **same** row set: require `signature_signed = true` in each and **keep** signed rows with `signature_approved = false`, which are the **Invalidated** rows the lens must show. A frontend-only fix is insufficient |
 | **`autoCreateECLA` resurrects invalidated acknowledgments** | The target model treats **Invalidated** as final; it is not. A deliberately invalidated row returns to **Authorized** on the next unrelated approval-list edit, with only a `note` recording it. | needs filing — likely backend bug; auto-create should not re-approve invalidated records |
 | **`signedOn` may be a creation date** | The list service substitutes `signature_created` when the signature has no `SignedOn`, and nothing flags the difference — breaking M2's "a wrong date is worse than none". | needs filing — omit the field when no signing timestamp exists, or mark it approximate |
-| **No coverage verdict on an acknowledgment row** | **Not Authorized** cannot be rendered. `corporate-contributor` carries only `signatureSigned` and `signatureApproved`; no equivalent of the M2 coverage check exists. | needs filing — a per-row coverage verdict, or a documented decision that removal stops auto-invalidating |
-| **Invalidation date, reason and actor are not exposed** | **Invalidated** renders without its date or cause, even where `InvalidationMetadata` recorded both. | metadata is stored; the row model exposes none of it |
+| **No coverage verdict on an acknowledgment row** | **Not Authorized** cannot be rendered. `corporate-contributor` carries the two signature flags and the invalidation attributes, but nothing stating whether the approval criteria still cover the contributor — no equivalent of the M2 coverage check exists. | needs filing — a per-row coverage verdict, or a documented decision that removal stops auto-invalidating |
+| **The prototype formats the invalidation date differently from M2** | The M3 prototype renders a full timestamp under the pill — *on Sep 17, 2026, 3:42:07 PM* — where the shipped Me lens shows *Invalidated · Jun 3, 2026*. One field, two formats across the lenses. | backend done — `invalidatedAt` is on the row; frontend copy only, adopt M2's date-only *Invalidated · date* |
 | **The signing refusal is not machine-readable** | Both CCLA signing gates return a plain error, not the typed `403 company_sanctioned` body the write ops return, so the Org lens would have to string-match — the same fragility as `TODO(#5078)`. | needs filing — return the typed sanctions error from the signing path |
-| **Revoked has no date** | The entry shows the status alone; the list entry carries only the boolean `sanctioned`. The Me lens dates it from `flaggedAt`. | needs filing |
+| **Revoked has no date** | The entry shows the status alone; the list entry carries only the boolean `sanctioned`, and the M3 prototype shows no date either. The Me lens model dates it from `flaggedAt` — the company's stored `sanctioned_date`, stamped when EasyCLA first detected the block and re-stamped if a cleared entity is flagged again, so it is EasyCLA's detection date and not the sanctioning authority's listing date. | needs filing — expose the stored date on the list entry |
 | **The Sign CLA search endpoint is undocumented** | `GET /cla-group/search` backs the **Not started** preview but has no section in [M3_ORG_LENS_API.md](M3_ORG_LENS_API.md). | needs filing — document the endpoint |
-| **GitLab group removals invalidate nothing** | A contributor removed from an approved GitLab group keeps an **Authorized** row: `verifyUserApprovals` has no `GitlabOrgCriteria` branch, and the GitLab-org block never populates the acknowledgments to iterate. Carried over from M2. | needs filing |
+| **GitLab group criteria are not evaluable, so they are out of scope for M3** | GitLab group membership cannot be read without a per-group installed OAuth token, so EasyCLA never evaluates it: `EvaluateUserApproval` has no group check when granting coverage, and `verifyUserApprovals` has no `GitlabOrgCriteria` branch when removing it. A GitLab group entry therefore grants nothing and, on removal, invalidates nothing. The Self Serve approval-list picker nonetheless offers **GitLab group** ([lfx-self-serve#2257](https://github.com/linuxfoundation/lfx-self-serve/pull/2257)), presenting a silent no-op as a working control. Carried over from M2, which recorded the same limitation. | needs filing — remove or disable **GitLab group** in the picker until the backend can evaluate it. GitLab *username* is unaffected and stays supported |
 | **Org removals iterate the wrong acknowledgment set** | `UpdateApprovalList` mutates one shared `ApprovalList`; only the domain block assigns `ECLAs` and neither org block clears it. An org removal alone sweeps nothing; combined with a domain removal in the same request it sweeps the domain-derived set under the org criterion — the only way the GitHub-org branch runs at all. | needs filing — backend bug; the fix has two halves. Isolating per-block state stops the wrong-set sweep but **alone makes a standalone org removal invalidate nothing**, since the org blocks never load acknowledgments. They must also load the set the removed org selects before calling `invalidateSignatures` |
 | **GitHub-org removal over-invalidates** | When it runs, the `GitHubOrgCriteria` branch checks only the email and GitHub-username lists instead of the full `userStillApproved` re-check, comparing case-sensitively against a single `getBestEmail(user)`. A contributor still covered by a domain rule, a GitLab username, a differently-cased entry or a secondary email is invalidated anyway. | needs filing — backend bug, not a display gap |
 | **An invalidated CCLA disappears silently** | The entry vanishes from the list, so an admin cannot tell a never-signed CLA group from one whose agreement was voided. | open product question |
