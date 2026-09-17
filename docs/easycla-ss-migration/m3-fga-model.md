@@ -109,13 +109,65 @@ Unchanged open items — this proposal solves none of them, under either model s
    bridge period; both are fed by the same v4 write (`signature_acl` synchronous, ACS
    role asynchronous), and disagreement handling remains open item 6 there.
 
-## 6. Do not add per-manager filtering to v4
+## 6. What v4 already enforces — two tiers, and M3 replicates both
 
-"The API decides the contents" means the **existing** enforcement: an org-scoped user
-sees the org's CLA list; writes are gated per project|org scope. Building new per-user
-filtering into v4 would diverge from today's Corporate Console behavior and violate the
-program rule that Self Serve mirrors v4's decisions rather than re-deriving them
-([role-mapping-feasibility.md](role-mapping-feasibility.md) §3/§5).
+"The API decides the contents" means the **existing** enforcement, which is not uniform.
+Reads and writes sit at different widths:
+
+| Tier | Gate | Effective scope |
+|---|---|---|
+| **Read / list** | `IsUserAuthorizedForOrganization(..., ALLOW_ADMIN_SCOPE)` | **Company-wide** |
+| **Write / manage** | `IsUserAuthorizedForProjectOrganizationTree(..., DISALLOW_ADMIN_SCOPE)`, then `CurrentUserInACL` on the signature | **Per CLA group**, twice over |
+
+The read tier is company-wide because the shared scope matcher accepts a
+`project|organization` scope on its **organization half alone**, ignoring the project
+half ([lfx-kit `auth/user.go` `IsUserAuthorizedForOrganizationScope`](https://github.com/LF-Engineering/lfx-kit/blob/main/auth/user.go)),
+while CLA-manager ACS roles are granted as `project|org` pairs
+([`v2/dynamo_events/cla_manager.go:205`](../../cla-backend-go/v2/dynamo_events/cla_manager.go#L205)).
+So a manager appointed for one CLA group at a company passes the org-scope check on that
+company's other CLA groups: `GetCompanyClaGroups`
+([`v2/company/handlers.go:134`](../../cla-backend-go/v2/company/handlers.go#L134)) and the
+other listing endpoints return the company's full CLA set.
+
+The write tier is narrow and cannot be widened by staff: the approval-list update checks
+the project|org tree with **admin scope disallowed**
+([`v2/signatures/handlers.go:121`](../../cla-backend-go/v2/signatures/handlers.go#L121)),
+and the service layer then requires the caller to be in that specific signature's ACL
+([`signatures/service.go:523`](../../cla-backend-go/signatures/service.go#L523),
+[`v2/signatures/handlers.go:1499`](../../cla-backend-go/v2/signatures/handlers.go#L1499)).
+Managing one CLA group's approval list therefore requires membership in *that* signature's
+`signature_acl`; a manager on a sibling CLA group is refused.
+
+**M3 replicates both tiers unchanged** — this is feature parity, and it is also the
+cheapest option. The shipped M3 endpoints already encode exactly these rules: the org CLA
+list documents auth as "`organization` scope for the `companySFID`, or any
+`project|organization` scope whose organization half matches", and the manager/
+acknowledgment write ops as "`project|organization` tree scope for the project/company
+pair, LF admin disallowed" ([`docs/M3_ORG_LENS_API.md`](../M3_ORG_LENS_API.md)). Parity is
+the result of *not* writing new code.
+
+**Do not add per-manager filtering to v4.** Building new per-user filtering would diverge
+from today's Corporate Console behavior and violate the program rule that Self Serve
+mirrors v4's decisions rather than re-deriving them
+([role-mapping-feasibility.md](role-mapping-feasibility.md) §3/§5). Narrowing the read
+tier is not an EasyCLA change at all — the breadth lives in the shared lfx-kit matcher
+used by every LFX service, so it would mean either changing shared platform code or
+bolting CLA-specific filtering onto v4.
+
+**Cross-project visibility was raised as a possible legal concern** (Eric, review of this
+proposal): a CLA manager for one project can see that their employer holds agreements with
+other projects. Scoped correctly it is a **read-tier** question only — no cross-group
+writes are possible — and it describes current production behavior, not something the
+migration introduces. Deferred to M5 rather than treated as M3 work: `cla_ccla#auditor`
+gates reads per agreement once FGA enforces, so the narrowing comes with that milestone
+instead of as bespoke M3 divergence.
+
+**Why `cla_admin` is deliberately coarser than the write gate.** The relation is projected
+from `signature_acl` deduped across the org's CLA groups, so one ACL membership grants
+lens entry to the org. That matches the read tier exactly, and it keeps the projection to
+one tuple per user × org. A per-CLA-group relation would have to track v4's write gate,
+giving two systems that can disagree — the parity problem in open item 6 of
+[m3-org-visibility.md](m3-org-visibility.md) §5.
 
 ## 7. Decision venue
 
