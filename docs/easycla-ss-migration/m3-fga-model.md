@@ -77,7 +77,7 @@ read authorization on the query plane, at M5. Nothing in M3 uses them:
 | Spec-044 type | First actually needed |
 |---|---|
 | `cla_ccla` per-agreement relations | M5 — query-plane enforcement (`#auditor`) |
-| `cla_group` | M4 — project lens |
+| `cla_group` | M5 — project lens does not read CLA data through FGA before then |
 | `cla_ecla`, `cla_icla` | M5 — Me lens works today on in-handler ownership checks, no tuples |
 
 **Cost**: a second FGA model bump at M5, when the per-agreement types replace
