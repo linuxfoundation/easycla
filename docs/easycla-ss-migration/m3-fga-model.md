@@ -149,18 +149,41 @@ the result of *not* writing new code.
 **Do not add per-manager filtering to v4.** Building new per-user filtering would diverge
 from today's Corporate Console behavior and violate the program rule that Self Serve
 mirrors v4's decisions rather than re-deriving them
-([role-mapping-feasibility.md](role-mapping-feasibility.md) §3/§5). Narrowing the read
-tier is not an EasyCLA change at all — the breadth lives in the shared lfx-kit matcher
-used by every LFX service, so it would mean either changing shared platform code or
-bolting CLA-specific filtering onto v4.
+([role-mapping-feasibility.md](role-mapping-feasibility.md) §3/§5). Nor is narrowing the
+read tier an EasyCLA change at all — the breadth lives in the shared lfx-kit matcher used
+by every LFX service, so it would mean changing shared platform code or bolting
+CLA-specific filtering onto v4. The concrete version of this proposal, and why it fails on
+its own terms, is recorded as a rejected alternative below.
 
-**Cross-project visibility was raised as a possible legal concern** (Eric, review of this
-proposal): a CLA manager for one project can see that their employer holds agreements with
-other projects. Scoped correctly it is a **read-tier** question only — no cross-group
-writes are possible — and it describes current production behavior, not something the
-migration introduces. Deferred to M5 rather than treated as M3 work: `cla_ccla#auditor`
-gates reads per agreement once FGA enforces, so the narrowing comes with that milestone
-instead of as bespoke M3 divergence.
+**Cross-project visibility: settled as intended product behavior, not a gap.** Eric raised
+it in review of this proposal as a possible legal concern — a CLA manager for one project
+can see that their employer holds agreements with other projects. Scoped correctly it is a
+**read-tier** question only; no cross-group writes are possible. Put to Product
+(Heather Willson, 2026-09-18) as a choice between full read-only, listed-but-not-openable,
+and hidden entirely: **full read-only is the decision**, on the grounds that a CLA's
+information should not be hidden, precisely because someone may need to become a CLA
+manager or get authorized under their company's CCLA — and they can do neither if they
+cannot see the agreement exists and who manages it. No Legal escalation, and no M3 work:
+this is what v4 already does.
+
+**This constrains M5, it is not deferred to it.** An earlier revision of this section
+parked the question for M5 on the assumption that `cla_ccla#auditor` would narrow reads per
+agreement once FGA enforces. That reading is now wrong: since company-wide CLA visibility
+is deliberate, M5's per-agreement read model must **preserve** it rather than narrow it —
+`#auditor` has to keep admitting a company's non-manager CLA admins to read its other CLA
+groups. Carry this into the M5 ADR as a requirement on the model, not an open item.
+
+**Rejected alternative: filter the list per CLA group in v4.** Considered — the response
+already carries `claManagers` per row from `signature_acl`
+([`v2/company/service.go:1522`](../../cla-backend-go/v2/company/service.go#L1522)), so
+filtering to "CLA groups where the caller is a manager" would cost ~10 lines and no extra
+queries. Rejected on three counts, before the Product decision made it moot: it breaks
+`needsClaManager` (an agreement with **zero** managers can match no caller, so the rows the
+field exists to surface would vanish) and newly appointed managers (empty lens, no route
+forward); it puts FGA and the API at different widths, since `cla_admin` is org-level by
+construction; and it would make reads *narrower than writes* in the foundation case, where
+the write gate is a project|org **tree** check — a manager appointed at foundation level can
+write on a child project's agreement whose own ACL they are not in.
 
 **Why `cla_admin` is deliberately coarser than the write gate.** The relation is projected
 from `signature_acl` deduped across the org's CLA groups, so one ACL membership grants
