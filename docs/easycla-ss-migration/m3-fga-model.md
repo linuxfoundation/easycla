@@ -66,9 +66,10 @@ directions ("never grant org-wide read to CLA managers", spec 044 Q4).
 
 - **Source**: the CCLA signature's `signature_acl` (DynamoDB) — the synchronous write,
   same source for backfill and ongoing projection. Never derived from ACS.
-- **Projection**: managers of any of an org's CCLAs → one `b2b_org:<org>#cla_admin` tuple
-  per user × org (deduped across the org's CLA groups). Remove the tuple when the user
-  leaves the last `signature_acl` of that org.
+- **Projection**: managers of any of an org's **signed** CCLAs (`signature_signed = true`;
+  see §5 item 2 for why `signature_approved` is excluded) → one `b2b_org:<org>#cla_admin`
+  tuple per user × org (deduped across the org's CLA groups). Remove the tuple when the
+  user leaves the last such `signature_acl` of that org.
 - **Cross-check**: the read-only ACS drift report (spec 044 item 22) compares ACS
   `cla-manager` roles against the tuples; run it periodically, not once — ACS keeps being
   written by v4 for as long as the bridge exists.
@@ -140,20 +141,57 @@ Unchanged open items — this proposal solves none of them, under either model s
    persisting it via `populateSignURL`. A projection keyed on "appears in
    `signature_acl`" would therefore grant lens access to a **pending, unsigned** CCLA.
 
-   **Therefore the projector gates on the active state, not on ACL membership alone:**
-   project a `cla_admin` tuple only while the signature is `signature_signed = true`
-   **and** `signature_approved = true`, and remove it when the company's last CCLA in
-   that state exits it. This is the same active-CCLA predicate §2 uses for counting, so
-   the tuple set and the population figures stay consistent by construction.
+   **Therefore the projector gates on `signature_signed`, and on that alone:** project a
+   `cla_admin` tuple once the signature is `signature_signed = true`, and remove it when
+   the ACL entry is removed or the signature is deleted.
 
-   With that gate, the designee case resolves cleanly: a designee's job is the
+   **`signature_approved` is deliberately *not* part of the gate**, even though §2's
+   counting predicate uses it. Invalidation sets `signature_approved = false` and the
+   `note` field without touching `signature_acl`
+   ([`signatures/repository.go` `InvalidateProjectRecord`](../../cla-backend-go/signatures/repository.go)),
+   while the ACS updater reacts only to ACL differences
+   ([`v2/dynamo_events/signatures.go:366`](../../cla-backend-go/v2/dynamo_events/signatures.go#L366),
+   which logs "No changes in ACL" and exits otherwise). An approval-gated projection
+   would therefore strand managers at exactly the wrong moment: v4 still authorizes them
+   via ACS, but FGA removes their only route into the lens — so they cannot inspect the
+   invalidated agreement's history or initiate a replacement CCLA. Signed-but-unapproved
+   is precisely the state in which a manager most needs the surface.
+
+   The consequence is that the tuple set is **not** identical to §2's active-CCLA
+   population: it is the slightly larger "has ever signed, ACL intact" set. That
+   divergence is intentional and must be stated wherever the two numbers are compared.
+
+   With this gate, the designee case still resolves cleanly: a designee's job is the
    pre-signing window (initiate DocuSign), which runs on the unscoped Sign CLA flow, not
    inside an org's lens, and the moment they have something to see in the lens (a signed
    CCLA) is the moment the gate opens for the ACL entry v4 already wrote for them.
-3. **Signatory lens access** — no M3 work: signatories have no console access today
-   (email-only DocuSign interaction; the `cla-signatory` ACS role is checked by no
-   endpoint). Proper read access is spec 044's `cla_ccla#signatory` at M5. Do **not**
-   fold signatories into `cla_admin` — the tab would offer manager actions v4 rejects.
+3. **Signatory lens access** — no `cla_admin` tuple, but *not* "no M3 work". Do **not**
+   fold signatories into `cla_admin`: the tab would offer manager actions v4 rejects.
+   Proper read access is spec 044's `cla_ccla#signatory` at M5.
+
+   Two things are nevertheless true of M3 and must not be read away by the paragraph
+   above. First, **M3 ships the signatory flow**: [`spec.md`](../../specs/001-easycla-ss-integration-fable/spec.md)
+   FR-030 puts "CCLA signing initiation (signatory flow, including send-by-email)" in
+   the parity inventory, and [linuxfoundation/lfx-self-serve#2150](https://github.com/linuxfoundation/lfx-self-serve/issues/2150)
+   registers `self_serve_request_corporate_signature:create` with an ACS policy on
+   `cla-manager-designee` **and `cla-signatory`**. So the role does get an M3
+   enforcement point on the write path, even though it gets no FGA relation. Second,
+   FR-031 governs org-lens access by "CLA-manager/signatory authority", which the
+   manager-only selector union does not satisfy.
+
+   The unresolved part is therefore **how a signatory reaches the lens at all**, not
+   whether they may read the agreement once inside (spec 044 computes
+   `cla_ccla#auditor` as `manager or signatory or …`). That is an open Product +
+   Architecture decision tracked in
+   [`m3-org-visibility.md` §4.2](m3-org-visibility.md) and narrowed by §4.5 — if CCLA
+   signing starts from a dedicated CLA landing page rather than the Org Lens, a
+   signatory never needs selector access. It is not decided here, and the claim that
+   the `cla-signatory` ACS role "is checked by no endpoint" describes only today's
+   code: the two current mentions in
+   [`v2/sign/handlers.go:153`](../../cla-backend-go/v2/sign/handlers.go#L153) and
+   [`v2/self_serve_sign/handlers.go:132`](../../cla-backend-go/v2/self_serve_sign/handlers.go#L132)
+   are error-message strings on an org-service lookup failure, not authorization
+   checks — and [lfx-self-serve#2150](https://github.com/linuxfoundation/lfx-self-serve/issues/2150) changes that.
 4. **ACS/FGA parity** — FGA gates the UI, ACS enforces the API, for the whole M3→M5
    bridge period; both are fed by the same v4 write (`signature_acl` synchronous, ACS
    role asynchronous), and disagreement handling remains open item 6 there.
@@ -271,12 +309,22 @@ The ADR should record three things alongside it:
    `ExcludeRelations` change with a deploy-order constraint and regression test, or the
    grant moves to a CLA-owned object. Variant B is not safe to build until this is
    answered.
-2. **An owner for the ACS re-grant.** Under Path B of the org import
-   ([m3-org-visibility.md](m3-org-visibility.md) open item 5), FGA would admit an
-   existing manager while v4 returns 403, because their ACS scope is still pinned to the
-   old company ID. This is currently buried in that open item and needs to be its own
-   tracked work item. Under Path A (the working assumption — IDs are preserved) the
-   problem does not arise, which is another reason to settle Path A/B first.
+2. **The bridge ID-translation contract — and only then an ACS re-grant owner.** Under
+   Path B of the org import ([m3-org-visibility.md](m3-org-visibility.md) open item 5)
+   the lens holds a new B2B SFID while ACS scopes and `company_external_id` still carry
+   the old one. Whether that needs an ACS migration depends entirely on a contract
+   nobody has written down yet:
+
+   - **Bridge translates (new → old) before calling v4** — as
+     [lfx-self-serve#2750](https://github.com/linuxfoundation/lfx-self-serve/issues/2750)
+     describes: requests still match existing ACS scopes, **no re-grant is needed**, and
+     the cost is that every bridged path must translate without exception.
+   - **New ID passed through untranslated** — v4 returns 403 for managers FGA has
+     already admitted, and an ACS-scope migration with a named owner becomes mandatory.
+
+   **Decide and document the boundary contract first**; assign the ACS re-grant owner
+   only if the second option is chosen. Under Path A (the working assumption — IDs are
+   preserved) neither arises, which is a further reason to settle Path A/B first.
 3. **The FGA-vs-ACS disagreement rule**, defined before cutover: what the system does
    when FGA lets someone into the lens but ACS refuses the API call. "FGA gates the UI,
    ACS gates the APIs" describes the split but does not say which wins, what the user
