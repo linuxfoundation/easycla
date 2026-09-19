@@ -127,6 +127,35 @@ own that, the manager grant belongs on a CLA-owned object instead — as §5 not
 CLA-owned type in M3 avoids the reaping problem but reopens the "no CLA types before M5"
 decision the same way Variant A does.
 
+### 4.2 Second blocking constraint: the tuple alone does not reach the consumer
+
+A `cla_admin` tuple is necessary but **not sufficient** — nothing in Self Serve reads it
+today, and two specific gates would still refuse a manager who holds only that tuple.
+Verified in `lfx-self-serve` at the time of writing:
+
+- **The org selector** builds its roster from `b2b_org_settings` `member:<username>`
+  documents and classifies each entry as **`writer` or `auditor` only**
+  ([`org-role-grants.service.ts:401-403`](https://github.com/linuxfoundation/lfx-self-serve/blob/main/apps/lfx-one/src/server/services/org-role-grants.service.ts#L401-L403)).
+  A `cla_admin` grant produces no roster entry, so the org never appears in the picker.
+- **The CLA BFF route** is guarded by `requireOrgLensAccess`
+  ([`org-clas.route.ts`](https://github.com/linuxfoundation/lfx-self-serve/blob/main/apps/lfx-one/src/server/routes/org-clas.route.ts)),
+  which delegates to `assertOrgLensRead`. That helper accepts a roster grant **or** a
+  direct `b2b_org:<uid>#auditor` answer from the authorizer, and nothing else
+  ([`org-lens-read-access.helper.ts`](https://github.com/linuxfoundation/lfx-self-serve/blob/main/apps/lfx-one/src/server/helpers/org-lens-read-access.helper.ts)).
+  A `cla_admin`-only caller gets a 403.
+
+So Variant B needs **three** changes, not one: the relation, a selector
+discovery/materialization path that surfaces `cla_admin` orgs into the picker, and a
+CLA-route-specific `cla_admin` gate **that retains the existing auditor gate for non-CLA
+lens routes** — a CLA manager must not thereby acquire read access to meetings, ROI or
+the people roster, which is exactly the "never grant org-wide read to CLA managers"
+constraint in §2.
+
+This does not sink Variant B, but it does change the comparison in §7: the "one relation
+versus four types" framing understates Variant B's cost, because the consumer-side work
+is real and lands in a third repo. It must be weighed against Variant A with these items
+included on Variant B's side of the ledger.
+
 ## 5. Explicitly out of scope for this model
 
 Unchanged open items — this proposal solves none of them, under either model shape:
@@ -300,12 +329,13 @@ four CLA types moved to the M5 ADR where they become enforcing.
 **Proposed form of the decision**, so the "no CLA types before M5" reopen is explicitly
 scoped rather than implied:
 
-> **Variant B (single `cla_admin` relation) for M3, conditional on §4.1 being resolved;
+> **Variant B (single `cla_admin` relation) for M3, conditional on §4.1 and §4.2 being resolved;
 > Variant A (dedicated CLA types) for M5.**
 
 The ADR should record three things alongside it:
 
-1. **The §4.1 owner and resolution** — either member-service accepts the
+1. **The §4.1 owner and resolution** (and, with it, the §4.2 consumer-side work — selector
+   materialization plus a CLA-route gate, which lands in `lfx-self-serve`) — either member-service accepts the
    `ExcludeRelations` change with a deploy-order constraint and regression test, or the
    grant moves to a CLA-owned object. Variant B is not safe to build until this is
    answered.
@@ -324,7 +354,12 @@ The ADR should record three things alongside it:
 
    **Decide and document the boundary contract first**; assign the ACS re-grant owner
    only if the second option is chosen. Under Path A (the working assumption — IDs are
-   preserved) neither arises, which is a further reason to settle Path A/B first.
+   preserved) neither arises **for companies that store a real old-org SFID**, which is
+   a further reason to settle Path A/B first. Path A is not a blanket exemption: the
+   530 `lf`-shaped IDs have no Salesforce record to preserve, and the 374 domain-linked
+   orgs point at a B2B account whose ID differs from the stored value
+   ([m3-org-visibility.md](m3-org-visibility.md) §2.1 and §2.3). Both sets need a rewrite
+   or translation under either path, and both therefore still need an owner.
 3. **The FGA-vs-ACS disagreement rule**, defined before cutover: what the system does
    when FGA lets someone into the lens but ACS refuses the API call. "FGA gates the UI,
    ACS gates the APIs" describes the split but does not say which wins, what the user
