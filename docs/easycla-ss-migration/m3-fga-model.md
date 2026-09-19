@@ -39,8 +39,13 @@ One new relation on the existing org type. No new object types in M3.
 type b2b_org
   relations
     ...existing (writer, auditor, ...)
-    define cla_admin: [user]          # working name; "cla_manager" also fits
+    define cla_admin: [user]
 ```
+
+The relation is named **`cla_admin`** throughout this document and that is the name
+proposed for the ADR. `cla_manager` was the alternative but is rejected: it collides
+with the existing ACS `cla-manager` role, and the two are deliberately not the same
+thing — the tuple is projected from `signature_acl`, not from the ACS role (§3).
 
 | Question | Answered by | How |
 |---|---|---|
@@ -85,22 +90,66 @@ read authorization on the query plane, at M5. Nothing in M3 uses them:
 tuples are projections — migrating is a re-backfill from `signature_acl`, not a data
 migration.
 
-**Side benefit**: the relation sits on whatever org object exists, so the M3 model no
-longer depends on the open "EasyCLA orgs become B2B Salesforce accounts" decision
-([linuxfoundation/easycla#5210](https://github.com/linuxfoundation/easycla/pull/5210)).
+**Model shape, not independence**: the relation is defined on a specific object type.
+As drafted that is `b2b_org`, which means the model still requires each EasyCLA company
+to be represented by a B2B organization — without that record there is nothing to attach
+the relation to. The earlier claim that this made M3 independent of the "EasyCLA orgs
+become B2B Salesforce accounts" decision
+([linuxfoundation/easycla#5210](https://github.com/linuxfoundation/easycla/pull/5210))
+overstated it: what the single relation avoids is new *CLA object types*, not the org
+record itself. Treat the B2B org record as a **precondition** of this model.
+
+### 4.1 Blocking constraint: `b2b_org` tuples are reaped by member-service
+
+**A `cla_admin` relation placed on `b2b_org` would be silently deleted**, and this must
+be resolved before Variant B can be chosen. Verified in code:
+
+- member-service publishes an `update_access` FGA message on every `b2b_org` create and
+  update, from three paths — the writer orchestrator, the CDC (Salesforce change feed)
+  consumer, and the org-settings writer — plus `/admin/reindex` and backfill
+  ([`internal/service/messaging.go` `BuildB2BOrgFGAMessage`](https://github.com/linuxfoundation/lfx-v2-member-service/blob/main/internal/service/messaging.go)).
+- fga-sync treats that message as a **full sync** of the object: `SyncObjectTuples`
+  reads every live tuple on the object and deletes any not in the desired set
+  ([`fga.go` `SyncObjectTuples`](https://github.com/linuxfoundation/lfx-v2-fga-sync/blob/main/fga.go)).
+- Only two things survive a relation the publisher does not know about: membership in
+  the message's `ExcludeRelations` list, or a `team:`-prefixed subject. `cla_admin`
+  tuples carry `user:` subjects, so **neither applies**. The current exclude list is
+  hardcoded to `parent`, `child`, and conditionally `global_org_admin`, `membership`,
+  `writer`, `auditor`.
+
+The failure mode is silent: managers lose lens access on the next unrelated org update,
+with no error surfaced anywhere. Making Variant B safe therefore requires a
+**member-service change** (add `cla_admin` to `ExcludeRelations` on every publish path),
+a **deploy-order constraint** (that change ships before any tuple backfill), and a
+**regression test** that an org update preserves CLA tuples. If member-service will not
+own that, the manager grant belongs on a CLA-owned object instead — as §5 notes, a single
+CLA-owned type in M3 avoids the reaping problem but reopens the "no CLA types before M5"
+decision the same way Variant A does.
 
 ## 5. Explicitly out of scope for this model
 
 Unchanged open items — this proposal solves none of them, under either model shape:
 
 1. **CLA-only view** — UI work to hide membership sections for `cla_admin`-only users.
-2. **Designees** — `cla-manager-designee` exists only in ACS, with no `signature_acl`
-   entry before the CCLA is signed, so no tuple can be projected — and none is needed:
-   a designee's only job is the pre-signing window (initiate DocuSign), which runs on the
-   unscoped Sign CLA flow, not inside an org's lens. The moment they have something to
-   see in the lens (a signed CCLA) is the moment `signature_acl` — and therefore their
-   `cla_admin` tuple — exists, because v4 writes the initiating designee as the ACL's
-   sole initial entry ([sign/service.go:2949](../../cla-backend-go/v2/sign/service.go#L2949)).
+2. **Designees — and the pre-signing window.** The `cla-manager-designee` role itself
+   exists only in ACS. But the earlier claim that there is "no `signature_acl` entry
+   before the CCLA is signed" is **wrong**, and the projection must account for it: v4
+   creates the CCLA row with `SignatureSigned: false` and writes the initiating user's
+   LFID into `SignatureACL` on that same row
+   ([sign/service.go:2941 and :2953](../../cla-backend-go/v2/sign/service.go#L2941)),
+   persisting it via `populateSignURL`. A projection keyed on "appears in
+   `signature_acl`" would therefore grant lens access to a **pending, unsigned** CCLA.
+
+   **Therefore the projector gates on the active state, not on ACL membership alone:**
+   project a `cla_admin` tuple only while the signature is `signature_signed = true`
+   **and** `signature_approved = true`, and remove it when the company's last CCLA in
+   that state exits it. This is the same active-CCLA predicate §2 uses for counting, so
+   the tuple set and the population figures stay consistent by construction.
+
+   With that gate, the designee case resolves cleanly: a designee's job is the
+   pre-signing window (initiate DocuSign), which runs on the unscoped Sign CLA flow, not
+   inside an org's lens, and the moment they have something to see in the lens (a signed
+   CCLA) is the moment the gate opens for the ACL entry v4 already wrote for them.
 3. **Signatory lens access** — no M3 work: signatories have no console access today
    (email-only DocuSign interaction; the `cla-signatory` ACS role is checked by no
    endpoint). Proper read access is spec 044's `cla_ccla#signatory` at M5. Do **not**
@@ -117,7 +166,19 @@ Reads and writes sit at different widths:
 | Tier | Gate | Effective scope |
 |---|---|---|
 | **Read / list** | `IsUserAuthorizedForOrganization(..., ALLOW_ADMIN_SCOPE)` | **Company-wide** |
-| **Write / manage** | `IsUserAuthorizedForProjectOrganizationTree(..., DISALLOW_ADMIN_SCOPE)`, then `CurrentUserInACL` on the signature | **Per CLA group**, twice over |
+| **Write — approval list / signature** | `IsUserAuthorizedForProjectOrganizationTree(..., DISALLOW_ADMIN_SCOPE)`, **then** `CurrentUserInACL` on the signature | **Per CLA group**, twice over |
+| **Write — CLA-manager administration** | `IsUserAuthorizedForProjectOrganizationTree(..., DISALLOW_ADMIN_SCOPE)` **only** | **Per CLA group**, once |
+
+The two write rows are not interchangeable. `CurrentUserInACL` is applied at exactly two
+call sites in the backend — both on the approval-list/signature path
+([`signatures/service.go:523`](../../cla-backend-go/signatures/service.go#L523),
+[`v2/signatures/handlers.go:1499`](../../cla-backend-go/v2/signatures/handlers.go#L1499)).
+CLA-manager create and delete enforce the project|organization tree and nothing else
+([`v2/cla_manager/handlers.go:65`](../../cla-backend-go/v2/cla_manager/handlers.go#L65),
+[`:122`](../../cla-backend-go/v2/cla_manager/handlers.go#L122)), so a manager scoped to a
+CLA group can add or remove managers there without being in any signature's ACL. An M5
+parity model must preserve this endpoint-specific difference rather than applying the
+stricter ACL rule uniformly.
 
 The read tier is company-wide because the shared scope matcher accepts a
 `project|organization` scope on its **organization half alone**, ignoring the project
@@ -197,3 +258,27 @@ giving two systems that can disagree — the parity problem in open item 6 of
 The spec-044 ADR review (open item 3 in
 [m3-org-visibility.md](m3-org-visibility.md) §5): adopt this as the M3 model, with the
 four CLA types moved to the M5 ADR where they become enforcing.
+
+**Proposed form of the decision**, so the "no CLA types before M5" reopen is explicitly
+scoped rather than implied:
+
+> **Variant B (single `cla_admin` relation) for M3, conditional on §4.1 being resolved;
+> Variant A (dedicated CLA types) for M5.**
+
+The ADR should record three things alongside it:
+
+1. **The §4.1 owner and resolution** — either member-service accepts the
+   `ExcludeRelations` change with a deploy-order constraint and regression test, or the
+   grant moves to a CLA-owned object. Variant B is not safe to build until this is
+   answered.
+2. **An owner for the ACS re-grant.** Under Path B of the org import
+   ([m3-org-visibility.md](m3-org-visibility.md) open item 5), FGA would admit an
+   existing manager while v4 returns 403, because their ACS scope is still pinned to the
+   old company ID. This is currently buried in that open item and needs to be its own
+   tracked work item. Under Path A (the working assumption — IDs are preserved) the
+   problem does not arise, which is another reason to settle Path A/B first.
+3. **The FGA-vs-ACS disagreement rule**, defined before cutover: what the system does
+   when FGA lets someone into the lens but ACS refuses the API call. "FGA gates the UI,
+   ACS gates the APIs" describes the split but does not say which wins, what the user
+   sees, or how the drift is reported. Tracked as open item 6 in
+   [m3-org-visibility.md](m3-org-visibility.md) §5.
