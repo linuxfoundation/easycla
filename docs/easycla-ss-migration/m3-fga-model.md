@@ -86,10 +86,15 @@ read authorization on the query plane, at M5. Nothing in M3 uses them:
 | `cla_group` | M5 — project lens does not read CLA data through FGA before then |
 | `cla_ecla`, `cla_icla` | M5 — Me lens works today on in-handler ownership checks, no tuples |
 
-**Cost**: a second FGA model bump at M5, when the per-agreement types replace
-`cla_admin`. Acceptable because the M5 bump happens under spec 044 regardless, and the
-tuples are projections — migrating is a re-backfill from `signature_acl`, not a data
-migration.
+**Cost**: a second FGA model bump at M5, when the per-agreement types land. Acceptable
+because the M5 bump happens under spec 044 regardless, and the tuples are projections —
+migrating is a re-backfill from `signature_acl`, not a data migration.
+
+Note this is **not** settled as a straight replacement. §6 concludes that company-wide
+read has to survive into M5, which needs a per-company relation there too — so the
+per-agreement types may **extend** `cla_admin` (`... or cla_admin from b2b_org`) rather
+than replace it, or replace it with a CLA-owned `cla_company`. Which of those the M5
+model does is part of the open question in §7, and it changes the migration.
 
 **Model shape, not independence**: the relation is defined on a specific object type.
 As drafted that is `b2b_org`, which means the model still requires each EasyCLA company
@@ -172,7 +177,21 @@ Unchanged open items — this proposal solves none of them, under either model s
 
    **Therefore the projector gates on `signature_signed`, and on that alone:** project a
    `cla_admin` tuple once the signature is `signature_signed = true`, and remove it when
-   the ACL entry is removed or the signature is deleted.
+   the ACL entry is removed, the signature is deleted, **or `signature_signed` goes back
+   to `false`**.
+
+   **That last condition is load-bearing, and an ACL-diff-driven projector would miss
+   it.** `ActivateSignature` sets `signature_approved = true` and
+   `signature_signed = false` in one expression, leaving `signature_acl` untouched
+   ([`signatures/repository.go:5749-5760`](../../cla-backend-go/signatures/repository.go#L5749-L5760),
+   called from
+   [`v2/gitlab_organizations/service.go:889`](../../cla-backend-go/v2/gitlab_organizations/service.go#L889)).
+   So a signed CCLA can transition to unsigned with its ACL fully populated. A projector
+   that only reacts to ACL differences — the shape the ACS updater uses — sees no change
+   and strands a `cla_admin` grant on a CCLA that is no longer signed, which is exactly
+   what this section says must not happen. **The projector must watch the
+   `signature_signed` attribute itself, not just the ACL.** Raised by copilot[bot] in
+   review.
 
    **`signature_approved` is deliberately *not* part of the gate**, even though §2's
    counting predicate uses it. Invalidation sets `signature_approved = false` and the
