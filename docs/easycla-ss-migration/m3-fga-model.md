@@ -301,6 +301,45 @@ is deliberate, M5's per-agreement read model must **preserve** it rather than na
 `#auditor` has to keep admitting a company's non-manager CLA admins to read its other CLA
 groups. Carry this into the M5 ADR as a requirement on the model, not an open item.
 
+**This requirement is in tension with Variant A's read model, and that tension is
+unresolved.** Raised by Luis Moriguerra in review (2026-09-21). Spec 044 computes
+`cla_ccla#auditor` as `manager or signatory or auditor from b2b_org or auditor from
+cla_group` — a **per-agreement** relation
+([m3-org-visibility.md](m3-org-visibility.md) §4.2). A manager of CLA group X therefore
+gets no read on the same company's sibling group Y unless they hold `b2b_org#auditor`,
+which §4.2 of that document explicitly forbids for CLA managers ("Never org-wide read for
+CLA managers"). So Variant A as written does not satisfy the requirement above, while
+Variant B preserves today's behaviour in M3 through the bridge but defines no M5 read
+model at all. Neither variant, as currently specified, carries company-wide read into M5.
+
+**The gap is not marginal.** Measured read-only against the prod DynamoDB mirror
+(2026-09-21, appendix method): **318 organizations hold more than one signed CCLA group**,
+and within those, **849 of 1,033 manager × org pairs (82%) manage only a subset of their
+organization's groups**. Under Variant A as written, that 82% loses visibility it has
+today. Luis measured 287 orgs and 815 of 980 pairs (83%) with slightly different filters;
+the two derivations agree on the conclusion.
+
+**Grain: per Salesforce org, not per EasyCLA company row.** `GetCompanyClaGroups` resolves
+its rows through `GetCompaniesByExternalID(ctx, companySFID, true)`
+([`v2/company/service.go:1325`](../../cla-backend-go/v2/company/service.go#L1325)), which
+fans out over every company record sharing that SFID — so a single Salesforce org can
+carry multiple signing entities with divergent ACLs. Any per-company read relation has to
+be keyed on the SFID to match what v4 returns today. Luis counts 4 SFIDs carrying multiple
+signing entities, 3 with divergent ACLs across 19 groups.
+
+**Proposed resolution, for the ADR.** Luis's conclusion is that a **per-company CLA read
+relation is needed in both M3 and M5**, which reframes §7's question from "Variant A or
+Variant B" to *where that relation lives*:
+
+- **On `b2b_org`** (`cla_admin`, extended as `... or cla_admin from b2b_org`) — carries
+  §4.1's member-service coupling forward into M5.
+- **On a CLA-owned object** (`cla_company#manager`, extended as `... or manager from
+  cla_company`) — no member-service coupling, but adds a type and reopens P2's "no CLA
+  object types before M5" on its own terms.
+
+Not decided here. This is for the spec-044 ADR review (§7), which is the venue that can
+settle it.
+
 **Rejected alternative: filter the list per CLA group in v4.** Considered — the response
 already carries `claManagers` per row from `signature_acl`
 ([`v2/company/service.go:1522`](../../cla-backend-go/v2/company/service.go#L1522)), so
@@ -331,6 +370,14 @@ scoped rather than implied:
 
 > **Variant B (single `cla_admin` relation) for M3, conditional on §4.1 and §4.2 being resolved;
 > Variant A (dedicated CLA types) for M5.**
+
+**This form may be the wrong shape of question.** §6 records a tension neither variant
+resolves: Variant A's per-agreement read model does not preserve the company-wide read
+Product has confirmed as intended, and Variant B defines no M5 read model at all. If the
+ADR accepts that a per-company CLA read relation is needed in both milestones, the
+decision becomes *where that relation lives* — on `b2b_org` or on a CLA-owned object —
+rather than a choice between the two variants. The recommendation above stands as the
+starting position; §6 states what would displace it.
 
 The ADR should record three things alongside it:
 
