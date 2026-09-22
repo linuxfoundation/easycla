@@ -158,14 +158,22 @@ the cla-groups endpoint above (which only carries it once the company has a CCLA
 Self Serve front door for starting a CCLA signing session. Input = the corporate-console
 `corporate-signature-input` fields (`project_sfid`, `company_sfid`, optional
 `signing_entity_name`, `send_as_email`, `authority_name`, `authority_email`,
-`return_url`) plus two attestation booleans `authority_acked` and `embargo_acked`.
+`return_url`) plus `cla_group_id` and two attestation booleans `authority_acked`
+and `embargo_acked`.
 On self-sign (`send_as_email` absent or false) both attestations must be true — HTTP 400
 before any DocuSign work otherwise. When `send_as_email` is true the attestations are not
-required and `authority_name` plus `authority_email` are required instead.
-With a valid body the request is delegated **verbatim** to the same service method behind
-`/v4/request-corporate-signature` (company/signing-entity resolution, sanctions gate,
-DocuSign envelope, send-by-email signatory flow all unchanged), so behavior and error
-statuses match the console endpoint — with one hardening on top: a `signing_entity_name`
+required and `cla_group_id`, `authority_name` plus `authority_email` are required instead.
+The selected group UUID accepts hyphenated or compact forms, case-insensitively.
+A missing group on email or a group that does not match the project's signing group returns
+HTTP 400. Self-sign may omit the field for compatibility, but a supplied group is always
+checked. The shared signer checks its own final project-to-group resolution before preparing
+the signatory or creating an envelope, so a mapping changed after the wrapper's lookup
+cannot send a different group's agreement
+([linuxfoundation/lfx-self-serve#2679](https://github.com/linuxfoundation/lfx-self-serve/issues/2679)).
+With a valid body the existing corporate fields are passed unchanged to the shared signing
+implementation behind `/v4/request-corporate-signature` (company/signing-entity resolution,
+sanctions gate, DocuSign envelope and send-by-email signatory flow remain the same).
+The console endpoint does not acquire the Self Serve group requirement. A `signing_entity_name`
 resolving to a company whose SFID differs from `company_sfid` is rejected with HTTP 403
 before delegation. A company blocked for trade compliance is rejected — on this endpoint
 and on `/v4/request-corporate-signature` alike — with the typed 403 body described under
@@ -179,6 +187,11 @@ disallowed (ACS resource `self_serve_request_corporate_signature`, action `creat
 Probe: `utils/self_serve_request_corporate_signature.sh` — **a 200 creates a real
 DocuSign envelope**; attestation/auth probes expect 400/403 and were verified against the
 dev tables, but a failure status alone does not prove the absence of side effects.
+
+Deploy the Self Serve consumer sending `cla_group_id` on both signing modes before deploying
+the email requirement. Older producers ignore that extra field; keep the consumer's response
+group check during rollout and as defense in depth. An old email caller that omits the field
+is intentionally rejected after the producer update.
 
 ## Managers & acknowledgments write ops ([lfx-self-serve#2151](https://github.com/linuxfoundation/lfx-self-serve/issues/2151))
 

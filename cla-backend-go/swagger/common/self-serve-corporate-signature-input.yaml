@@ -4,11 +4,15 @@
 type: object
 x-nullable: false
 title: Self Serve Corporate Signature Input
-description: The corporate signature request started from LFX Self Serve - the corporate-signature-input fields plus the two Self Serve attestations. Both attestations must be true on self-sign; when send_as_email is true they are not required and authority_name plus authority_email are required instead
+description: The corporate signature request started from LFX Self Serve - the corporate-signature-input fields plus the selected CLA group and two Self Serve attestations. Both attestations must be true on self-sign; when send_as_email is true they are not required and cla_group_id, authority_name and authority_email are required instead. A selected CLA group that does not match the project's signing group is rejected before creating or emailing a signing envelope
 required:
   - project_sfid
   - company_sfid
 properties:
+  cla_group_id:
+    type: string
+    example: 'aa47b3e1-6f9c-4b6a-9f16-0f9d6a2e1c11'
+    description: The CLA Group UUID selected in Self Serve, in hyphenated or compact form, case-insensitive. Required when send_as_email is true; optional on self-sign for compatibility. When provided it must match the CLA group actually used to sign for project_sfid, otherwise the request fails with HTTP 400 before signing side effects
   project_sfid:
     type: string
     example: 'a0941000005ouJFAAY'
@@ -24,7 +28,7 @@ properties:
   send_as_email:
     type: boolean
     example: false
-    description: send signing request as email. Set to true when the requestor is not the signatory - then authority_name and authority_email are required and the attestations are not
+    description: send signing request as email. Set to true when the requestor is not the signatory - then cla_group_id, authority_name and authority_email are required and the attestations are not
   authority_name:
     type: string
     example: "Derk Miyamoto"
