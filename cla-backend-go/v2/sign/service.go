@@ -344,14 +344,17 @@ func (s *service) requestCorporateSignatureWithExpectedCLAGroup(ctx context.Cont
 		}
 		claGroups := utils.NewStringSet()
 		for _, cg := range cgmlist {
+			// ensure that cla group for project is a foundation level cla group
+			if cg.ProjectSFID != utils.StringValue(input.ProjectSfid) {
+				continue
+			}
 			claGroup, claGroupErr := s.claGroupService.GetCLAGroup(ctx, cg.ClaGroupID)
 			if claGroupErr != nil {
 				log.WithFields(f).WithError(claGroupErr).Warn("unable to lookup cla group")
 				return nil, claGroupErr
 			}
 
-			// ensure that cla group for project is a foundation level cla group
-			if claGroup != nil && cg.ProjectSFID == utils.StringValue(input.ProjectSfid) {
+			if claGroup != nil {
 				claGroups.Add(cg.ClaGroupID)
 			}
 		}

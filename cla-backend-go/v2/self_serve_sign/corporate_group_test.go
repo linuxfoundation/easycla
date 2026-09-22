@@ -75,6 +75,7 @@ type signingGroups struct {
 	cla_groups.Service
 	groups       map[string]*v1Models.ClaGroup
 	lookupErrors map[string]error
+	lookups      []string
 }
 
 func (r *signingGroups) GetCLAGroupByID(_ context.Context, id string, _ bool) (*v1Models.ClaGroup, error) {
@@ -82,6 +83,7 @@ func (r *signingGroups) GetCLAGroupByID(_ context.Context, id string, _ bool) (*
 }
 
 func (r *signingGroups) GetCLAGroup(_ context.Context, id string) (*v1Models.ClaGroup, error) {
+	r.lookups = append(r.lookups, id)
 	if err := r.lookupErrors[id]; err != nil {
 		return nil, err
 	}
@@ -250,6 +252,7 @@ func TestCorporateSigningCLAGroupBinding(t *testing.T) {
 	foundationLookupErr := errors.New("foundation mapping lookup failed")
 	groupLookupErr := errors.New("CLA group lookup failed")
 	groupNotFoundErr := &utils.CLAGroupNotFound{CLAGroupID: testCLAGroupID}
+	childGroupNotFoundErr := &utils.CLAGroupNotFound{CLAGroupID: otherCLAGroupID}
 
 	testCases := []struct {
 		name              string
@@ -257,6 +260,7 @@ func TestCorporateSigningCLAGroupBinding(t *testing.T) {
 		resolutions       []string
 		root              bool
 		rootGroups        []string
+		childGroupID      string
 		foundationErr     error
 		groupLookupErrors map[string]error
 		childMappingOnly  bool
@@ -307,6 +311,30 @@ func TestCorporateSigningCLAGroupBinding(t *testing.T) {
 		{
 			name:     "foundation resolution selects the same group",
 			selected: testCLAGroupID, resolutions: []string{testCLAGroupID}, root: true, rootGroups: []string{testCLAGroupID},
+			wantGroup: testCLAGroupID, wantResolutions: 1,
+		},
+		{
+			name:     "foundation ignores failed child mapping before the root",
+			selected: testCLAGroupID, resolutions: []string{testCLAGroupID}, root: true, rootGroups: []string{otherCLAGroupID, testCLAGroupID},
+			childGroupID: otherCLAGroupID, groupLookupErrors: map[string]error{otherCLAGroupID: groupLookupErr},
+			wantGroup: testCLAGroupID, wantResolutions: 1,
+		},
+		{
+			name:     "foundation ignores failed child mapping after the root",
+			selected: testCLAGroupID, resolutions: []string{testCLAGroupID}, root: true, rootGroups: []string{testCLAGroupID, otherCLAGroupID},
+			childGroupID: otherCLAGroupID, groupLookupErrors: map[string]error{otherCLAGroupID: groupLookupErr},
+			wantGroup: testCLAGroupID, wantResolutions: 1,
+		},
+		{
+			name:     "foundation ignores missing child mapping before the root",
+			selected: testCLAGroupID, resolutions: []string{testCLAGroupID}, root: true, rootGroups: []string{otherCLAGroupID, testCLAGroupID},
+			childGroupID: otherCLAGroupID, groupLookupErrors: map[string]error{otherCLAGroupID: childGroupNotFoundErr},
+			wantGroup: testCLAGroupID, wantResolutions: 1,
+		},
+		{
+			name:     "foundation ignores missing child mapping after the root",
+			selected: testCLAGroupID, resolutions: []string{testCLAGroupID}, root: true, rootGroups: []string{testCLAGroupID, otherCLAGroupID},
+			childGroupID: otherCLAGroupID, groupLookupErrors: map[string]error{otherCLAGroupID: childGroupNotFoundErr},
 			wantGroup: testCLAGroupID, wantResolutions: 1,
 		},
 		{
@@ -372,6 +400,30 @@ func TestCorporateSigningCLAGroupBinding(t *testing.T) {
 			wantGroup: testCLAGroupID,
 		},
 		{
+			name: "legacy foundation ignores failed child mapping before the root",
+			root: true, rootGroups: []string{otherCLAGroupID, testCLAGroupID}, legacy: true,
+			childGroupID: otherCLAGroupID, groupLookupErrors: map[string]error{otherCLAGroupID: groupLookupErr},
+			wantGroup: testCLAGroupID,
+		},
+		{
+			name: "legacy foundation ignores failed child mapping after the root",
+			root: true, rootGroups: []string{testCLAGroupID, otherCLAGroupID}, legacy: true,
+			childGroupID: otherCLAGroupID, groupLookupErrors: map[string]error{otherCLAGroupID: groupLookupErr},
+			wantGroup: testCLAGroupID,
+		},
+		{
+			name: "legacy foundation ignores missing child mapping before the root",
+			root: true, rootGroups: []string{otherCLAGroupID, testCLAGroupID}, legacy: true,
+			childGroupID: otherCLAGroupID, groupLookupErrors: map[string]error{otherCLAGroupID: childGroupNotFoundErr},
+			wantGroup: testCLAGroupID,
+		},
+		{
+			name: "legacy foundation ignores missing child mapping after the root",
+			root: true, rootGroups: []string{testCLAGroupID, otherCLAGroupID}, legacy: true,
+			childGroupID: otherCLAGroupID, groupLookupErrors: map[string]error{otherCLAGroupID: childGroupNotFoundErr},
+			wantGroup: testCLAGroupID,
+		},
+		{
 			name: "legacy foundation with no mappings fails explicitly",
 			root: true, legacy: true,
 			wantErr: projects_cla_groups.ErrProjectNotAssociatedWithClaGroup,
@@ -417,7 +469,7 @@ func TestCorporateSigningCLAGroupBinding(t *testing.T) {
 			mappings := &signingMappings{resolutions: tc.resolutions, projectSFID: projectSFID, foundationErr: tc.foundationErr}
 			for _, groupID := range tc.rootGroups {
 				mappedProject := projectSFID
-				if tc.childMappingOnly {
+				if tc.childMappingOnly || groupID == tc.childGroupID {
 					mappedProject = "child-project"
 				}
 				mappings.foundation = append(mappings.foundation, &projects_cla_groups.ProjectClaGroup{ProjectSFID: mappedProject, ClaGroupID: groupID})
@@ -472,6 +524,11 @@ func TestCorporateSigningCLAGroupBinding(t *testing.T) {
 			}
 
 			assert.Equal(t, tc.wantResolutions, mappings.calls)
+			if tc.childMappingOnly {
+				assert.Empty(t, groups.lookups, "child-only mappings must not trigger CLA group lookups")
+			} else if tc.childGroupID != "" {
+				assert.Equal(t, []string{tc.wantGroup}, groups.lookups, "only the root project's CLA group may be looked up")
+			}
 			if tc.wantErr != nil || tc.wantText != "" {
 				assert.Empty(t, signatureID)
 				assert.Empty(t, transport.envelopes)
