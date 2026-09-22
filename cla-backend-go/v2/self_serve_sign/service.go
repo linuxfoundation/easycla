@@ -16,6 +16,7 @@ import (
 
 	goapierrors "github.com/go-openapi/errors"
 	"github.com/go-openapi/strfmt"
+	"github.com/gofrs/uuid"
 	githubsdk "github.com/google/go-github/v37/github"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
@@ -25,6 +26,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/user"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/my_clas"
+	v2Sign "github.com/linuxfoundation/easycla/cla-backend-go/v2/sign"
 	"github.com/sirupsen/logrus"
 )
 
@@ -89,7 +91,7 @@ type StoreRepository interface {
 
 // CorporateSignService is the subset of the v2 sign service used to request the corporate signature
 type CorporateSignService interface {
-	RequestCorporateSignature(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error)
+	RequestCorporateSignatureForCLAGroup(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput, expectedCLAGroupID string) (*models.CorporateSignatureOutput, error)
 }
 
 // CompanyRepository is the subset of the company repository used to resolve the signing company ahead of delegation
@@ -238,11 +240,11 @@ func (s *service) PrepareSign(ctx context.Context, caller *my_clas.Caller, curre
 }
 
 // RequestCorporateSignature verifies both Self Serve attestations on self-sign, requires the
-// named signatory when sending by email, resolves the signing company and the CLA group of
-// the project - rejecting a signing entity that belongs to a different company than the one
-// the caller is authorized for - delegates the request verbatim to the shared corporate
-// signing service, and echoes the identifiers of the created signature
+// named signatory and selected CLA group when sending by email, resolves the signing company
+// and project mapping, and delegates to the shared signer bound to that group. A foreign signing
+// entity or mismatched group is rejected before delegation.
 func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername, authorizationHeader string, input *models.SelfServeCorporateSignatureInput) (*models.SelfServeCorporateSignatureOutput, error) {
+	claGroupID := strings.TrimSpace(input.ClaGroupID)
 	f := logrus.Fields{
 		"functionName":      "v2.self_serve_sign.service.RequestCorporateSignature",
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
@@ -251,9 +253,14 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername, aut
 		"companySFID":       utils.StringValue(input.CompanySfid),
 		"signingEntityName": input.SigningEntityName,
 		"sendAsEmail":       input.SendAsEmail,
+		"claGroupID":        claGroupID,
 	}
 
 	if input.SendAsEmail {
+		if claGroupID == "" {
+			log.WithFields(f).Warn(v2Sign.ErrCLAGroupRequired.Error())
+			return nil, v2Sign.ErrCLAGroupRequired
+		}
 		if strings.TrimSpace(input.AuthorityName) == "" || strings.TrimSpace(input.AuthorityEmail.String()) == "" {
 			log.WithFields(f).Warn(ErrSignatoryRequired.Error())
 			return nil, ErrSignatoryRequired
@@ -261,6 +268,14 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername, aut
 	} else if !input.AuthorityAcked || !input.EmbargoAcked {
 		log.WithFields(f).Warn(ErrAttestationRequired.Error())
 		return nil, ErrAttestationRequired
+	}
+	if claGroupID != "" {
+		selected, parseErr := uuid.FromString(claGroupID)
+		if parseErr != nil {
+			log.WithFields(f).WithError(parseErr).Warn(v2Sign.ErrCLAGroupMismatch.Error())
+			return nil, v2Sign.ErrCLAGroupMismatch
+		}
+		claGroupID = selected.String()
 	}
 
 	var comp *v1Models.Company
@@ -286,15 +301,19 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername, aut
 	}
 
 	pcg, err := s.projectsClaGroupsRepo.GetClaGroupIDForProject(ctx, utils.StringValue(input.ProjectSfid))
-	if err == nil && pcg == nil {
+	if err == nil && (pcg == nil || strings.TrimSpace(pcg.ClaGroupID) == "") {
 		err = projects_cla_groups.ErrProjectNotAssociatedWithClaGroup
 	}
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to resolve the cla group of the project")
 		return nil, err
 	}
+	if claGroupID != "" && claGroupID != pcg.ClaGroupID {
+		log.WithFields(f).WithField("resolvedCLAGroupID", pcg.ClaGroupID).Warn(v2Sign.ErrCLAGroupMismatch.Error())
+		return nil, v2Sign.ErrCLAGroupMismatch
+	}
 
-	signature, err := s.corporateSignService.RequestCorporateSignature(ctx, lfUsername, authorizationHeader, &models.CorporateSignatureInput{
+	signature, err := s.corporateSignService.RequestCorporateSignatureForCLAGroup(ctx, lfUsername, authorizationHeader, &models.CorporateSignatureInput{
 		ProjectSfid:       input.ProjectSfid,
 		CompanySfid:       input.CompanySfid,
 		SigningEntityName: input.SigningEntityName,
@@ -302,7 +321,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername, aut
 		AuthorityName:     input.AuthorityName,
 		AuthorityEmail:    input.AuthorityEmail,
 		ReturnURL:         input.ReturnURL,
-	})
+	}, pcg.ClaGroupID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to request the corporate signature")
 		return nil, err

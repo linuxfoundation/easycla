@@ -84,6 +84,7 @@ func Configure(api *operations.EasyclaAPI, service Service, callerVerifier my_cl
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"projectSFID":    utils.StringValue(params.Input.ProjectSfid),
 				"companySFID":    utils.StringValue(params.Input.CompanySfid),
+				"claGroupID":     params.Input.ClaGroupID,
 				"authUserName":   utils.StringValue(params.XUSERNAME),
 				"authUserEmail":  utils.StringValue(params.XEMAIL),
 			}
@@ -106,14 +107,15 @@ func Configure(api *operations.EasyclaAPI, service Service, callerVerifier my_cl
 }
 
 // requestCorporateSignatureError maps the errors of the shared corporate signing service to the
-// same statuses as /v4/request-corporate-signature, plus the Self Serve attestation error
+// same statuses as /v4/request-corporate-signature, plus the Self Serve input errors
 func requestCorporateSignatureError(reqID string, err error) middleware.Responder {
 	var sanctionedErr *utils.SanctionedCompanyError
 	if errors.As(err, &sanctionedErr) {
 		return utils.CompanySanctionedResponder(reqID, sanctionedErr)
 	}
 	switch {
-	case errors.Is(err, ErrAttestationRequired), errors.Is(err, ErrSignatoryRequired):
+	case errors.Is(err, ErrAttestationRequired), errors.Is(err, ErrSignatoryRequired),
+		errors.Is(err, v2Sign.ErrCLAGroupRequired), errors.Is(err, v2Sign.ErrCLAGroupMismatch):
 		return selfServeSignOps.NewSelfServeRequestCorporateSignatureBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, err.Error()))
 	case errors.Is(err, ErrSigningEntityMismatch):
 		return selfServeSignOps.NewSelfServeRequestCorporateSignatureForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, err.Error()))

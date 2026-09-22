@@ -71,6 +71,8 @@ const (
 var (
 	ErrCCLANotEnabled        = errors.New("corporate license agreement is not enabled with this project")
 	ErrTemplateNotConfigured = errors.New("cla template not configured for this project")
+	ErrCLAGroupRequired      = errors.New("cla_group_id is required")
+	ErrCLAGroupMismatch      = errors.New("cla_group_id does not match the project's signing CLA group")
 	ErrNotInOrg              error
 	ErrIclaInvalidated       = errors.New("an individual CLA for this CLA Group was invalidated by an administrator - signing a new individual CLA for this CLA Group is not permitted")
 )
@@ -92,6 +94,7 @@ type Service interface {
 
 	ClearCaches(ctx context.Context) (*models.ClearCacheOutput, error)
 	RequestCorporateSignature(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error)
+	RequestCorporateSignatureForCLAGroup(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput, expectedCLAGroupID string) (*models.CorporateSignatureOutput, error)
 	RequestIndividualSignature(ctx context.Context, input *models.IndividualSignatureInput, preferredEmail string) (*models.IndividualSignatureOutput, error)
 	RequestIndividualSignatureGerrit(ctx context.Context, input *models.IndividualSignatureInput) (*models.IndividualSignatureOutput, error)
 	SignedIndividualCallbackGithub(ctx context.Context, payload []byte, installationID, changeRequestID, repositoryID string) error
@@ -217,18 +220,37 @@ func (s *service) ClearCaches(ctx context.Context) (*models.ClearCacheOutput, er
 	}, nil
 }
 
-func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error) { // nolint
+func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error) {
+	return s.requestCorporateSignatureWithExpectedCLAGroup(ctx, lfUsername, authorizationHeader, input, "")
+}
+
+// RequestCorporateSignatureForCLAGroup binds a Self Serve request to the selected group while
+// retaining the console's project-resolution rules. The legacy entrypoint has no such expectation.
+func (s *service) RequestCorporateSignatureForCLAGroup(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput, expectedCLAGroupID string) (*models.CorporateSignatureOutput, error) {
+	expectedCLAGroupID = strings.TrimSpace(expectedCLAGroupID)
+	if expectedCLAGroupID == "" {
+		log.WithFields(logrus.Fields{
+			"functionName":   "sign.RequestCorporateSignatureForCLAGroup",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		}).Warn(ErrCLAGroupRequired.Error())
+		return nil, ErrCLAGroupRequired
+	}
+	return s.requestCorporateSignatureWithExpectedCLAGroup(ctx, lfUsername, authorizationHeader, input, expectedCLAGroupID)
+}
+
+func (s *service) requestCorporateSignatureWithExpectedCLAGroup(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput, expectedCLAGroupID string) (*models.CorporateSignatureOutput, error) { // nolint
 	f := logrus.Fields{
-		"functionName":      "sign.RequestCorporateSignature",
-		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
-		"lfUsername":        lfUsername,
-		"projectSFID":       input.ProjectSfid,
-		"companySFID":       input.CompanySfid,
-		"signingEntityName": input.SigningEntityName,
-		"authorityName":     input.AuthorityName,
-		"authorityEmail":    input.AuthorityEmail.String(),
-		"sendAsEmail":       input.SendAsEmail,
-		"returnURL":         input.ReturnURL,
+		"functionName":       "sign.RequestCorporateSignature",
+		utils.XREQUESTID:     ctx.Value(utils.XREQUESTID),
+		"lfUsername":         lfUsername,
+		"projectSFID":        input.ProjectSfid,
+		"companySFID":        input.CompanySfid,
+		"signingEntityName":  input.SigningEntityName,
+		"authorityName":      input.AuthorityName,
+		"authorityEmail":     input.AuthorityEmail.String(),
+		"sendAsEmail":        input.SendAsEmail,
+		"returnURL":          input.ReturnURL,
+		"expectedCLAGroupID": expectedCLAGroupID,
 	}
 
 	/**
@@ -313,7 +335,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		// this is root project
 		cgmlist, perr := s.projectClaGroupsRepo.GetProjectsIdsForFoundation(ctx, utils.StringValue(input.ProjectSfid))
 		if perr != nil {
-			log.WithFields(f).WithError(err).Warn("unable to lookup other projects associated with this project SFID")
+			log.WithFields(f).WithError(perr).Warn("unable to lookup other projects associated with this project SFID")
 			return nil, perr
 		}
 		if len(cgmlist) == 0 {
@@ -322,14 +344,17 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		}
 		claGroups := utils.NewStringSet()
 		for _, cg := range cgmlist {
+			// ensure that cla group for project is a foundation level cla group
+			if cg.ProjectSFID != utils.StringValue(input.ProjectSfid) {
+				continue
+			}
 			claGroup, claGroupErr := s.claGroupService.GetCLAGroup(ctx, cg.ClaGroupID)
-			if err != nil {
+			if claGroupErr != nil {
 				log.WithFields(f).WithError(claGroupErr).Warn("unable to lookup cla group")
-				return nil, err
+				return nil, claGroupErr
 			}
 
-			// ensure that cla group for project is a foundation level cla group
-			if claGroup != nil && cg.ProjectSFID == utils.StringValue(input.ProjectSfid) {
+			if claGroup != nil {
 				claGroups.Add(cg.ClaGroupID)
 			}
 		}
@@ -339,6 +364,13 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 			// so we can not determine which cla-group to use
 			return nil, errors.New("invalid project_sfid. multiple cla-groups are associated with this project_sfid")
 		}
+		if claGroups.Length() == 0 {
+			if expectedCLAGroupID != "" {
+				log.WithFields(f).Warn(ErrCLAGroupMismatch.Error())
+				return nil, ErrCLAGroupMismatch
+			}
+			return nil, projects_cla_groups.ErrProjectNotAssociatedWithClaGroup
+		}
 		claGroupID = (claGroups.List())[0]
 
 	} else {
@@ -347,15 +379,35 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 			log.WithFields(f).WithError(err).Warn("unable to lookup CLA Group ID for this project SFID")
 			return nil, perr
 		}
+		if expectedCLAGroupID != "" && cgm == nil {
+			log.WithFields(f).Warn(projects_cla_groups.ErrProjectNotAssociatedWithClaGroup.Error())
+			return nil, projects_cla_groups.ErrProjectNotAssociatedWithClaGroup
+		}
 		claGroupID = cgm.ClaGroupID
 	}
 
 	f["claGroupID"] = claGroupID
+	// Validate this resolution, not only the wrapper's earlier lookup: a mapping can change
+	// between the two reads. Everything below must use the group checked here.
+	if expectedCLAGroupID != "" && claGroupID != expectedCLAGroupID {
+		log.WithFields(f).Warn(ErrCLAGroupMismatch.Error())
+		return nil, ErrCLAGroupMismatch
+	}
 	log.WithFields(f).Debug("loading CLA Group by ID...")
 	proj, err := s.projectRepo.GetCLAGroupByID(ctx, claGroupID, DontLoadRepoDetails)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to lookup CLA Group by CLA Group ID")
 		return nil, err
+	}
+	if expectedCLAGroupID != "" {
+		if proj == nil {
+			log.WithFields(f).Warn(projects_cla_groups.ErrCLAGroupDoesNotExist.Error())
+			return nil, projects_cla_groups.ErrCLAGroupDoesNotExist
+		}
+		if proj.ProjectID != expectedCLAGroupID {
+			log.WithFields(f).WithField("resolvedCLAGroupID", proj.ProjectID).Warn(ErrCLAGroupMismatch.Error())
+			return nil, ErrCLAGroupMismatch
+		}
 	}
 	if !proj.ProjectCCLAEnabled {
 		log.WithFields(f).Warn("unable to request corporate signature - CCLA is not enabled for this CLA Group")

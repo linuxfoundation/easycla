@@ -280,17 +280,17 @@ func (f *fakeSelfServeSignService) RequestCorporateSignature(_ context.Context, 
 
 func respondCorporateSignature(t *testing.T, api *operations.EasyclaAPI, authUser *auth.User) (int, string) {
 	t.Helper()
+	return respondCorporateSignatureInput(t, api, authUser, *corporateInput())
+}
+
+func respondCorporateSignatureInput(t *testing.T, api *operations.EasyclaAPI, authUser *auth.User, input models.SelfServeCorporateSignatureInput) (int, string) {
+	t.Helper()
 	require.NotNil(t, api.SelfServeSignSelfServeRequestCorporateSignatureHandler)
 	responder := api.SelfServeSignSelfServeRequestCorporateSignatureHandler.Handle(selfServeSignOps.SelfServeRequestCorporateSignatureParams{
 		HTTPRequest:   httptest.NewRequest(http.MethodPost, "/v4/self-serve/request-corporate-signature", nil),
 		Authorization: "Bearer handler-token",
 		XUSERNAME:     &authUser.UserName,
-		Input: models.SelfServeCorporateSignatureInput{
-			ProjectSfid:    stringRef(testProjectSFID),
-			CompanySfid:    stringRef(testCompanySFID),
-			AuthorityAcked: true,
-			EmbargoAcked:   true,
-		},
+		Input:         input,
 	}, authUser)
 	recorder := httptest.NewRecorder()
 	responder.WriteResponse(recorder, runtime.JSONProducer())
@@ -333,6 +333,12 @@ func TestSelfServeRequestCorporateSignatureHandlerAuth(t *testing.T) {
 			expectedCalls:  0,
 		},
 		{
+			name:           "another project",
+			authUser:       &auth.User{UserName: "other-project-user", ACL: auth.ACL{Allowed: true, Scopes: []auth.Scope{{Type: auth.ProjectOrganization, ID: "a09P000000DsCFAIA3|" + testCompanySFID}}}},
+			expectedStatus: http.StatusForbidden,
+			expectedCalls:  0,
+		},
+		{
 			name:           "organization scope only",
 			authUser:       &auth.User{UserName: "org-user", ACL: auth.ACL{Allowed: true, Scopes: []auth.Scope{{Type: auth.Organization, ID: testCompanySFID}}}},
 			expectedStatus: http.StatusForbidden,
@@ -362,6 +368,7 @@ func TestSelfServeRequestCorporateSignatureHandlerAuth(t *testing.T) {
 				assert.Equal(t, "Bearer handler-token", service.authorization)
 				assert.True(t, service.input.AuthorityAcked)
 				assert.True(t, service.input.EmbargoAcked)
+				assert.Equal(t, testCLAGroupID, service.input.ClaGroupID)
 				var payload map[string]interface{}
 				require.NoError(t, json.Unmarshal([]byte(body), &payload))
 				assert.Equal(t, testSignatureID, payload["signature_id"])
@@ -384,6 +391,9 @@ func TestSelfServeRequestCorporateSignatureHandlerErrorMapping(t *testing.T) {
 	}{
 		{"attestations missing", ErrAttestationRequired, http.StatusBadRequest, "authority_acked and embargo_acked"},
 		{"signatory missing", ErrSignatoryRequired, http.StatusBadRequest, "authority_name and authority_email"},
+		{"selected group missing", v2Sign.ErrCLAGroupRequired, http.StatusBadRequest, "cla_group_id is required"},
+		{"selected group mismatch", v2Sign.ErrCLAGroupMismatch, http.StatusBadRequest, "cla_group_id does not match"},
+		{"selected group mismatch wrapped", fmt.Errorf("signing group changed: %w", v2Sign.ErrCLAGroupMismatch), http.StatusBadRequest, "cla_group_id does not match"},
 		{"signing entity mismatch", ErrSigningEntityMismatch, http.StatusForbidden, "signing entity name does not belong to the provided company SFID"},
 		{"company unknown", errors.New("company does not exist"), http.StatusNotFound, "company does not exist"},
 		{"platform failure", errors.New("internal server error - docusign unavailable"), http.StatusInternalServerError, "internal server error"},
@@ -413,12 +423,50 @@ func TestSelfServeRequestCorporateSignatureHandlerErrorMapping(t *testing.T) {
 	}
 }
 
+func TestSelfServeRequestCorporateSignatureHandlerRejectsEmailGroupBeforeDelegation(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		claGroupID string
+		message    string
+	}{
+		{"omitted", "", v2Sign.ErrCLAGroupRequired.Error()},
+		{"blank", "  ", v2Sign.ErrCLAGroupRequired.Error()},
+		{"different", "62db1b81-6f4a-4b2e-9a4a-0f2d9f0a1b22", v2Sign.ErrCLAGroupMismatch.Error()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := operations.NewEasyclaAPI(nil)
+			corporateSign := &fakeCorporateSign{}
+			companies, mappings := corporateFakes()
+			Configure(api, newCorporateTestService(corporateSign, companies, mappings), nil)
+			input := corporateInput()
+			input.SendAsEmail = true
+			input.AuthorityAcked = false
+			input.EmbargoAcked = false
+			input.AuthorityName = testAuthorityName
+			input.AuthorityEmail = testAuthorityEmail
+			input.ClaGroupID = tc.claGroupID
+
+			status, body := respondCorporateSignatureInput(t, api, projectOrganizationUser("cla-signatory-user"), *input)
+
+			assert.Equal(t, http.StatusBadRequest, status)
+			assert.Contains(t, body, tc.message)
+			assert.Zero(t, corporateSign.calls)
+		})
+	}
+}
+
 func TestSelfServeCorporateSignatureJSONContract(t *testing.T) {
 	inputJSON, err := json.Marshal(&models.SelfServeCorporateSignatureInput{})
 	require.NoError(t, err)
 	for _, key := range []string{"project_sfid", "company_sfid", "authority_acked", "embargo_acked"} {
 		assert.Contains(t, string(inputJSON), `"`+key+`"`)
 	}
+	inputJSON, err = json.Marshal(corporateInput())
+	require.NoError(t, err)
+	assert.Contains(t, string(inputJSON), `"cla_group_id":"`+testCLAGroupID+`"`)
+	var input models.SelfServeCorporateSignatureInput
+	require.NoError(t, json.Unmarshal(inputJSON, &input))
+	assert.Equal(t, testCLAGroupID, input.ClaGroupID)
 
 	outputJSON, err := json.Marshal(&models.SelfServeCorporateSignatureOutput{})
 	require.NoError(t, err)

@@ -5,7 +5,8 @@
 # Calls POST /v4/self-serve/request-corporate-signature through lfx-gateway and reports the HTTP status and total time.
 # WARNING: a 200 response creates a real DocuSign envelope (and sends a signing email when SEND_AS_EMAIL=true) in the targeted environment.
 # PROJECT_SFID (or 1st arg) and COMPANY_SFID (or 2nd arg): required.
-# AUTHORITY_ACKED / EMBARGO_ACKED: default true - set to false to probe the attestation 400 on self-sign (no DocuSign side effects). SEND_AS_EMAIL=true skips that gate; AUTHORITY_NAME and AUTHORITY_EMAIL are required instead.
+# CLA_GROUP_ID: selected CLA group; required with SEND_AS_EMAIL=true, optional on self-sign.
+# AUTHORITY_ACKED / EMBARGO_ACKED: default true - set to false to probe the attestation 400 on self-sign (no DocuSign side effects). SEND_AS_EMAIL=true skips that gate; CLA_GROUP_ID, AUTHORITY_NAME and AUTHORITY_EMAIL are required instead.
 # SIGNING_ENTITY_NAME, SEND_AS_EMAIL, AUTHORITY_NAME, AUTHORITY_EMAIL, RETURN_URL: optional corporate-signature-input passthrough fields.
 # TOKEN: bearer access token (env, or ./self_serve_request_corporate_signature.token.secret / ./auth0.token.secret). Get one with ~/get_oauth_token.sh (dev) or ~/get_oauth_token_prod.sh (prod).
 # STAGE: dev (default) | test | staging | prod - selects the api-gw host.
@@ -67,6 +68,7 @@ fi
 URL="${API_URL}/v4/self-serve/request-corporate-signature"
 
 payload="{\"project_sfid\":\"${PROJECT_SFID}\",\"company_sfid\":\"${COMPANY_SFID}\",\"authority_acked\":${AUTHORITY_ACKED},\"embargo_acked\":${EMBARGO_ACKED}"
+[ -n "$CLA_GROUP_ID" ] && payload="${payload},\"cla_group_id\":\"${CLA_GROUP_ID}\""
 [ -n "$SIGNING_ENTITY_NAME" ] && payload="${payload},\"signing_entity_name\":\"${SIGNING_ENTITY_NAME}\""
 [ "$SEND_AS_EMAIL" = "true" ] && payload="${payload},\"send_as_email\":true"
 [ -n "$AUTHORITY_NAME" ] && payload="${payload},\"authority_name\":\"${AUTHORITY_NAME}\""

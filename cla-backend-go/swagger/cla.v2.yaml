@@ -3005,7 +3005,7 @@ paths:
   /self-serve/request-corporate-signature:
     post:
       summary: Requests and generates a new Corporate Signature from LFX Self Serve
-      description: Creates a new corporate signature given project and company IDs, exactly as /request-corporate-signature does, after verifying the two Self Serve attestations on self-sign - the request is rejected with a 400 unless both authority_acked and embargo_acked are true, except when send_as_email is true, in which case authority_name and authority_email are required instead and the attestations are not. A company blocked for trade compliance is rejected with the typed 403 `company_sanctioned` body described by the 403 response
+      description: Creates a new corporate signature given project and company IDs, exactly as /request-corporate-signature does, after verifying the two Self Serve attestations on self-sign - the request is rejected with a 400 unless both authority_acked and embargo_acked are true, except when send_as_email is true, in which case cla_group_id, authority_name and authority_email are required instead and the attestations are not. Self-sign may omit cla_group_id. Any supplied cla_group_id must match the project's resolved CLA group, including the group actually used by the signing engine; mismatches are rejected with a 400 before a signing envelope is created or emailed. A company blocked for trade compliance is rejected with the typed 403 `company_sanctioned` body described by the 403 response
       operationId: selfServeRequestCorporateSignature
       parameters:
         - $ref: "#/parameters/authorization"
