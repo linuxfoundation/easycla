@@ -442,8 +442,8 @@ func TestSelfServeRequestCorporateSignatureHandlerRejectsEmailGroupBeforeDelegat
 			input.SendAsEmail = true
 			input.AuthorityAcked = false
 			input.EmbargoAcked = false
-			input.AuthorityName = "Alex Contributor"
-			input.AuthorityEmail = "contributor@example.org"
+			input.AuthorityName = testAuthorityName
+			input.AuthorityEmail = testAuthorityEmail
 			input.ClaGroupID = tc.claGroupID
 
 			status, body := respondCorporateSignatureInput(t, api, projectOrganizationUser("cla-signatory-user"), *input)

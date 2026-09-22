@@ -715,6 +715,8 @@ const (
 	testCompanyID       = "9b8e7d66-40a5-4cde-9f00-3e1d1a2b3c4d"
 	testEntityCompanyID = "1c9f8e77-51b6-4def-8a11-4f2e2b3c4d5e"
 	testEntityName      = "My Company Signing Entity, Ltd."
+	testAuthorityName   = "Alex Contributor"
+	testAuthorityEmail  = "contributor@example.org"
 	testSignatureID     = "7f0f1c22-3a51-49f5-b6a8-0f9d6a2e1c22"
 	testSignURL         = "https://demo.docusign.net/signing/startinsession.aspx?t=abc"
 )
@@ -753,7 +755,7 @@ func TestRequestCorporateSignatureRequiresBothAttestations(t *testing.T) {
 		{"both missing", false, false, "", ""},
 		{"authority only", true, false, "", ""},
 		{"embargo only", false, true, "", ""},
-		{"self-sign with a named signatory still requires both", false, false, "Alex Contributor", "contributor@example.org"},
+		{"self-sign with a named signatory still requires both", false, false, testAuthorityName, testAuthorityEmail},
 	}
 
 	for _, tc := range testCases {
@@ -798,16 +800,16 @@ func TestRequestCorporateSignatureSkipsAttestationsWhenSendAsEmail(t *testing.T)
 			input.SendAsEmail = true
 			input.AuthorityAcked = tc.authorityAcked
 			input.EmbargoAcked = tc.embargoAcked
-			input.AuthorityName = "Alex Contributor"
-			input.AuthorityEmail = "contributor@example.org"
+			input.AuthorityName = testAuthorityName
+			input.AuthorityEmail = testAuthorityEmail
 
 			result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", input)
 
 			assert.NoError(t, err)
 			assert.Equal(t, 1, corporateSign.calls)
 			assert.True(t, corporateSign.input.SendAsEmail)
-			assert.Equal(t, "Alex Contributor", corporateSign.input.AuthorityName)
-			assert.Equal(t, strfmt.Email("contributor@example.org"), corporateSign.input.AuthorityEmail)
+			assert.Equal(t, testAuthorityName, corporateSign.input.AuthorityName)
+			assert.Equal(t, strfmt.Email(testAuthorityEmail), corporateSign.input.AuthorityEmail)
 			assert.Equal(t, testSignatureID, result.SignatureID)
 			assert.Equal(t, testCLAGroupID, result.ClaGroupID)
 			assert.Equal(t, testCLAGroupID, corporateSign.claGroupID)
@@ -821,10 +823,10 @@ func TestRequestCorporateSignatureRequiresSignatoryWhenSendAsEmail(t *testing.T)
 		authorityName  string
 		authorityEmail strfmt.Email
 	}{
-		{"name missing", "", "contributor@example.org"},
-		{"name whitespace", "  ", "contributor@example.org"},
-		{"email missing", "Alex Contributor", ""},
-		{"email whitespace", "Alex Contributor", "  "},
+		{"name missing", "", testAuthorityEmail},
+		{"name whitespace", "  ", testAuthorityEmail},
+		{"email missing", testAuthorityName, ""},
+		{"email whitespace", testAuthorityName, "  "},
 		{"both missing", "", ""},
 	}
 
@@ -1025,8 +1027,8 @@ func TestRequestCorporateSignatureRequiresSelectedCLAGroupForEmail(t *testing.T)
 			input := corporateInput()
 			input.ClaGroupID = claGroupID
 			input.SendAsEmail = true
-			input.AuthorityName = "Alex Contributor"
-			input.AuthorityEmail = "contributor@example.org"
+			input.AuthorityName = testAuthorityName
+			input.AuthorityEmail = testAuthorityEmail
 
 			result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "", input)
 
@@ -1053,8 +1055,8 @@ func TestRequestCorporateSignatureRejectsMismatchedSelectedCLAGroup(t *testing.T
 				input := corporateInput()
 				input.ClaGroupID = claGroupID
 				input.SendAsEmail = sendAsEmail
-				input.AuthorityName = "Alex Contributor"
-				input.AuthorityEmail = "contributor@example.org"
+				input.AuthorityName = testAuthorityName
+				input.AuthorityEmail = testAuthorityEmail
 
 				result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "", input)
 
@@ -1097,8 +1099,8 @@ func TestRequestCorporateSignatureAcceptsEquivalentSelectedCLAGroup(t *testing.T
 				input := corporateInput()
 				input.ClaGroupID = selected
 				input.SendAsEmail = sendAsEmail
-				input.AuthorityName = "Alex Contributor"
-				input.AuthorityEmail = "contributor@example.org"
+				input.AuthorityName = testAuthorityName
+				input.AuthorityEmail = testAuthorityEmail
 
 				result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "", input)
 

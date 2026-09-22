@@ -335,7 +335,7 @@ func (s *service) requestCorporateSignatureWithExpectedCLAGroup(ctx context.Cont
 		// this is root project
 		cgmlist, perr := s.projectClaGroupsRepo.GetProjectsIdsForFoundation(ctx, utils.StringValue(input.ProjectSfid))
 		if perr != nil {
-			log.WithFields(f).WithError(err).Warn("unable to lookup other projects associated with this project SFID")
+			log.WithFields(f).WithError(perr).Warn("unable to lookup other projects associated with this project SFID")
 			return nil, perr
 		}
 		if len(cgmlist) == 0 {
@@ -345,9 +345,9 @@ func (s *service) requestCorporateSignatureWithExpectedCLAGroup(ctx context.Cont
 		claGroups := utils.NewStringSet()
 		for _, cg := range cgmlist {
 			claGroup, claGroupErr := s.claGroupService.GetCLAGroup(ctx, cg.ClaGroupID)
-			if err != nil {
+			if claGroupErr != nil {
 				log.WithFields(f).WithError(claGroupErr).Warn("unable to lookup cla group")
-				return nil, err
+				return nil, claGroupErr
 			}
 
 			// ensure that cla group for project is a foundation level cla group
@@ -361,9 +361,12 @@ func (s *service) requestCorporateSignatureWithExpectedCLAGroup(ctx context.Cont
 			// so we can not determine which cla-group to use
 			return nil, errors.New("invalid project_sfid. multiple cla-groups are associated with this project_sfid")
 		}
-		if expectedCLAGroupID != "" && claGroups.Length() == 0 {
-			log.WithFields(f).Warn(ErrCLAGroupMismatch.Error())
-			return nil, ErrCLAGroupMismatch
+		if claGroups.Length() == 0 {
+			if expectedCLAGroupID != "" {
+				log.WithFields(f).Warn(ErrCLAGroupMismatch.Error())
+				return nil, ErrCLAGroupMismatch
+			}
+			return nil, projects_cla_groups.ErrProjectNotAssociatedWithClaGroup
 		}
 		claGroupID = (claGroups.List())[0]
 
