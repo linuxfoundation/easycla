@@ -376,7 +376,7 @@ func (s *service) requestCorporateSignatureWithExpectedCLAGroup(ctx context.Cont
 	} else {
 		cgm, perr := s.projectClaGroupsRepo.GetClaGroupIDForProject(ctx, utils.StringValue(input.ProjectSfid))
 		if perr != nil {
-			log.WithFields(f).WithError(err).Warn("unable to lookup CLA Group ID for this project SFID")
+			log.WithFields(f).WithError(perr).Warn("unable to lookup CLA Group ID for this project SFID")
 			return nil, perr
 		}
 		if expectedCLAGroupID != "" && cgm == nil {
