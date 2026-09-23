@@ -22,6 +22,7 @@ import (
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/github_organizations"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
 	"github.com/linuxfoundation/easycla/cla-backend-go/token"
@@ -31,6 +32,8 @@ import (
 	projectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 	v2Sign "github.com/linuxfoundation/easycla/cla-backend-go/v2/sign"
 	userService "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
+	"github.com/sirupsen/logrus"
+	logtest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -47,6 +50,7 @@ type signingMappings struct {
 	resolutions   []string
 	calls         int
 	projectSFID   string
+	projectErr    error
 	foundation    []*projects_cla_groups.ProjectClaGroup
 	foundationErr error
 }
@@ -54,6 +58,9 @@ type signingMappings struct {
 func (r *signingMappings) GetClaGroupIDForProject(_ context.Context, projectSFID string) (*projects_cla_groups.ProjectClaGroup, error) {
 	index := r.calls
 	r.calls++
+	if r.projectErr != nil {
+		return nil, r.projectErr
+	}
 	if index >= len(r.resolutions) {
 		index = len(r.resolutions) - 1
 	}
@@ -249,6 +256,7 @@ func TestCorporateSigningCLAGroupBinding(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
 	privateKey := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))
+	projectLookupErr := errors.New("project mapping lookup failed")
 	foundationLookupErr := errors.New("foundation mapping lookup failed")
 	groupLookupErr := errors.New("CLA group lookup failed")
 	groupNotFoundErr := &utils.CLAGroupNotFound{CLAGroupID: testCLAGroupID}
@@ -261,6 +269,7 @@ func TestCorporateSigningCLAGroupBinding(t *testing.T) {
 		root              bool
 		rootGroups        []string
 		childGroupID      string
+		projectErr        error
 		foundationErr     error
 		groupLookupErrors map[string]error
 		childMappingOnly  bool
@@ -390,6 +399,11 @@ func TestCorporateSigningCLAGroupBinding(t *testing.T) {
 			wantGroup: otherCLAGroupID, wantResolutions: 1,
 		},
 		{
+			name:       "legacy project mapping failure logs the returned error",
+			legacy:     true,
+			projectErr: projectLookupErr, wantErr: projectLookupErr, wantResolutions: 1,
+		},
+		{
 			name: "legacy foundation email uses its resolved group",
 			root: true, rootGroups: []string{testCLAGroupID}, legacy: true,
 			wantGroup: testCLAGroupID,
@@ -466,7 +480,7 @@ func TestCorporateSigningCLAGroupBinding(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			transport := setupSigningHTTP(t, tc.root)
 			projectSFID := fmt.Sprintf("group-binding-project-%d", index)
-			mappings := &signingMappings{resolutions: tc.resolutions, projectSFID: projectSFID, foundationErr: tc.foundationErr}
+			mappings := &signingMappings{resolutions: tc.resolutions, projectSFID: projectSFID, projectErr: tc.projectErr, foundationErr: tc.foundationErr}
 			for _, groupID := range tc.rootGroups {
 				mappedProject := projectSFID
 				if tc.childMappingOnly || groupID == tc.childGroupID {
@@ -504,6 +518,18 @@ func TestCorporateSigningCLAGroupBinding(t *testing.T) {
 
 			var signatureID string
 			var signErr error
+			var logHook *logtest.Hook
+			if tc.projectErr != nil {
+				logger := log.GetLogger()
+				oldLevel := logger.GetLevel()
+				oldHooks := logger.ReplaceHooks(make(logrus.LevelHooks))
+				logger.SetLevel(logrus.WarnLevel)
+				t.Cleanup(func() {
+					logger.ReplaceHooks(oldHooks)
+					logger.SetLevel(oldLevel)
+				})
+				logHook = logtest.NewLocal(logger)
+			}
 			if tc.legacy {
 				result, err := signer.RequestCorporateSignature(context.Background(), "manager", "", &models.CorporateSignatureInput{
 					ProjectSfid: input.ProjectSfid, CompanySfid: input.CompanySfid, SendAsEmail: input.SendAsEmail,
@@ -524,6 +550,13 @@ func TestCorporateSigningCLAGroupBinding(t *testing.T) {
 			}
 
 			assert.Equal(t, tc.wantResolutions, mappings.calls)
+			if logHook != nil {
+				entry := logHook.LastEntry()
+				require.NotNil(t, entry)
+				assert.Equal(t, logrus.WarnLevel, entry.Level)
+				assert.Equal(t, "unable to lookup CLA Group ID for this project SFID", entry.Message)
+				assert.Equal(t, tc.projectErr, entry.Data[logrus.ErrorKey])
+			}
 			if tc.childMappingOnly {
 				assert.Empty(t, groups.lookups, "child-only mappings must not trigger CLA group lookups")
 			} else if tc.childGroupID != "" {
