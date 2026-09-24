@@ -700,6 +700,134 @@ func TestUpdateApprovalListRemovalInvalidatesAllEmployeeSignatures(t *testing.T)
 	assert.Contains(t, emailSender.recipients, target)
 }
 
+// TestUpdateApprovalListRemovalLeavesInvalidatedEmployeeSignaturesUntouched pins #2897: an
+// employee acknowledgment that a CLA manager already invalidated (without a reason) must not be
+// re-stamped with the "approved list removal" reason or have its note replaced when a matching
+// approval list entry is removed later - the removal only touches still-approved acknowledgments.
+func TestUpdateApprovalListRemovalLeavesInvalidatedEmployeeSignaturesUntouched(t *testing.T) {
+	target := "invalidated.dev@example.com"
+
+	invalidated := fakeEclaItem(2, target)
+	invalidated["signature_approved"] = map[string]interface{}{"BOOL": false}
+	invalidated["note"] = fakeS("Invalidated by manager-lf")
+	invalidated["date_invalidated"] = fakeS("2024-05-01T00:00:00Z")
+	invalidated["invalidated_by"] = fakeS("manager-lf")
+	invalidated["date_modified"] = fakeS("2024-05-01T00:00:00Z")
+
+	items := []map[string]interface{}{{
+		"signature_id":             fakeS("ccla-sig"),
+		"signature_project_id":     fakeS("cla-group-1"),
+		"signature_reference_id":   fakeS("company-1"),
+		"signature_reference_type": fakeS("company"),
+		"signature_reference_name": fakeS("Acme"),
+		"signature_type":           fakeS("ccla"),
+		"signature_approved":       fakeTrue(),
+		"signature_signed":         fakeTrue(),
+		"email_whitelist":          fakeStringList(target, "keep@example.com"),
+		"signature_acl":            fakeStringList("manager-lf"),
+		"date_created":             fakeS("2023-01-01T00:00:00Z"),
+		"date_modified":            fakeS("2023-01-01T00:00:00Z"),
+	}, fakeEclaItem(1, target), invalidated, fakeEclaItem(3, "other@example.com")}
+
+	table := &fakeSignaturesTable{items: items, invalidated: map[string]int{}}
+	server := httptest.NewServer(table)
+	defer server.Close()
+
+	awsSession, err := session.NewSession(&aws.Config{
+		Region:      aws.String("us-east-1"),
+		Endpoint:    aws.String(server.URL),
+		Credentials: credentials.NewStaticCredentials("test", "test", ""),
+		DisableSSL:  aws.Bool(true),
+	})
+	require.NoError(t, err)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockUsers := mock_users.NewMockUserRepository(ctrl)
+	mockUsers.EXPECT().GetUser(gomock.Any()).DoAndReturn(func(userID string) (*models.User, error) {
+		return &models.User{UserID: userID, LfEmail: strfmt.Email(target)}, nil
+	}).AnyTimes()
+	mockUsers.EXPECT().GetUserByUserName("manager-lf", true).
+		Return(&models.User{LfUsername: "manager-lf", LfEmail: "manager@example.com"}, nil).AnyTimes()
+	mockUsers.EXPECT().SearchUsers("user_emails", target, false).
+		Return(&models.Users{Users: []models.User{{UserID: "user-001"}, {UserID: "user-002"}}}, nil).AnyTimes()
+
+	mockCompanyRepo := mock_company.NewMockIRepository(ctrl)
+	mockCompanyRepo.EXPECT().GetCompany(gomock.Any(), "company-1").
+		Return(&models.Company{CompanyID: "company-1", CompanyName: "Acme"}, nil).AnyTimes()
+
+	var loggedEvents int64
+	var eventSignatureIDs []string
+	var eventsMu sync.Mutex
+	mockEvents := eventsMock.NewMockService(ctrl)
+	mockEvents.EXPECT().LogEventWithContext(gomock.Any(), gomock.Any()).
+		Do(func(_ context.Context, args *events.LogEventArgs) {
+			atomic.AddInt64(&loggedEvents, 1)
+			if data, ok := args.EventData.(*events.SignatureInvalidatedApprovalRejectionEventData); ok {
+				eventsMu.Lock()
+				eventSignatureIDs = append(eventSignatureIDs, data.SignatureID)
+				eventsMu.Unlock()
+			}
+		}).AnyTimes()
+
+	previousSender := utils.GetEmailSender()
+	utils.SetEmailSender(&recordingEmailSender{})
+	defer utils.SetEmailSender(previousSender)
+
+	repo := repository{
+		stage:              "test",
+		dynamoDBClient:     dynamodb.New(awsSession),
+		companyRepo:        mockCompanyRepo,
+		usersRepo:          mockUsers,
+		eventsService:      mockEvents,
+		signatureTableName: "cla-test-signatures",
+		approvalRepo:       &fakeApprovalRepo{},
+	}
+
+	updated, err := repo.UpdateApprovalList(context.Background(),
+		&models.User{LfUsername: "manager-lf", LfEmail: "manager@example.com"},
+		&models.ClaGroup{ProjectID: "cla-group-1", ProjectName: "My Project", Version: "v2"},
+		"company-1",
+		&models.ApprovalList{RemoveEmailApprovalList: []string{target}},
+		&events.LogEventArgs{EventType: events.InvalidatedSignature})
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+
+	table.mu.Lock()
+	defer table.mu.Unlock()
+
+	// only the still-approved matching acknowledgment is invalidated and reported
+	assert.Equal(t, map[string]int{"sig-001": 1}, table.invalidated)
+	assert.Equal(t, int64(1), atomic.LoadInt64(&loggedEvents))
+	assert.Equal(t, []string{"sig-001"}, eventSignatureIDs)
+
+	stamped := table.find("sig-001")
+	require.NotNil(t, stamped)
+	assert.Equal(t, "approved list removal ("+utils.EmailCriteria+")", fakeItemString(stamped, "invalidation_reason"))
+	assert.Contains(t, fakeItemString(stamped, "note"), "due to "+utils.EmailCriteria+"  removal")
+
+	// the previously invalidated acknowledgment keeps every attribute exactly as it was
+	untouched := table.find("sig-002")
+	require.NotNil(t, untouched)
+	assert.Equal(t, "Invalidated by manager-lf", fakeItemString(untouched, "note"))
+	assert.Equal(t, "2024-05-01T00:00:00Z", fakeItemString(untouched, "date_invalidated"))
+	assert.Equal(t, "2024-05-01T00:00:00Z", fakeItemString(untouched, "date_modified"))
+	assert.Equal(t, "manager-lf", fakeItemString(untouched, "invalidated_by"))
+	_, hasReason := untouched["invalidation_reason"]
+	assert.False(t, hasReason, "an already invalidated acknowledgment must not be re-stamped as a removal")
+	_, hasInvalidationNote := untouched["invalidation_note"]
+	assert.False(t, hasInvalidationNote)
+	for _, update := range table.updates {
+		if key, ok := update.Key["signature_id"]; ok && key.S != nil {
+			assert.NotEqual(t, "sig-002", *key.S, "no write may target the already invalidated acknowledgment")
+		}
+	}
+
+	// the non-matching acknowledgment is untouched as before
+	assert.Equal(t, 0, table.invalidated["sig-003"])
+}
+
 // a GitHub organization removal must re-check the member against every remaining Approved List
 // criteria (case-insensitively, like the enforcement gate) before invalidating - the old check
 // only compared the best email and the GitHub username exactly. Remaining approved organizations

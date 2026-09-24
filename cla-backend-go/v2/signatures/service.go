@@ -503,8 +503,12 @@ func (s *Service) InvalidateECLA(ctx context.Context, claGroupID string, signatu
 		return nil, sanctionedErr
 	}
 
+	reinvalidation := false
 	if !sig.SignatureApproved {
-		return nil, errEclaAlreadyInvalidated
+		if !sig.InvalidatedByApprovalListRemoval() {
+			return nil, errEclaAlreadyInvalidated
+		}
+		reinvalidation = true
 	}
 
 	user, userErr := s.usersService.GetUser(sig.SignatureReferenceID)
@@ -532,7 +536,12 @@ func (s *Service) InvalidateECLA(ctx context.Context, claGroupID string, signatu
 		metadata.Reason = input.Reason
 		metadata.Note = utils.SanitizePlainText(input.Note)
 	}
-	if err := s.v1SignatureRepo.InvalidateProjectRecordWithMetadata(ctx, sig.SignatureID, note, metadata); err != nil {
+	invalidate := s.v1SignatureRepo.InvalidateProjectRecordWithMetadata
+	if reinvalidation {
+		log.WithFields(f).Debug("ecla was voided by an approval list removal - recording the deliberate invalidation over it")
+		invalidate = s.v1SignatureRepo.ReinvalidateProjectRecordWithMetadata
+	}
+	if err := invalidate(ctx, sig.SignatureID, note, metadata); err != nil {
 		log.WithFields(f).Debug("unable to invalidate ecla record")
 		return nil, err
 	}

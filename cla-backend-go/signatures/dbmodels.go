@@ -3,6 +3,11 @@
 
 package signatures
 
+import "strings"
+
+// ApprovalListRemovalReasonPrefix starts the invalidation_reason recorded by an approval list removal
+const ApprovalListRemovalReasonPrefix = "approved list removal ("
+
 // ItemSignature database model
 type ItemSignature struct {
 	SignatureID                   string   `json:"signature_id"` // No omitempty, always included
@@ -67,6 +72,18 @@ type ItemSignature struct {
 	Note                    string `json:"note,omitempty"`
 	Version                 string `json:"version,omitempty"`
 	ApproxDateCreated       string `json:"approx_date_created,omitempty"`
+}
+
+// InvalidatedByApprovalListRemoval reports whether the approval was revoked by an approval list removal (reason prefix, or the legacy "... due to <criteria>  removal" note)
+func (s *ItemSignature) InvalidatedByApprovalListRemoval() bool {
+	if s == nil || s.SignatureApproved {
+		return false
+	}
+	if s.InvalidationReason != "" {
+		return strings.HasPrefix(s.InvalidationReason, ApprovalListRemovalReasonPrefix)
+	}
+	note := strings.TrimSpace(s.Note)
+	return strings.Contains(note, " due to ") && strings.HasSuffix(note, " removal")
 }
 
 // DBManagersModel is a database model for only the ACL/Manager column

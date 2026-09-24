@@ -22,7 +22,7 @@ func TestInvalidationUpdateExpression(t *testing.T) {
 		InvalidatedBy: "admin-user",
 		Reason:        "compliance",
 		Note:          "per legal review",
-	})
+	}, false)
 
 	assert.Contains(t, expr, "#A = :a")
 	assert.Contains(t, expr, "#S = :s")
@@ -46,7 +46,7 @@ func TestInvalidationUpdateExpressionWithoutMetadata(t *testing.T) {
 	const now = "2024-05-06T07:08:09.000000+0000"
 
 	for _, metadata := range []*InvalidationMetadata{nil, {}} {
-		names, values, expr := invalidationUpdateExpression("a note", now, metadata)
+		names, values, expr := invalidationUpdateExpression("a note", now, metadata, false)
 
 		assert.NotContains(t, expr, "#IB")
 		assert.NotContains(t, expr, "#IR")
@@ -54,6 +54,88 @@ func TestInvalidationUpdateExpressionWithoutMetadata(t *testing.T) {
 		assert.Contains(t, expr, "#DI = if_not_exists(#DI, :di)")
 		assert.NotContains(t, names, "#IB")
 		assert.NotContains(t, values, ":ib")
+	}
+}
+
+func TestInvalidationUpdateExpressionModes(t *testing.T) {
+	const now = "2024-05-06T07:08:09.000000+0000"
+	full := &InvalidationMetadata{InvalidatedBy: "admin-user", Reason: "compliance", Note: "per legal review"}
+	attributes := map[string]string{"#A": "signature_approved", "#S": "note", "#DI": "date_invalidated",
+		"#IB": "invalidated_by", "#IR": "invalidation_reason", "#IN": "invalidation_note", "#M": "date_modified"}
+
+	cases := []struct {
+		name       string
+		metadata   *InvalidationMetadata
+		overwrite  bool
+		expr       string
+		wantNames  []string
+		wantValues []string
+	}{
+		{"first write wins with full attribution", full, false,
+			"SET  #A = :a, #S = :s, #DI = if_not_exists(#DI, :di), #IB = if_not_exists(#IB, :ib), #IR = if_not_exists(#IR, :ir), #IN = if_not_exists(#IN, :in), #M = :m",
+			[]string{"#A", "#S", "#DI", "#IB", "#IR", "#IN", "#M"}, []string{":a", ":s", ":di", ":ib", ":ir", ":in", ":m"}},
+		{"first write wins with partial attribution", &InvalidationMetadata{InvalidatedBy: "admin-user"}, false,
+			"SET  #A = :a, #S = :s, #DI = if_not_exists(#DI, :di), #IB = if_not_exists(#IB, :ib), #M = :m",
+			[]string{"#A", "#S", "#DI", "#IB", "#M"}, []string{":a", ":s", ":di", ":ib", ":m"}},
+		{"first write wins without attribution", nil, false,
+			"SET  #A = :a, #S = :s, #DI = if_not_exists(#DI, :di), #M = :m",
+			[]string{"#A", "#S", "#DI", "#M"}, []string{":a", ":s", ":di", ":m"}},
+		{"overwrite with full attribution", full, true,
+			"SET  #A = :a, #S = :s, #DI = :di, #IB = :ib, #IR = :ir, #IN = :in, #M = :m",
+			[]string{"#A", "#S", "#DI", "#IB", "#IR", "#IN", "#M"}, []string{":a", ":s", ":di", ":ib", ":ir", ":in", ":m"}},
+		{"overwrite removes the attribution it does not supply", &InvalidationMetadata{InvalidatedBy: "admin-user"}, true,
+			"SET  #A = :a, #S = :s, #DI = :di, #IB = :ib, #M = :m REMOVE #IR, #IN",
+			[]string{"#A", "#S", "#DI", "#IB", "#IR", "#IN", "#M"}, []string{":a", ":s", ":di", ":ib", ":m"}},
+		{"overwrite without attribution", nil, true,
+			"SET  #A = :a, #S = :s, #DI = :di, #M = :m REMOVE #IB, #IR, #IN",
+			[]string{"#A", "#S", "#DI", "#IB", "#IR", "#IN", "#M"}, []string{":a", ":s", ":di", ":m"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			names, values, expr := invalidationUpdateExpression("a note", now, tc.metadata, tc.overwrite)
+			assert.Equal(t, tc.expr, expr)
+			var gotNames, gotValues []string
+			for name, attribute := range names {
+				gotNames = append(gotNames, name)
+				assert.Equal(t, attributes[name], *attribute)
+			}
+			for value := range values {
+				gotValues = append(gotValues, value)
+			}
+			assert.ElementsMatch(t, tc.wantNames, gotNames)
+			assert.ElementsMatch(t, tc.wantValues, gotValues)
+			assert.False(t, *values[":a"].BOOL)
+			assert.Equal(t, "a note", *values[":s"].S)
+			assert.Equal(t, now, *values[":di"].S)
+			assert.Equal(t, now, *values[":m"].S)
+		})
+	}
+}
+
+func TestItemSignatureInvalidatedByApprovalListRemoval(t *testing.T) {
+	const removalNote = "Signature invalidated (approved set to false) by cla-manager due to " + utils.EmailCriteria + "  removal"
+	cases := []struct {
+		name string
+		sig  *ItemSignature
+		want bool
+	}{
+		{"nil record", nil, false},
+		{"approved record with a removal reason", &ItemSignature{SignatureApproved: true, InvalidationReason: ApprovalListRemovalReasonPrefix + utils.EmailCriteria + ")"}, false},
+		{"removal reason", &ItemSignature{InvalidationReason: ApprovalListRemovalReasonPrefix + utils.EmailCriteria + ")", Note: removalNote}, true},
+		{"removal reason of another criteria", &ItemSignature{InvalidationReason: ApprovalListRemovalReasonPrefix + utils.GitHubOrgCriteria + ")"}, true},
+		{"removal reason matches what verifyUserApprovals records", &ItemSignature{InvalidationReason: "approved list removal (Email Criteria)"}, true},
+		{"deliberate reason", &ItemSignature{InvalidationReason: "compliance", Note: removalNote}, false},
+		{"deliberate reason resembling a removal", &ItemSignature{InvalidationReason: "approved list removal requested by legal"}, false},
+		{"pre-attribution removal note", &ItemSignature{Note: removalNote}, true},
+		{"pre-attribution removal note with trailing blanks", &ItemSignature{Note: removalNote + " "}, true},
+		{"pre-attribution deliberate note", &ItemSignature{Note: "Signature invalidated (approved set to false) by pcc-admin for user-006 "}, false},
+		{"pre-attribution note mentioning a removal elsewhere", &ItemSignature{Note: "Signature invalidated (approved set to false) by pcc-admin due to removal of access rights"}, false},
+		{"unapproved record without any note", &ItemSignature{}, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, tc.sig.InvalidatedByApprovalListRemoval())
+		})
 	}
 }
 

@@ -176,6 +176,72 @@ func TestGetClaGroupCorporateContributorsNoRows(t *testing.T) {
 	assert.Len(t, result.List, 0)
 }
 
+func TestGetClaGroupCorporateContributorsIdentityFallsBackToTheUserRecord(t *testing.T) {
+	bare := fakeEclaItem(1, "bare.dev@example.com")
+	stored := fakeEclaItem(2, "stored.dev@example.com")
+	stored["user_name"] = fakeS("Stored Name")
+	stored["user_lf_username"] = fakeS("stored-lf")
+	stored[SignatureUserGitHubUsername] = fakeS("stored-gh")
+	stored[SignatureUserGitlabUsername] = fakeS("stored-gl")
+	partial := fakeEclaItem(3, "partial.dev@example.com")
+	partial[SignatureUserGitHubUsername] = fakeS("partial-gh")
+	orphan := fakeEclaItem(4, "orphan.dev@example.com")
+	failing := fakeEclaItem(5, "failing.dev@example.com")
+
+	users := map[string]*models.User{
+		"user-001": {UserID: "user-001", Username: "Bare User", LfUsername: "bare-lf", GithubUsername: "bare-gh", GitlabUsername: "bare-gl"},
+		"user-002": {UserID: "user-002", Username: "Other Name", LfUsername: "other-lf", GithubUsername: "other-gh", GitlabUsername: "other-gl"},
+		"user-003": {UserID: "user-003", Username: "Partial User", LfUsername: "partial-lf", GithubUsername: "other-gh", GitlabUsername: "partial-gl"},
+	}
+	repo, _ := newCorporateContributorsRepo(t, []map[string]interface{}{bare, stored, partial, orphan, failing})
+	mockUsers := mock_users.NewMockUserRepository(gomock.NewController(t))
+	mockUsers.EXPECT().GetUser(gomock.Any()).AnyTimes().DoAndReturn(func(userID string) (*models.User, error) {
+		if userID == "user-005" {
+			return nil, fmt.Errorf("user lookup failed")
+		}
+		return users[userID], nil
+	})
+	repo.usersRepo = mockUsers
+
+	result, err := repo.GetClaGroupCorporateContributors(context.Background(), "cla-group-1", aws.String("company-1"), aws.Int64(10), nil, nil)
+	require.NoError(t, err)
+	require.Equal(t, int64(5), result.ResultCount)
+	rows := map[string]*models.CorporateContributor{}
+	for _, row := range result.List {
+		rows[row.SignatureID] = row
+	}
+
+	cases := []struct {
+		name        string
+		signatureID string
+		want        models.CorporateContributor
+	}{
+		{"identities missing on the signature come from the user record", "sig-001",
+			models.CorporateContributor{Name: "Bare User", LinuxFoundationID: "bare-lf", GithubID: "bare-gh", GitlabID: "bare-gl", Email: "bare.dev@example.com"}},
+		{"identities stored on the signature win", "sig-002",
+			models.CorporateContributor{Name: "Stored Name", LinuxFoundationID: "stored-lf", GithubID: "stored-gh", GitlabID: "stored-gl", Email: "stored.dev@example.com"}},
+		{"each identity falls back on its own", "sig-003",
+			models.CorporateContributor{Name: "Partial User", LinuxFoundationID: "partial-lf", GithubID: "partial-gh", GitlabID: "partial-gl", Email: "partial.dev@example.com"}},
+		{"a missing user record leaves the signature values", "sig-004",
+			models.CorporateContributor{Email: "orphan.dev@example.com"}},
+		{"a failing user lookup leaves the signature values", "sig-005",
+			models.CorporateContributor{Email: "failing.dev@example.com"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			row := rows[tc.signatureID]
+			require.NotNil(t, row)
+			assert.Equal(t, tc.want.Name, row.Name)
+			assert.Equal(t, tc.want.LinuxFoundationID, row.LinuxFoundationID)
+			assert.Equal(t, tc.want.GithubID, row.GithubID)
+			assert.Equal(t, tc.want.GitlabID, row.GitlabID)
+			assert.Equal(t, tc.want.Email, row.Email, "the email is not backfilled")
+			assert.True(t, row.SignatureApproved)
+			assert.True(t, row.SignatureSigned)
+		})
+	}
+}
+
 func TestCountClaGroupCorporateContributors(t *testing.T) {
 	repo, table := newCorporateContributorsRepo(t, corporateContributorItems())
 

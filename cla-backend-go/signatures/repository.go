@@ -73,6 +73,7 @@ type SignatureRepository interface {
 	ValidateProjectRecordUnlessInvalidated(ctx context.Context, signatureID, note string) error
 	InvalidateProjectRecord(ctx context.Context, signatureID, note string) error
 	InvalidateProjectRecordWithMetadata(ctx context.Context, signatureID, note string, metadata *InvalidationMetadata) error
+	ReinvalidateProjectRecordWithMetadata(ctx context.Context, signatureID, note string, metadata *InvalidationMetadata) error
 	UpdateEnvelopeDetails(ctx context.Context, signatureID, envelopeID string, signURL *string) (*models.Signature, error)
 	CreateSignature(ctx context.Context, signature *ItemSignature) error
 	UpdateSignature(ctx context.Context, signatureID string, updates map[string]interface{}) error
@@ -2146,8 +2147,17 @@ func (repo repository) InvalidateProjectRecord(ctx context.Context, signatureID,
 // first-write-wins so a re-invalidation never destroys the record of a prior invalidation;
 // attributes missing on pre-feature records are still populated.
 func (repo repository) InvalidateProjectRecordWithMetadata(ctx context.Context, signatureID, note string, metadata *InvalidationMetadata) error {
+	return repo.invalidateProjectRecord(ctx, "v1.signatures.repository.InvalidateProjectRecordWithMetadata", signatureID, note, metadata, false)
+}
+
+// ReinvalidateProjectRecordWithMetadata deliberately invalidates a removal-voided record, replacing its attribution
+func (repo repository) ReinvalidateProjectRecordWithMetadata(ctx context.Context, signatureID, note string, metadata *InvalidationMetadata) error {
+	return repo.invalidateProjectRecord(ctx, "v1.signatures.repository.ReinvalidateProjectRecordWithMetadata", signatureID, note, metadata, true)
+}
+
+func (repo repository) invalidateProjectRecord(ctx context.Context, functionName, signatureID, note string, metadata *InvalidationMetadata, overwrite bool) error {
 	f := logrus.Fields{
-		"functionName":   "v1.signatures.repository.InvalidateProjectRecordWithMetadata",
+		"functionName":   functionName,
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"signatureID":    signatureID,
 	}
@@ -2156,7 +2166,7 @@ func (repo repository) InvalidateProjectRecordWithMetadata(ctx context.Context, 
 
 	_, now := utils.CurrentTime()
 
-	expressionAttributeNames, expressionAttributeValues, updateExpression := invalidationUpdateExpression(note, now, metadata)
+	expressionAttributeNames, expressionAttributeValues, updateExpression := invalidationUpdateExpression(note, now, metadata, overwrite)
 
 	input := &dynamodb.UpdateItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
@@ -2180,8 +2190,9 @@ func (repo repository) InvalidateProjectRecordWithMetadata(ctx context.Context, 
 }
 
 // invalidationUpdateExpression assembles the invalidation update: approval revoked, note replaced,
-// every attribution attribute first-write-wins via if_not_exists, date_modified refreshed.
-func invalidationUpdateExpression(note, now string, metadata *InvalidationMetadata) (map[string]*string, map[string]*dynamodb.AttributeValue, string) {
+// every attribution attribute first-write-wins via if_not_exists, date_modified refreshed;
+// overwrite mode sets the attribution plainly and removes what is not supplied.
+func invalidationUpdateExpression(note, now string, metadata *InvalidationMetadata, overwrite bool) (map[string]*string, map[string]*dynamodb.AttributeValue, string) {
 	expressionAttributeNames := map[string]*string{}
 	expressionAttributeValues := map[string]*dynamodb.AttributeValue{}
 	updateExpression := "SET " // nolint
@@ -2194,31 +2205,42 @@ func invalidationUpdateExpression(note, now string, metadata *InvalidationMetada
 	expressionAttributeValues[":s"] = &dynamodb.AttributeValue{S: aws.String(note)}
 	updateExpression = updateExpression + " #S = :s,"
 
+	assign := func(name, value string) string {
+		if overwrite {
+			return fmt.Sprintf(" %s = %s,", name, value)
+		}
+		return fmt.Sprintf(" %s = if_not_exists(%s, %s),", name, name, value)
+	}
+
 	expressionAttributeNames["#DI"] = aws.String("date_invalidated")
 	expressionAttributeValues[":di"] = &dynamodb.AttributeValue{S: aws.String(now)}
-	updateExpression = updateExpression + " #DI = if_not_exists(#DI, :di),"
+	updateExpression = updateExpression + assign("#DI", ":di")
 
-	if metadata != nil {
-		if metadata.InvalidatedBy != "" {
-			expressionAttributeNames["#IB"] = aws.String("invalidated_by")
-			expressionAttributeValues[":ib"] = &dynamodb.AttributeValue{S: aws.String(metadata.InvalidatedBy)}
-			updateExpression = updateExpression + " #IB = if_not_exists(#IB, :ib),"
-		}
-		if metadata.Reason != "" {
-			expressionAttributeNames["#IR"] = aws.String("invalidation_reason")
-			expressionAttributeValues[":ir"] = &dynamodb.AttributeValue{S: aws.String(metadata.Reason)}
-			updateExpression = updateExpression + " #IR = if_not_exists(#IR, :ir),"
-		}
-		if metadata.Note != "" {
-			expressionAttributeNames["#IN"] = aws.String("invalidation_note")
-			expressionAttributeValues[":in"] = &dynamodb.AttributeValue{S: aws.String(metadata.Note)}
-			updateExpression = updateExpression + " #IN = if_not_exists(#IN, :in),"
+	var stale []string
+	attribution := func(name, value, attribute, content string) {
+		if content != "" {
+			expressionAttributeNames[name] = aws.String(attribute)
+			expressionAttributeValues[value] = &dynamodb.AttributeValue{S: aws.String(content)}
+			updateExpression = updateExpression + assign(name, value)
+		} else if overwrite {
+			expressionAttributeNames[name] = aws.String(attribute)
+			stale = append(stale, name)
 		}
 	}
+	var invalidatedBy, reason, invalidationNote string
+	if metadata != nil {
+		invalidatedBy, reason, invalidationNote = metadata.InvalidatedBy, metadata.Reason, metadata.Note
+	}
+	attribution("#IB", ":ib", "invalidated_by", invalidatedBy)
+	attribution("#IR", ":ir", "invalidation_reason", reason)
+	attribution("#IN", ":in", "invalidation_note", invalidationNote)
 
 	expressionAttributeNames["#M"] = aws.String("date_modified")
 	expressionAttributeValues[":m"] = &dynamodb.AttributeValue{S: aws.String(now)}
 	updateExpression = updateExpression + " #M = :m"
+	if len(stale) > 0 {
+		updateExpression = updateExpression + " REMOVE " + strings.Join(stale, ", ")
+	}
 
 	return expressionAttributeNames, expressionAttributeValues, updateExpression
 }
@@ -4502,6 +4524,10 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 					log.WithFields(f).Warnf("no signatureReferenceID for signature: %+v ", ecla)
 					return
 				}
+				if !ecla.SignatureApproved {
+					log.WithFields(f).Debugf("employee signature %s is already invalidated - leaving it untouched", ecla.SignatureID)
+					return
+				}
 				user, invalidated, verifyErr := repo.verifyUserApprovals(ctx, ecla.SignatureReferenceID, ecla.SignatureID, claManager, approvalList)
 				if verifyErr != nil {
 					log.WithFields(f).Warnf("unable to verify user: %s ", ecla.SignatureReferenceID)
@@ -4554,7 +4580,7 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 	email := getBestEmail(user)
 	invalidationMetadata := &InvalidationMetadata{
 		InvalidatedBy: utils.GetBestUsername(claManager),
-		Reason:        fmt.Sprintf("approved list removal (%s)", approvalList.Criteria),
+		Reason:        ApprovalListRemovalReasonPrefix + approvalList.Criteria + ")",
 	}
 	invalidated := false
 
@@ -5507,19 +5533,23 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 			signatureVersion := fmt.Sprintf("v%s.%s", strconv.Itoa(sig.SignatureDocumentMajorVersion), strconv.Itoa(sig.SignatureDocumentMinorVersion))
 
 			sigName := sig.UserName
+			githubID, gitlabID, lfID := sig.UserGithubUsername, sig.UserGitlabUsername, sig.UserLFUsername
 			user, userErr := repo.usersRepo.GetUser(sig.SignatureReferenceID)
 			if userErr != nil {
 				log.WithFields(f).Warnf("unable to get user for id: %s, error: %v ", sig.SignatureReferenceID, userErr)
 			}
-			if user != nil && sigName == "" {
-				sigName = user.Username
+			if user != nil {
+				sigName = firstNonEmpty(sigName, user.Username)
+				githubID = firstNonEmpty(githubID, user.GithubUsername)
+				gitlabID = firstNonEmpty(gitlabID, user.GitlabUsername)
+				lfID = firstNonEmpty(lfID, user.LfUsername)
 			}
 
 			out.List = append(out.List, &models.CorporateContributor{
 				SignatureID:            sig.SignatureID,
-				GithubID:               sig.UserGithubUsername,
-				GitlabID:               sig.UserGitlabUsername,
-				LinuxFoundationID:      sig.UserLFUsername,
+				GithubID:               githubID,
+				GitlabID:               gitlabID,
+				LinuxFoundationID:      lfID,
 				Name:                   sigName,
 				SignatureVersion:       signatureVersion,
 				Email:                  sig.UserEmail,
@@ -5568,6 +5598,15 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 	out.NextKey = continuationKey
 
 	return out, nil
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 func corporateContributorFilter(companyID *string, approvedOnly bool) expression.ConditionBuilder {

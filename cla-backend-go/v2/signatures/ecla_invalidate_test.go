@@ -89,6 +89,7 @@ func TestService_InvalidateECLA(t *testing.T) {
 			sig.SignatureType = sigType
 			mockRepo := mock_v1_signatures.NewMockSignatureRepository(ctrl)
 			mockRepo.EXPECT().GetItemSignature(ctx, "sig-1").Return(sig, nil)
+			mockRepo.EXPECT().ReinvalidateProjectRecordWithMetadata(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 			var gotNote string
 			var gotMetadata *v1Signatures.InvalidationMetadata
 			mockRepo.EXPECT().InvalidateProjectRecordWithMetadata(ctx, "sig-1", gomock.Any(), gomock.Any()).DoAndReturn(
@@ -170,6 +171,101 @@ func TestService_InvalidateECLA(t *testing.T) {
 				assert.Contains(t, sender.sent[0].body, "My Project")
 				assert.Contains(t, sender.sent[0].body, "Acme")
 			}
+		})
+	}
+}
+
+func TestService_InvalidateECLAAfterApprovalListRemoval(t *testing.T) {
+	t.Setenv("DISABLE_LOCAL_PERMISSION_CHECKS", "false")
+
+	awsSession, err := ini.GetAWSSession()
+	if err != nil {
+		assert.Fail(t, "unable to create AWS session")
+	}
+
+	byReason := eclaItemSignature()
+	byReason.SignatureApproved = false
+	byReason.Note = "Signature invalidated (approved set to false) by cla-manager due to Email Criteria  removal"
+	byReason.DateInvalidated = "2026-09-15T10:00:00.000000+0000"
+	byReason.InvalidatedBy = "cla-manager"
+	byReason.InvalidationReason = v1Signatures.ApprovalListRemovalReasonPrefix + utils.EmailCriteria + ")"
+
+	byLegacyNote := eclaItemSignature()
+	byLegacyNote.SignatureApproved = false
+	byLegacyNote.Note = "Signature invalidated (approved set to false) by cla-manager due to GitHub Org Criteria  removal"
+
+	for _, tc := range []struct {
+		name string
+		sig  *v1Signatures.ItemSignature
+	}{
+		{"voided by an approval list removal", byReason},
+		{"voided by a pre-attribution approval list removal", byLegacyNote},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			ctx := context.Background()
+
+			mockRepo := mock_v1_signatures.NewMockSignatureRepository(ctrl)
+			mockRepo.EXPECT().GetItemSignature(ctx, "sig-1").Return(tc.sig, nil)
+			mockRepo.EXPECT().InvalidateProjectRecordWithMetadata(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+			var gotNote string
+			var gotMetadata *v1Signatures.InvalidationMetadata
+			mockRepo.EXPECT().ReinvalidateProjectRecordWithMetadata(ctx, "sig-1", gomock.Any(), gomock.Any()).DoAndReturn(
+				func(_ context.Context, _, note string, metadata *v1Signatures.InvalidationMetadata) error {
+					gotNote = note
+					gotMetadata = metadata
+					return nil
+				})
+
+			mockCompanyService := mock_company.NewMockIService(ctrl)
+			mockCompanyService.EXPECT().GetCompany(ctx, "company-1").
+				Return(&v1Models.Company{CompanyID: "company-1", CompanyExternalID: "comp-sfid", CompanyName: "Acme"}, nil)
+
+			mockProjectClaGroupsRepo := mock_projects_cla_groups.NewMockRepository(ctrl)
+			mockProjectClaGroupsRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-1").
+				Return([]*projects_cla_groups.ProjectClaGroup{{ProjectSFID: "proj-sfid"}}, nil)
+
+			mockUserService := mock_users.NewMockService(ctrl)
+			mockUserService.EXPECT().GetUser("user-1").
+				Return(&v1Models.User{UserID: "user-1", LfUsername: "contributor", Username: "Contributor", LfEmail: strfmt.Email("contributor@example.com")}, nil)
+
+			mockProjectService := mock_project.NewMockService(ctrl)
+			mockProjectService.EXPECT().GetCLAGroupByID(ctx, "cla-group-1").
+				Return(&v1Models.ClaGroup{ProjectName: "My Project", Version: "v2"}, nil)
+
+			mockEvents := eventsMock.NewMockService(ctrl)
+			var logged *events.LogEventArgs
+			mockEvents.EXPECT().LogEventWithContext(ctx, gomock.Any()).Do(
+				func(_ context.Context, args *events.LogEventArgs) {
+					logged = args
+				})
+
+			service := NewService(awsSession, "", mockProjectService, mockCompanyService, nil, mockProjectClaGroupsRepo, mockRepo, mockUserService, nil)
+
+			sender := &capturingEmailSender{}
+			prevSender := utils.GetEmailSender()
+			utils.SetEmailSender(sender)
+			t.Cleanup(func() { utils.SetEmailSender(prevSender) })
+
+			authUser := &auth.User{UserName: "org-admin", Email: "org-admin@example.com", ACL: auth.ACL{Allowed: true, Scopes: []auth.Scope{{Type: auth.ProjectOrganization, ID: "proj-sfid|comp-sfid"}}}}
+			result, err := service.InvalidateECLA(ctx, "cla-group-1", "sig-1", authUser, mockEvents, eclaEventArgs(), &models.EclaInvalidationInput{Reason: "compliance", Note: "per legal review"})
+			require.NoError(t, err)
+			if assert.NotNil(t, result) {
+				assert.Equal(t, &models.EclaInvalidateResult{SignatureID: "sig-1", ClaGroupID: "cla-group-1", CompanyID: "company-1", UserID: "user-1"}, result)
+			}
+			assert.Contains(t, gotNote, "Signature invalidated (approved set to false) by org-admin for Contributor")
+			if assert.NotNil(t, gotMetadata) {
+				assert.Equal(t, &v1Signatures.InvalidationMetadata{InvalidatedBy: "org-admin", Reason: "compliance", Note: "per legal review"}, gotMetadata)
+			}
+			if assert.NotNil(t, logged) {
+				eventData, ok := logged.EventData.(*events.SignatureProjectInvalidatedEventData)
+				if assert.True(t, ok) {
+					assert.Equal(t, "org-admin", eventData.InvalidatedBy)
+					assert.Equal(t, "compliance", eventData.Reason)
+				}
+			}
+			assert.Len(t, sender.sent, 1, "the deliberate invalidation notifies the employee")
 		})
 	}
 }
@@ -262,6 +358,16 @@ func TestService_InvalidateECLAValidation(t *testing.T) {
 	invalidated := eclaItemSignature()
 	invalidated.SignatureApproved = false
 
+	deliberatelyInvalidated := eclaItemSignature()
+	deliberatelyInvalidated.SignatureApproved = false
+	deliberatelyInvalidated.Note = "Signature invalidated (approved set to false) by org-admin for Contributor due to Email Criteria  removal"
+	deliberatelyInvalidated.InvalidatedBy = managerUser.UserName
+	deliberatelyInvalidated.InvalidationReason = "compliance"
+
+	legacyInvalidated := eclaItemSignature()
+	legacyInvalidated.SignatureApproved = false
+	legacyInvalidated.Note = "Signature invalidated (approved set to false) by pcc-admin for Contributor "
+
 	repoDown := errors.New("dynamo down")
 
 	testCases := []struct {
@@ -279,6 +385,8 @@ func TestService_InvalidateECLAValidation(t *testing.T) {
 		{name: "staff admin is rejected because admin scope is disallowed", sig: eclaItemSignature(), authUser: staffAdmin, expectedErr: errEclaForbidden},
 		{name: "user without matching scope is rejected", sig: eclaItemSignature(), authUser: noScopeUser, expectedErr: errEclaForbidden},
 		{name: "already invalidated ecla conflicts", sig: invalidated, authUser: managerUser, expectedErr: errEclaAlreadyInvalidated},
+		{name: "deliberately invalidated ecla conflicts even with a removal-like note", sig: deliberatelyInvalidated, authUser: managerUser, expectedErr: errEclaAlreadyInvalidated},
+		{name: "legacy deliberately invalidated ecla conflicts", sig: legacyInvalidated, authUser: managerUser, expectedErr: errEclaAlreadyInvalidated},
 	}
 
 	// the panic-after-write regression lock: GetCLAGroupByID returning (nil, nil) must error
@@ -291,6 +399,7 @@ func TestService_InvalidateECLAValidation(t *testing.T) {
 		mockRepo := mock_v1_signatures.NewMockSignatureRepository(ctrl)
 		mockRepo.EXPECT().GetItemSignature(ctx, "sig-1").Return(eclaItemSignature(), nil)
 		mockRepo.EXPECT().InvalidateProjectRecordWithMetadata(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+		mockRepo.EXPECT().ReinvalidateProjectRecordWithMetadata(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 		mockCompanyService := mock_company.NewMockIService(ctrl)
 		mockCompanyService.EXPECT().GetCompany(ctx, "company-1").
@@ -324,6 +433,8 @@ func TestService_InvalidateECLAValidation(t *testing.T) {
 
 			mockRepo := mock_v1_signatures.NewMockSignatureRepository(ctrl)
 			mockRepo.EXPECT().GetItemSignature(ctx, "sig-1").Return(tc.sig, tc.sigErr)
+			mockRepo.EXPECT().InvalidateProjectRecordWithMetadata(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+			mockRepo.EXPECT().ReinvalidateProjectRecordWithMetadata(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
 
 			mockCompanyService := mock_company.NewMockIService(ctrl)
 			mockCompanyService.EXPECT().GetCompany(ctx, "company-1").
