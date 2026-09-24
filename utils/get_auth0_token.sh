@@ -11,6 +11,8 @@
 # (template: utils/auth0.secret.example), parsed as simple KEY=VALUE lines - never sourced:
 #   AUTH0_USERNAME=someuser
 #   AUTH0_PASSWORD=somepassword
+# Client IDs come from one-line gitignored files (nothing secret-looking is hardcoded here):
+#   utils/auth0-<stage>-client-id.secret (ordinary), utils/auth0-<stage>-azp-client-id.secret (azp).
 # Optional overrides in the same file: AUTH0_DOMAIN, AUTH0_CLIENT_ID,
 # AUTH0_AUDIENCE, AUTH0_TENANT, AUTH0_REDIRECT_URI.
 #
@@ -46,13 +48,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 case "$STAGE" in
   dev)
     AUTH0_DOMAIN="linuxfoundation-dev.auth0.com"
-    AUTH0_CLIENT_ID="G5CNCTp6X5Z1HizkotPHm6Ug11oGr2Eo"
+    AUTH0_CLIENT_ID="$(cat "$SCRIPT_DIR/auth0-dev-client-id.secret")"
     AUTH0_AUDIENCE="https://api-gw.dev.platform.linuxfoundation.org/"
     AUTH0_TENANT="linuxfoundation-dev"
     ;;
   prod)
     AUTH0_DOMAIN="sso.linuxfoundation.org"
-    AUTH0_CLIENT_ID="DoMcTpihSo3is7hfGngHz7phw7kC6daw"
+    AUTH0_CLIENT_ID="$(cat "$SCRIPT_DIR/auth0-prod-client-id.secret")"
     AUTH0_AUDIENCE="https://api-gw.platform.linuxfoundation.org/"
     AUTH0_TENANT="linuxfoundation"
     ;;
@@ -69,10 +71,10 @@ case "$TOKEN_MODE" in
   azp)
     TOKEN_SUFFIX="-azp"
     if [ "$STAGE" = "dev" ]; then
-      AUTH0_CLIENT_ID="InaRygxwVLWCKf6k6rmOc25mTPvvBrDy"
+      AUTH0_CLIENT_ID="$(cat "$SCRIPT_DIR/auth0-dev-azp-client-id.secret")"
       AUTH0_REDIRECT_URI="https://app.dev.lfx.dev/callback"
     else
-      AUTH0_CLIENT_ID="uPDeeOoLcqxJ7Mn05qeSmyoLCrCsu6jV"
+      AUTH0_CLIENT_ID="$(cat "$SCRIPT_DIR/auth0-prod-azp-client-id.secret")"
       AUTH0_REDIRECT_URI="https://app.lfx.dev/callback"
     fi
     ;;

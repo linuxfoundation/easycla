@@ -112,6 +112,43 @@ func TestInvalidationUpdateExpressionModes(t *testing.T) {
 	}
 }
 
+func TestReinvalidationCondition(t *testing.T) {
+	attributes := map[string]string{"#ID": "signature_id", "#A": "signature_approved", "#S": "note", "#DI": "date_invalidated",
+		"#IB": "invalidated_by", "#IR": "invalidation_reason", "#IN": "invalidation_note", "#M": "date_modified"}
+	cases := []struct {
+		name      string
+		existing  *ItemSignature
+		condition string
+	}{
+		{"attributed removal snapshot", &ItemSignature{SignatureID: "sig-1", Note: "removal note", DateInvalidated: "2026-09-15T10:00:00.000000+0000",
+			InvalidatedBy: "cla-manager", InvalidationReason: ApprovalListRemovalReasonPrefix + utils.EmailCriteria + ")", InvalidationNote: "left"},
+			"attribute_exists(#ID) AND (attribute_not_exists(#A) OR #A = :ca) AND #S = :cs AND #DI = :cdi AND #IB = :cib AND #IR = :cir AND #IN = :cin"},
+		{"legacy note-only snapshot", &ItemSignature{SignatureID: "sig-1", Note: "removal note"},
+			"attribute_exists(#ID) AND (attribute_not_exists(#A) OR #A = :ca) AND #S = :cs AND (attribute_not_exists(#DI) OR #DI = :cdi) AND (attribute_not_exists(#IB) OR #IB = :cib)" +
+				" AND (attribute_not_exists(#IR) OR #IR = :cir) AND (attribute_not_exists(#IN) OR #IN = :cin)"},
+		{"empty note snapshot", &ItemSignature{SignatureID: "sig-1", InvalidationReason: "compliance"},
+			"attribute_exists(#ID) AND (attribute_not_exists(#A) OR #A = :ca) AND (attribute_not_exists(#S) OR #S = :cs) AND (attribute_not_exists(#DI) OR #DI = :cdi)" +
+				" AND (attribute_not_exists(#IB) OR #IB = :cib) AND #IR = :cir AND (attribute_not_exists(#IN) OR #IN = :cin)"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			names, values, _ := invalidationUpdateExpression("a note", "2024-05-06T07:08:09.000000+0000", &InvalidationMetadata{InvalidatedBy: "admin-user"}, true)
+			assert.Equal(t, tc.condition, reinvalidationCondition(tc.existing, names, values))
+			for name, attribute := range names {
+				assert.Equal(t, attributes[name], *attribute, name)
+			}
+			assert.False(t, *values[":ca"].BOOL)
+			assert.Equal(t, tc.existing.Note, *values[":cs"].S)
+			assert.Equal(t, tc.existing.DateInvalidated, *values[":cdi"].S)
+			assert.Equal(t, tc.existing.InvalidatedBy, *values[":cib"].S)
+			assert.Equal(t, tc.existing.InvalidationReason, *values[":cir"].S)
+			assert.Equal(t, tc.existing.InvalidationNote, *values[":cin"].S)
+			assert.False(t, *values[":a"].BOOL, "the update placeholders are untouched")
+			assert.Equal(t, "a note", *values[":s"].S)
+		})
+	}
+}
+
 func TestItemSignatureInvalidatedByApprovalListRemoval(t *testing.T) {
 	const removalNote = "Signature invalidated (approved set to false) by cla-manager due to " + utils.EmailCriteria + "  removal"
 	cases := []struct {

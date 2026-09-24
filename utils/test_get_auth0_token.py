@@ -149,6 +149,14 @@ class TokenHelperTests(unittest.TestCase):
                 del self.environment[key]
         self.password = "fixture password '$value"
         self.file_secret = "fixture-client-secret"
+        self.client_id_files()
+
+    def client_id_files(self):
+        for stage in ("dev", "prod"):
+            for suffix in ("", "-azp"):
+                client_file = self.root / f"auth0-{stage}{suffix}-client-id.secret"
+                client_file.write_text(f"fixture-{stage}{suffix}-client\n")
+                client_file.chmod(0o600)
 
     def credentials(self, stage="dev", **extra):
         values = {"AUTH0_USERNAME": "fixture-user", "AUTH0_PASSWORD": self.password, **extra}
@@ -187,20 +195,41 @@ class TokenHelperTests(unittest.TestCase):
         self.assertEqual(self.state()["login"]["password"], self.password)
 
     def test_existing_defaults_and_explicit_non_azp(self):
-        for stage, client in (
-            ("dev", "G5CNCTp6X5Z1HizkotPHm6Ug11oGr2Eo"),
-            ("prod", "DoMcTpihSo3is7hfGngHz7phw7kC6daw"),
-        ):
+        for stage in ("dev", "prod"):
             with self.subTest(stage=stage):
                 self.credentials(stage, AUTH0_AZP_CLIENT_SECRET=self.file_secret)
                 result = self.run_helper(stage, "non-azp")
                 self.assert_success(result, stage)
-                self.assertEqual(self.state()["client_id"], client)
+                self.assertEqual(self.state()["client_id"], f"fixture-{stage}-client")
                 self.assertEqual(self.state()["redirect_uri"], "http://localhost:55001/callback")
                 self.assertNotIn("client_secret", self.state()["exchange"])
                 self.assertFalse((self.root / "kubectl.json").exists())
         self.credentials()
         self.assert_success(self.run_helper())
+
+    def test_missing_client_id_file_fails_before_any_network_or_pod_access(self):
+        for mode, suffix in (("non-azp", ""), ("azp", "-azp")):
+            with self.subTest(mode=mode):
+                self.client_id_files()
+                self.credentials(AUTH0_AZP_CLIENT_SECRET=self.file_secret)
+                (self.root / f"auth0-dev{suffix}-client-id.secret").unlink()
+                result = self.run_helper("dev", mode)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(result.stdout, "")
+                self.assertIn(f"auth0-dev{suffix}-client-id.secret", result.stderr)
+                self.assertNotIn(self.password, result.stderr)
+                self.assertFalse((self.root / "requests.jsonl").exists())
+                self.assertFalse((self.root / "kubectl.json").exists())
+                self.assertFalse((self.root / f"auth0-dev{suffix}.token.secret").exists())
+
+    def test_no_client_ids_in_tracked_files(self):
+        here = Path(__file__).resolve().parent
+        for name in ("get_auth0_token.sh", "test_get_auth0_token.py", "auth0.secret.example"):
+            with self.subTest(file=name):
+                self.assertNotRegex((here / name).read_text(), r"\b[A-Za-z0-9]{32}\b")
+        script = (here / "get_auth0_token.sh").read_text()
+        for name in ("dev", "prod", "dev-azp", "prod-azp"):
+            self.assertIn(f'"$(cat "$SCRIPT_DIR/auth0-{name}-client-id.secret")"', script)
 
     def test_ordinary_overrides_remain_literal(self):
         self.credentials(
@@ -222,9 +251,9 @@ class TokenHelperTests(unittest.TestCase):
         self.assertEqual(result.stdout.strip(), "ordinary-opaque-token")
 
     def test_azp_secret_file_and_stage_bindings(self):
-        for stage, client, redirect in (
-            ("dev", "InaRygxwVLWCKf6k6rmOc25mTPvvBrDy", "https://app.dev.lfx.dev/callback"),
-            ("prod", "uPDeeOoLcqxJ7Mn05qeSmyoLCrCsu6jV", "https://app.lfx.dev/callback"),
+        for stage, redirect in (
+            ("dev", "https://app.dev.lfx.dev/callback"),
+            ("prod", "https://app.lfx.dev/callback"),
         ):
             with self.subTest(stage=stage):
                 self.credentials(
@@ -233,7 +262,7 @@ class TokenHelperTests(unittest.TestCase):
                     AUTH0_AUDIENCE="ignored-audience", AUTH0_REDIRECT_URI="http://ignored.example",
                 )
                 self.assert_success(self.run_helper(stage, "azp"), stage, "azp")
-                self.assertEqual(self.state()["client_id"], client)
+                self.assertEqual(self.state()["client_id"], f"fixture-{stage}-azp-client")
                 self.assertEqual(self.state()["redirect_uri"], redirect)
                 self.assertEqual(self.state()["exchange"]["client_secret"], self.file_secret)
                 self.assertFalse((self.root / "kubectl.json").exists())

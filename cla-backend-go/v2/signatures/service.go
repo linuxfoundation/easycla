@@ -536,14 +536,20 @@ func (s *Service) InvalidateECLA(ctx context.Context, claGroupID string, signatu
 		metadata.Reason = input.Reason
 		metadata.Note = utils.SanitizePlainText(input.Note)
 	}
-	invalidate := s.v1SignatureRepo.InvalidateProjectRecordWithMetadata
+	var invalidateErr error
 	if reinvalidation {
 		log.WithFields(f).Debug("ecla was voided by an approval list removal - recording the deliberate invalidation over it")
-		invalidate = s.v1SignatureRepo.ReinvalidateProjectRecordWithMetadata
+		invalidateErr = s.v1SignatureRepo.ReinvalidateProjectRecordWithMetadata(ctx, sig, note, metadata)
+		if errors.Is(invalidateErr, signatures.ErrSignatureModifiedConcurrently) {
+			log.WithFields(f).Warn("ecla changed concurrently - reporting a conflict")
+			return nil, errEclaAlreadyInvalidated
+		}
+	} else {
+		invalidateErr = s.v1SignatureRepo.InvalidateProjectRecordWithMetadata(ctx, sig.SignatureID, note, metadata)
 	}
-	if err := invalidate(ctx, sig.SignatureID, note, metadata); err != nil {
+	if invalidateErr != nil {
 		log.WithFields(f).Debug("unable to invalidate ecla record")
-		return nil, err
+		return nil, invalidateErr
 	}
 
 	email := utils.GetBestEmail(user)

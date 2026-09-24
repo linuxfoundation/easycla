@@ -73,7 +73,7 @@ type SignatureRepository interface {
 	ValidateProjectRecordUnlessInvalidated(ctx context.Context, signatureID, note string) error
 	InvalidateProjectRecord(ctx context.Context, signatureID, note string) error
 	InvalidateProjectRecordWithMetadata(ctx context.Context, signatureID, note string, metadata *InvalidationMetadata) error
-	ReinvalidateProjectRecordWithMetadata(ctx context.Context, signatureID, note string, metadata *InvalidationMetadata) error
+	ReinvalidateProjectRecordWithMetadata(ctx context.Context, existing *ItemSignature, note string, metadata *InvalidationMetadata) error
 	UpdateEnvelopeDetails(ctx context.Context, signatureID, envelopeID string, signURL *string) (*models.Signature, error)
 	CreateSignature(ctx context.Context, signature *ItemSignature) error
 	UpdateSignature(ctx context.Context, signatureID string, updates map[string]interface{}) error
@@ -2147,15 +2147,17 @@ func (repo repository) InvalidateProjectRecord(ctx context.Context, signatureID,
 // first-write-wins so a re-invalidation never destroys the record of a prior invalidation;
 // attributes missing on pre-feature records are still populated.
 func (repo repository) InvalidateProjectRecordWithMetadata(ctx context.Context, signatureID, note string, metadata *InvalidationMetadata) error {
-	return repo.invalidateProjectRecord(ctx, "v1.signatures.repository.InvalidateProjectRecordWithMetadata", signatureID, note, metadata, false)
+	return repo.invalidateProjectRecord(ctx, "v1.signatures.repository.InvalidateProjectRecordWithMetadata", signatureID, note, metadata, nil)
 }
 
-// ReinvalidateProjectRecordWithMetadata deliberately invalidates a removal-voided record, replacing its attribution
-func (repo repository) ReinvalidateProjectRecordWithMetadata(ctx context.Context, signatureID, note string, metadata *InvalidationMetadata) error {
-	return repo.invalidateProjectRecord(ctx, "v1.signatures.repository.ReinvalidateProjectRecordWithMetadata", signatureID, note, metadata, true)
+// ReinvalidateProjectRecordWithMetadata deliberately invalidates a removal-voided record, replacing its
+// attribution; the write is pinned to the snapshot the decision was made on and reports
+// ErrSignatureModifiedConcurrently when the record changed meanwhile
+func (repo repository) ReinvalidateProjectRecordWithMetadata(ctx context.Context, existing *ItemSignature, note string, metadata *InvalidationMetadata) error {
+	return repo.invalidateProjectRecord(ctx, "v1.signatures.repository.ReinvalidateProjectRecordWithMetadata", existing.SignatureID, note, metadata, existing)
 }
 
-func (repo repository) invalidateProjectRecord(ctx context.Context, functionName, signatureID, note string, metadata *InvalidationMetadata, overwrite bool) error {
+func (repo repository) invalidateProjectRecord(ctx context.Context, functionName, signatureID, note string, metadata *InvalidationMetadata, pinned *ItemSignature) error {
 	f := logrus.Fields{
 		"functionName":   functionName,
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -2166,7 +2168,7 @@ func (repo repository) invalidateProjectRecord(ctx context.Context, functionName
 
 	_, now := utils.CurrentTime()
 
-	expressionAttributeNames, expressionAttributeValues, updateExpression := invalidationUpdateExpression(note, now, metadata, overwrite)
+	expressionAttributeNames, expressionAttributeValues, updateExpression := invalidationUpdateExpression(note, now, metadata, pinned != nil)
 
 	input := &dynamodb.UpdateItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
@@ -2179,14 +2181,46 @@ func (repo repository) invalidateProjectRecord(ctx context.Context, functionName
 		UpdateExpression:          &updateExpression,
 		TableName:                 aws.String(signatureTableName),
 	}
+	if pinned != nil {
+		input.ConditionExpression = aws.String(reinvalidationCondition(pinned, expressionAttributeNames, expressionAttributeValues))
+	}
 
 	_, updateErr := repo.dynamoDBClient.UpdateItem(input)
 	if updateErr != nil {
+		if aerr, ok := updateErr.(awserr.Error); ok && aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
+			log.WithFields(f).Warnf("signature %s changed concurrently - deliberate invalidation not applied", signatureID)
+			return ErrSignatureModifiedConcurrently
+		}
 		log.WithFields(f).Warnf("error updating signature_approved for signature_id : %s error : %v ", signatureID, updateErr)
 		return updateErr
 	}
 
 	return nil
+}
+
+// reinvalidationCondition pins the overwrite to the removal-voided snapshot it was decided on: the record
+// still exists, is still unapproved and carries the same note and attribution (a pinned attribute may
+// only be missing when it was read as its zero value)
+func reinvalidationCondition(existing *ItemSignature, names map[string]*string, values map[string]*dynamodb.AttributeValue) string {
+	names["#ID"] = aws.String("signature_id")
+	values[":ca"] = &dynamodb.AttributeValue{BOOL: aws.Bool(false)}
+	condition := "attribute_exists(#ID) AND (attribute_not_exists(#A) OR #A = :ca)"
+	for _, pinned := range []struct{ name, placeholder, attribute, read string }{
+		{"#S", ":cs", "note", existing.Note},
+		{"#DI", ":cdi", "date_invalidated", existing.DateInvalidated},
+		{"#IB", ":cib", "invalidated_by", existing.InvalidatedBy},
+		{"#IR", ":cir", "invalidation_reason", existing.InvalidationReason},
+		{"#IN", ":cin", "invalidation_note", existing.InvalidationNote},
+	} {
+		names[pinned.name] = aws.String(pinned.attribute)
+		values[pinned.placeholder] = &dynamodb.AttributeValue{S: aws.String(pinned.read)}
+		if pinned.read == "" {
+			condition += " AND (attribute_not_exists(" + pinned.name + ") OR " + pinned.name + " = " + pinned.placeholder + ")"
+		} else {
+			condition += " AND " + pinned.name + " = " + pinned.placeholder
+		}
+	}
+	return condition
 }
 
 // invalidationUpdateExpression assembles the invalidation update: approval revoked, note replaced,
