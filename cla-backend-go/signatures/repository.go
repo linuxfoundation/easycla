@@ -2151,8 +2151,8 @@ func (repo repository) InvalidateProjectRecordWithMetadata(ctx context.Context, 
 }
 
 // invalidateApprovedProjectRecord is the approval list removal write: it lands only while the record
-// is still approved, so a deliberate invalidation racing the removal stays untouched and the removal
-// is reported as not applied
+// is still approved, so an already invalidated acknowledgment - even one invalidated after the removal
+// read it - stays untouched (#2897) and the removal is reported as not applied
 func (repo repository) invalidateApprovedProjectRecord(ctx context.Context, signatureID, note string, metadata *InvalidationMetadata) (bool, error) {
 	err := repo.invalidateProjectRecord(ctx, "v1.signatures.repository.invalidateApprovedProjectRecord", signatureID, note, metadata, nil, true)
 	if errors.Is(err, ErrSignatureModifiedConcurrently) {
@@ -2203,7 +2203,11 @@ func (repo repository) invalidateProjectRecord(ctx context.Context, functionName
 	_, updateErr := repo.dynamoDBClient.UpdateItem(input)
 	if updateErr != nil {
 		if aerr, ok := updateErr.(awserr.Error); ok && aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
-			log.WithFields(f).Warnf("signature %s changed concurrently - invalidation not applied", signatureID)
+			if approvedOnly {
+				log.WithFields(f).Debugf("signature %s is not approved - leaving it untouched", signatureID)
+			} else {
+				log.WithFields(f).Warnf("signature %s changed concurrently - invalidation not applied", signatureID)
+			}
 			return ErrSignatureModifiedConcurrently
 		}
 		log.WithFields(f).Warnf("error updating signature_approved for signature_id : %s error : %v ", signatureID, updateErr)
@@ -4571,10 +4575,6 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 				// Grab user record
 				if ecla.SignatureReferenceID == "" {
 					log.WithFields(f).Warnf("no signatureReferenceID for signature: %+v ", ecla)
-					return
-				}
-				if !ecla.SignatureApproved {
-					log.WithFields(f).Debugf("employee signature %s is already invalidated - leaving it untouched", ecla.SignatureID)
 					return
 				}
 				user, invalidated, verifyErr := repo.verifyUserApprovals(ctx, ecla.SignatureReferenceID, ecla.SignatureID, claManager, approvalList)
