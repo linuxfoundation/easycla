@@ -3,10 +3,20 @@
 
 package signatures
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+)
 
 // ApprovalListRemovalReasonPrefix starts the invalidation_reason recorded by an approval list removal
 const ApprovalListRemovalReasonPrefix = "approved list removal ("
+
+// legacyInvalidationNotePrefix opens every note verifyUserApprovals has written since 2021
+const legacyInvalidationNotePrefix = "Signature invalidated (approved set to false) by "
+
+var approvalListRemovalCriteria = []string{utils.EmailDomainCriteria, utils.EmailCriteria, utils.GitHubUsernameCriteria,
+	utils.GitHubOrgCriteria, utils.GitlabUsernameCriteria, utils.GitlabOrgCriteria}
 
 // ItemSignature database model
 type ItemSignature struct {
@@ -74,7 +84,9 @@ type ItemSignature struct {
 	ApproxDateCreated       string `json:"approx_date_created,omitempty"`
 }
 
-// InvalidatedByApprovalListRemoval reports whether the approval was revoked by an approval list removal (reason prefix, or the legacy "... due to <criteria>  removal" note)
+// InvalidatedByApprovalListRemoval reports whether the approval was revoked by an approval list removal: the reason
+// prefix, or on records predating the attribution attributes the exact note verifyUserApprovals writes
+// ("Signature invalidated (approved set to false) by <manager> due to <criteria>  removal")
 func (s *ItemSignature) InvalidatedByApprovalListRemoval() bool {
 	if s == nil || s.SignatureApproved {
 		return false
@@ -82,8 +94,16 @@ func (s *ItemSignature) InvalidatedByApprovalListRemoval() bool {
 	if s.InvalidationReason != "" {
 		return strings.HasPrefix(s.InvalidationReason, ApprovalListRemovalReasonPrefix)
 	}
-	note := strings.TrimSpace(s.Note)
-	return strings.Contains(note, " due to ") && strings.HasSuffix(note, " removal")
+	note := strings.Join(strings.Fields(s.Note), " ")
+	if !strings.HasPrefix(note, legacyInvalidationNotePrefix) {
+		return false
+	}
+	for _, criteria := range approvalListRemovalCriteria {
+		if strings.HasSuffix(note, " due to "+criteria+" removal") {
+			return true
+		}
+	}
+	return false
 }
 
 // DBManagersModel is a database model for only the ACL/Manager column

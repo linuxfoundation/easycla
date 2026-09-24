@@ -82,6 +82,8 @@ elif parts.path == "/oauth/token":
             claims["exp"] = int(time.time()) - 1
         elif mutation == "expiry-type":
             claims["exp"] = "tomorrow"
+        elif mutation == "expiry-bool":
+            claims["exp"] = True
         elif mutation == "claims-type":
             claims = []
         if os.environ.get("MOCK_STRING_AUDIENCE"):
@@ -290,7 +292,7 @@ class TokenHelperTests(unittest.TestCase):
 
     def test_azp_rejects_invalid_token_bindings(self):
         self.credentials(AUTH0_AZP_CLIENT_SECRET=self.file_secret)
-        for mutation in ("issuer", "client", "audience", "expiry", "expiry-type", "claims-type", "shape", "json"):
+        for mutation in ("issuer", "client", "audience", "expiry", "expiry-type", "expiry-bool", "claims-type", "shape", "json"):
             with self.subTest(mutation=mutation):
                 result = self.run_helper("dev", "azp", MOCK_BAD_BINDING=mutation)
                 self.assertNotEqual(result.returncode, 0)

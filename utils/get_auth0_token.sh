@@ -305,7 +305,7 @@ if isinstance(audience, str):
 expiry = claims.get("exp")
 if (claims.get("iss") != os.environ["A0_ISSUER"] or claims.get("azp") != os.environ["A0_CLIENT_ID"]
         or not isinstance(audience, list) or os.environ["A0_AUDIENCE"] not in audience
-        or not isinstance(expiry, (int, float)) or expiry <= time.time()):
+        or isinstance(expiry, bool) or not isinstance(expiry, (int, float)) or expiry <= time.time()):
     sys.exit("error: azp token has an unexpected issuer, client, audience or expiry")
 PYEOF
 fi

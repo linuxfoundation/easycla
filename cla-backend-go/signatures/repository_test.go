@@ -6,7 +6,9 @@ package signatures
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -172,9 +174,20 @@ func TestItemSignatureInvalidatedByApprovalListRemoval(t *testing.T) {
 		{"deliberate reason resembling a removal", &ItemSignature{InvalidationReason: "approved list removal requested by legal"}, false},
 		{"pre-attribution removal note", &ItemSignature{Note: removalNote}, true},
 		{"pre-attribution removal note with trailing blanks", &ItemSignature{Note: removalNote + " "}, true},
+		{"pre-attribution removal note with collapsed blanks", &ItemSignature{Note: strings.Join(strings.Fields(removalNote), " ")}, true},
 		{"pre-attribution deliberate note", &ItemSignature{Note: "Signature invalidated (approved set to false) by pcc-admin for user-006 "}, false},
 		{"pre-attribution note mentioning a removal elsewhere", &ItemSignature{Note: "Signature invalidated (approved set to false) by pcc-admin due to removal of access rights"}, false},
+		{"pre-attribution deliberate note with removal wording", &ItemSignature{Note: "Signature invalidated (approved set to false) by pcc-admin for user-006 due to contractor removal"}, false},
+		{"pre-attribution removal wording without the legacy prefix", &ItemSignature{Note: "Contributor left due to " + utils.EmailCriteria + "  removal"}, false},
+		{"pre-attribution removal note of an unknown criteria", &ItemSignature{Note: "Signature invalidated (approved set to false) by cla-manager due to Slack Handle Criteria  removal"}, false},
 		{"unapproved record without any note", &ItemSignature{}, false},
+	}
+	for _, criteria := range []string{utils.EmailDomainCriteria, utils.EmailCriteria, utils.GitHubUsernameCriteria, utils.GitHubOrgCriteria, utils.GitlabUsernameCriteria, utils.GitlabOrgCriteria} {
+		cases = append(cases, struct {
+			name string
+			sig  *ItemSignature
+			want bool
+		}{"pre-attribution removal note for " + criteria, &ItemSignature{Note: fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", "cla-manager", criteria)}, true})
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
