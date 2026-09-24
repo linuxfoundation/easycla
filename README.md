@@ -61,6 +61,9 @@ The following diagram explains the EasyCLA architecture.
 
 ![CLA Architecture](.gitbook/assets/easycla-architecture-overview.png)
 
+For the **target architecture of the EasyCLA → LFX Self Serve migration** (cross-component contracts,
+authorization, and external dependencies through milestone M3), see [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Bot CLA Exemptions
 
 See [BOT_ALLOWLIST.md](BOT_ALLOWLIST.md) for information on configuring bots that are exempt from CLA checks.
