@@ -2147,17 +2147,28 @@ func (repo repository) InvalidateProjectRecord(ctx context.Context, signatureID,
 // first-write-wins so a re-invalidation never destroys the record of a prior invalidation;
 // attributes missing on pre-feature records are still populated.
 func (repo repository) InvalidateProjectRecordWithMetadata(ctx context.Context, signatureID, note string, metadata *InvalidationMetadata) error {
-	return repo.invalidateProjectRecord(ctx, "v1.signatures.repository.InvalidateProjectRecordWithMetadata", signatureID, note, metadata, nil)
+	return repo.invalidateProjectRecord(ctx, "v1.signatures.repository.InvalidateProjectRecordWithMetadata", signatureID, note, metadata, nil, false)
+}
+
+// invalidateApprovedProjectRecord is the approval list removal write: it lands only while the record
+// is still approved, so a deliberate invalidation racing the removal stays untouched and the removal
+// is reported as not applied
+func (repo repository) invalidateApprovedProjectRecord(ctx context.Context, signatureID, note string, metadata *InvalidationMetadata) (bool, error) {
+	err := repo.invalidateProjectRecord(ctx, "v1.signatures.repository.invalidateApprovedProjectRecord", signatureID, note, metadata, nil, true)
+	if errors.Is(err, ErrSignatureModifiedConcurrently) {
+		return false, nil
+	}
+	return err == nil, err
 }
 
 // ReinvalidateProjectRecordWithMetadata deliberately invalidates a removal-voided record, replacing its
 // attribution; the write is pinned to the snapshot the decision was made on and reports
 // ErrSignatureModifiedConcurrently when the record changed meanwhile
 func (repo repository) ReinvalidateProjectRecordWithMetadata(ctx context.Context, existing *ItemSignature, note string, metadata *InvalidationMetadata) error {
-	return repo.invalidateProjectRecord(ctx, "v1.signatures.repository.ReinvalidateProjectRecordWithMetadata", existing.SignatureID, note, metadata, existing)
+	return repo.invalidateProjectRecord(ctx, "v1.signatures.repository.ReinvalidateProjectRecordWithMetadata", existing.SignatureID, note, metadata, existing, false)
 }
 
-func (repo repository) invalidateProjectRecord(ctx context.Context, functionName, signatureID, note string, metadata *InvalidationMetadata, pinned *ItemSignature) error {
+func (repo repository) invalidateProjectRecord(ctx context.Context, functionName, signatureID, note string, metadata *InvalidationMetadata, pinned *ItemSignature, approvedOnly bool) error {
 	f := logrus.Fields{
 		"functionName":   functionName,
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -2183,12 +2194,16 @@ func (repo repository) invalidateProjectRecord(ctx context.Context, functionName
 	}
 	if pinned != nil {
 		input.ConditionExpression = aws.String(reinvalidationCondition(pinned, expressionAttributeNames, expressionAttributeValues))
+	} else if approvedOnly {
+		expressionAttributeNames["#ID"] = aws.String("signature_id")
+		expressionAttributeValues[":ca"] = &dynamodb.AttributeValue{BOOL: aws.Bool(true)}
+		input.ConditionExpression = aws.String("attribute_exists(#ID) AND #A = :ca")
 	}
 
 	_, updateErr := repo.dynamoDBClient.UpdateItem(input)
 	if updateErr != nil {
 		if aerr, ok := updateErr.(awserr.Error); ok && aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
-			log.WithFields(f).Warnf("signature %s changed concurrently - deliberate invalidation not applied", signatureID)
+			log.WithFields(f).Warnf("signature %s changed concurrently - invalidation not applied", signatureID)
 			return ErrSignatureModifiedConcurrently
 		}
 		log.WithFields(f).Warnf("error updating signature_approved for signature_id : %s error : %v ", signatureID, updateErr)
@@ -4643,12 +4658,11 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 			if !stillCovered(ctx, f, user, approvalList, signatureID) {
 				//Invalidate record
 				note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), utils.EmailDomainCriteria)
-				err := repo.InvalidateProjectRecordWithMetadata(ctx, signatureID, note, invalidationMetadata)
+				invalidated, err = repo.invalidateApprovedProjectRecord(ctx, signatureID, note, invalidationMetadata)
 				if err != nil {
 					log.WithFields(f).Warnf("unable to invalidate record for signatureID: %s ", signatureID)
 					return user, false, err
 				}
-				invalidated = true
 
 				// Update Gerrit group users
 				//				if utils.StringInSlice(user.LfUsername, approvalList.GerritICLAECLAs) {
@@ -4673,12 +4687,11 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 				//Invalidate record
 
 				note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), utils.GitHubOrgCriteria)
-				err := repo.InvalidateProjectRecordWithMetadata(ctx, signatureID, note, invalidationMetadata)
+				invalidated, err = repo.invalidateApprovedProjectRecord(ctx, signatureID, note, invalidationMetadata)
 				if err != nil {
 					log.WithFields(f).Warnf("unable to invalidate record for signatureID: %s ", signatureID)
 					return user, false, err
 				}
-				invalidated = true
 			}
 		}
 	} else if approvalList.Criteria == utils.GitHubUsernameCriteria || approvalList.Criteria == utils.GitlabUsernameCriteria || approvalList.Criteria == utils.EmailCriteria {
@@ -4686,12 +4699,11 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 			return user, false, nil
 		}
 		note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), approvalList.Criteria)
-		err := repo.InvalidateProjectRecordWithMetadata(ctx, signatureID, note, invalidationMetadata)
+		invalidated, err = repo.invalidateApprovedProjectRecord(ctx, signatureID, note, invalidationMetadata)
 		if err != nil {
 			log.WithFields(f).Warnf("unable to invalidate record for signatureID: %s ", signatureID)
 			return user, false, err
 		}
-		invalidated = true
 	}
 
 	return user, invalidated, nil

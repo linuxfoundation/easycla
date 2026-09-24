@@ -5,10 +5,17 @@ package signatures
 
 import (
 	"context"
+	"errors"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	mock_users "github.com/linuxfoundation/easycla/cla-backend-go/users/mocks"
@@ -218,6 +225,116 @@ func TestInvalidateSignaturesPanicContainment(t *testing.T) {
 
 	assert.Empty(t, icla)
 	assert.Empty(t, ecla)
+}
+
+// the approval list removal write only lands while the record is still approved: an approved
+// record is invalidated first-write-wins, anything else is reported as not invalidated without
+// touching (or creating) the record, and only a real write failure surfaces as an error
+func TestInvalidateApprovedProjectRecord(t *testing.T) {
+	metadata := &InvalidationMetadata{InvalidatedBy: "manager-lf", Reason: ApprovalListRemovalReasonPrefix + utils.EmailCriteria + ")"}
+	wantCondition := "attribute_exists(#ID) AND #A = :ca"
+
+	newRepo := func(t *testing.T, table *fakeSignaturesTable) repository {
+		t.Helper()
+		awsSession, closeServer := newApprovalRemovalSession(t, table)
+		t.Cleanup(closeServer)
+		return repository{stage: "test", dynamoDBClient: dynamodb.New(awsSession), signatureTableName: "cla-test-signatures"}
+	}
+
+	t.Run("an approved record is invalidated with a preserve-mode conditional write", func(t *testing.T) {
+		table := &fakeSignaturesTable{items: []map[string]interface{}{{"signature_id": fakeS("sig-1"), "signature_approved": fakeTrue()}}, invalidated: map[string]int{}}
+		repo := newRepo(t, table)
+
+		invalidated, err := repo.invalidateApprovedProjectRecord(context.Background(), "sig-1", "removal note", metadata)
+		require.NoError(t, err)
+		assert.True(t, invalidated)
+
+		table.mu.Lock()
+		defer table.mu.Unlock()
+		require.Len(t, table.updates, 1)
+		update := table.updates[0]
+		assert.Equal(t, wantCondition, update.ConditionExpression)
+		assert.Equal(t, "signature_id", update.ExpressionAttributeNames["#ID"])
+		require.NotNil(t, update.ExpressionAttributeValues[":ca"].BOOL)
+		assert.True(t, *update.ExpressionAttributeValues[":ca"].BOOL)
+		assert.Contains(t, update.UpdateExpression, "#A = :a")
+		assert.Contains(t, update.UpdateExpression, "if_not_exists(#DI, :di)")
+		assert.Contains(t, update.UpdateExpression, "if_not_exists(#IB, :ib)")
+		assert.Contains(t, update.UpdateExpression, "if_not_exists(#IR, :ir)")
+		assert.NotContains(t, update.UpdateExpression, "REMOVE")
+		assert.Equal(t, 0, table.conditionFailures)
+		assert.Equal(t, map[string]int{"sig-1": 1}, table.invalidated)
+		item := table.find("sig-1")
+		require.NotNil(t, item)
+		assert.Equal(t, "removal note", fakeItemString(item, "note"))
+		assert.Equal(t, "manager-lf", fakeItemString(item, "invalidated_by"))
+		assert.Equal(t, ApprovalListRemovalReasonPrefix+utils.EmailCriteria+")", fakeItemString(item, "invalidation_reason"))
+	})
+
+	t.Run("an already invalidated record is left untouched and reported as not invalidated", func(t *testing.T) {
+		table := &fakeSignaturesTable{items: []map[string]interface{}{{
+			"signature_id":       fakeS("sig-1"),
+			"signature_approved": fakeFalse(),
+			"note":               fakeS("Invalidated by manager-lf"),
+			"date_invalidated":   fakeS("2024-05-01T00:00:00Z"),
+			"invalidated_by":     fakeS("manager-lf"),
+		}}, invalidated: map[string]int{}}
+		repo := newRepo(t, table)
+
+		invalidated, err := repo.invalidateApprovedProjectRecord(context.Background(), "sig-1", "removal note", metadata)
+		require.NoError(t, err)
+		assert.False(t, invalidated)
+
+		table.mu.Lock()
+		defer table.mu.Unlock()
+		require.Len(t, table.updates, 1)
+		assert.Equal(t, wantCondition, table.updates[0].ConditionExpression)
+		assert.Equal(t, 1, table.conditionFailures)
+		assert.Empty(t, table.invalidated)
+		item := table.find("sig-1")
+		require.NotNil(t, item)
+		assert.Equal(t, "Invalidated by manager-lf", fakeItemString(item, "note"))
+		assert.Equal(t, "2024-05-01T00:00:00Z", fakeItemString(item, "date_invalidated"))
+		_, hasReason := item["invalidation_reason"]
+		assert.False(t, hasReason)
+		_, hasModified := item["date_modified"]
+		assert.False(t, hasModified)
+	})
+
+	t.Run("a missing record is neither invalidated nor created", func(t *testing.T) {
+		table := &fakeSignaturesTable{invalidated: map[string]int{}}
+		repo := newRepo(t, table)
+
+		invalidated, err := repo.invalidateApprovedProjectRecord(context.Background(), "sig-1", "removal note", metadata)
+		require.NoError(t, err)
+		assert.False(t, invalidated)
+
+		table.mu.Lock()
+		defer table.mu.Unlock()
+		assert.Equal(t, 1, table.conditionFailures)
+		assert.Empty(t, table.upserts)
+		assert.Empty(t, table.items)
+		assert.Empty(t, table.invalidated)
+	})
+
+	t.Run("any other write failure is returned", func(t *testing.T) {
+		server := httptest.NewServer(&fakeSignaturesTable{invalidated: map[string]int{}})
+		awsSession, err := session.NewSession(&aws.Config{
+			Region:      aws.String("us-east-1"),
+			Endpoint:    aws.String(server.URL),
+			Credentials: credentials.NewStaticCredentials("test", "test", ""),
+			DisableSSL:  aws.Bool(true),
+			MaxRetries:  aws.Int(0),
+		})
+		require.NoError(t, err)
+		server.Close()
+		repo := repository{stage: "test", dynamoDBClient: dynamodb.New(awsSession), signatureTableName: "cla-test-signatures"}
+
+		invalidated, err := repo.invalidateApprovedProjectRecord(context.Background(), "sig-1", "removal note", metadata)
+		require.Error(t, err)
+		assert.False(t, invalidated)
+		assert.False(t, errors.Is(err, ErrSignatureModifiedConcurrently))
+	})
 }
 
 // a missing user record (GetUser returning nil, nil) must skip the re-check without error
