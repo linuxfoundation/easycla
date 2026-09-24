@@ -84,6 +84,10 @@ elif parts.path == "/oauth/token":
             claims["exp"] = "tomorrow"
         elif mutation == "expiry-bool":
             claims["exp"] = True
+        elif mutation == "expiry-nan":
+            claims["exp"] = float("nan")
+        elif mutation == "expiry-infinity":
+            claims["exp"] = float("inf")
         elif mutation == "claims-type":
             claims = []
         if os.environ.get("MOCK_STRING_AUDIENCE"):
@@ -224,6 +228,27 @@ class TokenHelperTests(unittest.TestCase):
                 self.assertFalse((self.root / "kubectl.json").exists())
                 self.assertFalse((self.root / f"auth0-dev{suffix}.token.secret").exists())
 
+    def test_only_the_selected_client_id_file_is_needed(self):
+        for stage in ("dev", "prod"):
+            with self.subTest(mode="azp", stage=stage):
+                self.client_id_files()
+                (self.root / f"auth0-{stage}-client-id.secret").unlink()
+                self.credentials(stage, AUTH0_AZP_CLIENT_SECRET=self.file_secret)
+                self.assert_success(self.run_helper(stage, "azp"), stage, "azp")
+                self.assertEqual(self.state()["client_id"], f"fixture-{stage}-azp-client")
+        with self.subTest(mode="non-azp"):
+            self.client_id_files()
+            (self.root / "auth0-dev-azp-client-id.secret").unlink()
+            self.credentials()
+            self.assert_success(self.run_helper("dev"))
+            self.assertEqual(self.state()["client_id"], "fixture-dev-client")
+        with self.subTest(mode="non-azp", override=True):
+            self.client_id_files()
+            (self.root / "auth0-dev-client-id.secret").unlink()
+            self.credentials(AUTH0_CLIENT_ID="ordinary-override")
+            self.assert_success(self.run_helper("dev"))
+            self.assertEqual(self.state()["client_id"], "ordinary-override")
+
     def test_no_client_ids_in_tracked_files(self):
         here = Path(__file__).resolve().parent
         for name in ("get_auth0_token.sh", "test_get_auth0_token.py", "auth0.secret.example"):
@@ -292,7 +317,8 @@ class TokenHelperTests(unittest.TestCase):
 
     def test_azp_rejects_invalid_token_bindings(self):
         self.credentials(AUTH0_AZP_CLIENT_SECRET=self.file_secret)
-        for mutation in ("issuer", "client", "audience", "expiry", "expiry-type", "expiry-bool", "claims-type", "shape", "json"):
+        for mutation in ("issuer", "client", "audience", "expiry", "expiry-type", "expiry-bool", "expiry-nan",
+                         "expiry-infinity", "claims-type", "shape", "json"):
             with self.subTest(mutation=mutation):
                 result = self.run_helper("dev", "azp", MOCK_BAD_BINDING=mutation)
                 self.assertNotEqual(result.returncode, 0)

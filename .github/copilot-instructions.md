@@ -83,3 +83,12 @@ You are assisting in this repository. The following rules are **mandatory** and 
 - Explain non-obvious design decisions briefly in comments when helpful.
 - When uncertain, produce a **best-effort, concrete implementation** using the available code rather than asking unnecessary questions.
 
+---
+
+## Code Review Focus
+
+- `utils/` holds maintainer-local operational helper scripts (shell/Python) that are run by hand against the dev/prod
+  environments; they are not deployed and are not part of the product. In pull request reviews, flag only leaked
+  secrets or syntax errors there; do not raise hardening, validation, robustness or portability findings for them.
+- Deployed product code lives in `cla-backend-go/`, `cla-backend-legacy/` and `cla-backend/auth/`; focus review depth there.
+
