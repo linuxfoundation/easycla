@@ -5013,6 +5013,8 @@ paths:
           description: Successfully received and processed the callback data for corporate signatures.
         '400':
           description: Invalid request.
+        '403':
+          $ref: '#/responses/forbidden-or-company-sanctioned'
       tags:
         - sign
     

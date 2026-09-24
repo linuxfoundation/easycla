@@ -1331,8 +1331,20 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 			if !wasSanctioned {
 				s.logCompanySanctionedEvent(ctx, companyModel, user, "")
 			}
-			log.WithFields(f).Warnf("company %s requires further review for trade compliance; refusing to finalize corporate CLA in callback", companyID)
-			return fmt.Errorf("company %s requires further review for trade compliance; corporate CLA cannot be finalized", companyID)
+			sanctionedErr := &utils.SanctionedCompanyError{
+				CompanyID:   companyModel.CompanyID,
+				CompanySFID: companyModel.CompanyExternalID,
+				CompanyName: companyModel.CompanyName,
+				Guidance:    utils.CompanySanctionedSigningGuidance,
+			}
+			if sanctionedErr.CompanyID == "" {
+				sanctionedErr.CompanyID = companyID
+			}
+			if sanctionedErr.CompanyName == "" {
+				sanctionedErr.CompanyName = companyID
+			}
+			log.WithFields(f).WithError(sanctionedErr).Warnf("company %s requires further review for trade compliance; refusing to finalize corporate CLA in callback", companyID)
+			return sanctionedErr
 		}
 
 		_, currentTime := utils.CurrentTime()

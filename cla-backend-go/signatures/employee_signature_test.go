@@ -12,6 +12,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -552,6 +553,175 @@ func TestInvalidateThenValidateRoundTrip(t *testing.T) {
 	require.NotNil(t, result.Signature)
 	assert.True(t, result.Signature.SignatureApproved)
 	assert.False(t, result.Invalidated)
+}
+
+func TestReinvalidateAfterApprovalListRemoval(t *testing.T) {
+	const removalReason = ApprovalListRemovalReasonPrefix + utils.EmailCriteria + ")"
+	const removalNote = "Signature invalidated (approved set to false) by cla-manager due to " + utils.EmailCriteria + "  removal"
+	const removedAt = "2026-09-15T10:00:00.000000+0000"
+	const deliberateNote = "Signature invalidated (approved set to false) by org-admin for user-001"
+
+	voidedByRemoval := func(item map[string]interface{}) {
+		item["signature_approved"] = fakeFalse()
+		item["note"] = fakeS(removalNote)
+		item["date_invalidated"] = fakeS(removedAt)
+		item["invalidated_by"] = fakeS("cla-manager")
+		item["invalidation_reason"] = fakeS(removalReason)
+	}
+
+	t.Run("the deliberate invalidation replaces the removal attribution", func(t *testing.T) {
+		items := employeeSignatureItems()
+		voidedByRemoval(items[0])
+		repo, table := newCorporateContributorsRepo(t, items)
+		ctx := context.Background()
+		voided, err := repo.GetItemSignature(ctx, "sig-001")
+		require.NoError(t, err)
+		require.True(t, voided.InvalidatedByApprovalListRemoval())
+
+		require.NoError(t, repo.ReinvalidateProjectRecordWithMetadata(ctx, voided, deliberateNote,
+			&InvalidationMetadata{InvalidatedBy: "org-admin", Reason: "compliance", Note: "per legal review"}))
+
+		require.Len(t, table.updates, 1)
+		assert.Equal(t, "SET  #A = :a, #S = :s, #DI = :di, #IB = :ib, #IR = :ir, #IN = :in, #M = :m", table.updates[0].UpdateExpression)
+		assert.Equal(t, "attribute_exists(#ID) AND (attribute_not_exists(#A) OR #A = :ca) AND #S = :cs AND #DI = :cdi AND #IB = :cib AND #IR = :cir AND (attribute_not_exists(#IN) OR #IN = :cin)",
+			table.updates[0].ConditionExpression)
+		assert.Equal(t, 0, table.conditionFailures)
+		assert.Equal(t, "sig-001", aws.StringValue(table.updates[0].Key["signature_id"].S))
+		after, err := repo.GetItemSignature(ctx, "sig-001")
+		require.NoError(t, err)
+		assert.False(t, after.SignatureApproved)
+		assert.Equal(t, deliberateNote, after.Note)
+		assert.NotEqual(t, removedAt, after.DateInvalidated, "the removal date is replaced")
+		assert.Equal(t, after.DateModified, after.DateInvalidated)
+		assert.Equal(t, "org-admin", after.InvalidatedBy)
+		assert.Equal(t, "compliance", after.InvalidationReason)
+		assert.Equal(t, "per legal review", after.InvalidationNote)
+		assert.False(t, after.InvalidatedByApprovalListRemoval(), "a second deliberate invalidation now conflicts")
+		assert.True(t, signatureInvalidated(after))
+		assert.True(t, lookupEmployeeSignature(t, repo, "user-001").Invalidated)
+
+		require.NoError(t, repo.InvalidateProjectRecordWithMetadata(ctx, "sig-001", "Signature invalidated (approved set to false) due to approval list removal",
+			&InvalidationMetadata{InvalidatedBy: "cla-manager", Reason: removalReason}))
+		later, err := repo.GetItemSignature(ctx, "sig-001")
+		require.NoError(t, err)
+		assert.Equal(t, "org-admin", later.InvalidatedBy, "a later removal keeps the deliberate attribution")
+		assert.Equal(t, "compliance", later.InvalidationReason)
+		assert.Equal(t, "per legal review", later.InvalidationNote)
+		assert.Equal(t, after.DateInvalidated, later.DateInvalidated)
+	})
+
+	t.Run("attribution the deliberate invalidation does not supply is removed", func(t *testing.T) {
+		items := employeeSignatureItems()
+		voidedByRemoval(items[0])
+		repo, table := newCorporateContributorsRepo(t, items)
+		ctx := context.Background()
+		voided, err := repo.GetItemSignature(ctx, "sig-001")
+		require.NoError(t, err)
+
+		require.NoError(t, repo.ReinvalidateProjectRecordWithMetadata(ctx, voided, deliberateNote, &InvalidationMetadata{InvalidatedBy: "org-admin"}))
+
+		require.Len(t, table.updates, 1)
+		assert.Equal(t, "SET  #A = :a, #S = :s, #DI = :di, #IB = :ib, #M = :m REMOVE #IR, #IN", table.updates[0].UpdateExpression)
+		after, err := repo.GetItemSignature(ctx, "sig-001")
+		require.NoError(t, err)
+		assert.False(t, after.SignatureApproved)
+		assert.Equal(t, deliberateNote, after.Note)
+		assert.Equal(t, "org-admin", after.InvalidatedBy)
+		assert.Empty(t, after.InvalidationReason, "the stale removal reason does not survive")
+		assert.Empty(t, after.InvalidationNote)
+		assert.False(t, after.InvalidatedByApprovalListRemoval())
+	})
+
+	t.Run("a legacy note-only removal is re-invalidated the same way and can be re-approved", func(t *testing.T) {
+		items := employeeSignatureItems()
+		items[0]["signature_approved"] = fakeFalse()
+		items[0]["note"] = fakeS(removalNote)
+		repo, table := newCorporateContributorsRepo(t, items)
+		ctx := context.Background()
+		legacy, err := repo.GetItemSignature(ctx, "sig-001")
+		require.NoError(t, err)
+		require.True(t, legacy.InvalidatedByApprovalListRemoval())
+
+		require.NoError(t, repo.ReinvalidateProjectRecordWithMetadata(ctx, legacy, deliberateNote,
+			&InvalidationMetadata{InvalidatedBy: "org-admin", Reason: "compliance"}))
+
+		require.Len(t, table.updates, 1)
+		assert.Equal(t, "SET  #A = :a, #S = :s, #DI = :di, #IB = :ib, #IR = :ir, #M = :m REMOVE #IN", table.updates[0].UpdateExpression)
+		assert.Equal(t, "attribute_exists(#ID) AND (attribute_not_exists(#A) OR #A = :ca) AND #S = :cs AND (attribute_not_exists(#DI) OR #DI = :cdi) AND (attribute_not_exists(#IB) OR #IB = :cib)"+
+			" AND (attribute_not_exists(#IR) OR #IR = :cir) AND (attribute_not_exists(#IN) OR #IN = :cin)", table.updates[0].ConditionExpression)
+		assert.Equal(t, 0, table.conditionFailures)
+		after, err := repo.GetItemSignature(ctx, "sig-001")
+		require.NoError(t, err)
+		assert.False(t, after.SignatureApproved)
+		assert.Equal(t, deliberateNote, after.Note)
+		assert.Equal(t, after.DateModified, after.DateInvalidated)
+		assert.Equal(t, "org-admin", after.InvalidatedBy)
+		assert.Equal(t, "compliance", after.InvalidationReason)
+		assert.Empty(t, after.InvalidationNote)
+		assert.False(t, after.InvalidatedByApprovalListRemoval())
+
+		require.NoError(t, repo.ValidateProjectRecord(ctx, "sig-001", "Re-approved by the CLA manager."))
+		require.Len(t, table.updates, 2)
+		assertReApproved(t, repo, "sig-001", deliberateNote+" Re-approved by the CLA manager.", legacy)
+	})
+
+	t.Run("a deliberate invalidation that lands first wins and the stale one conflicts", func(t *testing.T) {
+		items := employeeSignatureItems()
+		voidedByRemoval(items[0])
+		repo, table := newCorporateContributorsRepo(t, items)
+		ctx := context.Background()
+		voided, err := repo.GetItemSignature(ctx, "sig-001")
+		require.NoError(t, err)
+		table.beforeUpdate = func(item map[string]interface{}) {
+			item["note"] = fakeS("Signature invalidated (approved set to false) by other-admin for user-001")
+			item["date_invalidated"] = fakeS("2026-09-24T09:00:00.000000+0000")
+			item["invalidated_by"] = fakeS("other-admin")
+			item["invalidation_reason"] = fakeS("should-be-corporate")
+			delete(item, "invalidation_note")
+		}
+
+		err = repo.ReinvalidateProjectRecordWithMetadata(ctx, voided, deliberateNote,
+			&InvalidationMetadata{InvalidatedBy: "org-admin", Reason: "compliance", Note: "per legal review"})
+		assert.ErrorIs(t, err, ErrSignatureModifiedConcurrently)
+
+		require.Len(t, table.updates, 1)
+		assert.Equal(t, 1, table.conditionFailures)
+		after, err := repo.GetItemSignature(ctx, "sig-001")
+		require.NoError(t, err)
+		assert.False(t, after.SignatureApproved)
+		assert.Equal(t, "other-admin", after.InvalidatedBy, "the first deliberate attribution is kept")
+		assert.Equal(t, "should-be-corporate", after.InvalidationReason)
+		assert.Equal(t, "2026-09-24T09:00:00.000000+0000", after.DateInvalidated)
+		assert.Empty(t, after.InvalidationNote)
+		assert.False(t, after.InvalidatedByApprovalListRemoval())
+	})
+
+	t.Run("a re-approval that lands first is not silently undone", func(t *testing.T) {
+		items := employeeSignatureItems()
+		voidedByRemoval(items[0])
+		repo, table := newCorporateContributorsRepo(t, items)
+		ctx := context.Background()
+		voided, err := repo.GetItemSignature(ctx, "sig-001")
+		require.NoError(t, err)
+		table.beforeUpdate = func(item map[string]interface{}) {
+			item["signature_approved"] = fakeTrue()
+			item["note"] = fakeS(removalNote + " Re-approved by the CLA manager.")
+			for _, attribute := range []string{"date_invalidated", "invalidated_by", "invalidation_reason", "invalidation_note"} {
+				delete(item, attribute)
+			}
+		}
+
+		err = repo.ReinvalidateProjectRecordWithMetadata(ctx, voided, deliberateNote, &InvalidationMetadata{InvalidatedBy: "org-admin", Reason: "compliance"})
+		assert.ErrorIs(t, err, ErrSignatureModifiedConcurrently)
+
+		assert.Equal(t, 1, table.conditionFailures)
+		after, err := repo.GetItemSignature(ctx, "sig-001")
+		require.NoError(t, err)
+		assert.True(t, after.SignatureApproved)
+		assert.Empty(t, after.InvalidatedBy)
+		assert.Empty(t, after.InvalidationReason)
+		assert.False(t, signatureInvalidated(after))
+	})
 }
 
 func TestCreateProjectCompanyEmployeeSignatureRaceWithInvalidation(t *testing.T) {

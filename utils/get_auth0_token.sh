@@ -11,6 +11,9 @@
 # (template: utils/auth0.secret.example), parsed as simple KEY=VALUE lines - never sourced:
 #   AUTH0_USERNAME=someuser
 #   AUTH0_PASSWORD=somepassword
+# Client IDs come from one-line gitignored files (nothing secret-looking is hardcoded here):
+#   utils/auth0-<stage>-client-id.secret (ordinary), utils/auth0-<stage>-azp-client-id.secret (azp).
+# Only the file for the selected stage/mode is read, and only when AUTH0_CLIENT_ID is not overridden.
 # Optional overrides in the same file: AUTH0_DOMAIN, AUTH0_CLIENT_ID,
 # AUTH0_AUDIENCE, AUTH0_TENANT, AUTH0_REDIRECT_URI.
 #
@@ -29,34 +32,56 @@
 #     "https://api-gw.dev.platform.linuxfoundation.org/cla-service/v4/my-clas" | jq .
 #
 # Token lifetimes (Auth0 client settings): dev ~1h, prod ~3h.
+#
+# Optional second argument: non-azp (default) or azp.
+# AZP uses Self Serve's confidential client, ignores ordinary-client overrides,
+# and writes auth0-<stage>-azp.token.secret instead of the ordinary token file.
+# Set AUTH0_AZP_CLIENT_SECRET in the same credentials file, or provide kubectl
+# access to lfx-<stage>/ui/lfx-self-serve to read its matching client secret.
+# Example: TOKEN=$(./utils/get_auth0_token.sh dev azp)
 
 set -euo pipefail
 
 STAGE="${1:-dev}"
+TOKEN_MODE="${2:-non-azp}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 case "$STAGE" in
   dev)
     AUTH0_DOMAIN="linuxfoundation-dev.auth0.com"
-    AUTH0_CLIENT_ID="G5CNCTp6X5Z1HizkotPHm6Ug11oGr2Eo"
     AUTH0_AUDIENCE="https://api-gw.dev.platform.linuxfoundation.org/"
     AUTH0_TENANT="linuxfoundation-dev"
     ;;
   prod)
     AUTH0_DOMAIN="sso.linuxfoundation.org"
-    AUTH0_CLIENT_ID="DoMcTpihSo3is7hfGngHz7phw7kC6daw"
     AUTH0_AUDIENCE="https://api-gw.platform.linuxfoundation.org/"
     AUTH0_TENANT="linuxfoundation"
     ;;
   *)
-    echo "usage: $0 [dev|prod]" >&2
+    echo "usage: $0 [dev|prod] [non-azp|azp]" >&2
     exit 1
     ;;
 esac
 
 AUTH0_REDIRECT_URI="http://localhost:55001/callback"
+TOKEN_SUFFIX=""
+case "$TOKEN_MODE" in
+  non-azp) ;;
+  azp)
+    TOKEN_SUFFIX="-azp"
+    if [ "$STAGE" = "dev" ]; then
+      AUTH0_REDIRECT_URI="https://app.dev.lfx.dev/callback"
+    else
+      AUTH0_REDIRECT_URI="https://app.lfx.dev/callback"
+    fi
+    ;;
+  *)
+    echo "usage: $0 [dev|prod] [non-azp|azp]" >&2
+    exit 1
+    ;;
+esac
 SECRET_FILE="$SCRIPT_DIR/auth0-$STAGE.secret"
-TOKEN_FILE="$SCRIPT_DIR/auth0-$STAGE.token.secret"
+TOKEN_FILE="$SCRIPT_DIR/auth0-$STAGE$TOKEN_SUFFIX.token.secret"
 
 if [ ! -f "$SECRET_FILE" ]; then
   {
@@ -80,14 +105,44 @@ esac
 
 AUTH0_USERNAME="$(secret_get AUTH0_USERNAME)"
 AUTH0_PASSWORD="$(secret_get AUTH0_PASSWORD)"
-for key in AUTH0_DOMAIN AUTH0_CLIENT_ID AUTH0_AUDIENCE AUTH0_TENANT AUTH0_REDIRECT_URI; do
-  value="$(secret_get "$key")"
-  [ -n "$value" ] && eval "$key=\"\$value\""
-done
+AUTH0_CLIENT_ID=""
+AUTH0_CLIENT_SECRET=""
+if [ "$TOKEN_MODE" = "non-azp" ]; then
+  for key in AUTH0_DOMAIN AUTH0_CLIENT_ID AUTH0_AUDIENCE AUTH0_TENANT AUTH0_REDIRECT_URI; do
+    value="$(secret_get "$key")"
+    [ -n "$value" ] && printf -v "$key" '%s' "$value"
+  done
+fi
+if [ -z "$AUTH0_CLIENT_ID" ]; then
+  case "$STAGE$TOKEN_SUFFIX" in
+    dev) AUTH0_CLIENT_ID="$(cat "$SCRIPT_DIR/auth0-dev-client-id.secret")" ;;
+    prod) AUTH0_CLIENT_ID="$(cat "$SCRIPT_DIR/auth0-prod-client-id.secret")" ;;
+    dev-azp) AUTH0_CLIENT_ID="$(cat "$SCRIPT_DIR/auth0-dev-azp-client-id.secret")" ;;
+    prod-azp) AUTH0_CLIENT_ID="$(cat "$SCRIPT_DIR/auth0-prod-azp-client-id.secret")" ;;
+  esac
+fi
 
 if [ -z "${AUTH0_USERNAME:-}" ] || [ -z "${AUTH0_PASSWORD:-}" ]; then
   echo "error: AUTH0_USERNAME/AUTH0_PASSWORD not set in $SECRET_FILE" >&2
   exit 1
+fi
+
+if [ "$TOKEN_MODE" = "azp" ]; then
+  AUTH0_CLIENT_SECRET="$(secret_get AUTH0_AZP_CLIENT_SECRET)"
+  if [ -z "$AUTH0_CLIENT_SECRET" ]; then
+    AUTH0_CLIENT_SECRET="$(kubectl --context "lfx-$STAGE" --namespace ui --request-timeout=20s \
+      exec deploy/lfx-self-serve -- node -e '
+if (process.env.PCC_AUTH0_CLIENT_ID !== process.argv[1] || !process.env.PCC_AUTH0_CLIENT_SECRET) process.exit(1);
+process.stdout.write(process.env.PCC_AUTH0_CLIENT_SECRET);
+' "$AUTH0_CLIENT_ID")" || {
+      echo "error: azp requires AUTH0_AZP_CLIENT_SECRET or kubectl access to the matching Self Serve client" >&2
+      exit 1
+    }
+  fi
+  if [ -z "$AUTH0_CLIENT_SECRET" ]; then
+    echo "error: Self Serve client secret is empty" >&2
+    exit 1
+  fi
 fi
 
 dbg() { [ -n "${DEBUG:-}" ] && echo "$@" >&2 || true; }
@@ -209,24 +264,58 @@ if [ -z "$CODE" ]; then
 fi
 
 # step 6: PKCE code exchange (code and verifier via stdin, not argv)
-TOKEN_JSON="$(A0_CLIENT_ID="$AUTH0_CLIENT_ID" A0_CODE="$CODE" A0_REDIRECT_URI="$AUTH0_REDIRECT_URI" A0_VERIFIER="$VERIFIER" python3 << 'PYEOF' | "${CURL[@]}" -X POST "https://$AUTH0_DOMAIN/oauth/token" -H "Content-Type: application/json" --data @-
+TOKEN_JSON="$(A0_CLIENT_ID="$AUTH0_CLIENT_ID" A0_CLIENT_SECRET="$AUTH0_CLIENT_SECRET" A0_CODE="$CODE" A0_REDIRECT_URI="$AUTH0_REDIRECT_URI" A0_VERIFIER="$VERIFIER" python3 << 'PYEOF' | "${CURL[@]}" -X POST "https://$AUTH0_DOMAIN/oauth/token" -H "Content-Type: application/json" --data @-
 import json
 import os
 
 env = os.environ
-print(json.dumps({
+body = {
     "grant_type": "authorization_code",
     "client_id": env["A0_CLIENT_ID"],
     "code": env["A0_CODE"],
     "redirect_uri": env["A0_REDIRECT_URI"],
     "code_verifier": env["A0_VERIFIER"],
-}))
+}
+if env["A0_CLIENT_SECRET"]:
+    body["client_secret"] = env["A0_CLIENT_SECRET"]
+print(json.dumps(body))
 PYEOF
 )"
 ACCESS_TOKEN="$(printf %s "$TOKEN_JSON" | json_field access_token)"
 if [ -z "$ACCESS_TOKEN" ]; then
   echo "error: token exchange failed: $(printf %s "$TOKEN_JSON" | head -c 300)" >&2
   exit 1
+fi
+
+if [ "$TOKEN_MODE" = "azp" ]; then
+  A0_TOKEN="$ACCESS_TOKEN" A0_CLIENT_ID="$AUTH0_CLIENT_ID" A0_AUDIENCE="$AUTH0_AUDIENCE" \
+    A0_ISSUER="https://$AUTH0_DOMAIN/" python3 << 'PYEOF'
+import base64
+import json
+import math
+import os
+import sys
+import time
+
+try:
+    parts = os.environ["A0_TOKEN"].split(".")
+    if len(parts) != 3:
+        raise ValueError()
+    claims = json.loads(base64.urlsafe_b64decode(parts[1] + "==="))
+except (ValueError, IndexError):
+    sys.exit("error: azp token is not a readable JWT")
+if not isinstance(claims, dict):
+    sys.exit("error: azp token has invalid claims")
+audience = claims.get("aud", [])
+if isinstance(audience, str):
+    audience = [audience]
+expiry = claims.get("exp")
+if (claims.get("iss") != os.environ["A0_ISSUER"] or claims.get("azp") != os.environ["A0_CLIENT_ID"]
+        or not isinstance(audience, list) or os.environ["A0_AUDIENCE"] not in audience
+        or isinstance(expiry, bool) or not isinstance(expiry, (int, float))
+        or not math.isfinite(expiry) or expiry <= time.time()):
+    sys.exit("error: azp token has an unexpected issuer, client, audience or expiry")
+PYEOF
 fi
 
 printf '%s\n' "$ACCESS_TOKEN" > "$TOKEN_FILE"

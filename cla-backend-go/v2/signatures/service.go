@@ -503,8 +503,12 @@ func (s *Service) InvalidateECLA(ctx context.Context, claGroupID string, signatu
 		return nil, sanctionedErr
 	}
 
+	reinvalidation := false
 	if !sig.SignatureApproved {
-		return nil, errEclaAlreadyInvalidated
+		if !sig.InvalidatedByApprovalListRemoval() {
+			return nil, errEclaAlreadyInvalidated
+		}
+		reinvalidation = true
 	}
 
 	user, userErr := s.usersService.GetUser(sig.SignatureReferenceID)
@@ -532,9 +536,20 @@ func (s *Service) InvalidateECLA(ctx context.Context, claGroupID string, signatu
 		metadata.Reason = input.Reason
 		metadata.Note = utils.SanitizePlainText(input.Note)
 	}
-	if err := s.v1SignatureRepo.InvalidateProjectRecordWithMetadata(ctx, sig.SignatureID, note, metadata); err != nil {
+	var invalidateErr error
+	if reinvalidation {
+		log.WithFields(f).Debug("ecla was voided by an approval list removal - recording the deliberate invalidation over it")
+		invalidateErr = s.v1SignatureRepo.ReinvalidateProjectRecordWithMetadata(ctx, sig, note, metadata)
+		if errors.Is(invalidateErr, signatures.ErrSignatureModifiedConcurrently) {
+			log.WithFields(f).Warn("ecla changed concurrently - reporting a conflict")
+			return nil, errEclaAlreadyInvalidated
+		}
+	} else {
+		invalidateErr = s.v1SignatureRepo.InvalidateProjectRecordWithMetadata(ctx, sig.SignatureID, note, metadata)
+	}
+	if invalidateErr != nil {
 		log.WithFields(f).Debug("unable to invalidate ecla record")
-		return nil, err
+		return nil, invalidateErr
 	}
 
 	email := utils.GetBestEmail(user)

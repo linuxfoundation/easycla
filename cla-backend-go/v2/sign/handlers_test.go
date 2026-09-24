@@ -92,3 +92,70 @@ func TestRequestCorporateSignatureHandlerOtherErrorsAreBadRequests(t *testing.T)
 	assert.Equal(t, http.StatusBadRequest, status)
 	assert.Contains(t, body, "docusign envelope rejected")
 }
+
+type fakeCclaCallbackService struct {
+	Service
+	err          error
+	gotCompanyID string
+	gotProjectID string
+}
+
+func (f *fakeCclaCallbackService) SignedCorporateCallback(_ context.Context, _ []byte, companyID, projectID string) error {
+	f.gotCompanyID = companyID
+	f.gotProjectID = projectID
+	return f.err
+}
+
+func respondCclaCallback(t *testing.T, serviceErr error) *httptest.ResponseRecorder {
+	t.Helper()
+	api := operations.NewEasyclaAPI(nil)
+	service := &fakeCclaCallbackService{err: serviceErr}
+	Configure(api, service, nil)
+	require.NotNil(t, api.SignCclaCallbackHandler)
+
+	reqID := "req-ccla-callback"
+	recorder := httptest.NewRecorder()
+	api.SignCclaCallbackHandler.Handle(signOps.CclaCallbackParams{
+		HTTPRequest: httptest.NewRequest(http.MethodPost, "/v4/signed/corporate/project-1/company-1", nil),
+		XREQUESTID:  &reqID,
+		ProjectID:   "project-1",
+		CompanyID:   "company-1",
+	}).WriteResponse(recorder, runtime.JSONProducer())
+	assert.Equal(t, "company-1", service.gotCompanyID)
+	assert.Equal(t, "project-1", service.gotProjectID)
+	return recorder
+}
+
+func TestCclaCallbackHandlerSanctionedCompanyIsTyped(t *testing.T) {
+	recorder := respondCclaCallback(t, &utils.SanctionedCompanyError{
+		CompanyID:   "0ca30016-6457-466c-bc41-a09560c1f9bf",
+		CompanySFID: handlerTestCompanySFID,
+		CompanyName: "Sanctioned Co",
+		Guidance:    utils.CompanySanctionedSigningGuidance,
+	})
+
+	assert.Equal(t, http.StatusForbidden, recorder.Code)
+	assert.Equal(t, "application/json", recorder.Header().Get("Content-Type"))
+	assert.Equal(t, "req-ccla-callback", recorder.Header().Get(utils.XREQUESTID))
+	assert.JSONEq(t, `{"code":"company_sanctioned","message":"company Sanctioned Co requires further review for trade compliance\n`+utils.CompanySanctionedSigningGuidance+
+		`","company_id":"0ca30016-6457-466c-bc41-a09560c1f9bf","company_sfid":"`+handlerTestCompanySFID+`","x-request-id":"req-ccla-callback"}`, recorder.Body.String())
+}
+
+func TestCclaCallbackHandlerOtherErrorsStayBareBadRequests(t *testing.T) {
+	for _, serviceErr := range []error{
+		errors.New("unable to lookup company by ID"),
+		errors.New("company company-1 requires further review for trade compliance; corporate CLA cannot be finalized"),
+	} {
+		recorder := respondCclaCallback(t, serviceErr)
+
+		assert.Equal(t, http.StatusBadRequest, recorder.Code)
+		assert.Empty(t, recorder.Body.String(), "the pre-existing 400 carries no body")
+	}
+}
+
+func TestCclaCallbackHandlerSuccess(t *testing.T) {
+	recorder := respondCclaCallback(t, nil)
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Empty(t, recorder.Body.String())
+}

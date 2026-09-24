@@ -319,6 +319,10 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 			log.WithFields(f).Debug("ccla callback")
 			err := service.SignedCorporateCallback(ctx, cclaDocusignPayload, params.CompanyID, params.ProjectID)
 			if err != nil {
+				var sanctionedErr *utils.SanctionedCompanyError
+				if errors.As(err, &sanctionedErr) {
+					return utils.CompanySanctionedResponder(reqId, sanctionedErr)
+				}
 				return sign.NewCclaCallbackBadRequest()
 			}
 			return sign.NewCclaCallbackOK()

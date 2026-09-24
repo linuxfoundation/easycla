@@ -570,6 +570,20 @@ func (mr *MockSignatureRepositoryMockRecorder) ProjectSignatures(ctx, projectID 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProjectSignatures", reflect.TypeOf((*MockSignatureRepository)(nil).ProjectSignatures), ctx, projectID)
 }
 
+// ReinvalidateProjectRecordWithMetadata mocks base method.
+func (m *MockSignatureRepository) ReinvalidateProjectRecordWithMetadata(ctx context.Context, existing *signatures0.ItemSignature, note string, metadata *signatures0.InvalidationMetadata) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReinvalidateProjectRecordWithMetadata", ctx, existing, note, metadata)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReinvalidateProjectRecordWithMetadata indicates an expected call of ReinvalidateProjectRecordWithMetadata.
+func (mr *MockSignatureRepositoryMockRecorder) ReinvalidateProjectRecordWithMetadata(ctx, existing, note, metadata interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReinvalidateProjectRecordWithMetadata", reflect.TypeOf((*MockSignatureRepository)(nil).ReinvalidateProjectRecordWithMetadata), ctx, existing, note, metadata)
+}
+
 // RemoveCLAManager mocks base method.
 func (m *MockSignatureRepository) RemoveCLAManager(ctx context.Context, signatureID, claManagerID string) (*models.Signature, error) {
 	m.ctrl.T.Helper()
