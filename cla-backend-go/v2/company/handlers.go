@@ -24,6 +24,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/company"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
+	v2ProjectServiceClient "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/client/project"
 )
 
 // Configure sets up the middleware handlers
@@ -181,6 +182,13 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 
 			result, err := service.GetCompanyProjectCLAManagers(ctx, v2CompanyModel, params.ProjectSFID)
 			if err != nil {
+				var projectNotFound *v2ProjectServiceClient.GetProjectNotFound
+				if errors.As(err, &projectNotFound) {
+					msg := fmt.Sprintf("project not found in the project service: %s", params.ProjectSFID)
+					log.WithFields(f).WithError(err).Warn(msg)
+					return company.NewGetCompanyProjectClaManagersNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, msg))
+				}
+
 				msg := "unable to load company project CLA managers"
 				log.WithFields(f).WithError(err).Warn(msg)
 				return company.NewGetCompanyProjectClaManagersBadRequest().WithXRequestID(reqID).WithPayload(
