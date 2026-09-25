@@ -290,3 +290,4 @@ spans*.json
 /*user_emails.json
 .venv
 copilot-*.md
+/e2e-tests/

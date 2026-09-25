@@ -18,6 +18,7 @@
 # Caching notes:
 #  - warden caches successful (user,resource) answers for ~10 minutes; the
 #    authoritative current state is the rolescopes listing ('status'/'roles').
+#  - role reads bypass ACS's response cache with X-LFX-CACHE: false.
 #  - after flipping, pass -H 'Cache-Control: no-cache' on your first API call
 #    through the gateway to bypass its cached X-ACL for that path.
 #
@@ -145,7 +146,7 @@ get_token() {
   echo "$tok"
 }
 
-acs_get()    { curl -sfS --max-time 20 -H "Authorization: Bearer $TOKEN" "$ACS$1"; }
+acs_get()    { curl -sfS --max-time 20 -H "Authorization: Bearer $TOKEN" -H "Cache-Control: no-cache" -H "X-LFX-CACHE: false" "$ACS$1"; }
 acs_post()   { curl -s --max-time 20 -X POST "$ACS$1" -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d "$2" -w "\n%{http_code}"; }
 acs_delete() { curl -s --max-time 20 -X DELETE "$ACS$1" -H "Authorization: Bearer $TOKEN" -o /dev/null -w "%{http_code}"; }
 
