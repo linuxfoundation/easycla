@@ -169,7 +169,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		if updateErr != nil || updatedSig == nil {
 			msg := fmt.Sprintf("unable to update signature approval list using CLA Group ID: %s", params.ClaGroupID)
 			log.WithFields(f).Warn(msg)
-			if _, ok := err.(*signatureService.ForbiddenError); ok {
+			if _, ok := updateErr.(*signatureService.ForbiddenError); ok {
 				return signatures.NewUpdateApprovalListForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbiddenWithError(reqID, msg, updateErr))
 			}
 			return signatures.NewUpdateApprovalListBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, updateErr))
