@@ -1221,7 +1221,10 @@ func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, proj
 	projectMapping, perr := s.projectClaGroupsRepo.GetClaGroupIDForProject(ctx, projectSFID)
 	if perr != nil {
 		log.WithFields(f).WithError(perr).Warnf("unable to get CLA group IDs for project SFID: %s", projectSFID)
-		return nil, err
+		if errors.Is(perr, projects_cla_groups.ErrProjectNotAssociatedWithClaGroup) {
+			return result, nil
+		}
+		return nil, perr
 	}
 	// get all projects for that cla group
 	allProjectMapping, err = s.projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, projectMapping.ClaGroupID)
