@@ -128,6 +128,11 @@ func Audit(ctx context.Context, deps Deps, opts Options) (*AuditResult, error) {
 			return nil, err
 		}
 	}
+	for _, ar := range res.Rows {
+		r := ar.Row
+		fmt.Fprintf(deps.Out, "audit row company_id=%s name=%q external_id=%q shape=%s active_ccla=%t ccla=%d ecla=%d org_service=%s route=%s reason=%q tier=%s\n",
+			r.CompanyID, firstNonEmpty(r.SigningEntityName, r.CompanyName), r.RawExternalID, ar.Shape, r.ActiveCCLA, r.CCLACount, ar.ECLACount, ar.OrgStatus, ar.Route, ar.ManualReason, ar.Tier)
+	}
 	fmt.Fprintf(deps.Out, "audit stage=%s companies=%d eligible_groups=%d", opts.Stage, len(res.Rows), len(groups))
 	for _, t := range []string{TierMissing, TierInvalid, TierOK, TierDangling, TierUnknown} {
 		fmt.Fprintf(deps.Out, " %s=%d", t, res.Tiers[t])

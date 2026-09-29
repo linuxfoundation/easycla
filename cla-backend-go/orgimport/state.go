@@ -92,13 +92,13 @@ func (st *State) Done(key string) bool {
 	return ok && rec.Step == StepDone && rec.Status == statusOK
 }
 
-// Append writes one record (no-op when the state file is not set).
+// Append writes one record durably (write, fsync, close); Last is updated only after success.
+// It is a no-op when the state file is not set.
 func (st *State) Append(rec StateRecord, now time.Time) error {
 	if st.path == "" {
 		return nil
 	}
 	rec.TS = now.UTC().Format(time.RFC3339)
-	st.Last[rec.key()] = rec
 	b, err := json.Marshal(rec)
 	if err != nil {
 		return err
@@ -107,9 +107,19 @@ func (st *State) Append(rec StateRecord, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = f.Close() }()
-	_, err = f.Write(append(b, '\n'))
-	return err
+	if _, err = f.Write(append(b, '\n')); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err = f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	st.Last[rec.key()] = rec
+	return nil
 }
 
 func sortRecords(recs []StateRecord) {

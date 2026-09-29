@@ -189,10 +189,14 @@ func withDefaults(deps Deps) Deps {
 	return deps
 }
 
-// replayGroups rebuilds unfinished rewrite groups from the state file (pinned by company ids).
+// replayGroups rebuilds unfinished rewrite groups from the state file (pinned by company ids). A
+// failed Apex resolution is not replayed: the group is classified again from scratch.
 func replayGroups(ctx context.Context, deps Deps, inv *Inventory, state *State) ([]*Group, error) {
 	var out []*Group
 	for _, rec := range state.Unfinished() {
+		if rec.Step == StepResolve && rec.Status == statusFailed {
+			continue
+		}
 		if rec.NewID == "" || !IsSFID(rec.NewID) {
 			return nil, fmt.Errorf("state: unfinished group %s has no valid new_id", rec.key())
 		}
@@ -202,7 +206,7 @@ func replayGroups(ctx context.Context, deps Deps, inv *Inventory, state *State) 
 			if err != nil {
 				return nil, fmt.Errorf("state: reading company %s of group %s: %w", id, rec.key(), err)
 			}
-			row := &Row{CompanyID: dbRow.CompanyID, CompanyName: dbRow.CompanyName, SigningEntityName: dbRow.SigningEntityName, ExternalID: dbRow.CompanyExternalID}
+			row := &Row{CompanyID: dbRow.CompanyID, CompanyName: dbRow.CompanyName, SigningEntityName: dbRow.SigningEntityName, ExternalID: strings.TrimSpace(dbRow.CompanyExternalID), RawExternalID: dbRow.CompanyExternalID}
 			if cur := inv.ByID[id]; cur != nil {
 				row.ActiveCCLA, row.CCLACount, row.CLAGroupIDs, row.CCLASignedOn = cur.ActiveCCLA, cur.CCLACount, cur.CLAGroupIDs, cur.CCLASignedOn
 			}
@@ -228,6 +232,10 @@ func classify(ctx context.Context, deps Deps, g *Group, mapping *Mapping, shared
 		case LiveLive:
 			g.Route = RouteRegister
 			return
+		case LiveUnverified:
+			g.Route, g.ManualReason = RouteRegister, ReasonCRMUnverified
+			lookupOrg(ctx, deps, g)
+			return
 		case LiveDead:
 			g.Route = RouteRewrite
 		default:
@@ -238,15 +246,7 @@ func classify(ctx context.Context, deps Deps, g *Group, mapping *Mapping, shared
 		g.Route = RouteRewrite
 	}
 
-	org, err := deps.Orgs.GetOrganization(ctx, g.OldID)
-	switch {
-	case err == nil:
-		g.Org, g.OrgStatus = org, "200"
-	case errors.Is(err, ErrOrgNotFound):
-		g.OrgStatus = "404"
-	default:
-		g.OrgStatus = orgStatusErr
-	}
+	lookupOrg(ctx, deps, g)
 	newID, action, reason := resolveNewID(ctx, deps, g, mapping, shared, opts)
 	if reason == ReasonNoMapping {
 		g.ManualReason = reason
@@ -257,6 +257,19 @@ func classify(ctx context.Context, deps Deps, g *Group, mapping *Mapping, shared
 		return
 	}
 	g.NewID, g.Action = newID, action
+}
+
+// lookupOrg records the org-service view of the group's old id.
+func lookupOrg(ctx context.Context, deps Deps, g *Group) {
+	org, err := deps.Orgs.GetOrganization(ctx, g.OldID)
+	switch {
+	case err == nil:
+		g.Org, g.OrgStatus = org, "200"
+	case errors.Is(err, ErrOrgNotFound):
+		g.OrgStatus = "404"
+	default:
+		g.OrgStatus = orgStatusErr
+	}
 }
 
 // classifyRowTargeted routes an empty/malformed-id row: a mapping row keyed by the company id
@@ -276,18 +289,15 @@ func classifyRowTargeted(g *Group, mapping *Mapping) {
 	}
 }
 
+// liveness asks member-service (the CRM view) whether the Account exists; without member-service
+// the answer is unverified — org-service may still serve an Account deleted from Salesforce.
 func liveness(ctx context.Context, deps Deps, id string) (string, error) {
-	var err error
-	if deps.Members != nil {
-		_, err = deps.Members.GetB2BOrg(ctx, id)
-		if errors.Is(err, member_service.ErrOrgNotFound) {
-			return LiveDead, nil
-		}
-	} else {
-		_, err = deps.Orgs.GetOrganization(ctx, id)
-		if errors.Is(err, ErrOrgNotFound) {
-			return LiveDead, nil
-		}
+	if deps.Members == nil {
+		return LiveUnverified, nil
+	}
+	_, err := deps.Members.GetB2BOrg(ctx, id)
+	if errors.Is(err, member_service.ErrOrgNotFound) {
+		return LiveDead, nil
 	}
 	if err != nil {
 		return LiveError, err
@@ -306,6 +316,7 @@ func resolveNewID(ctx context.Context, deps Deps, g *Group, mapping *Mapping, sh
 	if _, gate := shared.Shared(g.Website()); gate != "" {
 		return "", "", gate
 	}
+	g.ViaApex = true
 	res, err := deps.Apex.FindOrCreate(ctx, apexRequest(g, true))
 	if err != nil {
 		g.Err = fmt.Errorf("apex dry run for %s: %w", g.OldID, err)
@@ -318,6 +329,10 @@ func resolveNewID(ctx context.Context, deps Deps, g *Group, mapping *Mapping, sh
 		approvedID, _, mapReason := mapping.Resolve(g.OldID)
 		if mapReason != "" || approvedID != res.ID {
 			return "", res.Action, "apex_match_needs_approval"
+		}
+	case ActionCreated:
+		if res.ID == "" {
+			return "", res.Action, ""
 		}
 	}
 	if res.ID == g.OldID {
@@ -358,8 +373,12 @@ func (p *Plan) Print(w io.Writer) {
 				g.Key, g.OldID, g.NewID, g.Action, g.NewID)
 			continue
 		}
+		newID := g.NewID
+		if g.ApexCreates() {
+			newID = "<new Account, id assigned by Apex at apply>"
+		}
 		fmt.Fprintf(w, "PLAN rewrite %s -> %s (%s): wait org-service; copy ACS grants; rewrite %d row(s) %s; re-key events; delete old grants; POST /b2b_orgs {sfid:%s}\n",
-			g.OldID, g.NewID, g.Action, len(g.Rows), strings.Join(g.CompanyIDs(), ","), g.NewID)
+			g.OldID, newID, g.Action, len(g.Rows), strings.Join(g.CompanyIDs(), ","), newID)
 	}
 	if len(p.Targets) > 0 {
 		fmt.Fprintf(w, "TARGETS (rewrite destinations grouped by Account):\n")
@@ -402,6 +421,8 @@ func describe(g *Group) string {
 	}
 	if g.NewID != "" {
 		s += " new_id=" + g.NewID + " action=" + g.Action
+	} else if g.ApexCreates() {
+		s += " new_id=<apex-at-apply> action=" + g.Action
 	}
 	if g.ManualReason != "" {
 		s += " reason=" + g.ManualReason
@@ -442,6 +463,18 @@ func Execute(ctx context.Context, deps Deps, opts Options, plan *Plan) (Summary,
 			return sum, fmt.Errorf("%d group(s) failed", sum.Failed)
 		}
 		return sum, nil
+	}
+	if err := applyPreconditions(deps, plan); err != nil {
+		for _, g := range append(append([]*Group(nil), plan.Register...), plan.Rewrite...) {
+			g.Err = err
+			sum.Failed++
+		}
+		if opts.OutDir != "" {
+			if wErr := writeIngestReports(opts.OutDir, plan); wErr != nil {
+				return sum, wErr
+			}
+		}
+		return sum, err
 	}
 	r := &runner{deps: deps, opts: opts, plan: plan}
 	for _, g := range plan.Register {
@@ -488,7 +521,23 @@ type runner struct {
 	plan *Plan
 }
 
-func (r *runner) record(g *Group, step, status string, err error) {
+// applyPreconditions rejects an apply that could not finish: rewrites need the resume journal and
+// every route ends with a member-service registration.
+func applyPreconditions(deps Deps, plan *Plan) error {
+	if len(plan.Register) == 0 && len(plan.Rewrite) == 0 {
+		return nil
+	}
+	if len(plan.Rewrite) > 0 && plan.state.path == "" {
+		return ErrStateRequired
+	}
+	if deps.Members == nil {
+		return ErrNotConfigured
+	}
+	return nil
+}
+
+// record appends one state line; a failure to journal is an error for the group.
+func (r *runner) record(g *Group, step, status string, err error) error {
 	rec := StateRecord{OldID: g.OldID, NewID: g.NewID, CompanyIDs: g.CompanyIDs(), Step: step, Status: status}
 	if g.RowTargeted() {
 		rec.Key = g.Key
@@ -497,8 +546,9 @@ func (r *runner) record(g *Group, step, status string, err error) {
 		rec.Err = err.Error()
 	}
 	if aErr := r.plan.state.Append(rec, r.deps.Now()); aErr != nil {
-		fmt.Fprintf(r.deps.Out, "WARNING: cannot append state for %s: %v\n", g.Key, aErr)
+		return fmt.Errorf("state file %s: cannot record %s for %s: %w", r.plan.state.path, step, g.Key, aErr)
 	}
+	return nil
 }
 
 func (r *runner) register(ctx context.Context, g *Group) error {
@@ -517,22 +567,30 @@ func (r *runner) register(ctx context.Context, g *Group) error {
 	return nil
 }
 
-// resolveApex performs the real Apex call for every rewrite group resolved through --use-apex.
+// resolveApex performs the real Apex call for every rewrite group resolved through --use-apex; a
+// group created in the dry run receives its Account id here, anything else must match the dry run.
 func (r *runner) resolveApex(ctx context.Context) {
 	if !r.opts.UseApex {
 		return
 	}
 	for _, g := range r.plan.Rewrite {
-		if g.Replayed || g.Err != nil {
+		if g.Replayed || g.Err != nil || !g.ViaApex {
 			continue
 		}
 		res, err := r.deps.Apex.FindOrCreate(ctx, apexRequest(g, false))
-		if err != nil {
-			g.Err = fmt.Errorf("apex: %w", err)
-		} else if res.ID != g.NewID || res.Action != g.Action {
+		switch {
+		case err != nil:
+			g.Err = err
+		case res.Action != g.Action || (g.NewID != "" && res.ID != g.NewID):
 			g.Err = fmt.Errorf("apex result changed between dry run (%s %s) and call (%s %s)", g.Action, g.NewID, res.Action, res.ID)
+		case g.NewID == "" && (!IsSFID(res.ID) || res.ID == g.OldID):
+			g.Err = fmt.Errorf("apex %s returned unusable account id %q", res.Action, res.ID)
+		default:
+			g.NewID = res.ID
 		}
-		r.record(g, StepResolve, status(g.Err), g.Err)
+		if recErr := r.record(g, StepResolve, status(g.Err), g.Err); recErr != nil && g.Err == nil {
+			g.Err = recErr
+		}
 	}
 }
 
@@ -540,6 +598,9 @@ func (r *runner) resolveApex(ctx context.Context) {
 func (r *runner) waitForOrgs(ctx context.Context) {
 	pending := map[string][]*Group{}
 	for _, g := range r.plan.Rewrite {
+		if g.Err == nil && g.NewID == "" {
+			g.Err = errors.New("no new id resolved")
+		}
 		if g.Err == nil {
 			pending[g.NewID] = append(pending[g.NewID], g)
 		}
@@ -583,7 +644,9 @@ func (r *runner) waitForOrgs(ctx context.Context) {
 	for id, groups := range pending {
 		for _, g := range groups {
 			g.Err = fmt.Errorf("org-service does not serve %s yet: %v", id, lastErr[id])
-			r.record(g, StepWait, statusFailed, g.Err)
+			if recErr := r.record(g, StepWait, statusFailed, g.Err); recErr != nil {
+				fmt.Fprintf(r.deps.Out, "WARNING: %v\n", recErr)
+			}
 		}
 	}
 }

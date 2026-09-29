@@ -25,6 +25,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/company"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	acs_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
 	member_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
 )
@@ -132,6 +133,7 @@ type fakePlatform struct {
 	failCreate  bool
 	failGetB2B  bool
 	noMembers   bool
+	listHook    func(orgID string)
 }
 
 func newPlatform() *fakePlatform {
@@ -173,6 +175,9 @@ func (p *fakePlatform) DeleteUserRoleScope(_ context.Context, orgID, roleID, gra
 }
 
 func (p *fakePlatform) ListOrgGrants(_ context.Context, orgID string) ([]acs_service.OrgGrant, error) {
+	if p.listHook != nil {
+		p.listHook(orgID)
+	}
 	return append([]acs_service.OrgGrant(nil), p.grants[orgID]...), nil
 }
 
@@ -228,7 +233,7 @@ func newFixture() *fixture {
 func (fx *fixture) company(id, name, entity, external string, activeGroups ...string) {
 	fx.companies.rows[id] = &company.DBModel{CompanyID: id, CompanyName: name, SigningEntityName: entity, CompanyExternalID: external}
 	for _, g := range activeGroups {
-		fx.sigs.items = append(fx.sigs.items, &signatures.ItemSignature{SignatureReferenceID: id, SignatureProjectID: g, SignatureType: "ccla", SignatureSigned: true, SignatureApproved: true, SignedOn: "2024-01-02T00:00:00Z"})
+		fx.sigs.items = append(fx.sigs.items, &signatures.ItemSignature{SignatureReferenceID: id, SignatureReferenceType: utils.SignatureReferenceTypeCompany, SignatureProjectID: g, SignatureType: "ccla", SignatureSigned: true, SignatureApproved: true, SignedOn: "2024-01-02T00:00:00Z"})
 	}
 }
 
@@ -590,18 +595,123 @@ func TestLivenessErrorsNeverMeanDead(t *testing.T) {
 	assert.Equal(t, Summary{Mode: "dry-run", Eligible: 1, Failed: 1}, sum)
 	assert.Empty(t, fx.platform.registered)
 
-	// no member-service: org-service decides liveness, register fails explicitly
+	// no member-service: liveness is unverified, the group waits (pending) and nothing is registered
 	fx = newFixture()
 	fx.company("c-a", "A", "", liveSFID, "cg-1")
 	fx.platform.noMembers = true
 	fx.platform.orgs[liveSFID] = &Org{ID: liveSFID, Name: "A"}
 	plan, err = BuildPlan(context.Background(), fx.deps(), Options{Apply: true})
 	require.NoError(t, err)
-	require.Len(t, plan.Register, 1)
+	g = plan.Groups[0]
+	assert.Equal(t, LiveUnverified, g.Live, "org-service serving an id is not Salesforce liveness")
+	assert.Equal(t, RouteRegister, g.Route)
+	assert.Equal(t, ReasonCRMUnverified, g.ManualReason)
+	assert.Equal(t, "200", g.OrgStatus)
+	assert.True(t, g.Pending())
+	assert.Empty(t, plan.Register)
+	assert.Equal(t, 1, plan.Pending())
 	sum, err = Execute(context.Background(), fx.deps(), Options{Apply: true}, plan)
-	assert.ErrorContains(t, err, "1 group(s) failed")
-	assert.ErrorIs(t, plan.Register[0].Err, ErrNotConfigured)
+	require.NoError(t, err)
+	assert.Equal(t, Summary{Mode: "apply", Eligible: 1, Pending: 1}, sum)
+	assert.Empty(t, fx.platform.registered)
+	var buf bytes.Buffer
+	plan.Print(&buf)
+	assert.Contains(t, buf.String(), "pending=1")
+	actions := plan.ManualActions()
+	require.Len(t, actions, 1)
+	assert.Equal(t, ReasonCRMUnverified, actions[0].Reason)
+	assert.Contains(t, actions[0].Suggested, "cla-member-service-base-url")
+}
+
+func TestApplyWithoutMemberServiceStopsBeforeMutation(t *testing.T) {
+	fx, mapping, statePath := rewriteFixture(t)
+	fx.platform.noMembers = true
+	opts := Options{Apply: true, Mapping: mapping, State: statePath, OutDir: t.TempDir()}
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	require.Len(t, plan.Rewrite, 1)
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+	assert.ErrorIs(t, err, ErrNotConfigured)
 	assert.Equal(t, 1, sum.Failed)
+	assert.ErrorIs(t, plan.Rewrite[0].Err, ErrNotConfigured)
+	assert.Empty(t, fx.companies.updates)
+	assert.Empty(t, fx.events.rekeyed)
+	assert.Len(t, mustListOrgGrants(t, fx, lfID), 3)
+	for _, c := range fx.platform.calls {
+		assert.False(t, strings.HasPrefix(c, "create-grant"), "nothing is written when the run could not finish")
+	}
+	st, err := LoadState(statePath)
+	require.NoError(t, err)
+	assert.Empty(t, st.Last, "no step was started")
+	_, err = os.Stat(filepath.Join(opts.OutDir, "manual_actions.csv"))
+	assert.NoError(t, err, "reports are still written")
+
+	// the same apply without a state file is refused before anything else
+	fx, mapping, _ = rewriteFixture(t)
+	opts = Options{Apply: true, Mapping: mapping}
+	plan, err = BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	require.Len(t, plan.Register, 1)
+	sum, err = Execute(context.Background(), fx.deps(), opts, plan)
+	assert.ErrorIs(t, err, ErrStateRequired)
+	assert.Equal(t, 2, sum.Failed, "the register group is refused too: the run stops before its first write")
+	assert.Empty(t, fx.platform.registered)
+	assert.Empty(t, fx.companies.updates)
+	assert.Len(t, mustListOrgGrants(t, fx, lfID), 3)
+	// a register-only apply needs no journal
+	fx = newFixture()
+	fx.company("c-a", "A", "", liveSFID, "cg-1")
+	fx.platform.sfAccounts[liveSFID] = true
+	plan, err = BuildPlan(context.Background(), fx.deps(), Options{Apply: true, Routes: []Route{RouteRegister}})
+	require.NoError(t, err)
+	sum, err = Execute(context.Background(), fx.deps(), Options{Apply: true, Routes: []Route{RouteRegister}}, plan)
+	require.NoError(t, err)
+	assert.Equal(t, 1, sum.Registered)
+}
+
+func TestJournalFailureStopsBeforeRowRewrite(t *testing.T) {
+	fx, mapping, statePath := rewriteFixture(t)
+	require.NoError(t, os.WriteFile(statePath, nil, 0o400))
+	opts := Options{Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}}
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	require.Len(t, plan.Rewrite, 1)
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+	assert.Error(t, err)
+	assert.Equal(t, 1, sum.Failed)
+	assert.ErrorContains(t, plan.Rewrite[0].Err, "cannot record")
+	assert.Empty(t, fx.companies.updates, "rows are not rewritten when the journal cannot be written")
+	assert.Empty(t, fx.events.rekeyed)
+	assert.Len(t, mustListOrgGrants(t, fx, lfID), 3, "old grants are kept")
+	for _, c := range fx.platform.calls {
+		assert.False(t, strings.HasPrefix(c, "create-grant"), "the first journal line precedes every write")
+	}
+}
+
+func TestCleanupPreservesUncopiedGrant(t *testing.T) {
+	fx, mapping, statePath := rewriteFixture(t)
+	// a grant appears on the old org after the copy step (an ACS write racing the import)
+	lists := 0
+	fx.platform.listHook = func(orgID string) {
+		if orgID == lfID {
+			if lists++; lists == 2 {
+				fx.platform.addGrant(lfID, "late-user", "role-cla-manager", "cg-1")
+			}
+		}
+	}
+	opts := Options{Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}}
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+	require.NoError(t, err)
+	assert.Equal(t, 1, sum.Rewritten)
+	newGrants := mustListOrgGrants(t, fx, targetSFID)
+	var users []string
+	for _, g := range newGrants {
+		users = append(users, g.Username)
+	}
+	assert.Contains(t, users, "late-user", "a grant found only at cleanup time is copied before the old one is deleted")
+	assert.Empty(t, mustListOrgGrants(t, fx, lfID))
 }
 
 func TestRegisterApply(t *testing.T) {
@@ -823,6 +933,78 @@ func TestRowTargetedRewriteApply(t *testing.T) {
 	assert.Equal(t, RouteRegister, groupByKey(plan.Groups, targetSFID2).Route)
 }
 
+func TestWhitespaceSourceValueIsPinnedExactly(t *testing.T) {
+	fx := newFixture()
+	fx.company("c-space", "Space Inc", "", " ", "cg-1")
+	fx.company("c-padded", "Padded Inc", "", " "+liveSFID+" ", "cg-1")
+	fx.platform.sfAccounts[liveSFID] = true
+	fx.platform.sfAccounts[targetSFID] = true
+	fx.platform.orgs[targetSFID] = &Org{ID: targetSFID, Name: "Space Inc"}
+	dir := t.TempDir()
+	mapping := writeMapping(t, dir, "c-space,"+targetSFID+",matched,true")
+	opts := Options{Apply: true, Mapping: mapping, State: filepath.Join(dir, "state.jsonl"), Routes: []Route{RouteRewrite}}
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	require.Len(t, plan.Rewrite, 1)
+	assert.Equal(t, " ", plan.Rewrite[0].OldID, "the stored value, not its trimmed form, is the CAS precondition")
+	assert.Equal(t, " ", plan.Rewrite[0].Rows[0].RawExternalID)
+	assert.Equal(t, "", plan.Rewrite[0].Rows[0].ExternalID)
+	padded := groupByKey(plan.Groups, liveSFID)
+	require.NotNil(t, padded, "a padded SFID is grouped under its trimmed id")
+	assert.Equal(t, " "+liveSFID+" ", padded.Rows[0].RawExternalID)
+	assert.Equal(t, RouteRegister, padded.Route)
+
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+	require.NoError(t, err)
+	assert.Equal(t, 1, sum.Rewritten)
+	assert.Equal(t, []string{"c-space: ->" + targetSFID}, fx.companies.updates, "the fake compares the exact stored value")
+	assert.Equal(t, targetSFID, fx.companies.rows["c-space"].CompanyExternalID)
+	assert.Equal(t, " ", fx.companies.rows["c-space"].PreviousCompanyExternalID)
+	st, err := LoadState(opts.State)
+	require.NoError(t, err)
+	assert.Equal(t, " ", st.Last["c-space"].OldID)
+
+	// a replayed row-targeted group keeps the exact value too
+	fx = newFixture()
+	fx.company("c-space", "Space Inc", "", " ", "cg-1")
+	fx.platform.sfAccounts[targetSFID] = true
+	fx.platform.orgs[targetSFID] = &Org{ID: targetSFID, Name: "Space Inc"}
+	statePath := filepath.Join(t.TempDir(), "state.jsonl")
+	st, err = LoadState(statePath)
+	require.NoError(t, err)
+	require.NoError(t, st.Append(StateRecord{Key: "c-space", OldID: " ", NewID: targetSFID, CompanyIDs: []string{"c-space"}, Step: StepStart, Status: statusOK}, time.Now()))
+	opts = Options{Apply: true, State: statePath, Routes: []Route{RouteRewrite}}
+	plan, err = BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	require.Len(t, plan.Rewrite, 1)
+	assert.True(t, plan.Rewrite[0].Replayed)
+	assert.Equal(t, " ", plan.Rewrite[0].OldID)
+	sum, err = Execute(context.Background(), fx.deps(), opts, plan)
+	require.NoError(t, err)
+	assert.Equal(t, 1, sum.Rewritten)
+	assert.Equal(t, targetSFID, fx.companies.rows["c-space"].CompanyExternalID)
+}
+
+func TestActiveCCLAPredicateRequiresCompanyReference(t *testing.T) {
+	fx := newFixture()
+	fx.company("c-a", "A", "", liveSFID)
+	// a signed+approved signature that is not a company CCLA (user reference / not ccla / unsigned) never makes the row eligible
+	fx.sigs.items = append(fx.sigs.items,
+		&signatures.ItemSignature{SignatureReferenceID: "c-a", SignatureReferenceType: utils.SignatureReferenceTypeUser, SignatureProjectID: "cg-1", SignatureType: "ccla", SignatureSigned: true, SignatureApproved: true},
+		&signatures.ItemSignature{SignatureReferenceID: "c-a", SignatureReferenceType: utils.SignatureReferenceTypeCompany, SignatureProjectID: "cg-1", SignatureType: "cla", SignatureSigned: true, SignatureApproved: true},
+		&signatures.ItemSignature{SignatureReferenceID: "c-a", SignatureReferenceType: utils.SignatureReferenceTypeCompany, SignatureProjectID: "cg-1", SignatureType: "ccla", SignatureSigned: false, SignatureApproved: true},
+		&signatures.ItemSignature{SignatureReferenceID: "c-a", SignatureReferenceType: utils.SignatureReferenceTypeCompany, SignatureProjectID: "cg-1", SignatureType: "ccla", SignatureSigned: true, SignatureApproved: false},
+	)
+	inv, err := LoadInventory(context.Background(), fx.deps())
+	require.NoError(t, err)
+	assert.Empty(t, inv.EligibleGroups())
+	fx.sigs.items = append(fx.sigs.items, &signatures.ItemSignature{SignatureReferenceID: "c-a", SignatureReferenceType: utils.SignatureReferenceTypeCompany, SignatureProjectID: "cg-1", SignatureType: "ccla", SignatureSigned: true, SignatureApproved: true})
+	inv, err = LoadInventory(context.Background(), fx.deps())
+	require.NoError(t, err)
+	require.Len(t, inv.EligibleGroups(), 1)
+	assert.Equal(t, 1, inv.EligibleGroups()[0].Rows[0].CCLACount)
+}
+
 func TestRowTargetedReplayAfterCrash(t *testing.T) {
 	fx := newFixture()
 	fx.company("c-empty", "Empty Inc", "", "", "cg-1")
@@ -894,9 +1076,9 @@ func TestRewriteGrantFailureLeavesRowsUntouched(t *testing.T) {
 }
 
 func TestRewriteWaitsForOrgService(t *testing.T) {
-	fx, mapping, _ := rewriteFixture(t)
+	fx, mapping, statePath := rewriteFixture(t)
 	fx.platform.servedAfter[targetSFID] = 2
-	opts := Options{Apply: true, Mapping: mapping, WaitPoll: time.Second, WaitMax: time.Hour}
+	opts := Options{Apply: true, Mapping: mapping, State: statePath, WaitPoll: time.Second, WaitMax: time.Hour}
 	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
 	require.NoError(t, err)
 	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
@@ -904,9 +1086,9 @@ func TestRewriteWaitsForOrgService(t *testing.T) {
 	assert.Equal(t, 1, sum.Rewritten)
 	assert.Equal(t, []time.Duration{time.Second, time.Second}, fx.sleeps)
 
-	fx, mapping, _ = rewriteFixture(t)
+	fx, mapping, statePath = rewriteFixture(t)
 	fx.platform.servedAfter[targetSFID] = 5
-	opts = Options{Apply: true, Mapping: mapping, SkipWait: true, Routes: []Route{RouteRewrite}}
+	opts = Options{Apply: true, Mapping: mapping, State: statePath, SkipWait: true, Routes: []Route{RouteRewrite}}
 	plan, err = BuildPlan(context.Background(), fx.deps(), opts)
 	require.NoError(t, err)
 	sum, err = Execute(context.Background(), fx.deps(), opts, plan)
@@ -939,10 +1121,10 @@ func TestApexResolution(t *testing.T) {
 	_, err = NewApexClient("", "x")
 	assert.ErrorIs(t, err, ErrApexUnavailable)
 
-	fx, _, _ := rewriteFixture(t)
+	fx, _, statePath := rewriteFixture(t)
 	deps := fx.deps()
 	deps.Apex = apex
-	opts := Options{Apply: true, UseApex: true, Routes: []Route{RouteRewrite}}
+	opts := Options{Apply: true, UseApex: true, State: statePath, Routes: []Route{RouteRewrite}}
 	plan, err := BuildPlan(context.Background(), deps, opts)
 	require.NoError(t, err)
 	require.Len(t, plan.Rewrite, 1)
@@ -960,7 +1142,7 @@ func TestApexResolution(t *testing.T) {
 
 	// matched needs an approved mapping row with the same id
 	results[true] = ApexResult{ID: targetSFID, Action: ActionMatched}
-	fx, mapping, _ := rewriteFixture(t)
+	fx, mapping, statePath := rewriteFixture(t)
 	deps = fx.deps()
 	deps.Apex = apex
 	plan, err = BuildPlan(context.Background(), deps, Options{UseApex: true})
@@ -973,14 +1155,43 @@ func TestApexResolution(t *testing.T) {
 	// the real call must return what the dry run returned
 	results[false] = ApexResult{ID: targetSFID2, Action: ActionMatched}
 	fx.platform.orgs[targetSFID2] = &Org{ID: targetSFID2}
-	opts = Options{Apply: true, UseApex: true, Mapping: mapping, Routes: []Route{RouteRewrite}}
+	opts = Options{Apply: true, UseApex: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}}
+	calls := len(requests)
 	plan, err = BuildPlan(context.Background(), deps, opts)
 	require.NoError(t, err)
+	assert.False(t, plan.Rewrite[0].ViaApex, "an approved mapping row is the operator's resolution: Apex is not consulted")
+	sum, err = Execute(context.Background(), deps, opts, plan)
+	require.NoError(t, err, "a mapping-resolved group never depends on the live Apex answer")
+	assert.Equal(t, 1, sum.Rewritten)
+	assert.Equal(t, targetSFID, fx.companies.rows["c-parent"].CompanyExternalID)
+	assert.Len(t, requests, calls, "no Apex call was made for the mapping-resolved group")
+
+	// an Apex-resolved group must get the same answer from the real call as from the dry run
+	results[true] = ApexResult{ID: targetSFID, Action: ActionCreated}
+	fx, _, statePath = rewriteFixture(t)
+	deps = fx.deps()
+	deps.Apex = apex
+	opts = Options{Apply: true, UseApex: true, State: statePath, Routes: []Route{RouteRewrite}}
+	plan, err = BuildPlan(context.Background(), deps, opts)
+	require.NoError(t, err)
+	require.Len(t, plan.Rewrite, 1)
+	assert.True(t, plan.Rewrite[0].ViaApex)
 	sum, err = Execute(context.Background(), deps, opts, plan)
 	assert.Error(t, err)
 	assert.Equal(t, 1, sum.Failed)
 	assert.ErrorContains(t, plan.Rewrite[0].Err, "changed between dry run")
 	assert.Empty(t, fx.companies.updates)
+	st, err := LoadState(statePath)
+	require.NoError(t, err)
+	assert.Equal(t, StepResolve, st.Last[lfID].Step)
+	assert.Equal(t, "failed", st.Last[lfID].Status)
+	// a failed resolution is never replayed as approved: the next run classifies from scratch again
+	results[false] = ApexResult{ID: targetSFID, Action: ActionCreated}
+	plan, err = BuildPlan(context.Background(), deps, opts)
+	require.NoError(t, err)
+	require.Len(t, plan.Rewrite, 1)
+	assert.False(t, plan.Rewrite[0].Replayed)
+	assert.Equal(t, targetSFID, plan.Rewrite[0].NewID)
 
 	results[true] = ApexResult{ID: "", Action: ActionAmbiguous}
 	plan, err = BuildPlan(context.Background(), deps, Options{UseApex: true})
@@ -992,6 +1203,49 @@ func TestApexResolution(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "apex_error", groupByKey(plan.Groups, lfID).ManualReason)
 	assert.Error(t, groupByKey(plan.Groups, lfID).Err)
+
+	// a dry-run "created" has no Account id yet: the group is a planned rewrite that gets its id from the real call
+	results[true] = ApexResult{ID: "", Action: ActionCreated}
+	results[false] = ApexResult{ID: targetSFID, Action: ActionCreated}
+	fx, _, statePath = rewriteFixture(t)
+	deps = fx.deps()
+	deps.Apex = apex
+	opts = Options{Apply: true, UseApex: true, State: statePath, Routes: []Route{RouteRewrite}}
+	plan, err = BuildPlan(context.Background(), deps, opts)
+	require.NoError(t, err)
+	require.Len(t, plan.Rewrite, 1)
+	g := plan.Rewrite[0]
+	assert.True(t, g.ApexCreates())
+	assert.Empty(t, g.NewID)
+	assert.Empty(t, g.ManualReason)
+	assert.Equal(t, 0, plan.Pending())
+	var buf bytes.Buffer
+	plan.Print(&buf)
+	assert.Contains(t, buf.String(), "id assigned by Apex at apply")
+	sum, err = Execute(context.Background(), deps, opts, plan)
+	require.NoError(t, err)
+	assert.Equal(t, 1, sum.Rewritten)
+	assert.Equal(t, targetSFID, g.NewID)
+	assert.Equal(t, targetSFID, fx.companies.rows["c-parent"].CompanyExternalID)
+	st, err = LoadState(statePath)
+	require.NoError(t, err)
+	assert.Equal(t, targetSFID, st.Last[lfID].NewID)
+
+	// the real call must return a usable id
+	results[false] = ApexResult{ID: "", Action: ActionCreated}
+	fx, _, statePath = rewriteFixture(t)
+	deps = fx.deps()
+	deps.Apex = apex
+	opts = Options{Apply: true, UseApex: true, State: statePath, Routes: []Route{RouteRewrite}}
+	plan, err = BuildPlan(context.Background(), deps, opts)
+	require.NoError(t, err)
+	sum, err = Execute(context.Background(), deps, opts, plan)
+	assert.Error(t, err)
+	assert.Equal(t, 1, sum.Failed)
+	assert.ErrorContains(t, plan.Rewrite[0].Err, "non-account id")
+	assert.Empty(t, fx.companies.updates)
+	assert.Empty(t, fx.events.rekeyed)
+	assert.Len(t, mustListOrgGrants(t, fx, lfID), 3)
 }
 
 func TestAudit(t *testing.T) {
@@ -1046,6 +1300,18 @@ func TestAudit(t *testing.T) {
 	dups := readCSV(t, filepath.Join(dir, "possible_duplicates.csv"))
 	assert.Len(t, dups, 3)
 	assert.Contains(t, fx.out.String(), "SFID_OK=5")
+
+	// run.log (deps.Out) carries one line per company row, so the CloudWatch copy is the full decision record
+	var auditLines []string
+	for _, line := range strings.Split(fx.out.String(), "\n") {
+		if strings.HasPrefix(line, "audit row ") {
+			auditLines = append(auditLines, line)
+		}
+	}
+	assert.Len(t, auditLines, 8)
+	assert.Contains(t, fx.out.String(), "audit row company_id=c-dead name=\"Dead Corp\" external_id=\""+deadSFID+"\" shape=001 active_ccla=true ccla=1 ecla=4 org_service=404 route=rewrite reason=\"no_mapping\" tier="+TierDangling)
+	assert.Contains(t, fx.out.String(), "audit row company_id=c-empty ")
+	assert.Contains(t, fx.out.String(), "audit row company_id=c-inactive ")
 }
 
 type eclaCounterFunc func(context.Context, string) (int, error)

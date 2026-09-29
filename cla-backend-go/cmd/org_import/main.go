@@ -137,6 +137,7 @@ func run(args []string, stdin io.Reader) int {
 		rf.logGroup = "/easycla/org-import/" + stage
 	}
 
+	var err error
 	opts := orgimport.Options{
 		Stage: stage, Apply: *apply, Tranche: *tranche, Mapping: *mapping, Decisions: *decisions, SharedDomains: *sharedDomains,
 		State: *state, SkipWait: *skipWait, UseApex: *useApex, OutDir: *outDir, WaitMax: *waitMax,
@@ -144,23 +145,19 @@ func run(args []string, stdin io.Reader) int {
 	if *ids != "" {
 		opts.IDs = strings.Split(*ids, ",")
 	}
-	for _, r := range strings.Split(*routes, ",") {
-		switch strings.TrimSpace(r) {
-		case "register":
-			opts.Routes = append(opts.Routes, orgimport.RouteRegister)
-		case "rewrite":
-			opts.Routes = append(opts.Routes, orgimport.RouteRewrite)
-		case "":
-		default:
-			fmt.Fprintf(os.Stderr, "unknown route %q (register|rewrite)\n", r)
-			return 2
-		}
+	if opts.Routes, err = parseRoutes(*routes); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 2
 	}
 	if !*apply && *yes {
 		fmt.Fprintln(os.Stderr, "note: --yes has no effect without --apply")
 	}
+	if *apply && *state == "" && cmd == cmdIngest && hasRoute(opts.Routes, orgimport.RouteRewrite) {
+		fmt.Fprintf(os.Stderr, "%v; use --routes register for a register-only apply\n", orgimport.ErrStateRequired)
+		return 2
+	}
 
-	if err := os.MkdirAll(*outDir, 0o750); err != nil {
+	if err = os.MkdirAll(*outDir, 0o750); err != nil {
 		fmt.Fprintf(os.Stderr, "cannot create %s: %v\n", *outDir, err)
 		return 2
 	}
@@ -173,6 +170,7 @@ func run(args []string, stdin io.Reader) int {
 	out := io.MultiWriter(os.Stdout, logFile)
 	errOut := io.MultiWriter(os.Stderr, logFile)
 	log.GetLogger().SetOutput(io.MultiWriter(os.Stderr, logFile))
+	snapshotInputs(*outDir, opts, out, errOut)
 
 	info := orgimport.RunInfo{
 		Stage: stage, Command: cmd, Apply: *apply, Args: args, Start: time.Now().UTC(), Runner: runnerName(),
@@ -280,17 +278,73 @@ func report(ctx context.Context, e env, info orgimport.RunInfo, plan *orgimport.
 		return
 	}
 	rep := orgimport.BuildReport(info, plan, audit, runLog)
-	raw, err := rep.MIME(e.cfg.SenderEmailAddress, recipients)
+	raw, notice, err := rep.Deliverable(e.cfg.SenderEmailAddress, recipients)
 	if err != nil {
 		fmt.Fprintf(errOut, "report: building e-mail failed: %v\n", err)
 		return
+	}
+	if notice != "" {
+		fmt.Fprintf(errOut, "report: %s\n", notice)
 	}
 	id, err := orgimport.Mailer{Client: ses.New(e.sess)}.Send(ctx, e.cfg.SenderEmailAddress, recipients, raw)
 	if err != nil {
 		fmt.Fprintf(errOut, "report: SES send failed: %v\n", err)
 		return
 	}
-	fmt.Fprintf(out, "report e-mailed to %s (%d bytes, %d attachments, SES message id %s)\n", strings.Join(recipients, ","), len(raw), len(rep.Attachments), id)
+	fmt.Fprintf(out, "report e-mailed to %s (%d bytes, %d attachments built, SES message id %s)\n", strings.Join(recipients, ","), len(raw), len(rep.Attachments), id)
+}
+
+// snapshotInputs copies the effective non-secret inputs (mapping, decisions, shared domains and the
+// state file as it was before the run) into outDir so the artifact and the report zip are a complete record.
+func parseRoutes(spec string) ([]orgimport.Route, error) {
+	var routes []orgimport.Route
+	for _, r := range strings.Split(spec, ",") {
+		switch strings.TrimSpace(r) {
+		case "register":
+			routes = append(routes, orgimport.RouteRegister)
+		case "rewrite":
+			routes = append(routes, orgimport.RouteRewrite)
+		case "":
+		default:
+			return nil, fmt.Errorf("unknown route %q (register|rewrite)", r)
+		}
+	}
+	return routes, nil
+}
+
+func hasRoute(routes []orgimport.Route, want orgimport.Route) bool {
+	for _, r := range routes {
+		if r == want {
+			return true
+		}
+	}
+	return false
+}
+
+func snapshotInputs(outDir string, opts orgimport.Options, out, errOut io.Writer) {
+	for _, in := range []struct{ name, src string }{
+		{"input-mapping.csv", opts.Mapping}, {"input-decisions.csv", opts.Decisions},
+		{"input-shared_domains.txt", opts.SharedDomains}, {"input-state.jsonl", opts.State},
+	} {
+		if in.src == "" {
+			continue
+		}
+		dst := filepath.Join(outDir, in.name)
+		data, err := os.ReadFile(filepath.Clean(in.src))
+		if err != nil {
+			if os.IsNotExist(err) && in.name == "input-state.jsonl" {
+				fmt.Fprintf(out, "input %s: %s does not exist yet (fresh state)\n", in.name, in.src)
+				continue
+			}
+			fmt.Fprintf(errOut, "input %s: cannot read %s: %v\n", in.name, in.src, err)
+			continue
+		}
+		if err = os.WriteFile(dst, data, 0o600); err != nil {
+			fmt.Fprintf(errOut, "input %s: cannot write %s: %v\n", in.name, dst, err)
+			continue
+		}
+		fmt.Fprintf(out, "input %s: copied %s (%d bytes) to %s\n", in.name, in.src, len(data), dst)
+	}
 }
 
 func runnerName() string {

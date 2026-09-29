@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
+
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 )
 
 const sfidPrefix = "001"
@@ -53,7 +55,7 @@ type Inventory struct {
 	ByExternal map[string][]*Row
 }
 
-// LoadInventory scans companies and active (signed+approved) CCLAs.
+// LoadInventory scans companies and active (signed+approved, company-referenced) CCLAs.
 func LoadInventory(ctx context.Context, deps Deps) (*Inventory, error) {
 	cclas, err := deps.Signatures.GetCCLASignatures(ctx, aws.Bool(true), aws.Bool(true))
 	if err != nil {
@@ -62,7 +64,8 @@ func LoadInventory(ctx context.Context, deps Deps) (*Inventory, error) {
 	active := map[string][]string{}
 	signedOn := map[string]string{}
 	for _, s := range cclas {
-		if s == nil || s.SignatureReferenceID == "" {
+		if s == nil || s.SignatureReferenceID == "" || s.SignatureReferenceType != utils.SignatureReferenceTypeCompany ||
+			s.SignatureType != utils.SignatureTypeCCLA || !s.SignatureSigned || !s.SignatureApproved {
 			continue
 		}
 		active[s.SignatureReferenceID] = append(active[s.SignatureReferenceID], s.SignatureProjectID)
@@ -82,6 +85,7 @@ func LoadInventory(ctx context.Context, deps Deps) (*Inventory, error) {
 			CompanyName:       c.CompanyName,
 			SigningEntityName: c.SigningEntityName,
 			ExternalID:        strings.TrimSpace(c.CompanyExternalID),
+			RawExternalID:     c.CompanyExternalID,
 		}
 		if groups, ok := active[c.CompanyID]; ok {
 			row.ActiveCCLA = true
@@ -110,7 +114,7 @@ func (inv *Inventory) EligibleGroups() []*Group {
 			continue
 		}
 		if shape := ShapeOf(row.ExternalID); shape == ShapeEmpty || shape == ShapeOther {
-			groups = append(groups, &Group{OldID: row.ExternalID, Key: row.CompanyID, Shape: shape, Rows: []*Row{row}})
+			groups = append(groups, &Group{OldID: row.RawExternalID, Key: row.CompanyID, Shape: shape, Rows: []*Row{row}})
 			continue
 		}
 		if seen[row.ExternalID] {

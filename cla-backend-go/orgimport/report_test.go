@@ -6,15 +6,18 @@ package orgimport
 import (
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/base64"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
 	"net/mail"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -191,13 +194,89 @@ func TestReportMIME(t *testing.T) {
 	}
 	assert.Equal(t, []string{"text/plain; charset=utf-8", "text/html; charset=utf-8"}, altTypes)
 
-	// oversized attachments are dropped largest-first until the message fits
+	// oversized binary attachments are dropped largest-first until the message fits, and the bodies say so
 	rep.Attachments = append(rep.Attachments, Attachment{Name: "huge.bin", ContentType: "application/octet-stream", Data: bytes.Repeat([]byte{1}, MaxRawEmailBytes)})
 	raw, err = rep.MIME("admin@lfx.linuxfoundation.org", []string{"a@example.org"})
 	require.NoError(t, err)
 	assert.LessOrEqual(t, len(raw), MaxRawEmailBytes)
 	assert.NotContains(t, string(raw), "huge.bin")
 	assert.Contains(t, string(raw), "manual_actions.csv")
+	_, notice, err := rep.Deliverable("admin@lfx.linuxfoundation.org", []string{"a@example.org"})
+	require.NoError(t, err)
+	assert.Contains(t, notice, "Delivery incomplete")
+	assert.Contains(t, notice, "huge.bin (10485760 bytes) dropped")
+}
+
+func TestReportMIMEOversizeLogIsCompressedNotLost(t *testing.T) {
+	info, plan, _ := reportFixture(t)
+	var log bytes.Buffer
+	for i := 0; log.Len() < MaxRawEmailBytes; i++ {
+		fmt.Fprintf(&log, "audit row company_id=c-%08d name=%q external_id=%q route=register\n", i, "Company "+strconv.Itoa(i), liveSFID)
+	}
+	rep := BuildReport(info, plan, nil, log.Bytes())
+	var runLog *Attachment
+	for i := range rep.Attachments {
+		if rep.Attachments[i].Name == "run.log" {
+			runLog = &rep.Attachments[i]
+		}
+	}
+	require.NotNil(t, runLog)
+	require.Greater(t, len(runLog.Data), MaxRawEmailBytes)
+	raw, notice, err := rep.Deliverable("admin@lfx.linuxfoundation.org", []string{"a@example.org"})
+	require.NoError(t, err)
+	assert.LessOrEqual(t, len(raw), MaxRawEmailBytes)
+	assert.Contains(t, notice, "run.log (")
+	assert.Contains(t, notice, "compressed to run.log.gz")
+	assert.NotContains(t, notice, "dropped")
+	msg, err := mail.ReadMessage(bytes.NewReader(raw))
+	require.NoError(t, err)
+	_, params, err := mime.ParseMediaType(msg.Header.Get("Content-Type"))
+	require.NoError(t, err)
+	mr := multipart.NewReader(msg.Body, params["boundary"])
+	names := map[string][]byte{}
+	var bodyPart []byte
+	for {
+		p, partErr := mr.NextPart()
+		if errors.Is(partErr, io.EOF) {
+			break
+		}
+		require.NoError(t, partErr)
+		data, readErr := io.ReadAll(p)
+		require.NoError(t, readErr)
+		if bodyPart == nil {
+			bodyPart = data
+			continue
+		}
+		_, dParams, dErr := mime.ParseMediaType(p.Header.Get("Content-Disposition"))
+		require.NoError(t, dErr)
+		names[dParams["filename"]] = data
+	}
+	assert.Contains(t, names, "run.log.gz", "the full log travels compressed instead of being dropped")
+	assert.NotContains(t, names, "run.log")
+	assert.Contains(t, names, "manual_actions.csv")
+	gzData, err := base64.StdEncoding.DecodeString(strings.ReplaceAll(string(names["run.log.gz"]), "\r\n", ""))
+	require.NoError(t, err)
+	zr, err := gzip.NewReader(bytes.NewReader(gzData))
+	require.NoError(t, err)
+	restored, err := io.ReadAll(zr)
+	require.NoError(t, err)
+	assert.Equal(t, log.Bytes(), restored)
+	assert.Contains(t, string(bodyPart), base64.StdEncoding.EncodeToString([]byte("Delivery incomplete"))[:16], "both bodies start with the notice")
+	assert.True(t, strings.HasPrefix(rep.Text, "Manual actions") || strings.Contains(rep.Text, "Manual actions"), "the report itself is unchanged")
+
+	// the zip of the output directory goes last; a body that does not fit on its own is an error
+	rep.Attachments = []Attachment{{Name: "out.zip", ContentType: contentTypeZip, Data: bytes.Repeat([]byte{2}, 1024)}, {Name: "big.csv", ContentType: "text/csv; charset=utf-8", Data: bytes.Repeat([]byte("x"), MaxRawEmailBytes)}}
+	_, notice, err = rep.Deliverable("admin@lfx.linuxfoundation.org", []string{"a@example.org"})
+	require.NoError(t, err)
+	assert.Contains(t, notice, "big.csv")
+	assert.NotContains(t, notice, "out.zip")
+	rep.Attachments = nil
+	rep.Text = strings.Repeat("y", MaxRawEmailBytes)
+	_, _, err = rep.Deliverable("admin@lfx.linuxfoundation.org", []string{"a@example.org"})
+	assert.ErrorContains(t, err, "over the")
+
+	assert.Equal(t, "<p>x</p><body class=\"a\"><p style=\"color:#b00000\"><b>n &lt;1&gt;</b></p><p>y</p>", injectNotice("<p>x</p><body class=\"a\"><p>y</p>", "n <1>"))
+	assert.True(t, strings.HasPrefix(injectNotice("<p>y</p>", "n"), "<p style="))
 }
 
 type fakeCloudWatch struct {

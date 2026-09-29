@@ -112,6 +112,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     environment: ${{ matrix.stage }}
+    concurrency:
+      group: org-import-${{ matrix.stage }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -188,7 +191,11 @@ jobs:
           run_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=org-import-state-${STAGE}&per_page=10" \
             --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | last | .workflow_run.id // empty')"
           if [ -n "$run_id" ]; then
-            gh run download "$run_id" -n "org-import-state-${STAGE}" -D org-import-out && echo "restored state from run $run_id" || echo "no state restored"
+            # a state artifact exists: failing to restore it must fail the job, never start from an empty journal
+            gh run download "$run_id" -n "org-import-state-${STAGE}" -D org-import-out
+            echo "restored state from run $run_id ($(wc -l < org-import-out/state.jsonl) journal lines)"
+          else
+            echo "no state artifact for ${STAGE}: starting with an empty journal"
           fi
           lines() { printf '%s\n' "$1" | tr '|' '\n' | sed '/^[[:space:]]*$/d'; }
           if [ -n "$MAPPING" ]; then

@@ -30,6 +30,7 @@ var suggestions = map[string]string{
 	"missing_website":           "Org-service has no website for the organization: automatic domain match is impossible — add a mapping row after sales ops name the Account.",
 	"shared_domain":             "Website domain is shared (github.com, nowebsite.com, mail provider): never matched automatically — add a mapping row after sales ops name the Account.",
 	"apex_error":                "Apex call failed: re-run; if it persists check cla-salesforce-apex-* and the endpoint.",
+	ReasonCRMUnverified:         "Account liveness cannot be verified without member-service: set SSM cla-member-service-base-url-<stage> / cla-member-service-auth0-audience-<stage> and the Auth0 client grant + Heimdall roles (README §2), then re-run.",
 }
 
 // Suggest returns the operator guidance for a reason.

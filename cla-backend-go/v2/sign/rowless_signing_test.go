@@ -5,6 +5,10 @@ package sign
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"io"
@@ -19,12 +23,17 @@ import (
 	mock_company "github.com/linuxfoundation/easycla/cla-backend-go/company/mocks"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
+	mock_projects_cla_groups "github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups/mocks"
+	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
 	mock_signatures "github.com/linuxfoundation/easycla/cla-backend-go/signatures/mocks"
 	"github.com/linuxfoundation/easycla/cla-backend-go/token"
 	"github.com/linuxfoundation/easycla/cla-backend-go/users"
 	mock_users "github.com/linuxfoundation/easycla/cla-backend-go/users/mocks"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	organizationService "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
+	projectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
+	userService "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,16 +47,25 @@ const (
 	rowlessCompanyID    = "6f1d2c3b-4a5e-4f60-8b7c-9d0e1f2a3b4c"
 	rowlessProjectID    = "1b2c3d4e-5f60-4718-9a0b-1c2d3e4f5a6b"
 	rowlessOrgJSON      = `{"ID":"` + rowlessSFID + `","Name":"Acme Corp","Domains":"acme.invalid","Link":"https://acme.invalid","SigningEntityName":["Acme Labs"]}`
+	rowlessDocuSignHost = "docusign.rowless.invalid"
+	rowlessEnvelopes    = "/accounts/rowless-account/envelopes"
+	rowlessEnvelopeID   = "rowless-envelope"
+	rowlessSignURL      = "https://docusign.rowless.invalid/sign"
+	rowlessProjectsPath = "/project-service/v1/projects/"
+	rowlessUsersPath    = "/user-service/v1/users"
+	rowlessLFUsername   = "lgryglicki"
+	rowlessUserEmail    = "lg@acme.invalid"
 )
 
-// rowlessHTTP stubs the token endpoint, the organization service and the SSS (auth + status)
-// endpoints; any other request fails the test so no network is ever touched
+// rowlessHTTP stubs the token endpoint, the organization/project/user services, the SSS (auth +
+// status) endpoints and DocuSign; any other request fails the test so no network is ever touched
 type rowlessHTTP struct {
 	t         *testing.T
 	orgs      map[string]string
 	sssStatus string
 	sssCalls  int
 	orgCalls  int
+	envelopes int
 }
 
 func (h *rowlessHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -56,6 +74,25 @@ func (h *rowlessHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 	case r.URL.Host == rowlessAuthHost && r.URL.Path == oauthEndpoint,
 		r.URL.Host == "example.auth0.com" && r.URL.Path == oauthEndpoint:
 		response.Body = io.NopCloser(strings.NewReader(`{"access_token":"unit-test-token","token_type":"Bearer","expires_in":3600}`))
+	case r.URL.Host == rowlessPlatformHost && strings.HasPrefix(r.URL.Path, rowlessProjectsPath):
+		response.Body = io.NopCloser(strings.NewReader(`{"id":"` + strings.TrimPrefix(r.URL.Path, rowlessProjectsPath) + `","foundation":{"id":"a09P000000Foundat1","name":"Foundation","slug":"foundation"}}`))
+	case r.URL.Host == rowlessPlatformHost && r.URL.Path == rowlessUsersPath:
+		body := `{"data":[]}`
+		if r.URL.Query().Get("username") == rowlessLFUsername {
+			body = `{"data":[{"username":"` + rowlessLFUsername + `","name":"Lukasz","emails":[{"emailAddress":"` + rowlessUserEmail + `","isPrimary":true}]}]}`
+		}
+		response.Body = io.NopCloser(strings.NewReader(body))
+	case r.URL.Host == rowlessDocuSignHost && r.URL.Path == oauthEndpoint:
+		response.Body = io.NopCloser(strings.NewReader(`{"access_token":"unit-test-docusign-token"}`))
+	case r.URL.Host == rowlessDocuSignHost && r.URL.Path == rowlessEnvelopes:
+		h.envelopes++
+		response.StatusCode = http.StatusCreated
+		response.Body = io.NopCloser(strings.NewReader(`{"envelopeId":"` + rowlessEnvelopeID + `"}`))
+	case r.URL.Host == rowlessDocuSignHost && r.URL.Path == rowlessEnvelopes+"/"+rowlessEnvelopeID+"/recipients":
+		response.Body = io.NopCloser(strings.NewReader(`{"signers":[{"clientUserId":"rowless-signer"}]}`))
+	case r.URL.Host == rowlessDocuSignHost && r.URL.Path == rowlessEnvelopes+"/"+rowlessEnvelopeID+"/views/recipient":
+		response.StatusCode = http.StatusCreated
+		response.Body = io.NopCloser(strings.NewReader(`{"url":"` + rowlessSignURL + `"}`))
 	case r.URL.Host == "sss.example.com" && r.URL.Path == "/api/v1/organizations/status":
 		h.sssCalls++
 		response.Body = io.NopCloser(strings.NewReader(`{"status":"` + h.sssStatus + `","entity_id":"e1","source":"unit","org_name":"Acme Corp","domain":"acme.invalid"}`))
@@ -422,6 +459,179 @@ func TestRequestCorporateSignatureCreatesTheCompanyOnlyAfterValidation(t *testin
 		_, err := svc.requestCorporateSignature(context.Background(), "https://api.invalid", input, comp, proj, "lgryglicki", "lg@acme.invalid")
 
 		require.ErrorIs(t, err, errStop)
+	})
+}
+
+type rowlessProjectRepo struct{ group *v1Models.ClaGroup }
+
+func (r rowlessProjectRepo) GetCLAGroupByID(context.Context, string, bool) (*v1Models.ClaGroup, error) {
+	return r.group, nil
+}
+
+func setupRowlessSigningHTTP(t *testing.T) *rowlessHTTP {
+	t.Helper()
+	transport := setupRowlessHTTP(t, "clean")
+	projectService.InitClient("https://" + rowlessPlatformHost)
+	userService.InitClient("https://"+rowlessPlatformHost, "test-api-key")
+	t.Setenv("DOCUSIGN_INTEGRATOR_KEY", "test-integrator")
+	t.Setenv("DOCUSIGN_USER_ID", "test-user")
+	t.Setenv("DOCUSIGN_AUTH_SERVER", rowlessDocuSignHost)
+	t.Setenv("DOCUSIGN_ROOT_URL", "https://"+rowlessDocuSignHost)
+	t.Setenv("DOCUSIGN_ACCOUNT_ID", "rowless-account")
+	return transport
+}
+
+func rowlessCLAGroup() *v1Models.ClaGroup {
+	return &v1Models.ClaGroup{
+		ProjectID:          rowlessProjectID,
+		ProjectName:        "Rowless Project",
+		ProjectCCLAEnabled: true,
+		ProjectCorporateDocuments: []v1Models.ClaGroupDocument{{
+			DocumentName:         "CCLA",
+			DocumentContentType:  "application/pdf",
+			DocumentContent:      "%PDF-1.4 unit",
+			DocumentMajorVersion: "2",
+			DocumentMinorVersion: "0",
+			DocumentCreationDate: "2026-01-01T00:00:00Z",
+		}},
+	}
+}
+
+// TestRequestCorporateSignatureFirstCCLAEndToEnd drives the public entrypoint through the real
+// signing engine (project/user services and DocuSign stubbed over HTTP) and checks that the row
+// created for an organization's first CCLA is the one the signature, ACL and response refer to
+func TestRequestCorporateSignatureFirstCCLAEndToEnd(t *testing.T) {
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+	privateKey := string(pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}))
+	persisted := func() *v1Models.Company {
+		return &v1Models.Company{CompanyID: rowlessCompanyID, CompanyExternalID: rowlessSFID, CompanyName: "Acme Corp", SigningEntityName: "Acme Corp"}
+	}
+	signingInput := func() *models.CorporateSignatureInput {
+		return &models.CorporateSignatureInput{
+			CompanySfid: utils.StringRef(rowlessSFID),
+			ProjectSfid: utils.StringRef(rowlessProjectSFID),
+			ReturnURL:   strfmt.URI("https://return.invalid/done"),
+		}
+	}
+	type fixtures struct {
+		svc              *service
+		companyRepo      *mock_company.MockIRepository
+		companyService   *mock_company.MockIService
+		signatureService *mock_signatures.MockSignatureService
+		transport        *rowlessHTTP
+	}
+	newFixtures := func(t *testing.T, ctrl *gomock.Controller, group *v1Models.ClaGroup) fixtures {
+		transport := setupRowlessSigningHTTP(t)
+		userRepo := mock_users.NewMockUserRepository(ctrl)
+		userRepo.EXPECT().GetUserByUserName(rowlessLFUsername, true).Return(&v1Models.User{UserID: "user-1", Username: "Lukasz", LfUsername: rowlessLFUsername}, nil).AnyTimes()
+		mappings := mock_projects_cla_groups.NewMockRepository(ctrl)
+		mappings.EXPECT().GetClaGroupIDForProject(gomock.Any(), rowlessProjectSFID).Return(&projects_cla_groups.ProjectClaGroup{ProjectSFID: rowlessProjectSFID, ClaGroupID: rowlessProjectID}, nil).AnyTimes()
+		fx := fixtures{
+			companyRepo:      mock_company.NewMockIRepository(ctrl),
+			companyService:   mock_company.NewMockIService(ctrl),
+			signatureService: mock_signatures.NewMockSignatureService(ctrl),
+			transport:        transport,
+		}
+		fx.svc = &service{
+			ClaV4ApiURL:          "https://api.rowless.invalid",
+			ClaV1ApiURL:          "https://legacy.rowless.invalid",
+			companyRepo:          fx.companyRepo,
+			projectRepo:          rowlessProjectRepo{group: group},
+			projectClaGroupsRepo: mappings,
+			companyService:       fx.companyService,
+			docsignPrivateKey:    privateKey,
+			userService:          users.NewService(userRepo, nil),
+			signatureService:     fx.signatureService,
+			sssEnabled:           false,
+			complianceCache:      map[string]complianceCacheEntry{},
+			complianceCacheMu:    &sync.Mutex{},
+		}
+		return fx
+	}
+	expectSigning := func(fx fixtures) *signatures.ItemSignature {
+		saved := &signatures.ItemSignature{}
+		fx.companyRepo.EXPECT().GetCompany(gomock.Any(), rowlessCompanyID).Return(persisted(), nil)
+		fx.signatureService.EXPECT().GetCorporateSignatures(gomock.Any(), rowlessProjectID, rowlessCompanyID, gomock.Any(), nil).Return(nil, nil)
+		fx.signatureService.EXPECT().SaveOrUpdateSignature(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, item *signatures.ItemSignature) error {
+			*saved = *item
+			return nil
+		})
+		fx.companyService.EXPECT().AddUserToCompanyAccessList(gomock.Any(), rowlessCompanyID, rowlessLFUsername).Return(nil)
+		return saved
+	}
+	assertSigned := func(t *testing.T, fx fixtures, out *models.CorporateSignatureOutput, saved *signatures.ItemSignature) {
+		require.NotNil(t, out)
+		assert.Equal(t, rowlessCompanyID, out.CompanyID)
+		assert.Equal(t, rowlessSignURL, out.SignURL)
+		assert.Equal(t, saved.SignatureID, out.SignatureID)
+		assert.Equal(t, rowlessCompanyID, saved.SignatureReferenceID)
+		assert.Equal(t, utils.SignatureReferenceTypeCompany, saved.SignatureReferenceType)
+		assert.Equal(t, utils.SignatureTypeCCLA, saved.SignatureType)
+		assert.Equal(t, "Acme Corp", saved.SignatureReferenceName)
+		assert.Equal(t, rowlessProjectID, saved.SignatureProjectID)
+		assert.Equal(t, []string{rowlessLFUsername}, saved.SignatureACL)
+		assert.Equal(t, rowlessEnvelopeID, saved.SignatureEnvelopeID)
+		assert.Equal(t, "https://api.rowless.invalid/v4/signed/corporate/"+rowlessProjectID+"/"+rowlessCompanyID, saved.SignatureCallbackURL)
+		assert.Equal(t, "https://return.invalid/done", saved.SignatureReturnURL)
+		assert.False(t, saved.SignatureSigned)
+		assert.True(t, saved.SignatureApproved)
+		assert.Equal(t, 1, fx.transport.envelopes)
+	}
+
+	t.Run("first CCLA creates the row and signs with it", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		fx := newFixtures(t, ctrl, rowlessCLAGroup())
+		fx.companyRepo.EXPECT().GetCompanyByExternalID(gomock.Any(), rowlessSFID).Return(nil, &utils.CompanyNotFound{CompanySFID: rowlessSFID})
+		fx.companyRepo.EXPECT().EnsureCompanyForExternalID(gomock.Any(), rowlessSFID, "Acme Corp", "Acme Corp").Return(persisted(), true, nil)
+		saved := expectSigning(fx)
+
+		out, err := fx.svc.RequestCorporateSignature(context.Background(), rowlessLFUsername, "******", signingInput())
+
+		require.NoError(t, err)
+		assertSigned(t, fx, out, saved)
+		assert.Equal(t, 1, fx.transport.orgCalls)
+	})
+	t.Run("a row created meanwhile is adopted", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		fx := newFixtures(t, ctrl, rowlessCLAGroup())
+		fx.companyRepo.EXPECT().GetCompanyByExternalID(gomock.Any(), rowlessSFID).Return(nil, &utils.CompanyNotFound{CompanySFID: rowlessSFID})
+		fx.companyRepo.EXPECT().EnsureCompanyForExternalID(gomock.Any(), rowlessSFID, "Acme Corp", "Acme Corp").Return(persisted(), false, nil)
+		saved := expectSigning(fx)
+
+		out, err := fx.svc.RequestCorporateSignature(context.Background(), rowlessLFUsername, "******", signingInput())
+
+		require.NoError(t, err)
+		assertSigned(t, fx, out, saved)
+	})
+	t.Run("a persisted company signs without the organization service", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		fx := newFixtures(t, ctrl, rowlessCLAGroup())
+		fx.companyRepo.EXPECT().GetCompanyByExternalID(gomock.Any(), rowlessSFID).Return(persisted(), nil)
+		saved := expectSigning(fx)
+
+		out, err := fx.svc.RequestCorporateSignature(context.Background(), rowlessLFUsername, "******", signingInput())
+
+		require.NoError(t, err)
+		assertSigned(t, fx, out, saved)
+		assert.Zero(t, fx.transport.orgCalls)
+	})
+	t.Run("a request rejected before signing creates nothing", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		group := rowlessCLAGroup()
+		group.ProjectCCLAEnabled = false
+		fx := newFixtures(t, ctrl, group)
+		fx.companyRepo.EXPECT().GetCompanyByExternalID(gomock.Any(), rowlessSFID).Return(nil, &utils.CompanyNotFound{CompanySFID: rowlessSFID})
+
+		out, err := fx.svc.RequestCorporateSignature(context.Background(), rowlessLFUsername, "******", signingInput())
+
+		require.ErrorIs(t, err, ErrCCLANotEnabled)
+		assert.Nil(t, out)
+		assert.Zero(t, fx.transport.envelopes)
 	})
 }
 

@@ -16,12 +16,15 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/gofrs/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+const fnAttributeExists = "attribute_exists"
 
 // fakeCompaniesTable is a minimal in-memory DynamoDB endpoint for the companies table: GetItem,
 // conditional PutItem (attribute_not_exists), Query on external-company-index and the conditional
@@ -107,18 +110,32 @@ func (f *fakeCompaniesTable) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			ExpressionAttributeValues map[string]fakeAttr
 		}
 		fakeCompanyDecode(w, body, &req)
+		if msg := fakeValidateExpressions(req.UpdateExpression+" "+req.ConditionExpression, req.ExpressionAttributeNames, req.ExpressionAttributeValues); msg != "" {
+			fakeCompanyError(w, "ValidationException", msg)
+			return
+		}
 		item, ok := f.items[*req.Key["company_id"].S]
 		if !ok {
-			item = map[string]interface{}{"company_id": map[string]interface{}{"S": *req.Key["company_id"].S}}
+			// DynamoDB evaluates the condition against the missing item and upserts when it passes
+			item = map[string]interface{}{}
 		}
 		f.lastCondition = req.ConditionExpression
 		if req.ConditionExpression != "" {
-			m := fakePlaceholderPair.FindStringSubmatch(req.ConditionExpression)
-			if fakeCompanyString(item, req.ExpressionAttributeNames[m[1]]) != *req.ExpressionAttributeValues[m[2]].S {
+			values := map[string]string{}
+			for k, v := range req.ExpressionAttributeValues {
+				if v.S != nil {
+					values[k] = *v.S
+				}
+			}
+			cond := &fakeCondition{expr: req.ConditionExpression, item: item, names: req.ExpressionAttributeNames, values: values}
+			if !cond.eval() {
 				f.conditionFailures++
 				fakeCompanyError(w, "ConditionalCheckFailedException", "condition failed")
 				return
 			}
+		}
+		if !ok {
+			item["company_id"] = map[string]interface{}{"S": *req.Key["company_id"].S}
 		}
 		for _, pair := range fakePlaceholderPair.FindAllStringSubmatch(strings.TrimPrefix(req.UpdateExpression, "SET "), -1) {
 			item[req.ExpressionAttributeNames[pair[1]]] = map[string]interface{}{"S": *req.ExpressionAttributeValues[pair[2]].S}
@@ -127,6 +144,93 @@ func (f *fakeCompaniesTable) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fakeCompanyJSON(w, map[string]interface{}{})
 	default:
 		http.Error(w, "unsupported operation "+r.Header.Get("X-Amz-Target"), http.StatusBadRequest)
+	}
+}
+
+// fakeValidateExpressions mirrors DynamoDB's rejection of unused or undefined expression placeholders.
+func fakeValidateExpressions(exprs string, names map[string]string, values map[string]fakeAttr) string {
+	for alias := range names {
+		if !strings.Contains(exprs, alias) {
+			return "Value provided in ExpressionAttributeNames unused in expressions: keys: {" + alias + "}"
+		}
+	}
+	for alias := range values {
+		if !strings.Contains(exprs, alias) {
+			return "Value provided in ExpressionAttributeValues unused in expressions: keys: {" + alias + "}"
+		}
+	}
+	for _, tok := range strings.FieldsFunc(exprs, func(r rune) bool { return r == ' ' || r == '(' || r == ')' || r == ',' }) {
+		switch {
+		case strings.HasPrefix(tok, "#"):
+			if _, ok := names[tok]; !ok {
+				return "An expression attribute name used in the document path is not defined; attribute name: " + tok
+			}
+		case strings.HasPrefix(tok, ":"):
+			if _, ok := values[tok]; !ok {
+				return "An expression attribute value used in expression is not defined; attribute value: " + tok
+			}
+		}
+	}
+	return ""
+}
+
+// fakeCondition evaluates the condition-expression subset the repository uses:
+// attribute_exists(#X), attribute_not_exists(#X), #X = :v, AND, OR and parentheses.
+type fakeCondition struct {
+	expr   string
+	item   map[string]interface{}
+	names  map[string]string
+	values map[string]string
+	toks   []string
+	pos    int
+}
+
+func (c *fakeCondition) eval() bool {
+	c.toks = strings.Fields(strings.NewReplacer("(", " ( ", ")", " ) ").Replace(c.expr))
+	return c.parseOr()
+}
+
+func (c *fakeCondition) parseOr() bool {
+	v := c.parseAnd()
+	for c.pos < len(c.toks) && strings.EqualFold(c.toks[c.pos], "OR") {
+		c.pos++
+		v = c.parseAnd() || v
+	}
+	return v
+}
+
+func (c *fakeCondition) parseAnd() bool {
+	v := c.parseAtom()
+	for c.pos < len(c.toks) && strings.EqualFold(c.toks[c.pos], "AND") {
+		c.pos++
+		v = c.parseAtom() && v
+	}
+	return v
+}
+
+func (c *fakeCondition) parseAtom() bool {
+	tok := c.toks[c.pos]
+	c.pos++
+	switch {
+	case tok == "(":
+		v := c.parseOr()
+		c.pos++ // ")"
+		return v
+	case tok == fnAttributeExists || tok == "attribute_not_exists":
+		c.pos++ // "("
+		_, exists := c.item[c.names[c.toks[c.pos]]]
+		c.pos += 2 // name, ")"
+		return exists == (tok == fnAttributeExists)
+	default:
+		c.pos++ // "="
+		value := c.toks[c.pos]
+		c.pos++
+		attr, exists := c.item[c.names[tok]]
+		if !exists {
+			return false
+		}
+		s, ok := attr.(map[string]interface{})["S"].(string)
+		return ok && s == c.values[value]
 	}
 }
 
@@ -330,16 +434,17 @@ func TestUpdateCompanyExternalID(t *testing.T) {
 			"c1": missing,
 			"c2": fakeCompanyItem("c2", "Blank Two", "Blank Two", ""),
 		}})
+		assert.ErrorIs(t, repo.UpdateCompanyExternalID(context.Background(), "c2", "  ", "0014100000New0001"), ErrExternalIDConditionFailed, "blanks are pinned exactly too")
 		require.NoError(t, repo.UpdateCompanyExternalID(context.Background(), "c1", "", "0014100000New0000"))
-		require.NoError(t, repo.UpdateCompanyExternalID(context.Background(), "c2", "  ", "0014100000New0001"))
+		require.NoError(t, repo.UpdateCompanyExternalID(context.Background(), "c2", "", "0014100000New0001"))
 		for id, want := range map[string]string{"c1": "0014100000New0000", "c2": "0014100000New0001"} {
 			record, err := repo.GetCompanyRecord(context.Background(), id)
 			require.NoError(t, err)
 			assert.Equal(t, want, record.CompanyExternalID)
 			assert.Equal(t, "", record.PreviousCompanyExternalID)
 		}
-		assert.Equal(t, 0, table.conditionFailures)
-		assert.Contains(t, table.lastCondition, "attribute_not_exists(#E) OR #E = :old")
+		assert.Equal(t, 1, table.conditionFailures)
+		assert.Contains(t, table.lastCondition, "attribute_exists(#K) AND (attribute_not_exists(#E) OR #E = :old)")
 	})
 
 	t.Run("a blank old id never overwrites an existing external id", func(t *testing.T) {
@@ -352,6 +457,72 @@ func TestUpdateCompanyExternalID(t *testing.T) {
 		record, err := repo.GetCompanyRecord(context.Background(), "c1")
 		require.NoError(t, err)
 		assert.Equal(t, "lf-old", record.CompanyExternalID)
+	})
+
+	t.Run("a deleted row is never recreated", func(t *testing.T) {
+		repo, table := newCompanyRepo(t, &fakeCompaniesTable{})
+		assert.ErrorIs(t, repo.UpdateCompanyExternalID(context.Background(), "gone", "", "0014100000New0000"), ErrExternalIDConditionFailed)
+		assert.ErrorIs(t, repo.UpdateCompanyExternalID(context.Background(), "gone", "  ", "0014100000New0000"), ErrExternalIDConditionFailed)
+		assert.ErrorIs(t, repo.UpdateCompanyExternalID(context.Background(), "gone", "lf-old", "0014100000New0000"), ErrExternalIDConditionFailed)
+		assert.Equal(t, 3, table.conditionFailures)
+		assert.Empty(t, table.items)
+	})
+
+	t.Run("whitespace-only and malformed stored values are pinned exactly", func(t *testing.T) {
+		repo, table := newCompanyRepo(t, &fakeCompaniesTable{items: map[string]map[string]interface{}{
+			"c1": fakeCompanyItem("c1", "Space Inc", "Space Inc", " "),
+			"c2": fakeCompanyItem("c2", "Garbage Inc", "Garbage Inc", "N/A"),
+		}})
+		assert.ErrorIs(t, repo.UpdateCompanyExternalID(context.Background(), "c1", "", "0014100000New0000"), ErrExternalIDConditionFailed, "blank is not the stored space")
+		assert.ErrorIs(t, repo.UpdateCompanyExternalID(context.Background(), "c2", "n/a", "0014100000New0001"), ErrExternalIDConditionFailed)
+		require.NoError(t, repo.UpdateCompanyExternalID(context.Background(), "c1", " ", "0014100000New0000"))
+		require.NoError(t, repo.UpdateCompanyExternalID(context.Background(), "c2", "N/A", "0014100000New0001"))
+		assert.Equal(t, 2, table.conditionFailures)
+		c1, err := repo.GetCompanyRecord(context.Background(), "c1")
+		require.NoError(t, err)
+		assert.Equal(t, "0014100000New0000", c1.CompanyExternalID)
+		assert.Equal(t, "", c1.PreviousCompanyExternalID, "a blank source records no previous value")
+		c2, err := repo.GetCompanyRecord(context.Background(), "c2")
+		require.NoError(t, err)
+		assert.Equal(t, "0014100000New0001", c2.CompanyExternalID)
+		assert.Equal(t, "N/A", c2.PreviousCompanyExternalID)
+	})
+
+	t.Run("a concurrently changed value fails the condition and changes nothing", func(t *testing.T) {
+		item := fakeCompanyItem("c1", "Acme Inc", "Acme Inc", "0014100000Other00")
+		repo, table := newCompanyRepo(t, &fakeCompaniesTable{items: map[string]map[string]interface{}{"c1": item}})
+		assert.ErrorIs(t, repo.UpdateCompanyExternalID(context.Background(), "c1", "lf-old", "0014100000New0000"), ErrExternalIDConditionFailed)
+		record, err := repo.GetCompanyRecord(context.Background(), "c1")
+		require.NoError(t, err)
+		assert.Equal(t, "0014100000Other00", record.CompanyExternalID)
+		assert.Equal(t, "", record.PreviousCompanyExternalID)
+		assert.Equal(t, "2024-01-01T00:00:00Z", record.Updated)
+		assert.Equal(t, 1, table.conditionFailures)
+	})
+
+	t.Run("every expression placeholder is used and defined", func(t *testing.T) {
+		repo, _ := newCompanyRepo(t, &fakeCompaniesTable{items: map[string]map[string]interface{}{
+			"c1": fakeCompanyItem("c1", "Blank", "Blank", ""),
+			"c2": fakeCompanyItem("c2", "Legacy", "Legacy", "lf-old"),
+		}})
+		checked := 0
+		repo.dynamoDBClient.Handlers.Build.PushBack(func(req *request.Request) {
+			input, ok := req.Params.(*dynamodb.UpdateItemInput)
+			if !ok {
+				return
+			}
+			checked++
+			exprs := *input.UpdateExpression + " " + *input.ConditionExpression
+			for alias := range input.ExpressionAttributeNames {
+				assert.Contains(t, exprs, alias, "unused ExpressionAttributeNames entry")
+			}
+			for alias := range input.ExpressionAttributeValues {
+				assert.Contains(t, exprs, alias, "unused ExpressionAttributeValues entry")
+			}
+		})
+		require.NoError(t, repo.UpdateCompanyExternalID(context.Background(), "c1", "", "0014100000New0000"))
+		require.NoError(t, repo.UpdateCompanyExternalID(context.Background(), "c2", "lf-old", "0014100000New0001"))
+		assert.Equal(t, 2, checked)
 	})
 
 	t.Run("blank company or new id is rejected", func(t *testing.T) {

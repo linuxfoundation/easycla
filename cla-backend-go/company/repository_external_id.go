@@ -193,9 +193,10 @@ func (repo repository) getCompanyRecord(ctx context.Context, companyID string, c
 }
 
 // UpdateCompanyExternalID rewrites company_external_id from oldExternalID to newExternalID for one
-// row, remembering the old value in previous_company_external_id. The write is conditional on the
-// row still carrying oldExternalID (an empty oldExternalID means the row must have no external id
-// yet, and no previous value is recorded); otherwise ErrExternalIDConditionFailed is returned.
+// existing row, remembering the old value in previous_company_external_id. The write is conditional
+// on the row still carrying exactly oldExternalID (a blank oldExternalID means the row must have no
+// external id or exactly that blank value, and no previous value is recorded); a missing row or any
+// other value returns ErrExternalIDConditionFailed and nothing is written.
 func (repo repository) UpdateCompanyExternalID(ctx context.Context, companyID, oldExternalID, newExternalID string) error {
 	f := logrus.Fields{
 		"functionName":   "company.repository.UpdateCompanyExternalID",
@@ -208,21 +209,23 @@ func (repo repository) UpdateCompanyExternalID(ctx context.Context, companyID, o
 		return fmt.Errorf("company id and new external id are required")
 	}
 	update, condition := "SET #E = :new, #P = :old, #M = :m", "#E = :old"
+	names := map[string]*string{
+		"#E": aws.String("company_external_id"),
+		"#P": aws.String("previous_company_external_id"),
+		"#M": aws.String("date_modified"),
+	}
 	if strings.TrimSpace(oldExternalID) == "" {
-		oldExternalID = ""
-		update, condition = "SET #E = :new, #M = :m", "attribute_not_exists(#E) OR #E = :old"
+		update, condition = "SET #E = :new, #M = :m", "attribute_exists(#K) AND (attribute_not_exists(#E) OR #E = :old)"
+		delete(names, "#P")
+		names["#K"] = aws.String("company_id")
 	}
 	_, now := utils.CurrentTime()
 	_, err := repo.dynamoDBClient.UpdateItem(&dynamodb.UpdateItemInput{
-		TableName:           aws.String(repo.companyTableName),
-		Key:                 map[string]*dynamodb.AttributeValue{"company_id": {S: aws.String(companyID)}},
-		UpdateExpression:    aws.String(update),
-		ConditionExpression: aws.String(condition),
-		ExpressionAttributeNames: map[string]*string{
-			"#E": aws.String("company_external_id"),
-			"#P": aws.String("previous_company_external_id"),
-			"#M": aws.String("date_modified"),
-		},
+		TableName:                aws.String(repo.companyTableName),
+		Key:                      map[string]*dynamodb.AttributeValue{"company_id": {S: aws.String(companyID)}},
+		UpdateExpression:         aws.String(update),
+		ConditionExpression:      aws.String(condition),
+		ExpressionAttributeNames: names,
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
 			":new": {S: aws.String(newExternalID)},
 			":old": {S: aws.String(oldExternalID)},

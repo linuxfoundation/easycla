@@ -46,7 +46,8 @@ func NewApexClient(baseURL, token string) (*ApexClient, error) {
 	return &ApexClient{BaseURL: baseURL, Token: strings.TrimSpace(token), HTTPClient: &http.Client{Timeout: 60 * time.Second}}, nil
 }
 
-// FindOrCreate posts the request; the action is validated, the id must be a Salesforce account id unless ambiguous.
+// FindOrCreate posts the request; the action is validated and the id must be a Salesforce account
+// id, except that a dry run reporting "created" may carry no id (the Account does not exist yet).
 func (c *ApexClient) FindOrCreate(ctx context.Context, req ApexRequest) (*ApexResult, error) {
 	if req.Source == "" {
 		req.Source = "EasyCLA"
@@ -79,8 +80,12 @@ func (c *ApexClient) FindOrCreate(ctx context.Context, req ApexRequest) (*ApexRe
 		return nil, fmt.Errorf("apex: decoding response: %w", err)
 	}
 	res.Action = strings.ToLower(strings.TrimSpace(res.Action))
+	res.ID = strings.TrimSpace(res.ID)
 	switch res.Action {
 	case ActionMatched, ActionCreated:
+		if res.Action == ActionCreated && req.DryRun && res.ID == "" {
+			break
+		}
 		if !IsSFID(res.ID) {
 			return nil, fmt.Errorf("apex: action %s returned non-account id %q", res.Action, res.ID)
 		}

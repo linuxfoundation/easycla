@@ -6,6 +6,7 @@ package orgimport
 import (
 	"archive/zip"
 	"bytes"
+	"compress/gzip"
 	"encoding/base64"
 	"fmt"
 	"html"
@@ -30,6 +31,8 @@ const (
 	maxInlinePlanRows = 2000
 	// maxLogTailBytes caps the inline run.log tail; run.log is attached in full.
 	maxLogTailBytes = 96 * 1024
+
+	contentTypeZip = "application/zip"
 )
 
 // RunInfo describes one CLI run for the report e-mail and the AWS log header.
@@ -366,7 +369,7 @@ func attachments(outDir string, runLog []byte) []Attachment {
 		out = append(out, Attachment{Name: "run.log", ContentType: "text/plain", Data: runLog})
 	}
 	if zipped, err := ZipDir(outDir); err == nil && len(zipped) > 0 && len(zipped) <= maxZipAttachment {
-		out = append(out, Attachment{Name: filepath.Base(outDir) + ".zip", ContentType: "application/zip", Data: zipped})
+		out = append(out, Attachment{Name: filepath.Base(outDir) + ".zip", ContentType: contentTypeZip, Data: zipped})
 	}
 	return out
 }
@@ -401,26 +404,101 @@ func ZipDir(dir string) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// MIME renders the report as a raw RFC 5322 message (multipart/mixed with a multipart/alternative body).
-// Attachments are dropped largest-first until the message fits MaxRawEmailBytes.
+// MIME renders the report as a raw RFC 5322 message (multipart/mixed with a multipart/alternative body)
+// that fits MaxRawEmailBytes; see Deliverable for what happens to oversize attachments.
 func (r Report) MIME(from string, to []string) ([]byte, error) {
+	raw, _, err := r.Deliverable(from, to)
+	return raw, err
+}
+
+// Deliverable renders the message so that it fits MaxRawEmailBytes. While it is too large, the
+// largest non-zip attachment is gzip-compressed when it is text (name.gz keeps the full content) and
+// dropped otherwise; the zip of the output directory goes last. Every change is announced at the top
+// of both bodies and returned as notice ("" when nothing changed); a message that does not fit even
+// without attachments is an error, never a silently truncated record.
+func (r Report) Deliverable(from string, to []string) (raw []byte, notice string, err error) {
 	atts := append([]Attachment(nil), r.Attachments...)
+	var changes []string
 	for {
-		msg, err := r.mime(from, to, atts)
-		if err != nil {
-			return nil, err
+		rep := r
+		if len(changes) > 0 {
+			notice = "Delivery incomplete (SES size limit): " + strings.Join(changes, "; ") + ". The complete record is in the output directory / Actions artifact and run.log in CloudWatch Logs (see the header table)."
+			rep.Text = notice + "\n\n" + r.Text
+			rep.HTML = injectNotice(r.HTML, notice)
 		}
-		if len(msg) <= MaxRawEmailBytes || len(atts) == 0 {
-			return msg, nil
+		msg, mimeErr := rep.mime(from, to, atts)
+		if mimeErr != nil {
+			return nil, "", mimeErr
 		}
-		largest := 0
-		for i, a := range atts {
-			if len(a.Data) > len(atts[largest].Data) {
-				largest = i
-			}
+		if len(msg) <= MaxRawEmailBytes {
+			return msg, notice, nil
 		}
-		atts = append(atts[:largest], atts[largest+1:]...)
+		if len(atts) == 0 {
+			return nil, notice, fmt.Errorf("report body is %d bytes, over the %d-byte SES limit", len(msg), MaxRawEmailBytes)
+		}
+		i := largestDroppable(atts)
+		a := atts[i]
+		if gz := gzipAttachment(a); gz != nil {
+			atts[i] = *gz
+			changes = append(changes, fmt.Sprintf("%s (%d bytes) compressed to %s (%d bytes)", a.Name, len(a.Data), gz.Name, len(gz.Data)))
+			continue
+		}
+		atts = append(atts[:i], atts[i+1:]...)
+		changes = append(changes, fmt.Sprintf("%s (%d bytes) dropped", a.Name, len(a.Data)))
 	}
+}
+
+// largestDroppable prefers the largest non-zip attachment; the zip is only touched when nothing else is left.
+func largestDroppable(atts []Attachment) int {
+	best := -1
+	for i, a := range atts {
+		if a.ContentType == contentTypeZip {
+			continue
+		}
+		if best < 0 || len(a.Data) > len(atts[best].Data) {
+			best = i
+		}
+	}
+	if best >= 0 {
+		return best
+	}
+	for i, a := range atts {
+		if best < 0 || len(a.Data) > len(atts[best].Data) {
+			best = i
+		}
+	}
+	return best
+}
+
+// gzipAttachment returns the gzip form of a text attachment when that is clearly smaller, else nil.
+func gzipAttachment(a Attachment) *Attachment {
+	if !strings.HasPrefix(a.ContentType, "text/") || strings.HasSuffix(a.Name, ".gz") {
+		return nil
+	}
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write(a.Data); err != nil {
+		return nil
+	}
+	if err := zw.Close(); err != nil || buf.Len() >= len(a.Data)/2 {
+		return nil
+	}
+	return &Attachment{Name: a.Name + ".gz", ContentType: "application/gzip", Data: buf.Bytes()}
+}
+
+// injectNotice puts the notice right after the <body> tag (or in front of everything).
+func injectNotice(htmlBody, notice string) string {
+	block := "<p style=\"color:#b00000\"><b>" + esc(notice) + "</b></p>"
+	i := strings.Index(htmlBody, "<body")
+	if i < 0 {
+		return block + htmlBody
+	}
+	j := strings.Index(htmlBody[i:], ">")
+	if j < 0 {
+		return block + htmlBody
+	}
+	pos := i + j + 1
+	return htmlBody[:pos] + block + htmlBody[pos:]
 }
 
 func (r Report) mime(from string, to []string, atts []Attachment) ([]byte, error) {

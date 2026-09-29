@@ -45,9 +45,10 @@ const (
 
 // Liveness values (Group.Live), run modes and the manual/pending reasons shared by several files.
 const (
-	LiveLive  = "live"
-	LiveDead  = "dead"
-	LiveError = "error"
+	LiveLive       = "live"
+	LiveDead       = "dead"
+	LiveError      = "error"
+	LiveUnverified = "unverified"
 
 	ModeApply  = "apply"
 	ModeDryRun = "dry-run"
@@ -58,12 +59,14 @@ const (
 	ReasonMappingSameID    = "mapping_same_id"
 	ReasonSharedDomain     = "shared_domain"
 	ReasonDistinctConflict = "distinct_conflict"
+	ReasonCRMUnverified    = "crm_unverified"
 
 	orgStatusErr = "err"
 )
 
 // Step names recorded in the state file.
 const (
+	StepStart    = "start"
 	StepResolve  = "resolve"
 	StepWait     = "wait"
 	StepGrants   = "copy_grants"
@@ -79,6 +82,7 @@ var (
 	ErrOrgNotFound     = errors.New("organization not found")
 	ErrNotConfigured   = errors.New("member-service is not configured (cla-member-service-* SSM parameters missing)")
 	ErrApexUnavailable = errors.New("apex endpoint is not configured (cla-salesforce-apex-* SSM parameters missing)")
+	ErrStateRequired   = errors.New("rewrite apply requires --state <file> (the resume journal; keep it across runs)")
 )
 
 // CompanyStore is the subset of company.IRepository the tool uses.
@@ -169,12 +173,14 @@ type Options struct {
 	WaitPoll      time.Duration
 }
 
-// Row is one companies-table row.
+// Row is one companies-table row; ExternalID is trimmed for classification, RawExternalID is the
+// exact stored value pinned by the conditional rewrite.
 type Row struct {
 	CompanyID         string
 	CompanyName       string
 	SigningEntityName string
 	ExternalID        string
+	RawExternalID     string
 	ActiveCCLA        bool
 	CCLACount         int
 	CLAGroupIDs       []string
@@ -197,6 +203,7 @@ type Group struct {
 	Live         string
 	Decision     *Decision
 	Replayed     bool
+	ViaApex      bool
 	Err          error
 }
 
@@ -218,15 +225,36 @@ func (s Summary) String() string {
 		" rewritten=" + strconv.Itoa(s.Rewritten) + " pending=" + strconv.Itoa(s.Pending) + " manual=" + strconv.Itoa(s.Manual) + " failed=" + strconv.Itoa(s.Failed)
 }
 
-// Pending is a rewrite candidate without a resolved new id (mapping row missing or account found dead).
+// Pending is a rewrite candidate without a resolved new id (mapping row missing or account found
+// dead) or a register candidate whose Account could not be verified in the CRM; a group whose
+// Account is created by Apex at apply time is not pending.
 func (g *Group) Pending() bool {
-	return g.Route == RouteRewrite && g.NewID == ""
+	if g.Route == RouteRegister {
+		return g.ManualReason == ReasonCRMUnverified
+	}
+	return g.Route == RouteRewrite && g.NewID == "" && !g.ApexCreates()
+}
+
+// ApexCreates reports a rewrite whose new Account does not exist yet: Apex creates it (and assigns
+// the id) during apply.
+func (g *Group) ApexCreates() bool {
+	return g.ViaApex && g.Action == ActionCreated && g.NewID == ""
 }
 
 // RowTargeted is a single-row group whose company_external_id is empty or malformed: it is selected
 // by its company id (Key) and nothing in ACS, org-service or the events table is keyed by the old value.
 func (g *Group) RowTargeted() bool {
 	return g.Key != g.OldID
+}
+
+// pinnedOld is the exact stored value the row's conditional rewrite pins: the raw value while it
+// still carries the group's old id, otherwise the old id itself (an already rewritten replayed row
+// then fails the condition and is verified by the read-back).
+func (g *Group) pinnedOld(row *Row) string {
+	if strings.TrimSpace(row.RawExternalID) == strings.TrimSpace(g.OldID) {
+		return row.RawExternalID
+	}
+	return g.OldID
 }
 
 // Website is the org-service website of the group's organization ("" when unknown).

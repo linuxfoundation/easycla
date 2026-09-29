@@ -28,9 +28,12 @@ runbook (linuxfoundation/lfx-self-serve#2056), the pre-import duplicate review (
 
 Safety rules:
 - Default is **dry run**. `--apply` prompts you to type the stage name (`--yes` skips the prompt, for automation).
-- Every rewrite step is idempotent and recorded in `--state`; re-running the same command converges.
-- The row rewrite is a conditional write (`company_external_id = old`); a concurrent change stops that group only.
-- Grants are copied before rows are rewritten and old grants deleted last: managers never lose access.
+- Every rewrite step is idempotent and recorded in `--state` (required for a rewrite `--apply`; the first journal line precedes the first
+  write and a journal write failure stops the group); re-running the same command converges.
+- The row rewrite is a conditional write (`company_external_id = <exact stored value>`); a concurrent change stops that group only.
+- Grants are copied before rows are rewritten and old grants deleted last, each old grant re-checked (and copied if missing) right before
+  its deletion: managers never lose access.
+- An apply that could not finish is refused before its first write: rewrites without `--state`, or any register/rewrite without member-service.
 - `register` is stateless and needs no Salesforce input — it is the only route ever scheduled (§6).
 
 ## 2. Prerequisites
@@ -43,7 +46,8 @@ Safety rules:
   `cla-{stage}-events`; `UpdateItem` on `cla-{stage}-companies` and `cla-{stage}-events` (rewrite route only). Same tables the API uses.
 - SSM parameters read (all pre-existing except the first two):
   - `cla-member-service-base-url-{stage}`, `cla-member-service-auth0-audience-{stage}` — member-service; when missing the tool warns,
-    dry-run liveness falls back to org-service and every `register` step fails with `member-service is not configured`.
+    every SFID group is `live=unverified` → `pending`/`crm_unverified` (org-service is **not** a liveness source) and an `--apply` with
+    anything to register or rewrite is refused with `member-service is not configured` before writing.
     Values (from `lfx-v2-argocd/values/{stage}/lfx-platform.yaml`): dev `https://lfx-api.dev.v2.cluster.linuxfound.info` /
     `https://lfx-api.dev.v2.cluster.linuxfound.info/`, prod `https://lfx-api.v2.cluster.lfx.dev` / `https://lfx-api.v2.cluster.lfx.dev/`.
     Create as plain `String` parameters (`aws ssm put-parameter --type String …`); dev already has them, prod does not yet.
@@ -82,7 +86,7 @@ report flags:     [--email-to a@x,b@y] [--no-email] [--no-aws-log] [--aws-log-gr
 | `--mapping` | Salesforce mapping CSV (§4); required for the rewrite route unless `--use-apex` |
 | `--decisions` | duplicate-review decisions CSV (§4.1): collapse/distinct verdicts for old ids landing on one Account |
 | `--shared-domains` | file replacing the built-in shared-domain list (§4.2; one domain per line, `#` comments) |
-| `--state` | append-only JSONL; one record per group per step; unfinished groups are replayed first on the next run |
+| `--state` | append-only JSONL; one record per group per step; unfinished groups are replayed first on the next run. Required for `--apply` with the rewrite route (exit 2 otherwise) |
 | `--routes` | `register`, `rewrite` or both (default both) |
 | `--skip-wait` | check the new ids in org-service once instead of polling up to `--wait-max` |
 | `--use-apex` | resolve new ids via the Salesforce Apex endpoint (`ORG_IMPORT_USE_APEX=true` equivalent); refused when the SSM params are missing |
@@ -94,8 +98,9 @@ report flags:     [--email-to a@x,b@y] [--no-email] [--no-aws-log] [--aws-log-gr
 Env: `STAGE` (required), `AWS_REGION` (default `us-east-1`), `LOG_LEVEL` (default `warn`; `debug` shows every AWS/HTTP call; `error` hides the
 expected org-service "not found" warnings printed for every dead/unknown id).
 
-Every run writes `<out-dir>/run.log` (everything printed, truncated per run) and ends with the report step (§8); report failures are logged
-and never change the exit code.
+Every run writes `<out-dir>/run.log` (everything printed, truncated per run) plus copies of the inputs it used
+(`input-mapping.csv`, `input-decisions.csv`, `input-shared_domains.txt`, `input-state.jsonl` = the journal before the run) and ends with the
+report step (§8); report failures are logged and never change the exit code.
 
 ### 3.1 `audit` (reads only)
 
@@ -158,7 +163,9 @@ Files (all rewritten after apply with the final state):
 Manual reasons: `empty_external_id`, `invalid_id_shape`, `mapping_ambiguous`, `mapping_not_approved`, `mapping_same_id`,
 `target_collision` (several old ids → one Account, or the Account already has EasyCLA rows, and no decision covers it — §4.1), `distinct_conflict`
 (a `distinct` decision spans two ids resolved to the same Account), `missing_website` / `shared_domain` (Apex path only, §4.2),
-`apex_match_needs_approval`, `apex_error`; pending reasons: `no_mapping`, `dead_account`.
+`apex_match_needs_approval`, `apex_error`; pending reasons: `no_mapping`, `dead_account`, `crm_unverified` (no member-service for the stage).
+With `--use-apex` a dry-run `created` has no Account id yet (`new_id=<apex-at-apply>`): the id is assigned by the real call at apply and a
+different answer at apply time (`changed between dry run`) fails the group before any write; a failed resolution is never replayed as approved.
 
 ### 3.3 `ingest --apply`
 
@@ -261,8 +268,11 @@ GitHub Actions `.github/workflows/org-import-sweep.yml`:
   candidates are only reported as pending. Same from a shell (the report e-mail of every dry run prints this line ready to paste):
   `gh workflow run org-import-sweep.yml -f stage=dev -f mode=dry-run -f routes=register,rewrite -f mapping="$(tr '\n' '|' < map.csv)"`.
 - State: apply runs upload `state.jsonl` as artifact `org-import-state-<stage>`; the next run of the same stage restores the newest one first,
-  so crashed rewrite groups are replayed. Artifacts expire after 90 days — losing state is harmless (finished groups are re-classified as
-  `register` on their new id, unfinished ones must be re-run with the old id via `--ids`).
+  so crashed rewrite groups are replayed; a state artifact that exists but cannot be downloaded fails the job (never start from an empty
+  journal). Artifacts expire after 90 days: before that, copy `state.jsonl` from the newest `org-import-out-<stage>-*` artifact and keep it
+  (it is also uploaded there). Without the journal, finished groups are re-classified as `register` on their new id, but a group that crashed
+  mid-rewrite is not recognised as such — see §7 before re-running.
+- One run per stage at a time (`concurrency: org-import-<stage>`): a manual dispatch queues behind a scheduled run instead of racing it.
 - Schedule (`0 6 * * *`) is gated per stage by repository variables `ORG_IMPORT_SWEEP_DEV` / `ORG_IMPORT_SWEEP_PROD` ∈ `off|dry-run|apply`;
   unset or `off` (default) ⇒ the scheduled job does nothing. Scheduled runs are always `--routes register`. Manual runs ignore the variables.
 - Promotion: ≥10 clean manual runs (dry-run, then apply) → set the variable to `dry-run`, read the artifacts for a week → `apply`.
@@ -277,6 +287,10 @@ GitHub Actions `.github/workflows/org-import-sweep.yml`:
 |---|---|---|
 | setup | `loading SSM config` / `STAGE is not set` | wrong account/profile or missing stage |
 | planning | `live=error` | member-service GET failed (403 = missing `auditor`, network) — fix access; nothing is classified dead |
+| planning | `live=unverified` / `crm_unverified` | no member-service params for the stage; groups stay pending, nothing is registered |
+| apply | `rewrite apply requires --state` / `member-service is not configured` | refused before the first write; every planned group is reported as failed |
+| any step | `state file …: cannot record` | the journal could not be written; the group stops (rows are never rewritten before their `start` line) |
+| resolve | `changed between dry run` / `non-account id` | the live Apex answer differs from the plan; nothing written; re-run (not replayed) |
 | planning | `mapping line N: …` | fix the CSV |
 | planning | `state: unfinished group … has no valid new_id` | hand-edit the state file only if you know why; otherwise stop |
 | register | `account … does not exist in Salesforce (rewrite candidate)` | POST 404: the id is dead; group is now `pending`/`dead_account` → mapping |
@@ -294,6 +308,8 @@ Revert a rewrite by hand (only if really needed): for each row, `aws dynamodb up
 --update-expression 'SET company_external_id = :o REMOVE previous_company_external_id' --expression-attribute-values '{":o":{"S":"<old id>"}}'`,
 then re-create the ACS grants on the old id (org-service `CreateRolescopes`, by username) and remove them from the new id. Events keep the new key
 (run `events.RekeyRepository` the other way round if required). Stop and contact the EasyCLA maintainers before reverting more than one group.
+`register` cannot be reverted through the API: member-service has no `DELETE /b2b_orgs/{id}`; a wrongly registered organization must be removed
+by the member-service owners. Hence the register route is only ever applied to Salesforce-live ids, and never without member-service.
 
 ## 8. Run report (e-mail + CloudWatch Logs)
 
@@ -303,7 +319,10 @@ After every `audit`/`ingest` run (dry-run or apply, success or failure) the tool
    `[EasyCLA org-import][<stage>] <command> <mode>: <summary line> (OK|FAILED)`; body = run header (stage, mode, arguments, runner, build revision,
    Actions run/artifact links, CloudWatch stream), the **Manual actions** table with suggested actions, the **Targets** table, the full plan (≤2000
    rows inline) or audit tier counts, the ready-to-paste local and `gh workflow run` apply commands for a dry run, and the run.log tail; attachments =
-   every CSV of the out-dir, run.log and a zip of the out-dir (≤6 MiB; largest attachments dropped to stay under SES's 10 MiB).
+   every CSV of the out-dir, run.log and a zip of the out-dir (≤6 MiB). To stay under SES's 10 MiB the largest text attachment is gzip-compressed
+   (`run.log.gz`, full content) or, when not text, dropped — the zip last; every such change is announced at the top of the e-mail
+   ("Delivery incomplete …") and in run.log; the complete record is always the out-dir / Actions artifact / CloudWatch stream.
+   `audit` also prints one `audit row company_id=… route=… tier=…` line per company row into run.log.
 
 Missing recipients parameter, SES or CloudWatch errors are written to run.log only; the exit code reflects the import itself.
 

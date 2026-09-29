@@ -19,7 +19,8 @@ const (
 	objectTypeProjectOrganization = "project|organization"
 )
 
-// rewrite runs steps 6-10 for one group; every step is idempotent so a restart converges.
+// rewrite runs steps 6-10 for one group; every step is idempotent so a restart converges. The
+// journal is written before the first step and after each one; a journal failure stops the group.
 func (r *runner) rewrite(ctx context.Context, g *Group) error {
 	steps := []struct {
 		name string
@@ -39,14 +40,24 @@ func (r *runner) rewrite(ctx context.Context, g *Group) error {
 		}{StepRegister, r.registerNew})
 		fmt.Fprintf(r.deps.Out, "row %s: company_external_id %q is not an organization id; grants and events are not moved\n", g.Key, g.OldID)
 	}
+	if err := r.record(g, StepStart, statusOK, nil); err != nil {
+		return err
+	}
 	for _, s := range steps {
 		err := s.fn(ctx, g)
-		r.record(g, s.name, status(err), err)
+		if recErr := r.record(g, s.name, status(err), err); recErr != nil {
+			if err != nil {
+				return fmt.Errorf("%s: %w (%v)", s.name, err, recErr)
+			}
+			return recErr
+		}
 		if err != nil {
 			return fmt.Errorf("%s: %w", s.name, err)
 		}
 	}
-	r.record(g, StepDone, statusOK, nil)
+	if err := r.record(g, StepDone, statusOK, nil); err != nil {
+		return err
+	}
 	fmt.Fprintf(r.deps.Out, "rewritten %s -> %s (%d row(s))\n", g.Key, g.NewID, len(g.Rows))
 	return nil
 }
@@ -61,47 +72,69 @@ func grantKey(gr acs_service.OrgGrant, orgID string) string {
 
 // copyGrants creates on the new org every grant the old org has (step 6); existing ones are kept.
 func (r *runner) copyGrants(ctx context.Context, g *Group) error {
-	oldGrants, err := r.deps.ACS.ListOrgGrants(ctx, g.OldID)
+	oldGrants, have, err := r.listGrantPair(ctx, g)
 	if err != nil {
-		return fmt.Errorf("listing grants of %s: %w", g.OldID, err)
-	}
-	newGrants, err := r.deps.ACS.ListOrgGrants(ctx, g.NewID)
-	if err != nil {
-		return fmt.Errorf("listing grants of %s: %w", g.NewID, err)
-	}
-	have := map[string]bool{}
-	for _, gr := range newGrants {
-		have[grantKey(gr, g.NewID)] = true
+		return err
 	}
 	created := 0
 	for _, gr := range oldGrants {
-		if gr.Username == "" || gr.RoleID == "" {
-			continue
+		ok, createErr := r.ensureGrant(ctx, g, gr, have)
+		if createErr != nil {
+			return createErr
 		}
-		key := grantKey(gr, g.NewID)
-		if have[key] {
-			continue
+		if ok {
+			created++
 		}
-		objectType, objectID := objectTypeOrganization, g.NewID
-		if p := gr.ProjectSFID(); p != "" {
-			objectType, objectID = objectTypeProjectOrganization, p+"|"+g.NewID
-		}
-		if err = r.deps.Orgs.CreateUserRoleScope(ctx, gr.Username, g.NewID, objectType, objectID, gr.RoleID); err != nil {
-			return fmt.Errorf("granting %s %s on %s: %w", gr.RoleName, gr.Username, objectID, err)
-		}
-		have[key] = true
-		created++
 	}
 	fmt.Fprintf(r.deps.Out, "grants %s -> %s: %d existing, %d created\n", g.OldID, g.NewID, len(oldGrants)-created, created)
 	return nil
 }
 
+// listGrantPair lists the old org's grants and indexes the new org's grants by grantKey.
+func (r *runner) listGrantPair(ctx context.Context, g *Group) ([]acs_service.OrgGrant, map[string]bool, error) {
+	oldGrants, err := r.deps.ACS.ListOrgGrants(ctx, g.OldID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("listing grants of %s: %w", g.OldID, err)
+	}
+	newGrants, err := r.deps.ACS.ListOrgGrants(ctx, g.NewID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("listing grants of %s: %w", g.NewID, err)
+	}
+	have := map[string]bool{}
+	for _, gr := range newGrants {
+		have[grantKey(gr, g.NewID)] = true
+	}
+	return oldGrants, have, nil
+}
+
+// ensureGrant creates the old grant's counterpart on the new org unless it already exists (or the
+// grant is unusable); it reports whether a grant was created.
+func (r *runner) ensureGrant(ctx context.Context, g *Group, gr acs_service.OrgGrant, have map[string]bool) (bool, error) {
+	if gr.Username == "" || gr.RoleID == "" {
+		return false, nil
+	}
+	key := grantKey(gr, g.NewID)
+	if have[key] {
+		return false, nil
+	}
+	objectType, objectID := objectTypeOrganization, g.NewID
+	if p := gr.ProjectSFID(); p != "" {
+		objectType, objectID = objectTypeProjectOrganization, p+"|"+g.NewID
+	}
+	if err := r.deps.Orgs.CreateUserRoleScope(ctx, gr.Username, g.NewID, objectType, objectID, gr.RoleID); err != nil {
+		return false, fmt.Errorf("granting %s %s on %s: %w", gr.RoleName, gr.Username, objectID, err)
+	}
+	have[key] = true
+	return true, nil
+}
+
 // rewriteRows swaps company_external_id on every row of the group (step 7, CAS + read-back).
 func (r *runner) rewriteRows(ctx context.Context, g *Group) error {
 	for _, row := range g.Rows {
-		err := r.deps.Companies.UpdateCompanyExternalID(ctx, row.CompanyID, g.OldID, g.NewID)
+		old := g.pinnedOld(row)
+		err := r.deps.Companies.UpdateCompanyExternalID(ctx, row.CompanyID, old, g.NewID)
 		if err == nil {
-			row.ExternalID = g.NewID
+			row.ExternalID, row.RawExternalID = g.NewID, g.NewID
 			continue
 		}
 		if !errors.Is(err, company.ErrExternalIDConditionFailed) {
@@ -111,12 +144,12 @@ func (r *runner) rewriteRows(ctx context.Context, g *Group) error {
 		if readErr != nil {
 			return fmt.Errorf("company %s: reading back after condition failure: %w", row.CompanyID, readErr)
 		}
-		if rec.CompanyExternalID == g.NewID && (rec.PreviousCompanyExternalID == g.OldID || g.OldID == "") {
-			row.ExternalID = g.NewID
+		if rec.CompanyExternalID == g.NewID && (strings.TrimSpace(rec.PreviousCompanyExternalID) == strings.TrimSpace(old) || strings.TrimSpace(old) == "") {
+			row.ExternalID, row.RawExternalID = g.NewID, g.NewID
 			continue
 		}
-		return fmt.Errorf("company %s: external id is %q (previous %q), expected %s or %s: conflict, group stopped",
-			row.CompanyID, rec.CompanyExternalID, rec.PreviousCompanyExternalID, g.OldID, g.NewID)
+		return fmt.Errorf("company %s: external id is %q (previous %q), expected %q or %s: conflict, group stopped",
+			row.CompanyID, rec.CompanyExternalID, rec.PreviousCompanyExternalID, old, g.NewID)
 	}
 	return nil
 }
@@ -153,22 +186,32 @@ func (r *runner) rekeyEvents(ctx context.Context, g *Group) error {
 	return nil
 }
 
-// deleteOldGrants removes the old org's grants (step 8); a missing grant is success.
+// deleteOldGrants removes the old org's grants (step 8) after making sure each one exists on the new
+// org (a grant added since step 6 is copied first); a missing grant is success.
 func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
-	oldGrants, err := r.deps.ACS.ListOrgGrants(ctx, g.OldID)
+	oldGrants, have, err := r.listGrantPair(ctx, g)
 	if err != nil {
-		return fmt.Errorf("listing grants of %s: %w", g.OldID, err)
+		return err
 	}
 	sort.Slice(oldGrants, func(i, j int) bool { return oldGrants[i].GrantID < oldGrants[j].GrantID })
+	deleted, copied := 0, 0
 	for _, gr := range oldGrants {
 		if gr.GrantID == "" || gr.RoleID == "" {
 			continue
 		}
+		created, ensureErr := r.ensureGrant(ctx, g, gr, have)
+		if ensureErr != nil {
+			return ensureErr
+		}
+		if created {
+			copied++
+		}
 		if err = r.deps.Orgs.DeleteUserRoleScope(ctx, g.OldID, gr.RoleID, gr.GrantID, gr.Username); err != nil {
 			return fmt.Errorf("deleting %s grant %s of %s: %w", gr.RoleName, gr.GrantID, gr.Username, err)
 		}
+		deleted++
 	}
-	fmt.Fprintf(r.deps.Out, "grants %s: %d deleted\n", g.OldID, len(oldGrants))
+	fmt.Fprintf(r.deps.Out, "grants %s: %d deleted (%d copied late)\n", g.OldID, deleted, copied)
 	return nil
 }
 
