@@ -278,13 +278,8 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername, aut
 		claGroupID = selected.String()
 	}
 
-	var comp *v1Models.Company
-	var err error
-	if input.SigningEntityName == "" {
-		comp, err = s.companyRepo.GetCompanyByExternalID(ctx, utils.StringValue(input.CompanySfid))
-	} else {
-		comp, err = s.companyRepo.GetCompanyBySigningEntityName(ctx, input.SigningEntityName)
-	}
+	// persisted row, or a transient model for the organization's first CCLA (the row is created by the signer)
+	comp, err := v2Sign.ResolveSigningCompany(ctx, s.companyRepo, utils.StringValue(input.CompanySfid), input.SigningEntityName)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to resolve the signing company")
 		return nil, err
@@ -332,7 +327,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername, aut
 		SignURL:     signature.SignURL,
 		ClaGroupID:  pcg.ClaGroupID,
 		ProjectSfid: utils.StringValue(input.ProjectSfid),
-		CompanyID:   comp.CompanyID,
+		CompanyID:   signature.CompanyID,
 		CompanySfid: utils.StringValue(input.CompanySfid),
 	}, nil
 }

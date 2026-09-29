@@ -649,7 +649,7 @@ func (s *service) GetCompanyByID(ctx context.Context, companyID string) (*models
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyID":      companyID,
 	}
-	companyModel, err := s.companyRepo.GetCompany(ctx, companyID)
+	companyModel, err := s.v1CompanyService.ResolveCompany(ctx, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -768,7 +768,7 @@ func (s *service) CreateContributor(ctx context.Context, companyID string, proje
 		return nil, scopeErr
 	}
 
-	v1CompanyModel, companyErr := s.v1CompanyService.GetCompanyByExternalID(ctx, companyID)
+	v1CompanyModel, companyErr := s.v1CompanyService.ResolveCompany(ctx, companyID)
 	if companyErr != nil {
 		log.Error("company not found", companyErr)
 	}
@@ -857,28 +857,9 @@ func (s *service) GetCompanyBySFID(ctx context.Context, companySFID string) (*mo
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companySFID":    companySFID,
 	}
-	companyModel, err := s.companyRepo.GetCompanyByExternalID(ctx, companySFID)
+	// Persisted row when it exists, otherwise a non-persisted virtual company backed by the platform organization (#2751)
+	companyModel, err := s.v1CompanyService.ResolveCompany(ctx, companySFID)
 	if err != nil {
-		// If we were unable to find the company/org in our local database, try to auto-create based
-		// on the existing SF record
-		if _, ok := err.(*utils.CompanyNotFound); ok {
-			log.WithFields(f).Debug("company not found in EasyCLA database - attempting to auto-create from platform organization service record")
-			newCompanyModel, createCompanyErr := s.autoCreateCompany(ctx, companySFID)
-			if createCompanyErr != nil {
-				log.WithFields(f).Warnf("problem creating company from platform organization SF record, error: %+v",
-					createCompanyErr)
-				return nil, createCompanyErr
-			}
-			if newCompanyModel == nil {
-				log.WithFields(f).Warnf("problem creating company from SF records - created model is nil")
-				return nil, &utils.CompanyNotFound{
-					Message:     "unable to auto-create company",
-					CompanySFID: companySFID,
-				}
-			}
-			// Success, fall through and continue processing
-			companyModel = newCompanyModel
-		}
 		return nil, err
 	}
 
@@ -949,43 +930,32 @@ func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User,
 		log.WithFields(f).Debug("locating companyModel by SF ID")
 		companies, companyErr := s.companyRepo.GetCompaniesByExternalID(ctx, companySFID, includeChildCompanies)
 		if companyErr != nil {
-			// If we were unable to find the companyModel/org in our local database, try to auto-create based
-			// on the existing SF record
-			if _, ok := companyErr.(*utils.CompanyNotFound); ok { // nolint
-				log.WithFields(f).WithError(companyErr).Debug("companyModel not found in EasyCLA database - attempting to auto-create from platform organization service record")
-				companyModel, createCompanyErr := s.autoCreateCompany(ctx, companySFID)
-				if createCompanyErr != nil {
-					log.WithFields(f).WithError(createCompanyErr).Warn("problem creating companyModel from platform organization SF record")
+			if _, ok := companyErr.(*utils.CompanyNotFound); ok {
+				// No row yet: serve the non-persisted virtual company backed by the platform organization (#2751)
+				log.WithFields(f).WithError(companyErr).Debug("companyModel not found in EasyCLA database - using the platform organization service record")
+				companyModel, resolveErr := s.v1CompanyService.ResolveCompany(ctx, companySFID)
+				if resolveErr != nil {
+					log.WithFields(f).WithError(resolveErr).Warn("problem resolving companyModel from platform organization SF record")
 					companiesChannel <- &CompaniesResult{
-						CompanyError: createCompanyErr,
+						CompanyError: resolveErr,
 						Companies:    nil,
 					}
-				} else if companyModel == nil {
-					log.WithFields(f).Warnf("problem creating companyModel from SF records - created model is nil")
-					companiesChannel <- &CompaniesResult{
-						CompanyError: &utils.CompanyNotFound{
-							Message:     "unable to auto-create companyModel",
-							CompanySFID: companySFID,
-						},
-						Companies: nil,
-					}
-				} else {
-					// Success - send the results
-					companiesChannel <- &CompaniesResult{
-						CompanyError: nil,
-						Companies:    []*v1Models.Company{companyModel},
-					}
+					return
 				}
+				companies = []*v1Models.Company{companyModel}
 			} else {
 				log.WithFields(f).WithError(companyErr).Warnf("problem fetching companyModel by SFID")
 				companiesChannel <- &CompaniesResult{
 					CompanyError: companyErr,
 					Companies:    nil,
 				}
+				return
 			}
 		}
 
-		if companyID != nil {
+		// The SFID itself is an admitted company reference (virtual company before the first CCLA):
+		// the list is already the parent row or the virtual entry, so no filtering is needed
+		if companyID != nil && *companyID != companySFID {
 			log.WithFields(f).Debugf("Filtering companyModel for ID: %s ", *companyID)
 			index, found := findCompany(companies, *companyID)
 			if found {
@@ -1123,6 +1093,17 @@ func (s *service) GetCompanyCLAGroupManagers(ctx context.Context, companyID, cla
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyID":      companyID,
 		"claGroupID":     claGroupID,
+	}
+	if !utils.IsUUIDv4(companyID) {
+		// Salesforce ID reference: use the persisted row when it exists; a virtual company has no CCLA yet
+		companyModel, resolveErr := s.v1CompanyService.ResolveCompany(ctx, companyID)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+		if companyModel.CompanyID == companyID {
+			return &models.CompanyClaManagers{}, nil
+		}
+		companyID = companyModel.CompanyID
 	}
 	signed, approved := true, true
 	pageSize := int64(10)
@@ -1984,53 +1965,6 @@ func (s *service) getCompanyAndClaGroup(ctx context.Context, companyID, projectS
 	log.WithFields(f).Debug("cla groups query finished")
 
 	return companyResponse.companyModel, claGroupResponse.claGroupModel, nil
-}
-
-// autoCreateCompany helper function to create a new company record based on the SF ID and underlying record in SF
-func (s service) autoCreateCompany(ctx context.Context, companySFID string) (*v1Models.Company, error) {
-	f := logrus.Fields{
-		"functionName":   "v2.company.service.autoCreateCompany",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"companySFID":    companySFID,
-	}
-	// Get a reference to the platform organization service client
-	orgClient := orgService.GetClient()
-	log.WithFields(f).Debug("locating Organization in SF")
-
-	// Lookup organization by ID in the Org Service
-	sfOrgModel, sfOrgErr := orgClient.GetOrganization(ctx, companySFID)
-	if sfOrgErr != nil {
-		log.WithFields(f).Warnf("unable to locate platform organization record by SF ID, error: %+v", sfOrgErr)
-		return nil, sfOrgErr
-	}
-
-	// If we were unable to lookup the company record in SF - we tried our best - return not exist error
-	if sfOrgModel == nil {
-		msg := "unable to locate platform organization record by SF ID - record not found"
-		log.WithFields(f).Warn(msg)
-		return nil, &utils.CompanyNotFound{
-			Message:     msg,
-			CompanySFID: companySFID,
-		}
-	}
-
-	log.WithFields(f).Debug("found platform organization record in SF")
-	// Auto-create based on the SF record information
-	companyModel, companyCreateErr := s.companyRepo.CreateCompany(ctx, &v1Models.Company{
-		CompanyExternalID: companySFID,
-		CompanyName:       sfOrgModel.Name,
-		IsSanctioned:      false,
-		Note:              "created on-demand by v4 service based on SF Organization Service record",
-	})
-
-	if companyCreateErr != nil || companyModel == nil {
-		log.WithFields(f).Warnf("unable to create EasyCLA company from platform SF organization record, error: %+v",
-			companyCreateErr)
-		return nil, companyCreateErr
-	}
-
-	log.WithFields(f).Debugf("successfully created EasyCLA company record: %+v", companyModel)
-	return companyModel, nil
 }
 
 func (s *service) GetCompanyLookup(ctx context.Context, orgName string, websiteName string) (*models.Lookup, error) {

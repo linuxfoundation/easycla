@@ -31,13 +31,22 @@ make setup          # one-time: install swagger, golangci-lint, goimports; sets 
 make swagger        # regenerate API models/clients from swagger specs into gen/ (see below)
 make build-mac      # build local binary -> bin/cla-mac (build-linux for Linux)
 make test           # go test -v ./... with coverage
-make lint           # golangci-lint (v1.64.8, config .golangci.yaml) + license header check
+make lint           # golangci-lint (v1.64.8, config .golangci.yaml) + license header check — see "Lint safely" below
 make fmt            # gofmt + goimports
 make mock           # regenerate mocks via tools/regenmocks.sh
 make all-mac        # full pipeline: clean swagger deps fmt build test lint (all-linux on Linux)
 ```
 
 Run a single test: `go test -v ./signatures/ -run TestName`
+
+### Lint safely (memory)
+
+golangci-lint v1.64.8 must be the binary built with the CI Go toolchain (`go 1.25.x`, see `go.mod`/`build-pr.yml`) and run under that
+toolchain. A v1.64.8 binary built with a newer Go, or run with a newer `GOTOOLCHAIN`, type-checks every package again per linter and grows
+past 30 GB RSS on this module — it OOM-kills the whole shell/tmux session, not just the linter. Rules: Linux only; pinned toolchain
+(`GOTOOLCHAIN=go1.25.13 golangci-lint version` must print the same Go version); `LINT_ARGS="--concurrency 4"` on shared machines; run it in
+its own memory-capped cgroup (`systemd-run --user --scope -p MemoryMax=16G -p MemorySwapMax=0 make lint`); one lint at a time; never overwrite
+a shared `~/go/bin/golangci-lint` while other sessions may use it — install a pinned copy elsewhere and point `LINT_TOOL` at it.
 
 Run locally (points at a real AWS environment — see below): build, set env, then `./bin/cla-mac` (from `make build-mac`) or `./bin/cla` (from `make build-linux`). Health checks at `http://localhost:8080/v3/ops/health` and `/v4/ops/health`. Set `GH_ORG_VALIDATION=false` to bypass GitHub auth checks for local curl/Postman testing.
 

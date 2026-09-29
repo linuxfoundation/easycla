@@ -1,0 +1,244 @@
+---
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+# M3 organization import (lfx-self-serve #2750). Runbook: cla-backend-go/cmd/org_import/README.md.
+# Manual runs choose stage/mode/routes. Scheduled runs are register-only and do nothing unless the
+# repository variable ORG_IMPORT_SWEEP_DEV / ORG_IMPORT_SWEEP_PROD is set to dry-run or apply.
+# Every run writes run.log + CSV reports (artifact), copies run.log to CloudWatch Logs
+# /easycla/org-import/<stage> and e-mails the full decision record to SSM cla-org-import-report-emails-<stage>.
+
+name: Org import sweep
+
+on:
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: Stage
+        type: choice
+        options: [dev, prod]
+        default: dev
+      mode:
+        description: dry-run writes nothing; apply performs the plan
+        type: choice
+        options: [dry-run, apply]
+        default: dry-run
+      routes:
+        description: Routes to process
+        type: choice
+        options: [register, rewrite, 'register,rewrite']
+        default: register
+      tranche:
+        description: Max groups to act on (0 = all)
+        type: string
+        default: '0'
+      ids:
+        description: Optional comma-separated external ids (old or new)
+        type: string
+        default: ''
+      mapping:
+        description: Optional mapping CSV for the rewrite route (rows separated by newlines or '|'), header old_id,new_id,action,approved
+        type: string
+        default: ''
+      decisions:
+        description: Optional duplicate-review decisions CSV (rows separated by newlines or '|'), header decision,old_ids,target_sfid,reviewer,note
+        type: string
+        default: ''
+      shared_domains:
+        description: Optional shared-domain list (one domain per line or '|'-separated); empty = built-in list
+        type: string
+        default: ''
+      notify:
+        description: E-mail the full run report to SSM cla-org-import-report-emails-<stage>
+        type: boolean
+        default: true
+  schedule:
+    - cron: '0 6 * * *'
+
+permissions:
+  id-token: write
+  contents: read
+  actions: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          IN_STAGE: ${{ inputs.stage }}
+          IN_MODE: ${{ inputs.mode }}
+          IN_ROUTES: ${{ inputs.routes }}
+          IN_TRANCHE: ${{ inputs.tranche }}
+          IN_IDS: ${{ inputs.ids }}
+          IN_NOTIFY: ${{ inputs.notify }}
+          SWEEP_DEV: ${{ vars.ORG_IMPORT_SWEEP_DEV }}
+          SWEEP_PROD: ${{ vars.ORG_IMPORT_SWEEP_PROD }}
+        run: |
+          set -euo pipefail
+          role() {
+            case "$1" in
+              dev) echo 'arn:aws:iam::395594542180:role/github-actions-deploy' ;;
+              prod) echo 'arn:aws:iam::716487311010:role/github-actions-deploy' ;;
+              *) echo "unknown stage $1" >&2; exit 1 ;;
+            esac
+          }
+          entry() {
+            jq -cn --arg stage "$1" --arg mode "$2" --arg routes "$3" --arg tranche "$4" --arg ids "$5" --arg notify "$6" --arg role "$(role "$1")" \
+              '{stage:$stage, mode:$mode, routes:$routes, tranche:$tranche, ids:$ids, notify:$notify, role:$role}'
+          }
+          entries=()
+          if [ "$EVENT" = workflow_dispatch ]; then
+            entries+=("$(entry "$IN_STAGE" "$IN_MODE" "$IN_ROUTES" "${IN_TRANCHE:-0}" "$IN_IDS" "${IN_NOTIFY:-true}")")
+          else
+            for pair in "dev:${SWEEP_DEV:-off}" "prod:${SWEEP_PROD:-off}"; do
+              stage="${pair%%:*}"; mode="${pair#*:}"
+              case "$mode" in
+                dry-run|apply) entries+=("$(entry "$stage" "$mode" register 0 '' true)") ;;
+                *) echo "scheduled sweep for $stage is off" ;;
+              esac
+            done
+          fi
+          matrix="$(printf '%s\n' "${entries[@]:-}" | jq -cs 'map(select(. != null))')"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "$matrix"
+
+  sweep:
+    needs: plan
+    if: needs.plan.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    environment: ${{ matrix.stage }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      AWS_REGION: us-east-1
+      STAGE: ${{ matrix.stage }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Setup python (swagger tooling)
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: cla-backend-go/swagger/requirements.txt
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          audience: sts.amazonaws.com
+          role-to-assume: ${{ matrix.role }}
+          aws-region: us-east-1
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Configure Git to clone private Github repos
+        run: git config --global url."https://${TOKEN_USER}:${TOKEN}@github.com".insteadOf "https://github.com"
+        env:
+          TOKEN: ${{ secrets.PERSONAL_ACCESS_TOKEN_GITHUB }}
+          TOKEN_USER: ${{ secrets.PERSONAL_ACCESS_TOKEN_USER_GITHUB }}
+
+      - name: Add OS Tools
+        run: sudo apt update && sudo apt-get install file -y
+
+      - name: Go Setup
+        working-directory: cla-backend-go
+        run: make clean setup
+
+      - name: Go Dependencies
+        working-directory: cla-backend-go
+        run: make deps
+
+      - name: Go Swagger Generate
+        working-directory: cla-backend-go
+        run: make swagger
+
+      - name: Build org-import
+        working-directory: cla-backend-go
+        run: make build-org-import-linux
+
+      - name: Restore state and operator files
+        working-directory: cla-backend-go
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MAPPING: ${{ github.event_name == 'workflow_dispatch' && inputs.mapping || '' }}
+          DECISIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.decisions || '' }}
+          SHARED_DOMAINS: ${{ github.event_name == 'workflow_dispatch' && inputs.shared_domains || '' }}
+        run: |
+          set -euo pipefail
+          mkdir -p org-import-out
+          run_id="$(gh api "repos/${GITHUB_REPOSITORY}/actions/artifacts?name=org-import-state-${STAGE}&per_page=10" \
+            --jq '[.artifacts[] | select(.expired == false)] | sort_by(.created_at) | last | .workflow_run.id // empty')"
+          if [ -n "$run_id" ]; then
+            gh run download "$run_id" -n "org-import-state-${STAGE}" -D org-import-out && echo "restored state from run $run_id" || echo "no state restored"
+          fi
+          lines() { printf '%s\n' "$1" | tr '|' '\n' | sed '/^[[:space:]]*$/d'; }
+          if [ -n "$MAPPING" ]; then
+            lines "$MAPPING" > org-import-out/mapping.csv
+            echo "mapping rows: $(($(wc -l < org-import-out/mapping.csv) - 1))"
+          fi
+          if [ -n "$DECISIONS" ]; then
+            lines "$DECISIONS" > org-import-out/decisions.csv
+            echo "decision rows: $(($(wc -l < org-import-out/decisions.csv) - 1))"
+          fi
+          if [ -n "$SHARED_DOMAINS" ]; then
+            lines "$SHARED_DOMAINS" > org-import-out/shared_domains.txt
+            echo "shared domains: $(wc -l < org-import-out/shared_domains.txt)"
+          fi
+
+      - name: Run org-import ingest (${{ matrix.stage }} ${{ matrix.mode }} ${{ matrix.routes }})
+        working-directory: cla-backend-go
+        env:
+          MODE: ${{ matrix.mode }}
+          ROUTES: ${{ matrix.routes }}
+          TRANCHE: ${{ matrix.tranche }}
+          IDS: ${{ matrix.ids }}
+          NOTIFY: ${{ matrix.notify }}
+        run: |
+          set -euo pipefail
+          args=(ingest --routes "$ROUTES" --out-dir org-import-out --state org-import-out/state.jsonl)
+          [ "${TRANCHE:-0}" != "0" ] && args+=(--tranche "$TRANCHE")
+          [ -n "$IDS" ] && args+=(--ids "$IDS")
+          [ -s org-import-out/mapping.csv ] && args+=(--mapping org-import-out/mapping.csv)
+          [ -s org-import-out/decisions.csv ] && args+=(--decisions org-import-out/decisions.csv)
+          [ -s org-import-out/shared_domains.txt ] && args+=(--shared-domains org-import-out/shared_domains.txt)
+          [ "$NOTIFY" = false ] && args+=(--no-email)
+          [ "$MODE" = apply ] && args+=(--apply --yes)
+          echo "bin/org-import ${args[*]}"
+          bin/org-import "${args[@]}"
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: org-import-out-${{ matrix.stage }}-${{ github.run_id }}
+          path: cla-backend-go/org-import-out
+          if-no-files-found: ignore
+          retention-days: 90
+
+      - name: Upload state
+        if: always() && matrix.mode == 'apply'
+        uses: actions/upload-artifact@v4
+        with:
+          name: org-import-state-${{ matrix.stage }}
+          path: cla-backend-go/org-import-out/state.jsonl
+          if-no-files-found: ignore
+          retention-days: 90

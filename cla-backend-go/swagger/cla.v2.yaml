@@ -5365,11 +5365,11 @@ parameters:
     required: true
   path-companyID:
     name: companyID
-    description: id of the company
+    description: id of the company (internal UUIDv4, or the Salesforce ID of an organization without an EasyCLA row yet)
     in: path
     type: string
     required: true
-    pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$' # uuidv4
+    pattern: '^([a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}|[0-9A-Za-z]{15}|[0-9A-Za-z]{18})$' # uuidv4 | salesforce id
   path-companySFID:
     name: companySFID
     description: salesforce id of the company
@@ -6626,7 +6626,7 @@ definitions:
         x-omitempty: false
         example: "The Linux Foundation Subsidiary 1"
       signing_entity_id:
-        $ref: './common/properties/internal-id.yaml'
+        $ref: './common/properties/company-id.yaml'
       cla_group_id:
         type: string
         x-omitempty: false
@@ -6819,6 +6819,9 @@ definitions:
       sign_url:
         type: string
         description: signing url
+      company_id:
+        type: string
+        description: internal id of the EasyCLA company row the signature belongs to
 
   individual-signature-output:
     type: object

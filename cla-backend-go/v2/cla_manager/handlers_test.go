@@ -13,6 +13,7 @@ import (
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/go-openapi/runtime"
+	"github.com/go-openapi/strfmt"
 	v1Company "github.com/linuxfoundation/easycla/cla-backend-go/company"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
@@ -24,6 +25,9 @@ import (
 )
 
 const (
+	testerUsername = "tester"
+	testerEmail    = "tester@example.com"
+
 	opList    = "list"
 	opGet     = "get"
 	opApprove = "approve"
@@ -74,6 +78,16 @@ func (f *fakeRequestsService) DenyCLAManagerRequest(_ context.Context, _ *auth.U
 	return f.request, f.requestErr
 }
 
+func (f *fakeRequestsService) CreateCLAManagerDesignee(_ context.Context, companyID string, projectSFID string, userEmail string) (*models.ClaManagerDesignee, error) {
+	f.calls++
+	f.companyIDs = append(f.companyIDs, companyID)
+	f.claGroups = append(f.claGroups, projectSFID)
+	if f.requestErr != nil {
+		return nil, f.requestErr
+	}
+	return &models.ClaManagerDesignee{CompanyID: companyID, ProjectSfid: projectSFID, Email: strfmt.Email(userEmail)}, nil
+}
+
 type fakeV1CompanyService struct {
 	v1Company.IService
 	company *v1Models.Company
@@ -81,6 +95,10 @@ type fakeV1CompanyService struct {
 }
 
 func (f *fakeV1CompanyService) GetCompany(_ context.Context, companyID string) (*v1Models.Company, error) {
+	return f.company, f.err
+}
+
+func (f *fakeV1CompanyService) ResolveCompany(_ context.Context, companyID string) (*v1Models.Company, error) {
 	return f.company, f.err
 }
 
@@ -96,7 +114,7 @@ func (f *fakeProjectClaGroupRepo) GetClaGroupIDForProject(_ context.Context, pro
 
 func callRequestOp(t *testing.T, api *operations.EasyclaAPI, op string, authUser *auth.User) (int, string) {
 	t.Helper()
-	username, email, reqID := "tester", "tester@example.com", "req-id-1"
+	username, email, reqID := testerUsername, testerEmail, "req-id-1"
 	httpRequest := httptest.NewRequest(http.MethodGet, "/v4/company/company-1/project/proj-sfid/cla-manager/requests", nil)
 
 	recorder := httptest.NewRecorder()
@@ -202,5 +220,57 @@ func TestClaManagerRequestHandlers(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestCreateCLAManagerDesigneeHandlerResolvesTheCompany(t *testing.T) {
+	const (
+		sfid        = "0014100000Te0G7AAJ"
+		projectSFID = "a092M00001IfPlSQAV"
+		companyUUID = "8f1d8a6a-9f2e-4d6b-a0c1-2f3e4d5c6b7a"
+	)
+	persisted := &v1Models.Company{CompanyID: companyUUID, CompanyName: "Acme", CompanyExternalID: sfid}
+
+	for _, tc := range []struct {
+		name           string
+		pathCompanyID  string
+		company        *v1Models.Company
+		companyErr     error
+		expectedStatus int
+		expectedCompID string
+	}{
+		{name: "persisted row by internal id", pathCompanyID: companyUUID, company: persisted, expectedStatus: http.StatusOK, expectedCompID: companyUUID},
+		{name: "persisted row by salesforce id", pathCompanyID: sfid, company: persisted, expectedStatus: http.StatusOK, expectedCompID: companyUUID},
+		{name: "organization without a row is served virtually", pathCompanyID: sfid, company: v1Company.VirtualCompany(sfid, "Acme"), expectedStatus: http.StatusOK, expectedCompID: sfid},
+		{name: "sanctioned company is rejected", pathCompanyID: sfid, company: &v1Models.Company{CompanyID: companyUUID, CompanyExternalID: sfid, IsSanctioned: true}, expectedStatus: http.StatusForbidden},
+		{name: "unknown organization", pathCompanyID: sfid, companyErr: errors.New("company not found"), expectedStatus: http.StatusBadRequest},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			api := operations.NewEasyclaAPI(nil)
+			service := &fakeRequestsService{}
+			Configure(api, service, &fakeV1CompanyService{company: tc.company, err: tc.companyErr}, "", "", &fakeProjectClaGroupRepo{}, nil)
+			require.NotNil(t, api.ClaManagerCreateCLAManagerDesigneeHandler)
+			username, email, reqID := testerUsername, testerEmail, "req-id-2"
+			recorder := httptest.NewRecorder()
+
+			api.ClaManagerCreateCLAManagerDesigneeHandler.Handle(cla_manager.CreateCLAManagerDesigneeParams{
+				HTTPRequest: httptest.NewRequest(http.MethodPost, "/v4/company/"+tc.pathCompanyID+"/project/"+projectSFID+"/cla-manager-designee", nil),
+				XUSERNAME:   &username, XEMAIL: &email, XREQUESTID: &reqID,
+				CompanyID: tc.pathCompanyID, ProjectSFID: projectSFID,
+				Body: cla_manager.CreateCLAManagerDesigneeBody{UserEmail: "designee@example.com"},
+			}, &auth.User{UserName: username, Email: email}).WriteResponse(recorder, runtime.JSONProducer())
+
+			assert.Equal(t, tc.expectedStatus, recorder.Code, recorder.Body.String())
+			if tc.expectedStatus != http.StatusOK {
+				assert.Zero(t, service.calls)
+				if tc.expectedStatus == http.StatusForbidden {
+					assert.Contains(t, recorder.Body.String(), "company_sanctioned")
+				}
+				return
+			}
+			assert.Equal(t, []string{tc.expectedCompID}, service.companyIDs)
+			assert.Equal(t, []string{projectSFID}, service.claGroups)
+			assert.Contains(t, recorder.Body.String(), `"company_id":"`+tc.expectedCompID+`"`)
+		})
 	}
 }

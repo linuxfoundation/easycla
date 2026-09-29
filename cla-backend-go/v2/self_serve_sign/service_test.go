@@ -853,7 +853,7 @@ func TestRequestCorporateSignatureRequiresSignatoryWhenSendAsEmail(t *testing.T)
 }
 
 func TestRequestCorporateSignatureDelegatesVerbatim(t *testing.T) {
-	corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{SignatureID: testSignatureID, SignURL: testSignURL}}
+	corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{SignatureID: testSignatureID, SignURL: testSignURL, CompanyID: testEntityCompanyID}}
 	companies, projectsClaGroups := corporateFakes()
 	svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
 	input := corporateInput()
@@ -900,7 +900,7 @@ func TestRequestCorporateSignatureResolvesTheSigningCompany(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{SignatureID: testSignatureID, SignURL: testSignURL}}
+			corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{SignatureID: testSignatureID, SignURL: testSignURL, CompanyID: tc.expectedCompanyID}}
 			companies, projectsClaGroups := corporateFakes()
 			svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
 			input := corporateInput()
@@ -942,7 +942,7 @@ func TestRequestCorporateSignatureRejectsAForeignSigningEntity(t *testing.T) {
 // 2026-09) - rejecting those would break legitimate signings, while a takeover target's own
 // record carries its non-empty SFID, so the mismatch guard still covers it
 func TestRequestCorporateSignatureAllowsASigningEntityWithoutAnExternalID(t *testing.T) {
-	corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{SignatureID: testSignatureID, SignURL: testSignURL}}
+	corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{SignatureID: testSignatureID, SignURL: testSignURL, CompanyID: testEntityCompanyID}}
 	companies, projectsClaGroups := corporateFakes()
 	companies.byEntityName.CompanyExternalID = ""
 	svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
@@ -1126,7 +1126,7 @@ func TestRequestCorporateSignatureDelegateErrorsPropagate(t *testing.T) {
 }
 
 func TestRequestCorporateSignatureReturnsIDsEvenWithoutASignatureID(t *testing.T) {
-	corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{}}
+	corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{CompanyID: testCompanyID}}
 	companies, projectsClaGroups := corporateFakes()
 	svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
 
