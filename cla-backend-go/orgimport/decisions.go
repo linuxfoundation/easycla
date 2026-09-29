@@ -120,7 +120,7 @@ func (d *Decisions) Collapse(oldID, target string) *Decision {
 		return nil
 	}
 	dec := d.ByOldID[oldID]
-	if dec != nil && dec.Kind == DecisionCollapse && dec.Target == target {
+	if dec != nil && dec.Kind == DecisionCollapse && accountKey(dec.Target) == accountKey(target) {
 		return dec
 	}
 	return nil
@@ -176,19 +176,42 @@ func (t *Target) OldIDs() []string {
 	return ids
 }
 
+// forms lists the exact id strings (15- or 18-char) that would end up on the target.
+func (t *Target) forms(mapping *Mapping) []string {
+	var forms []string
+	add := func(id string) {
+		if id != "" && !containsString(forms, id) {
+			forms = append(forms, id)
+		}
+	}
+	for _, g := range t.Groups {
+		add(g.NewID)
+	}
+	for _, r := range t.Existing {
+		add(r.ExternalID)
+	}
+	if mapping != nil {
+		for _, id := range t.Mapped {
+			add(mapping.Rows[id].NewID)
+		}
+	}
+	return forms
+}
+
 // applyDecisions is the approval-aware collision pass: a rewrite group may share its destination with
 // other groups, other mapping rows or rows already carrying the id only under a recorded collapse decision.
+// Destinations are compared per Account (15- and 18-char forms of one id are the same target).
 func applyDecisions(groups []*Group, inv *Inventory, mapping *Mapping, decisions *Decisions) []*Target {
 	byTarget := map[string]*Target{}
 	for _, g := range groups {
 		if g.Route != RouteRewrite || g.NewID == "" || g.Err != nil {
 			continue
 		}
-		t := byTarget[g.NewID]
+		t := byTarget[accountKey(g.NewID)]
 		if t == nil {
 			t = &Target{SFID: g.NewID}
-			t.Existing = append(t.Existing, inv.ByExternal[g.NewID]...)
-			byTarget[g.NewID] = t
+			t.Existing = append(t.Existing, inv.rowsCarrying(g.NewID)...)
+			byTarget[accountKey(g.NewID)] = t
 		}
 		t.Groups = append(t.Groups, g)
 	}
@@ -202,7 +225,7 @@ func applyDecisions(groups []*Group, inv *Inventory, mapping *Mapping, decisions
 		if mapping != nil {
 			seen := t.OldIDs()
 			for oldID, row := range mapping.Rows {
-				if row.NewID == t.SFID && !containsString(seen, oldID) {
+				if row.NewID != "" && accountKey(row.NewID) == accountKey(t.SFID) && !containsString(seen, oldID) {
 					t.Mapped = append(t.Mapped, oldID)
 				}
 			}
@@ -210,6 +233,16 @@ func applyDecisions(groups []*Group, inv *Inventory, mapping *Mapping, decisions
 		}
 		ids := t.OldIDs()
 		if len(ids) < 2 {
+			continue
+		}
+		if forms := t.forms(mapping); len(forms) > 1 {
+			// the tool never writes a second form of one Account id: the mapping (or the existing rows) must agree first
+			for _, g := range t.Groups {
+				if !g.Replayed {
+					g.Route, g.ManualReason = RouteManual, ReasonTargetFormsDiffer
+				}
+			}
+			t.Status = ReasonTargetFormsDiffer
 			continue
 		}
 		for _, g := range t.Groups {

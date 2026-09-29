@@ -28,7 +28,9 @@ const (
 	resolvePlatformHost = "platform.resolve.invalid"
 	resolveAuthHost     = "auth.resolve.invalid"
 	resolveSFID         = "0014100000Te0yqQAB"
+	resolveLegacyOrgID  = "lfbd1c2b3a4d5e6f7a8"
 	resolveCompanyID    = "9b8e7d66-40a5-4cde-9f00-3e1d1a2b3c4d"
+	resolveMissingID    = "2f1c6c1e-6a2d-4c3b-9d7e-8a5b4c3d2e1f"
 )
 
 // resolveHTTP answers the token endpoint and the organization-service routes the tests need;
@@ -89,9 +91,19 @@ func newResolveService(repo company.IRepository) company.IService {
 }
 
 func TestResolveCompanyOrder(t *testing.T) {
-	setupResolveHTTP(t, map[string]string{
-		resolveSFID: `{"ID":"` + resolveSFID + `","Name":"Acme Corp","SigningEntityName":["Acme Labs"]}`,
+	transport := setupResolveHTTP(t, map[string]string{
+		resolveSFID:        `{"ID":"` + resolveSFID + `","Name":"Acme Corp","SigningEntityName":["Acme Labs"]}`,
+		resolveLegacyOrgID: `{"ID":"` + resolveLegacyOrgID + `","Name":"Legacy Ltd"}`,
 	}, "")
+	orgCalls := func() int {
+		n := 0
+		for _, c := range transport.calls {
+			if strings.Contains(c, "/organization-service/v1/orgs/") {
+				n++
+			}
+		}
+		return n
+	}
 	notFoundByID := &utils.CompanyNotFound{CompanyID: resolveSFID}
 	notFoundBySFID := &utils.CompanyNotFound{CompanySFID: resolveSFID}
 	dynamoErr := errors.New("dynamodb unavailable")
@@ -132,6 +144,35 @@ func TestResolveCompanyOrder(t *testing.T) {
 
 		require.NoError(t, err)
 		assert.Equal(t, &models.Company{CompanyID: resolveSFID, CompanyExternalID: resolveSFID, CompanyName: "Acme Corp", SigningEntityName: "Acme Corp"}, got)
+	})
+	t.Run("legacy organization id falls back to the organization service", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		repo := mock_company.NewMockIRepository(ctrl)
+		repo.EXPECT().GetCompany(gomock.Any(), resolveLegacyOrgID).Return(nil, notFoundByID)
+		repo.EXPECT().GetCompanyByExternalID(gomock.Any(), resolveLegacyOrgID).Return(nil, notFoundBySFID)
+
+		got, err := newResolveService(repo).ResolveCompany(context.Background(), resolveLegacyOrgID)
+
+		require.NoError(t, err)
+		assert.Equal(t, company.VirtualCompany(resolveLegacyOrgID, "Legacy Ltd"), got)
+	})
+	t.Run("internal id without a row is not found and never asks the organization service", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		repo := mock_company.NewMockIRepository(ctrl)
+		missing := &utils.CompanyNotFound{CompanyID: resolveMissingID}
+		repo.EXPECT().GetCompany(gomock.Any(), resolveMissingID).Return(nil, missing)
+		repo.EXPECT().GetCompanyByExternalID(gomock.Any(), resolveMissingID).Return(nil, missing)
+		before := orgCalls()
+
+		got, err := newResolveService(repo).ResolveCompany(context.Background(), resolveMissingID)
+
+		var notFound *utils.CompanyNotFound
+		require.ErrorAs(t, err, &notFound)
+		assert.Same(t, missing, err)
+		assert.Nil(t, got)
+		assert.Equal(t, before, orgCalls(), "a UUID cannot name an organization")
 	})
 	t.Run("unknown organization is not found", func(t *testing.T) {
 		ctrl := gomock.NewController(t)

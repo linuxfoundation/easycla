@@ -226,6 +226,10 @@ func classify(ctx context.Context, deps Deps, g *Group, mapping *Mapping, shared
 		classifyRowTargeted(g, mapping)
 		return
 	case ShapeSFID:
+		if len(g.Aliases) > 0 {
+			g.Route, g.ManualReason = RouteManual, ReasonSFIDAliasForms
+			return
+		}
 		var liveErr error
 		g.Live, liveErr = liveness(ctx, deps, g.OldID)
 		switch g.Live {
@@ -335,7 +339,7 @@ func resolveNewID(ctx context.Context, deps Deps, g *Group, mapping *Mapping, sh
 			return "", res.Action, ""
 		}
 	}
-	if res.ID == g.OldID {
+	if accountKey(res.ID) == accountKey(g.OldID) {
 		return "", res.Action, ReasonMappingSameID
 	}
 	return res.ID, res.Action, ""
@@ -426,6 +430,9 @@ func describe(g *Group) string {
 	}
 	if g.ManualReason != "" {
 		s += " reason=" + g.ManualReason
+	}
+	if len(g.Aliases) > 0 {
+		s += " aliases=" + strings.Join(g.Aliases, ",")
 	}
 	if d := g.Domain(); d != "" {
 		s += " domain=" + d

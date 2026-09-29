@@ -107,11 +107,15 @@ func (r *runner) listGrantPair(ctx context.Context, g *Group) ([]acs_service.Org
 	return oldGrants, have, nil
 }
 
-// ensureGrant creates the old grant's counterpart on the new org unless it already exists (or the
-// grant is unusable); it reports whether a grant was created.
+// ensureGrant creates the old grant's counterpart on the new org unless it already exists (a grant
+// without a role is unusable and skipped); it reports whether a grant was created. A grant without
+// a username cannot be copied and fails the step so that it is never deleted uncopied.
 func (r *runner) ensureGrant(ctx context.Context, g *Group, gr acs_service.OrgGrant, have map[string]bool) (bool, error) {
-	if gr.Username == "" || gr.RoleID == "" {
+	if gr.RoleID == "" {
 		return false, nil
+	}
+	if gr.Username == "" {
+		return false, fmt.Errorf("grant %s (%s) on %s has no username: cannot be copied to %s", gr.GrantID, gr.RoleName, g.OldID, g.NewID)
 	}
 	key := grantKey(gr, g.NewID)
 	if have[key] {

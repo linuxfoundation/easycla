@@ -48,11 +48,21 @@ func canonicalEntity(name string) string {
 	return strings.ToLower(strings.TrimSpace(name))
 }
 
+// accountKey identifies one Salesforce Account regardless of the 15- or 18-char form of its id
+// (the last three characters of an 18-char id are a checksum of the first fifteen).
+func accountKey(id string) string {
+	if IsSFID(id) {
+		return id[:15]
+	}
+	return id
+}
+
 // Inventory is the companies table joined with the active-CCLA set.
 type Inventory struct {
 	Rows       []*Row
 	ByID       map[string]*Row
 	ByExternal map[string][]*Row
+	ByAccount  map[string][]*Row // Salesforce-shaped external ids keyed by accountKey
 }
 
 // LoadInventory scans companies and active (signed+approved, company-referenced) CCLAs.
@@ -77,7 +87,7 @@ func LoadInventory(ctx context.Context, deps Deps) (*Inventory, error) {
 	if err != nil {
 		return nil, fmt.Errorf("scanning companies: %w", err)
 	}
-	inv := &Inventory{ByID: map[string]*Row{}, ByExternal: map[string][]*Row{}}
+	inv := &Inventory{ByID: map[string]*Row{}, ByExternal: map[string][]*Row{}, ByAccount: map[string][]*Row{}}
 	for i := range companies.Companies {
 		c := companies.Companies[i]
 		row := &Row{
@@ -97,6 +107,9 @@ func LoadInventory(ctx context.Context, deps Deps) (*Inventory, error) {
 		inv.ByID[row.CompanyID] = row
 		if row.ExternalID != "" {
 			inv.ByExternal[row.ExternalID] = append(inv.ByExternal[row.ExternalID], row)
+			if IsSFID(row.ExternalID) {
+				inv.ByAccount[accountKey(row.ExternalID)] = append(inv.ByAccount[accountKey(row.ExternalID)], row)
+			}
 		}
 	}
 	sort.Slice(inv.Rows, func(i, j int) bool { return inv.Rows[i].CompanyID < inv.Rows[j].CompanyID })
@@ -125,17 +138,37 @@ func (inv *Inventory) EligibleGroups() []*Group {
 		sort.Slice(rows, func(i, j int) bool { return rows[i].CompanyID < rows[j].CompanyID })
 		g := &Group{OldID: row.ExternalID, Key: row.ExternalID, Shape: ShapeOf(row.ExternalID), Rows: rows}
 		g.Duplicate = hasDuplicateEntity(rows)
+		g.Aliases = inv.aliasForms(row.ExternalID)
 		groups = append(groups, g)
 	}
 	sort.Slice(groups, func(i, j int) bool { return groups[i].Key < groups[j].Key })
 	return groups
 }
 
-// hasDuplicateEntity is true when two rows of one external id share the same (or empty) entity name.
+// aliasForms lists the other exact forms (15- vs 18-char) of the same Account carried by inventory rows.
+func (inv *Inventory) aliasForms(externalID string) []string {
+	if !IsSFID(externalID) {
+		return nil
+	}
+	var forms []string
+	for _, r := range inv.ByAccount[accountKey(externalID)] {
+		if r.ExternalID != externalID && !containsString(forms, r.ExternalID) {
+			forms = append(forms, r.ExternalID)
+		}
+	}
+	sort.Strings(forms)
+	return forms
+}
+
+// hasDuplicateEntity is true when two rows of one external id share the same (or empty) entity name;
+// a signing entity equal to the company name is the parent row (the console writes it that way).
 func hasDuplicateEntity(rows []*Row) bool {
 	seen := map[string]bool{}
 	for _, r := range rows {
 		k := canonicalEntity(r.SigningEntityName)
+		if k == canonicalEntity(r.CompanyName) {
+			k = ""
+		}
 		if seen[k] {
 			return true
 		}
@@ -144,9 +177,17 @@ func hasDuplicateEntity(rows []*Row) bool {
 	return false
 }
 
+// rowsCarrying returns the inventory rows whose external id is newID (in either 15- or 18-char form).
+func (inv *Inventory) rowsCarrying(newID string) []*Row {
+	if IsSFID(newID) {
+		return inv.ByAccount[accountKey(newID)]
+	}
+	return inv.ByExternal[newID]
+}
+
 // ExternalIDCollision reports whether a row outside the group already carries newID.
 func (inv *Inventory) ExternalIDCollision(g *Group, newID string) bool {
-	for _, r := range inv.ByExternal[newID] {
+	for _, r := range inv.rowsCarrying(newID) {
 		if !containsRow(g.Rows, r.CompanyID) {
 			return true
 		}

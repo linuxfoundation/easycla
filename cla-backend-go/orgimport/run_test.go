@@ -429,7 +429,7 @@ func TestBuildPlanClassification(t *testing.T) {
 		"lf-collision,"+targetSFID2+",created,true",
 		"lf-dup,"+"0014100000DupNew01"+",created,true",
 		"c-empty-mapped,"+"0014100000EmptyNew"+",matched,true",
-		"c-empty-unapproved,"+"0014100000EmptyUna"+",matched,false",
+		"c-empty-unapproved,"+"0014100000EmpUnap1"+",matched,false", // not the Account of 0014100000EmptyNew (ids sharing 15 chars are one Account)
 		"c-other-mapped,"+"0014100000OtherNew"+",matched,true",
 	)
 	opts := Options{Stage: "dev", Mapping: mapping, OutDir: filepath.Join(dir, "out")}

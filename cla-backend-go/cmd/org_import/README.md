@@ -148,7 +148,8 @@ c0ffee00-... [manual] empty_external_id: Fill company_external_id (…) or leave
 stage=dev mode=dry-run eligible=4 registered=0 rewritten=0 pending=1 manual=1 failed=0
 ```
 
-- `live=live|dead|error` — member-service `GET /b2b_orgs/{id}` (or org-service when member-service is unconfigured); `error` is never treated as dead.
+- `live=live|dead|unverified|error` — member-service `GET /b2b_orgs/{id}`; `unverified` = member-service not configured for the stage
+  (the group stays `pending`/`crm_unverified`, nothing is written); `error` is never treated as dead.
 - `pending` — rewrite candidates without a resolved new id (no mapping row, or a `register` POST answered 404 = dead account). They appear in `to_salesforce.csv`.
 - `skipped` — eligible groups excluded by `--routes`, `--tranche`, or already `done` in `--state`.
 - Summary line: `eligible` = groups after `--ids`; `registered`/`rewritten` = groups completed in apply mode; `manual`; `failed` = groups with an
@@ -159,10 +160,12 @@ Runtime: ~10 s on dev, ~7 min on prod (one liveness GET per group).
 Files (all rewritten after apply with the final state):
 - `plan.csv` — `key, old_id, id_shape, route, manual_reason, live, org_service, website, domain, shared_domain, new_id, action, decision, reviewer, company_ids, company_names, error`.
 - `manual_actions.csv` — one row per manual/pending/failed group with `reason` and `suggested_action` (what a human must do next).
-- `targets.csv` — rewrite destinations grouped by Account: `target_sfid, groups, old_ids, company_ids, company_names, existing_rows, decision, reviewer, status(ok|needs_decision|distinct_conflict)`.
+- `targets.csv` — rewrite destinations grouped by Account: `target_sfid, groups, old_ids, company_ids, company_names, existing_rows, decision, reviewer, status(ok|needs_decision|distinct_conflict|target_forms_differ)`.
 - `to_salesforce.csv` — `old_id, name, website, ccla_signed_date, domain, shared_domain` — the hand-off to sales ops (§4).
 
-Manual reasons: `empty_external_id`, `invalid_id_shape`, `mapping_ambiguous`, `mapping_not_approved`, `mapping_same_id`,
+Manual reasons: `empty_external_id`, `invalid_id_shape`, `mapping_ambiguous`, `mapping_not_approved`, `mapping_same_id` (also the 15/18-char form of the same Account),
+`sfid_alias_forms` (rows of one Account carry both its 15- and 18-char id — normalize them to one form first; §4), `target_forms_differ`
+(ids landing on one Account use both forms — normalize the mapping/rows first; a decision does not lift it),
 `target_collision` (several old ids → one Account, or the Account already has EasyCLA rows, and no decision covers it — §4.1), `distinct_conflict`
 (a `distinct` decision spans two ids resolved to the same Account), `missing_website` / `shared_domain` (Apex path only, §4.2),
 `apex_match_needs_approval`, `apex_error`; pending reasons: `no_mapping`, `dead_account`, `crm_unverified` (no member-service for the stage).
@@ -200,6 +203,10 @@ lf000000000000000001,,ambiguous,false
 
 - `action`: `matched` (existing account found by domain/name — **requires `approved=true`**, a human checked it), `created` (new account created for this org, accepted as is), `ambiguous` (several candidates — stays manual).
 - `new_id` must be a 15/18-char alphanumeric Salesforce id (`ambiguous` rows may leave it empty); `new_id == old_id` is refused (`mapping_same_id`).
+- Ids are compared **per Account**: the 15-char id and its 18-char form (first 15 chars + checksum) name the same target, so co-targeting
+  mappings and rows already carrying the other form collide the same way; a source group whose Account appears in the inventory in both
+  forms is `sfid_alias_forms` (manual) until the rows are normalized to one form, and a destination that would end up carrying both forms
+  is `target_forms_differ` (manual; no decision lifts it). Journal keys, CAS values and `old_id` stay the exact stored value.
 - One row per `old_id`; two old ids pointing to the same `new_id` (or a `new_id` some EasyCLA row already carries) → `target_collision` until a
   `collapse` decision covers them (§4.1); `distinct` decisions cannot share an Account.
 - Loader errors are fatal and name the line: `missing column`, `expected N columns`, `approved must be true|false`, `empty old_id`, `duplicate old_id`, `new_id … is not a Salesforce account id`, `action must be matched|created|ambiguous`.

@@ -53,13 +53,15 @@ const (
 	ModeApply  = "apply"
 	ModeDryRun = "dry-run"
 
-	ReasonNoMapping        = "no_mapping"
-	ReasonDeadAccount      = "dead_account"
-	ReasonMappingAmbiguous = "mapping_ambiguous"
-	ReasonMappingSameID    = "mapping_same_id"
-	ReasonSharedDomain     = "shared_domain"
-	ReasonDistinctConflict = "distinct_conflict"
-	ReasonCRMUnverified    = "crm_unverified"
+	ReasonNoMapping         = "no_mapping"
+	ReasonDeadAccount       = "dead_account"
+	ReasonMappingAmbiguous  = "mapping_ambiguous"
+	ReasonMappingSameID     = "mapping_same_id"
+	ReasonSharedDomain      = "shared_domain"
+	ReasonDistinctConflict  = "distinct_conflict"
+	ReasonCRMUnverified     = "crm_unverified"
+	ReasonSFIDAliasForms    = "sfid_alias_forms"
+	ReasonTargetFormsDiffer = "target_forms_differ"
 
 	orgStatusErr = "err"
 )
@@ -193,6 +195,7 @@ type Group struct {
 	Key          string
 	Shape        IDShape
 	Rows         []*Row
+	Aliases      []string // other 15/18-char forms of the same Account present in the inventory
 	Route        Route
 	ManualReason string
 	Duplicate    bool

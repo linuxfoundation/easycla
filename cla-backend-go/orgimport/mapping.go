@@ -120,7 +120,7 @@ func (m *Mapping) Resolve(oldID string) (newID, action, reason string) {
 		return "", row.Action, ReasonMappingAmbiguous
 	case row.Action == ActionMatched && !row.Approved:
 		return "", row.Action, "mapping_not_approved"
-	case row.NewID == oldID:
+	case accountKey(row.NewID) == accountKey(oldID):
 		return "", row.Action, ReasonMappingSameID
 	}
 	return row.NewID, row.Action, ""
