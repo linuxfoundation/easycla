@@ -4,7 +4,7 @@ SPDX-License-Identifier: CC-BY-4.0 -->
 # M3: getting EasyCLA companies into Salesforce
 
 **Status**: draft 2026-09-24 · **Owner**: Michal (engineering)
-**Tickets**: [lfx-self-serve#2750](https://github.com/linuxfoundation/lfx-self-serve/issues/2750) (story) · [#2749](https://github.com/linuxfoundation/lfx-self-serve/issues/2749) (cleanup) · [#2751](https://github.com/linuxfoundation/lfx-self-serve/issues/2751) (orgs created without signing intent) · [#2056](https://github.com/linuxfoundation/lfx-self-serve/issues/2056) (duplicate SFIDs) · epic [#1968](https://github.com/linuxfoundation/lfx-self-serve/issues/1968)
+**Tickets**: [lfx-self-serve#2750](https://github.com/linuxfoundation/lfx-self-serve/issues/2750) (story) · [#2749](https://github.com/linuxfoundation/lfx-self-serve/issues/2749) (cleanup) · [#2751](https://github.com/linuxfoundation/lfx-self-serve/issues/2751) (orgs created without signing intent) · [#2056](https://github.com/linuxfoundation/lfx-self-serve/issues/2056) (duplicate companies; post-import merges) · epic [#1968](https://github.com/linuxfoundation/lfx-self-serve/issues/1968)
 **Related**: [m3-org-visibility.md](https://github.com/linuxfoundation/easycla/pull/5210) (earlier analysis, superseded here for the import) · Eric's [Consolidate-B2B-Backend proposal](https://github.com/linuxfoundation/lfx-architecture-scratch/tree/main/2026-09-Consolidate-B2B-Backend) · sales-ops thread [lfx-self-serve-ops#16](https://github.com/linuxfoundation/lfx-self-serve-ops/issues/16)
 
 This file is the single place for the plan and its decisions. Tickets carry pointers only. Append to the decision log (§7); do not rewrite history.
@@ -47,22 +47,23 @@ Ingest predicate: **active CCLA** (`ccla` signature, `signature_reference_type =
 ## 3. Plan
 
 0. **Agree the Salesforce side with sales ops** (§4). No code before this.
-1. **Cleanup** ([#2749](https://github.com/linuxfoundation/lfx-self-serve/issues/2749)): the 18 unresolvable companies; the 5 manual duplicate-SFID merges from #2056.
-2. **Ingest tool** (EasyCLA `utils/`, idempotent, dry-run first), as in §5. Tranches 10 → 100 → rest.
-3. **Verify per tranche**: CRM account exists; Org Service serves it (`GET /orgs/{id}`); `GET /v4/company/external/{id}/cla-groups` returns the CLA groups; the Console shows the company to its managers.
-4. **FGA and lens per tranche**: `cla_admin` tuples from `signature_acl`; check the Organization lens.
-5. **M3 GA.**
-6. **Daily sweep** = the same tool on a schedule, for newly signed CCLAs. It creates the CRM account only after a CCLA exists, so no never-signed company reaches Salesforce (the #2751 concern). v4 `CreateOrg` keeps creating Org Service orgs until §6.
-7. **Parallel window, then retire the Console**, gated on the disposition of excluded companies.
+1. **Cleanup** ([#2749](https://github.com/linuxfoundation/lfx-self-serve/issues/2749)): the 18 unresolvable companies.
+2. **Duplicate review**: a report of active-CCLA companies that share a website domain or a normalized name under different IDs (78 rows in ~30 groups, 2026-09-28). A human marks each group *collapse* (one Account; the rows become its signing entities) or *distinct* (separate legal entities: NASA Ames / Goddard, SAP / SAP Labs Bulgaria). Approved collapses feed the dry run (§5 step 3). Row merges — deleting a row and re-pointing its CCLA, ECLAs and users — stay out of the import: after it the rows already share one Account, and [#2056](https://github.com/linuxfoundation/lfx-self-serve/issues/2056) becomes the post-import merge runbook.
+3. **Ingest tool** (EasyCLA `utils/`, idempotent, dry-run first), as in §5. Tranches 10 → 100 → rest.
+4. **Verify per tranche**: CRM account exists; Org Service serves it (`GET /orgs/{id}`); `GET /v4/company/external/{id}/cla-groups` returns the CLA groups; the Console shows the company to its managers.
+5. **FGA and lens per tranche**: `cla_admin` tuples from `signature_acl`; check the Organization lens.
+6. **M3 GA.**
+7. **Daily sweep** = the same tool on a schedule, for newly signed CCLAs. It creates the CRM account only after a CCLA exists, so no never-signed company reaches Salesforce (the #2751 concern). v4 `CreateOrg` keeps creating Org Service orgs until §6.
+8. **Parallel window, then retire the Console**, gated on the disposition of excluded companies.
 
 Dropped from M3: switching v4 org creation to Salesforce. `CreateCompany` assigns ACS org scopes right after creating the org, and a Salesforce-created account is invisible to the Org Service, ACS and the Console for up to ~40 min. Doing it properly means async role assignment or moving CLA-manager authorization off ACS, which is Eric's Member Service work (§6).
 
 ## 4. Salesforce side (to agree with sales ops)
 
 - **Mechanism**: a new Apex `@RestResource` in [`LF_SF_CICD_Setup`](https://github.com/linuxfoundation/LF_SF_CICD_Setup) that finds or creates an `Account` by domain (`Website` / `Domain_Alias__c`). Sales ops asked for an Apex interface, not direct sObject create, and accept an AI-written contribution tested in sandbox (2026-09-17). `JoinNowForm` is not reusable: it matches on exact Name + Website and writes placeholder websites on domain clashes.
-- **Contract**: `POST /services/apexrest/lfx/account` with `{ name, website, source: "EasyCLA", externalKey: <old company_external_id>, cclaSignedDate, dryRun }` → `{ id, action: "matched" | "created" | "ambiguous" }`. `ambiguous` means more than one Account has the domain: nothing is written and the org goes to manual. `dryRun` reports the action without writing. Idempotent on `externalKey` via a new unique External ID field on `Account` (e.g. `LFX_Org_Id__c`), set on create only; a repeat call for a matched Account matches it again by domain. No usable External ID field exists today.
+- **Contract**: `POST /services/apexrest/lfx/account` with `{ name, website, source: "EasyCLA", externalKey: <old company_external_id>, cclaSignedDate, dryRun }` → `{ id, action: "matched" | "created" | "ambiguous" }`. `ambiguous` means more than one Account has the domain: nothing is written and the org goes to manual. `dryRun` reports the action without writing. Domains on a shared-domain list (`github.com`, `nowebsite.com`, mail providers) never match; the tool sends those companies to manual instead (17 today). Idempotent on `externalKey` via a new unique External ID field on `Account` (e.g. `LFX_Org_Id__c`), set on create only; a repeat call for a matched Account matches it again by domain. No usable External ID field exists today.
 - **Field values**: `RecordTypeId` of the record type the Org Service serves (`01241000000bkf1AAA` in prod; Apex resolves it by `DeveloperName`), `Type`, `IsMember__c = false`, origin marker, `OwnerId` (a queue).
-- **Signing entities**: one `company_external_id` ↔ one `Account`. The EasyCLA rows that share it (one per signing entity) are rewritten together; `signing_entity_name` stays in EasyCLA. No child accounts in M3.
+- **Signing entities**: one `Account` ↔ one or more `company_external_id`s. Rows that share an ID are rewritten together; IDs approved as a collapse (§3 step 2) land on the same Account. All of them become the Account's signing entities; `signing_entity_name` stays in EasyCLA. EasyCLA already keeps several rows behind one SFID; surfacing all of them is #2056's resolution logic. No child accounts in M3.
 - **Bulk**: the tool calls the endpoint once per distinct `company_external_id` (at most ~1,300 calls, in tranches). One dedupe path for bulk and sweep.
 
 ## 5. Per-company sequence (the ingest tool)
@@ -70,12 +71,12 @@ Dropped from M3: switching v4 org creation to Salesforce. `CreateCompany` assign
 The tool runs once per distinct `company_external_id`. Several EasyCLA rows share one when an org has several signing entities; each step applies to all of them.
 
 1. Skip if the predicate fails or the log marks it complete. If the ID resolves to a live CRM account and the tool never touched it (`previous_company_external_id` empty), do step 9 only: the member-service backfill covers Membership accounts only. Otherwise resume at the first incomplete step; every step is safe to repeat.
-2. Read website from the Org Service (`GET /orgs/{company_external_id}`); works for `001…` and `lf…`.
-3. Dry-run the Apex endpoint for the tranche. A human approves every `matched` (domain equality can link a signed CCLA to the wrong company); rejected and `ambiguous` go to manual.
+2. Read website from the Org Service (`GET /orgs/{company_external_id}`); works for `001…` and `lf…`. No website, or a shared domain (§4) → manual.
+3. Dry-run the Apex endpoint for the tranche and report it grouped by target Account. A human approves every `matched` (domain equality can link a signed CCLA to the wrong company) and every collapse — several IDs landing on one Account — against the duplicate review (§3 step 2); rejected and `ambiguous` go to manual.
 4. Call the Apex endpoint → `newId`. If the action, or the ID of a `matched` Account, differs from the approved dry run, stop; the org goes to manual.
 5. Wait until the Org Service serves `newId` (≤ ~40 min). Create the whole tranche first, then continue.
 6. Copy every ACS scope that carries the old ID (any role; org and project|org scopes) to `newId`. EasyCLA authorizes lens and Console calls on the path SFID via ACS ([`utils_user_auth_lambda.go`](https://github.com/linuxfoundation/easycla/blob/dev/cla-backend-go/utils/utils_user_auth_lambda.go)), so the new scopes must exist before step 7.
-7. Set `company_external_id = newId` on every row; keep the old value in `previous_company_external_id` (plain attribute, nothing reads it).
+7. Set `company_external_id = newId` on every row; keep the old value in `previous_company_external_id` (plain attribute, nothing reads it). Rewrite the company's events as well — `event_company_sfid` and the `company_sfid_*` composite GSI keys: the Console activity log and `GET /v4/company/{id}/project/{sfid}/events` query events by SFID ([`events/repository.go`](https://github.com/linuxfoundation/easycla/blob/dev/cla-backend-go/events/repository.go), `GetCompanyClaGroupEvents`), so pre-import history would disappear otherwise.
 8. Delete the scopes on the old ID.
 9. member-service `POST /b2b_orgs {sfid: newId}` (registers and indexes an existing account).
 10. Log each completed step: `old_id, new_id, action, step, timestamp`.
@@ -103,3 +104,4 @@ Post-M3, parked: v4 `CreateCompany` creates through the Member Service and CLA-m
 - **2026-09-23** Lukasz asks on #2750 whether preconditions are confirmed.
 - **2026-09-24** One Salesforce org; the "old platform org" is the Org Service Postgres; the sync is a DB trigger. Path A dropped. Every imported company is rewritten by the ingest tool; `lf…` companies join the ingest set; v4-creation switch moved post-M3 in favour of the sweep; no second SFID column.
 - **2026-09-25** PR review ([linuxfoundation/easycla#5223](https://github.com/linuxfoundation/easycla/pull/5223)): a human approves every domain match, and the endpoint returns `ambiguous` for shared domains; all ACS scopes on the old ID are copied before the rewrite and deleted after; one call per `company_external_id`, key set on create only; the tool resumes unfinished orgs; the write must return the approved dry-run result; already-live accounts are registered with member-service.
+- **2026-09-29** Duplicate shapes measured in the prod mirror: 3 SFIDs carry several active rows (#2056); 78 active rows (~30 groups) share a website domain or normalized name under different IDs, many of them distinct legal entities; 17 carry a shared domain (`github.com`, `nowebsite.com`) that would collapse them onto the wrong Account. The import does match + collapse only, every collapse approved by a human against a duplicate review; row merges move after the import and #2056 becomes their runbook; shared domains never match. Events are keyed by company SFID, so the rewrite covers them too.
