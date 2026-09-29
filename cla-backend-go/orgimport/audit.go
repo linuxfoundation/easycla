@@ -30,6 +30,7 @@ type AuditRow struct {
 	Row          *Row
 	Shape        IDShape
 	ECLACount    int
+	ECLACounted  bool
 	OrgStatus    string
 	Website      string
 	Duplicate    bool
@@ -38,19 +39,25 @@ type AuditRow struct {
 	Tier         string
 }
 
-// AuditResult is the audit output.
+// AuditResult is the audit output; Duplicates are the candidate-target sets (rows sharing an id,
+// a normalized name or a non-shared website domain under different ids).
 type AuditResult struct {
 	Rows       []*AuditRow
 	Groups     []*Group
 	Tiers      map[string]int
 	Routes     map[Route]int
 	Duplicates [][]*Row
+	rowByID    map[string]*AuditRow
 }
 
 // Audit classifies every company row (reads only) and writes audit.csv, unresolvable.csv and
 // possible_duplicates.csv into opts.OutDir.
 func Audit(ctx context.Context, deps Deps, opts Options) (*AuditResult, error) {
 	deps = withDefaults(deps)
+	shared, err := LoadSharedDomains(opts.SharedDomains)
+	if err != nil {
+		return nil, err
+	}
 	inv, err := LoadInventory(ctx, deps)
 	if err != nil {
 		return nil, err
@@ -67,8 +74,8 @@ func Audit(ctx context.Context, deps Deps, opts Options) (*AuditResult, error) {
 	}
 
 	orgs := lookupOrgs(ctx, deps, inv)
-	res := &AuditResult{Tiers: map[string]int{}, Routes: map[Route]int{}}
-	byName := map[string][]*Row{}
+	res := &AuditResult{Tiers: map[string]int{}, Routes: map[Route]int{}, rowByID: map[string]*AuditRow{}}
+	byName, byDomain := map[string][]*Row{}, map[string][]*Row{}
 	for _, row := range inv.Rows {
 		ar := &AuditRow{Row: row, Shape: ShapeOf(row.ExternalID)}
 		if o := orgs[row.ExternalID]; o != nil {
@@ -89,39 +96,16 @@ func Audit(ctx context.Context, deps Deps, opts Options) (*AuditResult, error) {
 			res.Routes[ar.Route]++
 		}
 		res.Rows = append(res.Rows, ar)
+		res.rowByID[row.CompanyID] = ar
 		byName[canonicalEntity(row.CompanyName)] = append(byName[canonicalEntity(row.CompanyName)], row)
+		if d, gate := shared.Shared(ar.Website); gate == "" {
+			byDomain[d] = append(byDomain[d], row)
+		}
 	}
 	res.Groups = groups
 
-	for _, g := range groups {
-		if g.Duplicate {
-			res.Duplicates = append(res.Duplicates, g.Rows)
-		}
-	}
-	names := make([]string, 0, len(byName))
-	for n := range byName {
-		names = append(names, n)
-	}
-	sort.Strings(names)
-	for _, n := range names {
-		rows := byName[n]
-		if n == "" || len(rows) < 2 || !distinctExternalIDs(rows) {
-			continue
-		}
-		res.Duplicates = append(res.Duplicates, rows)
-	}
-
-	if deps.ECLAs != nil {
-		for _, ar := range res.Rows {
-			if ar.Row.ActiveCCLA && (ar.Route == RouteManual || ar.Duplicate || ar.unresolvable()) {
-				if n, cErr := deps.ECLAs.CountECLAs(ctx, ar.Row.CompanyID); cErr == nil {
-					ar.ECLACount = n
-				} else {
-					ar.ECLACount = -1
-				}
-			}
-		}
-	}
+	res.collectDuplicates(byName, byDomain)
+	res.countECLAs(ctx, deps.ECLAs)
 
 	if opts.OutDir != "" {
 		if err = writeAuditReports(opts.OutDir, res); err != nil {
@@ -143,6 +127,74 @@ func Audit(ctx context.Context, deps Deps, opts Options) (*AuditResult, error) {
 
 func (ar *AuditRow) unresolvable() bool {
 	return ar.Shape == ShapeEmpty || ar.Shape == ShapeOther || (ar.Shape == ShapeSFID && ar.OrgStatus == "404")
+}
+
+// collectDuplicates builds the candidate-target sets: rows sharing an id (with the same or empty
+// signing entity), then rows with the same normalized name or the same non-shared domain under
+// different ids.
+func (res *AuditResult) collectDuplicates(byName, byDomain map[string][]*Row) {
+	for _, g := range res.Groups {
+		if g.Duplicate {
+			res.addDuplicates(g.Rows)
+		}
+	}
+	for _, sets := range []map[string][]*Row{byName, byDomain} {
+		keys := make([]string, 0, len(sets))
+		for k := range sets {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			if rows := sets[k]; k != "" && len(rows) >= 2 && distinctExternalIDs(rows) {
+				res.addDuplicates(rows)
+			}
+		}
+	}
+}
+
+// countECLAs fills ECLACount for the active manual/duplicate/unresolvable rows and for every row of a
+// candidate set (inactive ones included); -1 marks a failed count.
+func (res *AuditResult) countECLAs(ctx context.Context, counter ECLACounter) {
+	if counter == nil {
+		return
+	}
+	reported := map[string]bool{}
+	for _, set := range res.Duplicates {
+		for _, r := range set {
+			reported[r.CompanyID] = true
+		}
+	}
+	for _, ar := range res.Rows {
+		if reported[ar.Row.CompanyID] || (ar.Row.ActiveCCLA && (ar.Route == RouteManual || ar.Duplicate || ar.unresolvable())) {
+			ar.ECLACounted = true
+			if n, cErr := counter.CountECLAs(ctx, ar.Row.CompanyID); cErr == nil {
+				ar.ECLACount = n
+			} else {
+				ar.ECLACount = -1
+			}
+		}
+	}
+}
+
+// addDuplicates appends a candidate set once: the same rows reached by name and by domain are one set.
+func (res *AuditResult) addDuplicates(rows []*Row) {
+	ids := make([]string, 0, len(rows))
+	for _, r := range rows {
+		ids = append(ids, r.CompanyID)
+	}
+	sort.Strings(ids)
+	key := strings.Join(ids, "\x00")
+	for _, set := range res.Duplicates {
+		other := make([]string, 0, len(set))
+		for _, r := range set {
+			other = append(other, r.CompanyID)
+		}
+		sort.Strings(other)
+		if strings.Join(other, "\x00") == key {
+			return
+		}
+	}
+	res.Duplicates = append(res.Duplicates, rows)
 }
 
 func distinctExternalIDs(rows []*Row) bool {
@@ -240,10 +292,17 @@ func writeAuditReports(dir string, res *AuditResult) error {
 			unresolvable = append(unresolvable, []string{r.CompanyID, r.CompanyName, r.SigningEntityName, r.ExternalID, string(ar.Shape), strconv.Itoa(r.CCLACount), strconv.Itoa(ar.ECLACount), ar.OrgStatus, ar.ManualReason})
 		}
 	}
-	dups := [][]string{{"group", "company_id", "company_name", "signing_entity_name", "company_external_id", "active_ccla", "ccla_count"}}
+	dups := [][]string{{"group", "company_id", "company_name", "signing_entity_name", "company_external_id", "id_shape", "domain", "active_ccla", "ccla_count", "ecla_count"}}
 	for i, set := range res.Duplicates {
 		for _, r := range set {
-			dups = append(dups, []string{strconv.Itoa(i + 1), r.CompanyID, r.CompanyName, r.SigningEntityName, r.ExternalID, strconv.FormatBool(r.ActiveCCLA), strconv.Itoa(r.CCLACount)})
+			shape, domain, ecla := string(ShapeOf(r.ExternalID)), "", ""
+			if ar := res.rowByID[r.CompanyID]; ar != nil {
+				shape, domain = string(ar.Shape), Domain(ar.Website)
+				if ar.ECLACounted {
+					ecla = strconv.Itoa(ar.ECLACount)
+				}
+			}
+			dups = append(dups, []string{strconv.Itoa(i + 1), r.CompanyID, r.CompanyName, r.SigningEntityName, r.ExternalID, shape, domain, strconv.FormatBool(r.ActiveCCLA), strconv.Itoa(r.CCLACount), ecla})
 		}
 	}
 	for name, data := range map[string][][]string{"audit.csv": rows, "unresolvable.csv": unresolvable, "possible_duplicates.csv": dups} {

@@ -117,9 +117,13 @@ Output line: `audit stage=dev companies=N eligible_groups=M MISSING_SFID=a INVAL
 
 Files (`--out-dir`):
 - `audit.csv` — `company_id, company_name, signing_entity_name, company_external_id, id_shape(001|lf|empty|other), active_ccla, ccla_count, ecla_count, org_service(200|404|err), website, duplicate_sfid_group, route, manual_reason, tier`.
-  `ecla_count` is filled only for active rows that are manual, duplicate or unresolvable (cheap); `-1` = count failed.
+  `ecla_count` is filled only for active rows that are manual, duplicate or unresolvable and for every row of `possible_duplicates.csv` (cheap); `-1` = count failed.
 - `unresolvable.csv` — active rows with empty/invalid ids or dead `001…` ids (#2749 input).
-- `possible_duplicates.csv` — rows sharing an id with the same (or empty) signing entity name, and same company name under different ids (#2056 input). Distinct signing entities under one id are **not** duplicates.
+- `possible_duplicates.csv` — candidate targets for the #3085 review: rows sharing an id with the same (or empty) signing entity name, and rows
+  with the same normalized company name **or** the same org-service website domain under different ids (#2056 input). Shared/missing domains
+  (§4.2) never group; a set reached by both name and domain is listed once. Columns: `group, company_id, company_name, signing_entity_name,
+  company_external_id, id_shape, domain, active_ccla, ccla_count, ecla_count` (`ecla_count` empty = not measured, `-1` = count failed).
+  Distinct signing entities under one id are **not** duplicates.
 
 Runtime: full companies scan + one CCLA query + one org-service GET per distinct id (4 in parallel) — ~30 s on dev, ~10 min on prod (3.7k companies).
 
@@ -241,12 +245,12 @@ distinct,lfcccc000000000000003;lfdddd000000000000004,,michal,different companies
   `distinct_conflict` (fix the mapping). `reviewer` is required; an old id may appear in one decision only.
 - Decisions never change the mapping: the Account comes from `--mapping` / Apex; the decision only approves the collision.
 
-### 4.2 Shared domains (`--shared-domains`, Apex path only)
+### 4.2 Shared domains (`--shared-domains`)
 
 Groups whose website domain is in the shared list (`github.com`, `nowebsite.com`, `gmail.com`, `googlemail.com`, `yahoo.com`, `hotmail.com`,
 `outlook.com`, `live.com`, `icloud.com`, `protonmail.com`, `qq.com`, `163.com`) or who have no website are `manual` (`shared_domain` /
-`missing_website`) instead of being domain-matched by Apex. A file replaces the whole list (one domain per line, `#` comments). Mapping rows are
-explicit human decisions and are not gated.
+`missing_website`) instead of being domain-matched by Apex, and `audit` never groups them by domain in `possible_duplicates.csv`. A file
+replaces the whole list (one domain per line, `#` comments). Mapping rows are explicit human decisions and are not gated.
 
 ## 5. Tranche protocol (prod)
 
@@ -305,6 +309,7 @@ GitHub Actions `.github/workflows/org-import-sweep.yml`:
 | register | `account … does not exist in Salesforce (rewrite candidate)` | POST 404: the id is dead; group is now `pending`/`dead_account` → mapping |
 | register | `member-service is not configured` | SSM params missing for this stage |
 | wait | `org-service does not serve … yet` | new Salesforce account not propagated within `--wait-max`; re-run later (state replays the group) |
+| wait | `org-service serves target … as "…"` | org-service returns the account under another id than the mapping/decisions; nothing written; fix the input to the id org-service returns and re-run |
 | copy_grants | `granting … on …` | org-service create failed; nothing else was changed; re-run |
 | rewrite_rows | `… conflict, group stopped` | a row's external id was changed by someone else meanwhile; investigate that row before re-running |
 | rekey_events | `event …` | UpdateItem failed; re-run (already re-keyed events are skipped) |

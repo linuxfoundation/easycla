@@ -601,7 +601,9 @@ func (r *runner) resolveApex(ctx context.Context) {
 	}
 }
 
-// waitForOrgs polls org-service until every new id is served (one shared wait for the tranche).
+// waitForOrgs polls org-service until every new id is served (one shared wait for the tranche). A
+// target org-service serves under another id than the reviewed one fails before any cutover: the tool
+// never writes a second spelling of an Account id.
 func (r *runner) waitForOrgs(ctx context.Context) {
 	pending := map[string][]*Group{}
 	for _, g := range r.plan.Rewrite {
@@ -611,6 +613,15 @@ func (r *runner) waitForOrgs(ctx context.Context) {
 		if g.Err == nil {
 			pending[g.NewID] = append(pending[g.NewID], g)
 		}
+	}
+	fail := func(id string, err error) {
+		for _, g := range pending[id] {
+			g.Err = err
+			if recErr := r.record(g, StepWait, statusFailed, err); recErr != nil {
+				fmt.Fprintf(r.deps.Out, "WARNING: %v\n", recErr)
+			}
+		}
+		delete(pending, id)
 	}
 	waitMax, poll := r.opts.WaitMax, r.opts.WaitPoll
 	if waitMax <= 0 {
@@ -630,6 +641,10 @@ func (r *runner) waitForOrgs(ctx context.Context) {
 		for _, id := range ids {
 			org, err := r.deps.Orgs.GetOrganization(ctx, id)
 			if err == nil {
+				if org.ID != id {
+					fail(id, fmt.Errorf("org-service serves target %s as %q: the mapping/decisions must use the id org-service returns", id, org.ID))
+					continue
+				}
 				for _, g := range pending[id] {
 					if g.Org == nil {
 						g.Org = org
@@ -648,13 +663,13 @@ func (r *runner) waitForOrgs(ctx context.Context) {
 			break
 		}
 	}
-	for id, groups := range pending {
-		for _, g := range groups {
-			g.Err = fmt.Errorf("org-service does not serve %s yet: %v", id, lastErr[id])
-			if recErr := r.record(g, StepWait, statusFailed, g.Err); recErr != nil {
-				fmt.Fprintf(r.deps.Out, "WARNING: %v\n", recErr)
-			}
-		}
+	ids := make([]string, 0, len(pending))
+	for id := range pending {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for _, id := range ids {
+		fail(id, fmt.Errorf("org-service does not serve %s yet: %v", id, lastErr[id]))
 	}
 }
 

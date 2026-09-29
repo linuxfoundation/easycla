@@ -43,6 +43,7 @@ const (
 	rowlessPlatformHost = "platform.rowless.invalid"
 	rowlessAuthHost     = "auth.rowless.invalid"
 	rowlessSFID         = "0014100000Rowless1"
+	rowlessShortSFID    = "0014100000Rowle"
 	rowlessProjectSFID  = "a09P000000Rowless1"
 	rowlessCompanyID    = "6f1d2c3b-4a5e-4f60-8b7c-9d0e1f2a3b4c"
 	rowlessProjectID    = "1b2c3d4e-5f60-4718-9a0b-1c2d3e4f5a6b"
@@ -230,7 +231,48 @@ func TestResolveSigningCompany(t *testing.T) {
 			},
 			wantErr: notFoundByName,
 		},
+		{
+			name: "row stored under the id the organization returns wins over a transient company",
+			sfid: rowlessShortSFID,
+			expect: func(repo *mock_company.MockIRepository) {
+				repo.EXPECT().GetCompanyByExternalID(gomock.Any(), rowlessShortSFID).Return(nil, &utils.CompanyNotFound{CompanySFID: rowlessShortSFID})
+				repo.EXPECT().GetCompanyByExternalID(gomock.Any(), rowlessSFID).Return(persisted, nil)
+			},
+			want:         persisted,
+			wantOrgCalls: 1,
+		},
+		{
+			name: "transient company carries the id the organization returns",
+			sfid: rowlessShortSFID,
+			expect: func(repo *mock_company.MockIRepository) {
+				repo.EXPECT().GetCompanyByExternalID(gomock.Any(), rowlessShortSFID).Return(nil, &utils.CompanyNotFound{CompanySFID: rowlessShortSFID})
+				repo.EXPECT().GetCompanyByExternalID(gomock.Any(), rowlessSFID).Return(nil, notFoundBySFID)
+			},
+			want:         &v1Models.Company{CompanyExternalID: rowlessSFID, CompanyName: "Acme Corp", SigningEntityName: "Acme Corp"},
+			wantOrgCalls: 1,
+		},
+		{
+			name: "repository errors on the returned id propagate",
+			sfid: rowlessShortSFID,
+			expect: func(repo *mock_company.MockIRepository) {
+				repo.EXPECT().GetCompanyByExternalID(gomock.Any(), rowlessShortSFID).Return(nil, &utils.CompanyNotFound{CompanySFID: rowlessShortSFID})
+				repo.EXPECT().GetCompanyByExternalID(gomock.Any(), rowlessSFID).Return(nil, dynamoErr)
+			},
+			wantErr:      dynamoErr,
+			wantOrgCalls: 1,
+		},
+		{
+			name:              "named signing entity keeps the name lookup only and carries the returned id",
+			sfid:              rowlessShortSFID,
+			signingEntityName: "Acme Labs",
+			expect: func(repo *mock_company.MockIRepository) {
+				repo.EXPECT().GetCompanyBySigningEntityName(gomock.Any(), "Acme Labs").Return(nil, notFoundByName)
+			},
+			want:         &v1Models.Company{CompanyExternalID: rowlessSFID, CompanyName: "Acme Corp", SigningEntityName: "Acme Labs"},
+			wantOrgCalls: 1,
+		},
 	}
+	transport.orgs[rowlessShortSFID] = rowlessOrgJSON
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctrl := gomock.NewController(t)

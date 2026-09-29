@@ -650,7 +650,8 @@ func (s service) GetCompanyByExternalID(ctx context.Context, companySFID string)
 // ResolveCompany returns the persisted company for an internal ID or a Salesforce ID; when no row
 // exists it returns a non-persisted virtual company (CompanyID = CompanyExternalID = SFID) built
 // from the organization service. Only "not found" outcomes fall through (never for an internal
-// UUID, which cannot name an organization); other errors propagate.
+// UUID, which cannot name an organization); other errors propagate. A row stored under the ID the
+// organization service returns for the reference (its authoritative spelling) wins over a virtual company.
 func (s service) ResolveCompany(ctx context.Context, companyIDOrSFID string) (*models.Company, error) {
 	f := logrus.Fields{
 		"functionName":    "company.service.ResolveCompany",
@@ -687,6 +688,15 @@ func (s service) ResolveCompany(ctx context.Context, companyIDOrSFID string) (*m
 		}
 		log.WithFields(f).WithError(orgErr).Warn("problem loading organization")
 		return nil, orgErr
+	}
+	if org.ID != "" && org.ID != companyIDOrSFID {
+		comp, err = s.repo.GetCompanyByExternalID(ctx, org.ID)
+		if err == nil {
+			return comp, nil
+		}
+		if _, ok := err.(*utils.CompanyNotFound); !ok {
+			return nil, err
+		}
 	}
 	log.WithFields(f).Debugf("no company row - returning virtual company for organization %s", org.Name)
 	return VirtualCompany(org.ID, org.Name), nil

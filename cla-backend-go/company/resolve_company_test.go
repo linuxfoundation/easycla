@@ -28,6 +28,7 @@ const (
 	resolvePlatformHost = "platform.resolve.invalid"
 	resolveAuthHost     = "auth.resolve.invalid"
 	resolveSFID         = "0014100000Te0yqQAB"
+	resolveShortSFID    = "0014100000Te0yq"
 	resolveLegacyOrgID  = "lfbd1c2b3a4d5e6f7a8"
 	resolveCompanyID    = "9b8e7d66-40a5-4cde-9f00-3e1d1a2b3c4d"
 	resolveMissingID    = "2f1c6c1e-6a2d-4c3b-9d7e-8a5b4c3d2e1f"
@@ -94,6 +95,7 @@ func TestResolveCompanyOrder(t *testing.T) {
 	transport := setupResolveHTTP(t, map[string]string{
 		resolveSFID:        `{"ID":"` + resolveSFID + `","Name":"Acme Corp","SigningEntityName":["Acme Labs"]}`,
 		resolveLegacyOrgID: `{"ID":"` + resolveLegacyOrgID + `","Name":"Legacy Ltd"}`,
+		resolveShortSFID:   `{"ID":"` + resolveSFID + `","Name":"Acme Corp","SigningEntityName":["Acme Labs"]}`,
 	}, "")
 	orgCalls := func() int {
 		n := 0
@@ -195,6 +197,45 @@ func TestResolveCompanyOrder(t *testing.T) {
 		repo.EXPECT().GetCompanyByExternalID(gomock.Any(), resolveSFID).Return(nil, dynamoErr)
 
 		got, err := newResolveService(repo).ResolveCompany(context.Background(), resolveSFID)
+
+		require.ErrorIs(t, err, dynamoErr)
+		assert.Nil(t, got)
+	})
+	t.Run("row stored under the id the organization service returns wins over a virtual company", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		repo := mock_company.NewMockIRepository(ctrl)
+		repo.EXPECT().GetCompany(gomock.Any(), resolveShortSFID).Return(nil, &utils.CompanyNotFound{CompanyID: resolveShortSFID})
+		repo.EXPECT().GetCompanyByExternalID(gomock.Any(), resolveShortSFID).Return(nil, &utils.CompanyNotFound{CompanySFID: resolveShortSFID})
+		repo.EXPECT().GetCompanyByExternalID(gomock.Any(), resolveSFID).Return(persisted, nil)
+
+		got, err := newResolveService(repo).ResolveCompany(context.Background(), resolveShortSFID)
+
+		require.NoError(t, err)
+		assert.Same(t, persisted, got)
+	})
+	t.Run("virtual company carries the id the organization service returns", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		repo := mock_company.NewMockIRepository(ctrl)
+		repo.EXPECT().GetCompany(gomock.Any(), resolveShortSFID).Return(nil, &utils.CompanyNotFound{CompanyID: resolveShortSFID})
+		repo.EXPECT().GetCompanyByExternalID(gomock.Any(), resolveShortSFID).Return(nil, &utils.CompanyNotFound{CompanySFID: resolveShortSFID})
+		repo.EXPECT().GetCompanyByExternalID(gomock.Any(), resolveSFID).Return(nil, notFoundBySFID)
+
+		got, err := newResolveService(repo).ResolveCompany(context.Background(), resolveShortSFID)
+
+		require.NoError(t, err)
+		assert.Equal(t, company.VirtualCompany(resolveSFID, "Acme Corp"), got)
+	})
+	t.Run("repository errors on the returned id propagate", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		repo := mock_company.NewMockIRepository(ctrl)
+		repo.EXPECT().GetCompany(gomock.Any(), resolveShortSFID).Return(nil, &utils.CompanyNotFound{CompanyID: resolveShortSFID})
+		repo.EXPECT().GetCompanyByExternalID(gomock.Any(), resolveShortSFID).Return(nil, &utils.CompanyNotFound{CompanySFID: resolveShortSFID})
+		repo.EXPECT().GetCompanyByExternalID(gomock.Any(), resolveSFID).Return(nil, dynamoErr)
+
+		got, err := newResolveService(repo).ResolveCompany(context.Background(), resolveShortSFID)
 
 		require.ErrorIs(t, err, dynamoErr)
 		assert.Nil(t, got)

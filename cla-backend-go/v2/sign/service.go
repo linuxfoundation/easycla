@@ -494,7 +494,9 @@ type SigningCompanyReader interface {
 // ResolveSigningCompany returns the company a corporate signature request refers to: the persisted row
 // (by SFID, or by signing entity name) when one exists, otherwise a transient model with an empty
 // CompanyID built from the platform organization. Nothing is persisted here. A requested signing entity
-// name must be the organization name or one of its signing entity names.
+// name must be the organization name or one of its signing entity names. The transient model carries
+// the organization ID the platform returns (as the former create path persisted it), and a parent row
+// stored under that ID wins over a transient model.
 func ResolveSigningCompany(ctx context.Context, companyRepo SigningCompanyReader, companySFID, signingEntityName string) (*v1Models.Company, error) {
 	f := logrus.Fields{
 		"functionName":      "sign.ResolveSigningCompany",
@@ -529,6 +531,19 @@ func ResolveSigningCompany(ctx context.Context, companyRepo SigningCompanyReader
 		log.WithFields(f).WithError(orgErr).Warn("problem loading the organization")
 		return nil, orgErr
 	}
+	orgID := strings.TrimSpace(org.ID)
+	if orgID == "" {
+		orgID = companySFID
+	}
+	if signingEntityName == "" && orgID != companySFID {
+		stored, storedErr := companyRepo.GetCompanyByExternalID(ctx, orgID)
+		if storedErr == nil {
+			return stored, nil
+		}
+		if _, notFound := storedErr.(*utils.CompanyNotFound); !notFound {
+			return nil, storedErr
+		}
+	}
 	entityName := strings.TrimSpace(org.Name)
 	if signingEntityName != "" {
 		entityName = ""
@@ -545,7 +560,7 @@ func ResolveSigningCompany(ctx context.Context, companyRepo SigningCompanyReader
 	}
 	log.WithFields(f).Debugf("no company row yet - using a transient company for organization %s", org.Name)
 	return &v1Models.Company{
-		CompanyExternalID: companySFID,
+		CompanyExternalID: orgID,
 		CompanyName:       strings.TrimSpace(org.Name),
 		SigningEntityName: entityName,
 	}, nil

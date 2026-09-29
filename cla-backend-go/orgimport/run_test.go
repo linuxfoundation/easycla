@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1102,6 +1103,80 @@ func TestRewriteWaitsForOrgService(t *testing.T) {
 	}
 }
 
+func assertNoCutover(t *testing.T, fx *fixture) {
+	t.Helper()
+	assert.Empty(t, fx.companies.updates, "no row rewritten")
+	assert.Empty(t, fx.events.rekeyed, "no event re-keyed")
+	assert.Empty(t, fx.platform.registered, "nothing registered in B2B")
+	for _, c := range fx.platform.calls {
+		assert.False(t, strings.HasPrefix(c, "create-grant") || strings.HasPrefix(c, "delete-grant"), "no grant touched: %s", c)
+	}
+}
+
+func TestRewriteFailsWhenOrgServiceServesAnotherID(t *testing.T) {
+	fx, mapping, statePath := rewriteFixture(t)
+	fx.platform.orgs[targetSFID] = &Org{ID: strings.ToLower(targetSFID), Name: "Legacy Ltd"}
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}}
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	require.Len(t, plan.Rewrite, 1)
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+	assert.Error(t, err)
+	assert.Equal(t, 1, sum.Failed)
+	assert.Zero(t, sum.Rewritten)
+	assert.ErrorContains(t, plan.Rewrite[0].Err, "serves target "+targetSFID+" as "+strconv.Quote(strings.ToLower(targetSFID)))
+	assertNoCutover(t, fx)
+	assert.Equal(t, lfID, fx.companies.rows["c-parent"].CompanyExternalID)
+	assert.Equal(t, lfID, fx.companies.rows["c-sub"].CompanyExternalID)
+	assert.Empty(t, fx.sleeps, "a served-under-another-id target is not retried")
+
+	st, err := LoadState(statePath)
+	require.NoError(t, err)
+	rec, ok := st.Last[lfID]
+	require.True(t, ok)
+	assert.Equal(t, StepWait, rec.Step)
+	assert.Equal(t, statusFailed, rec.Status)
+	assert.Equal(t, targetSFID, rec.NewID, "the journal keeps the reviewed id, never the other spelling")
+	assert.Contains(t, rec.Err, "serves target")
+	assert.False(t, st.Done(lfID))
+
+	// the second run replays the journaled group and fails the same way: nothing is cut over
+	plan, err = BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	require.Len(t, plan.Rewrite, 1)
+	assert.True(t, plan.Rewrite[0].Replayed)
+	assert.Equal(t, targetSFID, plan.Rewrite[0].NewID)
+	sum, err = Execute(context.Background(), fx.deps(), opts, plan)
+	assert.Error(t, err)
+	assert.Equal(t, 1, sum.Failed)
+	assertNoCutover(t, fx)
+}
+
+func TestReplayFailsWhenOrgServiceServesAnotherID(t *testing.T) {
+	fx, mapping, statePath := rewriteFixture(t)
+	// a run died after the resolve step; before resuming, org-service serves the target under another spelling
+	st, err := LoadState(statePath)
+	require.NoError(t, err)
+	require.NoError(t, st.Append(StateRecord{OldID: lfID, NewID: targetSFID, CompanyIDs: []string{"c-parent", "c-sub"}, Step: StepResolve, Status: statusOK}, time.Now()))
+	fx.platform.orgs[targetSFID] = &Org{ID: strings.ToLower(targetSFID), Name: "Legacy Ltd"}
+
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}}
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	require.Len(t, plan.Rewrite, 1)
+	require.True(t, plan.Rewrite[0].Replayed)
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+	assert.Error(t, err)
+	assert.Equal(t, 1, sum.Failed)
+	assert.ErrorContains(t, plan.Rewrite[0].Err, "serves target")
+	assertNoCutover(t, fx)
+	st, err = LoadState(statePath)
+	require.NoError(t, err)
+	assert.Equal(t, StepWait, st.Last[lfID].Step)
+	assert.Equal(t, statusFailed, st.Last[lfID].Status)
+	assert.Equal(t, targetSFID, st.Last[lfID].NewID)
+}
+
 func TestApexResolution(t *testing.T) {
 	var requests []ApexRequest
 	results := map[bool]ApexResult{true: {ID: targetSFID, Action: ActionCreated}, false: {ID: targetSFID, Action: ActionCreated}}
@@ -1317,6 +1392,129 @@ func TestAudit(t *testing.T) {
 type eclaCounterFunc func(context.Context, string) (int, error)
 
 func (f eclaCounterFunc) CountECLAs(ctx context.Context, id string) (int, error) { return f(ctx, id) }
+
+// dupSets reads possible_duplicates.csv into ordered sets of company ids plus the row cells by company id.
+func dupSets(t *testing.T, dir string) ([][]string, map[string][]string) {
+	t.Helper()
+	rows := readCSV(t, filepath.Join(dir, "possible_duplicates.csv"))
+	require.Equal(t, []string{"group", "company_id", "company_name", "signing_entity_name", "company_external_id", "id_shape", "domain", "active_ccla", "ccla_count", "ecla_count"}, rows[0])
+	var sets [][]string
+	cells := map[string][]string{}
+	last := ""
+	for _, r := range rows[1:] {
+		if r[0] != last {
+			sets, last = append(sets, nil), r[0]
+		}
+		sets[len(sets)-1] = append(sets[len(sets)-1], r[1])
+		cells[r[1]] = r
+	}
+	for _, set := range sets {
+		sort.Strings(set)
+	}
+	return sets, cells
+}
+
+func TestAuditDuplicateCandidates(t *testing.T) {
+	const (
+		ibmA     = "0014100000IbmAAAAA"
+		ibmB     = "0014100000IbmBBBBB"
+		huaweiSF = "0014100000HuaweiAA"
+		huaweiLF = "lfHuaweiLegacy0001"
+		ghA      = "0014100000GithubAA"
+		ghB      = "0014100000GithubBB"
+		twinA    = "0014100000TwinAAAA"
+		twinB    = "0014100000TwinBBBB"
+		soloSF   = "0014100000SoloAAAA"
+	)
+	setup := func() *fixture {
+		fx := newFixture()
+		fx.company("c-ibm-a", "IBM", "", ibmA, "cg-1")
+		fx.company("c-ibm-b", "IBM Corporation", "", ibmB) // inactive, still a candidate
+		fx.company("c-huawei-sf", "Huawei Technologies", "", huaweiSF, "cg-1")
+		fx.company("c-huawei-lf", "Huawei", "", huaweiLF, "cg-1")
+		fx.company("c-gh-a", "Alpha", "", ghA, "cg-1")
+		fx.company("c-gh-b", "Beta", "", ghB, "cg-1")
+		fx.company("c-twin-a", "Twin", "", twinA, "cg-1")
+		fx.company("c-twin-b", "Twin", "", twinB, "cg-1")
+		fx.company("c-solo", "Solo", "", soloSF, "cg-1")
+		fx.company("c-solo-sub", "Solo", "Solo Europe", soloSF, "cg-1") // same id: signing entities, not duplicates
+		fx.company("c-nosite-a", "Nosite", "", "", "cg-1")
+		fx.platform.orgs[ibmA] = &Org{ID: ibmA, Name: "IBM", Website: "https://www.ibm.com/us"}
+		fx.platform.orgs[ibmB] = &Org{ID: ibmB, Name: "IBM Corporation", Website: "ibm.com"}
+		fx.platform.orgs[huaweiSF] = &Org{ID: huaweiSF, Name: "Huawei Technologies", Website: "https://huawei.com"}
+		fx.platform.orgs[huaweiLF] = &Org{ID: huaweiLF, Name: "Huawei", Website: "http://www.huawei.com/"}
+		fx.platform.orgs[ghA] = &Org{ID: ghA, Name: "Alpha", Website: "https://github.com/alpha"}
+		fx.platform.orgs[ghB] = &Org{ID: ghB, Name: "Beta", Website: "github.com"}
+		fx.platform.orgs[twinA] = &Org{ID: twinA, Name: "Twin", Website: "https://twin.example"}
+		fx.platform.orgs[twinB] = &Org{ID: twinB, Name: "Twin", Website: "https://twin.example"}
+		fx.platform.orgs[soloSF] = &Org{ID: soloSF, Name: "Solo", Website: "https://solo.example"}
+		for _, id := range []string{ibmA, ibmB, huaweiSF, ghA, ghB, twinA, twinB, soloSF} {
+			fx.platform.sfAccounts[id] = true
+		}
+		return fx
+	}
+
+	t.Run("domain and name candidates with default shared domains", func(t *testing.T) {
+		fx := setup()
+		counts := map[string]int{"c-ibm-a": 12, "c-ibm-b": 3, "c-huawei-lf": 290, "c-twin-a": 1}
+		deps := fx.deps()
+		deps.ECLAs = eclaCounterFunc(func(_ context.Context, id string) (int, error) {
+			if id == "c-huawei-sf" {
+				return 0, errors.New("dynamodb unavailable")
+			}
+			return counts[id], nil
+		})
+		dir := t.TempDir()
+		res, err := Audit(context.Background(), deps, Options{Stage: "dev", OutDir: dir})
+		require.NoError(t, err)
+
+		sets, cells := dupSets(t, dir)
+		assert.Len(t, res.Duplicates, 3)
+		assert.ElementsMatch(t, [][]string{{"c-twin-a", "c-twin-b"}, {"c-huawei-lf", "c-huawei-sf"}, {"c-ibm-a", "c-ibm-b"}}, sets,
+			"same name and same domain reach one set once; github.com never groups; one id with signing entities is not a duplicate; no website means no domain group")
+		assert.Equal(t, []string{"c-ibm-b", "IBM Corporation", "", ibmB, "001", "ibm.com", "false", "0", "3"}, cells["c-ibm-b"][1:], "inactive rows in the report get an ECLA count too")
+		assert.Equal(t, []string{"lf", "huawei.com"}, cells["c-huawei-lf"][5:7])
+		assert.Equal(t, "290", cells["c-huawei-lf"][9])
+		assert.Equal(t, "-1", cells["c-huawei-sf"][9], "a failed count is visible")
+		assert.Equal(t, "12", cells["c-ibm-a"][9])
+		assert.Equal(t, "0", cells["c-twin-b"][9], "a measured zero")
+		assert.Equal(t, "1", cells["c-twin-a"][9])
+		for _, id := range []string{"c-gh-a", "c-gh-b", "c-solo", "c-solo-sub", "c-nosite-a"} {
+			assert.NotContains(t, cells, id)
+		}
+		assert.Contains(t, fx.out.String(), "duplicates=3")
+	})
+
+	t.Run("a configured shared-domain list replaces the default one", func(t *testing.T) {
+		fx := setup()
+		dir := t.TempDir()
+		sharedPath := filepath.Join(dir, "shared.txt")
+		require.NoError(t, os.WriteFile(sharedPath, []byte("# review list\nibm.com\n"), 0o600))
+		res, err := Audit(context.Background(), fx.deps(), Options{Stage: "dev", OutDir: dir, SharedDomains: sharedPath})
+		require.NoError(t, err)
+		sets, cells := dupSets(t, dir)
+		assert.Len(t, res.Duplicates, 3)
+		assert.ElementsMatch(t, [][]string{{"c-twin-a", "c-twin-b"}, {"c-huawei-lf", "c-huawei-sf"}, {"c-gh-a", "c-gh-b"}}, sets,
+			"github.com groups once it is not shared; ibm.com no longer does")
+		assert.Equal(t, "", cells["c-gh-a"][9], "no ECLA counter configured: the count is not measured")
+
+		_, err = Audit(context.Background(), fx.deps(), Options{Stage: "dev", OutDir: dir, SharedDomains: filepath.Join(dir, "missing.txt")})
+		assert.Error(t, err)
+	})
+
+	t.Run("overlapping name and domain sets are both reported", func(t *testing.T) {
+		fx := setup()
+		fx.company("c-twin-c", "Twin", "", "0014100000TwinCCCC", "cg-1")
+		fx.platform.orgs["0014100000TwinCCCC"] = &Org{ID: "0014100000TwinCCCC", Name: "Twin", Website: "https://other.example"}
+		dir := t.TempDir()
+		res, err := Audit(context.Background(), fx.deps(), Options{Stage: "dev", OutDir: dir})
+		require.NoError(t, err)
+		sets, _ := dupSets(t, dir)
+		assert.Len(t, res.Duplicates, 4)
+		assert.Contains(t, sets, []string{"c-twin-a", "c-twin-b", "c-twin-c"}, "by name")
+		assert.Contains(t, sets, []string{"c-twin-a", "c-twin-b"}, "by domain")
+	})
+}
 
 func jsonDecode(r *http.Request, v interface{}) error {
 	return json.NewDecoder(r.Body).Decode(v)
