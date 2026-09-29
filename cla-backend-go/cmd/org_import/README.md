@@ -99,8 +99,10 @@ Env: `STAGE` (required), `AWS_REGION` (default `us-east-1`), `LOG_LEVEL` (defaul
 expected org-service "not found" warnings printed for every dead/unknown id).
 
 Every run writes `<out-dir>/run.log` (everything printed, truncated per run) plus copies of the inputs it used
-(`input-mapping.csv`, `input-decisions.csv`, `input-shared_domains.txt`, `input-state.jsonl` = the journal before the run) and ends with the
-report step (§8); report failures are logged and never change the exit code.
+(`input-mapping.csv`, `input-decisions.csv`, `input-shared_domains.txt`, `input-state.jsonl` = the journal before the run; a `--state` outside
+the out-dir is copied in after the run as `state.jsonl`) and ends with the report step (§8); report failures are logged and never change the exit
+code. The apply commands in the report reference those copies as `"${RECORD:-<out-dir>}/input-*.csv"` and `"${RECORD:-<out-dir>}/state.jsonl"`:
+run them where the dry run ran, or extract the e-mailed zip / Actions artifact elsewhere and `export RECORD=<that directory>` first.
 
 ### 3.1 `audit` (reads only)
 
@@ -320,7 +322,8 @@ After every `audit`/`ingest` run (dry-run or apply, success or failure) the tool
    Actions run/artifact links, CloudWatch stream), the **Manual actions** table with suggested actions, the **Targets** table, the full plan (≤2000
    rows inline) or audit tier counts, the ready-to-paste local and `gh workflow run` apply commands for a dry run, and the run.log tail; attachments =
    every CSV of the out-dir, run.log and a zip of the out-dir (≤6 MiB). To stay under SES's 10 MiB the largest text attachment is gzip-compressed
-   (`run.log.gz`, full content) or, when not text, dropped — the zip last; every such change is announced at the top of the e-mail
+   (`run.log.gz`, full content) or, when not text, dropped — the zip last; every such change, an input or journal copy that failed, and a zip
+   that could not be built or is over 6 MiB (it is the only carrier of the `input-*` copies and the journal) is announced at the top of the e-mail
    ("Delivery incomplete …") and in run.log; the complete record is always the out-dir / Actions artifact / CloudWatch stream.
    `audit` also prints one `audit row company_id=… route=… tier=…` line per company row into run.log.
 

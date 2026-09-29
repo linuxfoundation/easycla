@@ -54,7 +54,20 @@ type RunInfo struct {
 	Summary    string
 	Err        string
 	Workflow   WorkflowInputs
+	// Notices are record-capture problems from the CLI (input snapshot or journal copy failures);
+	// they reach the recipient through the delivery notice.
+	Notices []string
 }
+
+// Record file names inside OutDir that the apply commands reference: the captured operator files and
+// the final journal, so a command from the e-mail or the Actions artifact applies the reviewed selection.
+const (
+	RecordMapping       = "input-mapping.csv"
+	RecordDecisions     = "input-decisions.csv"
+	RecordSharedDomains = "input-shared_domains.txt"
+	RecordStateBefore   = "input-state.jsonl"
+	RecordState         = "state.jsonl"
+)
 
 // WorkflowInputs mirrors the org-import-sweep.yml dispatch inputs for the "how to apply" command.
 type WorkflowInputs struct {
@@ -85,11 +98,14 @@ type Attachment struct {
 }
 
 // Report is the complete decision record of a run: subject, HTML and text bodies, attachments.
+// Notices are record problems (capture failures, attachments left out) that Deliverable puts at the
+// top of both bodies; a report with notices is never delivered as an apparently complete record.
 type Report struct {
 	Subject     string
 	HTML        string
 	Text        string
 	Attachments []Attachment
+	Notices     []string
 }
 
 // BuildReport renders the run as a self-contained decision record. plan or audit may be nil.
@@ -152,7 +168,8 @@ func BuildReport(info RunInfo, plan *Plan, audit *AuditResult, runLog []byte) Re
 	fmt.Fprintf(&h, "<h3>run.log%s</h3><pre style=\"font-size:11px;white-space:pre-wrap\">%s</pre>", tailNote(runLog, tail), esc(string(tail)))
 	fmt.Fprintf(&t, "== run.log%s ==\n%s\n", tailNote(runLog, tail), string(tail))
 
-	r.Attachments = attachments(info.OutDir, runLog)
+	r.Attachments, r.Notices = attachments(info.OutDir, runLog)
+	r.Notices = append(append([]string(nil), info.Notices...), r.Notices...)
 	if len(r.Attachments) > 0 {
 		h.WriteString("<h3>Attachments</h3><ul>")
 		t.WriteString("\n== Attachments ==\n")
@@ -221,8 +238,8 @@ func writePlanSections(h, t *strings.Builder, info RunInfo, plan *Plan) {
 	writeTable(h, t, []string{"key", "shape", "route", "reason", "live", "org-service", "website", "domain", "shared", "new id", "action", "decision", "company ids", "company names", "error"}, rows)
 
 	if !info.Apply {
-		h.WriteString("<h3>How to apply this plan</h3><p>After reviewing the record above, re-run the same command in apply mode. Locally:</p>")
-		t.WriteString("\n== How to apply this plan ==\nLocally:\n")
+		h.WriteString("<h3>How to apply this plan</h3><p>After reviewing the record above, re-run the same command in apply mode against this record: the operator files are the captured <code>input-*</code> copies and the journal is <code>state.jsonl</code>. <code>RECORD</code> defaults to the output directory of this run; when applying elsewhere, extract the attached zip (or the Actions artifact) and <code>export RECORD=</code> that directory first. Locally:</p>")
+		t.WriteString("\n== How to apply this plan ==\nRe-run against this record (captured input-* copies and state.jsonl). RECORD defaults to this run's output directory; elsewhere, extract the attached zip / Actions artifact and export RECORD=<that directory> first. Locally:\n")
 		for _, c := range ApplyCommands(info) {
 			fmt.Fprintf(h, "<pre style=\"background:#f4f4f4;padding:6px;white-space:pre-wrap\">%s</pre>", esc(c))
 			fmt.Fprintf(t, "  %s\n", c)
@@ -264,15 +281,36 @@ func writeAuditSections(h, t *strings.Builder, audit *AuditResult) {
 	h.WriteString("<p>audit.csv, unresolvable.csv and possible_duplicates.csv are attached (zip).</p>")
 }
 
-// ApplyCommands returns the exact local and GitHub Actions commands that re-run this plan in apply mode.
+// ApplyCommands returns the exact local and GitHub Actions commands that re-run this plan in apply
+// mode from the record: operator file arguments point at the captured input-* copies, the journal at
+// state.jsonl, both under RECORD (default: this run's output directory); every other option is kept.
 func ApplyCommands(info RunInfo) []string {
 	var args []string
-	for _, a := range info.Args {
+	hasState := false
+	for i := 0; i < len(info.Args); i++ {
+		a := info.Args[i]
 		switch a {
 		case "--apply", "-apply", "--yes", "-yes", "--no-email", "-no-email", "--no-aws-log", "-no-aws-log":
 			continue
 		}
+		name, inline := strings.TrimLeft(a, "-"), false
+		if eq := strings.Index(name, "="); eq >= 0 && strings.HasPrefix(a, "-") {
+			name, inline = name[:eq], true
+		}
+		if file := recordFiles[name]; file != "" && strings.HasPrefix(a, "-") {
+			if !inline {
+				i++
+			}
+			if name == "state" {
+				hasState = true
+			}
+			args = append(args, "--"+name, recordPath(info.OutDir, file))
+			continue
+		}
 		args = append(args, shellQuote(a))
+	}
+	if !hasState {
+		args = append(args, "--state", recordPath(info.OutDir, RecordState))
 	}
 	local := fmt.Sprintf("STAGE=%s ./bin/org-import %s --apply --yes", info.Stage, strings.Join(args, " "))
 	repo := info.Repository
@@ -290,12 +328,21 @@ func ApplyCommands(info RunInfo) []string {
 	if w.IDs != "" {
 		gh += " -f ids=" + shellQuote(w.IDs)
 	}
-	for _, f := range [][2]string{{"mapping", w.Mapping}, {"decisions", w.Decisions}, {"shared_domains", w.SharedDomains}} {
+	for _, f := range [][3]string{{"mapping", w.Mapping, RecordMapping}, {"decisions", w.Decisions, RecordDecisions}, {"shared_domains", w.SharedDomains, RecordSharedDomains}} {
 		if f[1] != "" {
-			gh += fmt.Sprintf(" -f %s=\"$(tr '\\n' '|' < %s)\"", f[0], shellQuote(f[1]))
+			gh += fmt.Sprintf(" -f %s=\"$(tr '\\n' '|' < %s)\"", f[0], recordPath(info.OutDir, f[2]))
 		}
 	}
 	return []string{local, gh}
+}
+
+// recordFiles maps the operator-file flags to their captured copies in the record.
+var recordFiles = map[string]string{"mapping": RecordMapping, "decisions": RecordDecisions, "shared-domains": RecordSharedDomains, "state": RecordState}
+
+// recordPath is the shell expression for a record file: "${RECORD:-<outDir>}/<name>".
+func recordPath(outDir, name string) string {
+	def := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "$", `\$`, "`", "\\`", "}", `\}`).Replace(outDir)
+	return `"${RECORD:-` + def + `}/` + name + `"`
 }
 
 func shellQuote(s string) string {
@@ -356,8 +403,9 @@ func tailNote(runLog, tail []byte) string {
 }
 
 // attachments returns manual_actions.csv and plan.csv (or audit.csv) inline, the run log, and a zip
-// of the whole output directory when it fits.
-func attachments(outDir string, runLog []byte) []Attachment {
+// of the whole output directory when it fits; a zip that cannot be built or attached is reported as a
+// notice because the captured inputs and the journal travel only inside it.
+func attachments(outDir string, runLog []byte) ([]Attachment, []string) {
 	var out []Attachment
 	for _, name := range []string{"manual_actions.csv", "plan.csv", "targets.csv", "to_salesforce.csv", "audit.csv", "unresolvable.csv", "possible_duplicates.csv"} {
 		data, err := os.ReadFile(filepath.Clean(filepath.Join(outDir, name)))
@@ -368,10 +416,17 @@ func attachments(outDir string, runLog []byte) []Attachment {
 	if len(runLog) > 0 {
 		out = append(out, Attachment{Name: "run.log", ContentType: "text/plain", Data: runLog})
 	}
-	if zipped, err := ZipDir(outDir); err == nil && len(zipped) > 0 && len(zipped) <= maxZipAttachment {
-		out = append(out, Attachment{Name: filepath.Base(outDir) + ".zip", ContentType: contentTypeZip, Data: zipped})
+	zipName := filepath.Base(outDir) + ".zip"
+	zipped, err := ZipDir(outDir)
+	switch {
+	case err != nil:
+		return out, []string{fmt.Sprintf("%s (output directory with the captured input-* files and the journal) could not be built: %v", zipName, err)}
+	case len(zipped) > maxZipAttachment:
+		return out, []string{fmt.Sprintf("%s (%d bytes, output directory with the captured input-* files and the journal) not attached: over the %d-byte attachment limit", zipName, len(zipped), maxZipAttachment)}
+	case len(zipped) > 0:
+		out = append(out, Attachment{Name: zipName, ContentType: contentTypeZip, Data: zipped})
 	}
-	return out
+	return out, nil
 }
 
 // ZipDir zips the regular files directly under dir (reports, state, run.log).
@@ -413,16 +468,17 @@ func (r Report) MIME(from string, to []string) ([]byte, error) {
 
 // Deliverable renders the message so that it fits MaxRawEmailBytes. While it is too large, the
 // largest non-zip attachment is gzip-compressed when it is text (name.gz keeps the full content) and
-// dropped otherwise; the zip of the output directory goes last. Every change is announced at the top
-// of both bodies and returned as notice ("" when nothing changed); a message that does not fit even
-// without attachments is an error, never a silently truncated record.
+// dropped otherwise; the zip of the output directory goes last. Every change, and every record notice
+// collected while building the report, is announced at the top of both bodies and returned as notice
+// ("" when the record is complete); a message that does not fit even without attachments is an error,
+// never a silently truncated record.
 func (r Report) Deliverable(from string, to []string) (raw []byte, notice string, err error) {
 	atts := append([]Attachment(nil), r.Attachments...)
-	var changes []string
+	changes := append([]string(nil), r.Notices...)
 	for {
 		rep := r
 		if len(changes) > 0 {
-			notice = "Delivery incomplete (SES size limit): " + strings.Join(changes, "; ") + ". The complete record is in the output directory / Actions artifact and run.log in CloudWatch Logs (see the header table)."
+			notice = "Delivery incomplete: " + strings.Join(changes, "; ") + ". The complete record is in the output directory / Actions artifact and run.log in CloudWatch Logs (see the header table)."
 			rep.Text = notice + "\n\n" + r.Text
 			rep.HTML = injectNotice(r.HTML, notice)
 		}
@@ -440,11 +496,11 @@ func (r Report) Deliverable(from string, to []string) (raw []byte, notice string
 		a := atts[i]
 		if gz := gzipAttachment(a); gz != nil {
 			atts[i] = *gz
-			changes = append(changes, fmt.Sprintf("%s (%d bytes) compressed to %s (%d bytes)", a.Name, len(a.Data), gz.Name, len(gz.Data)))
+			changes = append(changes, fmt.Sprintf("%s (%d bytes) compressed to %s (%d bytes) for the SES size limit", a.Name, len(a.Data), gz.Name, len(gz.Data)))
 			continue
 		}
 		atts = append(atts[:i], atts[i+1:]...)
-		changes = append(changes, fmt.Sprintf("%s (%d bytes) dropped", a.Name, len(a.Data)))
+		changes = append(changes, fmt.Sprintf("%s (%d bytes) dropped for the SES size limit", a.Name, len(a.Data)))
 	}
 }
 

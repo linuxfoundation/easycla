@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -16,6 +17,7 @@ import (
 	"mime/multipart"
 	"net/mail"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -128,15 +130,104 @@ func TestBuildReportEscapesAndTruncates(t *testing.T) {
 }
 
 func TestApplyCommands(t *testing.T) {
-	cmds := ApplyCommands(RunInfo{Stage: "prod", Args: []string{"ingest", "--apply", "--yes", "--ids", "a,b", "--mapping", "my map.csv", "--no-email"},
-		Workflow: WorkflowInputs{Routes: "register,rewrite", Tranche: "10", IDs: "a,b", Mapping: "my map.csv", Decisions: "d.csv", SharedDomains: "s.txt"}})
+	cmds := ApplyCommands(RunInfo{Stage: "prod", OutDir: "/runs/out 1", Args: []string{"ingest", "--apply", "--yes", "--ids", "a,b", "--mapping", "/home/op/my map.csv", "--no-email"},
+		Workflow: WorkflowInputs{Routes: "register,rewrite", Tranche: "10", IDs: "a,b", Mapping: "/home/op/my map.csv", Decisions: "d.csv", SharedDomains: "s.txt"}})
 	require.Len(t, cmds, 2)
-	assert.Equal(t, "STAGE=prod ./bin/org-import ingest --ids a,b --mapping 'my map.csv' --apply --yes", cmds[0])
-	assert.Equal(t, `gh workflow run org-import-sweep.yml -R linuxfoundation/easycla -f stage=prod -f mode=apply -f routes=register,rewrite -f tranche=10 -f ids=a,b -f mapping="$(tr '\n' '|' < 'my map.csv')" -f decisions="$(tr '\n' '|' < d.csv)" -f shared_domains="$(tr '\n' '|' < s.txt)"`, cmds[1])
+	assert.Equal(t, `STAGE=prod ./bin/org-import ingest --ids a,b --mapping "${RECORD:-/runs/out 1}/input-mapping.csv" --state "${RECORD:-/runs/out 1}/state.jsonl" --apply --yes`, cmds[0])
+	assert.Equal(t, `gh workflow run org-import-sweep.yml -R linuxfoundation/easycla -f stage=prod -f mode=apply -f routes=register,rewrite -f tranche=10 -f ids=a,b -f mapping="$(tr '\n' '|' < "${RECORD:-/runs/out 1}/input-mapping.csv")" -f decisions="$(tr '\n' '|' < "${RECORD:-/runs/out 1}/input-decisions.csv")" -f shared_domains="$(tr '\n' '|' < "${RECORD:-/runs/out 1}/input-shared_domains.txt")"`, cmds[1])
 	assert.Equal(t, "''", shellQuote(""))
 	assert.Equal(t, `'it'\''s'`, shellQuote("it's"))
 	assert.Equal(t, []string{"a@x.org", "b@y.org", "c@z.org"}, ParseRecipients(" a@x.org, b@y.org;c@z.org\n"))
 	assert.Empty(t, ParseRecipients(" , "))
+}
+
+func TestApplyCommandsUseTheRecord(t *testing.T) {
+	out := t.TempDir()
+	info := RunInfo{
+		Stage: "dev", Command: "ingest", OutDir: out, Repository: "org/repo",
+		Args: []string{"ingest", "--routes", "rewrite", "--tranche", "5", "--mapping=/original-machine/private/mapping.csv", "-decisions", "/original-machine/private/d.csv",
+			"--shared-domains", "/original-machine/private/s.txt", "--state", "/original-machine/private/journal.jsonl", "--out-dir", out, "--skip-wait", "--no-aws-log", "--email-to", "a@example.org"},
+		Workflow: WorkflowInputs{Routes: "rewrite", Tranche: "5", Mapping: "/original-machine/private/mapping.csv", Decisions: "/original-machine/private/d.csv", SharedDomains: "/original-machine/private/s.txt"},
+	}
+	cmds := ApplyCommands(info)
+	require.Len(t, cmds, 2)
+	for _, c := range cmds {
+		assert.NotContains(t, c, "/original-machine/private", "the record, not the original filesystem, is referenced")
+		assert.Contains(t, c, `"${RECORD:-`+out+`}/`+RecordMapping+`"`)
+	}
+	assert.Equal(t, "STAGE=dev ./bin/org-import ingest --routes rewrite --tranche 5"+
+		` --mapping "${RECORD:-`+out+`}/input-mapping.csv" --decisions "${RECORD:-`+out+`}/input-decisions.csv"`+
+		` --shared-domains "${RECORD:-`+out+`}/input-shared_domains.txt" --state "${RECORD:-`+out+`}/state.jsonl"`+
+		" --out-dir "+out+" --skip-wait --email-to a@example.org --apply --yes", cmds[0], "every other option is preserved in order")
+	assert.Equal(t, 1, strings.Count(cmds[0], "--state "), "an existing journal argument is rewritten, not duplicated")
+	assert.Contains(t, cmds[1], "-R org/repo -f stage=dev -f mode=apply -f routes=rewrite -f tranche=5 -f mapping=")
+	assert.NotContains(t, cmds[1], "state", "the workflow restores its own journal artifact")
+
+	// without --state the apply command still carries a persistent journal (rewrite apply requires one)
+	cmds = ApplyCommands(RunInfo{Stage: "dev", OutDir: "/r", Args: []string{"ingest", "--routes", "register"}})
+	assert.Equal(t, `STAGE=dev ./bin/org-import ingest --routes register --state "${RECORD:-/r}/state.jsonl" --apply --yes`, cmds[0])
+
+	// the RECORD default is safe inside double quotes
+	assert.Equal(t, `"${RECORD:-/a b/\$x/\}y\"\\z\`+"`"+`}/state.jsonl"`, recordPath(`/a b/$x/}y"\z`+"`", RecordState))
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no sh")
+	}
+	got, err := exec.Command(shell, "-c", "unset RECORD; printf %s "+recordPath(`/a b/$x/}y`, RecordState)).Output() //nolint:gosec // test: fixed shell, constant script
+	require.NoError(t, err)
+	assert.Equal(t, `/a b/$x/}y/state.jsonl`, string(got))
+	got, err = exec.Command(shell, "-c", "RECORD=/extracted; printf %s "+recordPath(`/a b`, RecordMapping)).Output() //nolint:gosec // test: fixed shell, constant script
+	require.NoError(t, err)
+	assert.Equal(t, "/extracted/input-mapping.csv", string(got))
+}
+
+func TestReportRecordCaptureFailuresAreNoticed(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root ignores file modes")
+	}
+	// an unreadable record file makes the zip (the only carrier of input-* and the journal) unbuildable
+	out := t.TempDir()
+	unreadable := filepath.Join(out, RecordStateBefore)
+	require.NoError(t, os.WriteFile(unreadable, []byte("{\"step\":\"start\"}\n"), 0o000))
+	require.NoError(t, os.WriteFile(filepath.Join(out, "plan.csv"), []byte("key\n"), 0o600))
+	rep := BuildReport(RunInfo{Stage: "dev", Command: "ingest", OutDir: out, Notices: []string{"input input-mapping.csv: cannot read /x/m.csv: permission denied"}}, nil, nil, []byte("run complete\n"))
+	require.Len(t, rep.Notices, 2)
+	assert.Equal(t, "input input-mapping.csv: cannot read /x/m.csv: permission denied", rep.Notices[0], "CLI capture notices come first")
+	assert.Contains(t, rep.Notices[1], filepath.Base(out)+".zip")
+	assert.Contains(t, rep.Notices[1], "could not be built")
+	assert.Contains(t, rep.Notices[1], "permission denied")
+	names := []string{}
+	for _, a := range rep.Attachments {
+		names = append(names, a.Name)
+	}
+	assert.Equal(t, []string{"plan.csv", "run.log"}, names)
+	raw, notice, err := rep.Deliverable("sender@example.org", []string{"receiver@example.org"})
+	require.NoError(t, err)
+	assert.Contains(t, notice, "Delivery incomplete: input input-mapping.csv: cannot read /x/m.csv: permission denied; ")
+	assert.Contains(t, notice, "could not be built")
+	assert.Contains(t, string(raw), base64.StdEncoding.EncodeToString([]byte("Delivery incomplete"))[:16], "the notice is in the delivered body")
+
+	// a record too large to attach is announced, not silently left out
+	big := t.TempDir()
+	incompressible := make([]byte, maxZipAttachment+1)
+	_, err = rand.Read(incompressible)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filepath.Join(big, RecordState), incompressible, 0o600))
+	rep = BuildReport(RunInfo{Stage: "dev", Command: "ingest", OutDir: big}, nil, nil, nil)
+	require.Len(t, rep.Notices, 1)
+	assert.Contains(t, rep.Notices[0], filepath.Base(big)+".zip")
+	assert.Contains(t, rep.Notices[0], "not attached: over the")
+	assert.Empty(t, rep.Attachments)
+	_, notice, err = rep.Deliverable("sender@example.org", []string{"receiver@example.org"})
+	require.NoError(t, err)
+	assert.Contains(t, notice, "not attached: over the")
+
+	// a complete record has no notice
+	rep = BuildReport(RunInfo{Stage: "dev", Command: "ingest", OutDir: t.TempDir()}, nil, nil, []byte("ok\n"))
+	assert.Empty(t, rep.Notices)
+	_, notice, err = rep.Deliverable("sender@example.org", []string{"receiver@example.org"})
+	require.NoError(t, err)
+	assert.Empty(t, notice)
 }
 
 func TestReportMIME(t *testing.T) {

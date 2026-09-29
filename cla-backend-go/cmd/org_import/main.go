@@ -170,11 +170,11 @@ func run(args []string, stdin io.Reader) int {
 	out := io.MultiWriter(os.Stdout, logFile)
 	errOut := io.MultiWriter(os.Stderr, logFile)
 	log.GetLogger().SetOutput(io.MultiWriter(os.Stderr, logFile))
-	snapshotInputs(*outDir, opts, out, errOut)
+	notices := snapshotInputs(*outDir, opts, out, errOut)
 
 	info := orgimport.RunInfo{
 		Stage: stage, Command: cmd, Apply: *apply, Args: args, Start: time.Now().UTC(), Runner: runnerName(),
-		Repository: os.Getenv("GITHUB_REPOSITORY"), Revision: buildRevision(), OutDir: *outDir,
+		Repository: os.Getenv("GITHUB_REPOSITORY"), Revision: buildRevision(), OutDir: *outDir, Notices: notices,
 		Workflow: orgimport.WorkflowInputs{Routes: *routes, Tranche: fmt.Sprint(*tranche), IDs: *ids, Mapping: *mapping, Decisions: *decisions, SharedDomains: *sharedDomains},
 	}
 	if runID := os.Getenv("GITHUB_RUN_ID"); runID != "" {
@@ -230,6 +230,7 @@ func run(args []string, stdin io.Reader) int {
 	}()
 
 	info.End = time.Now().UTC()
+	info.Notices = append(info.Notices, captureJournal(*outDir, opts.State, out, errOut)...)
 	report(ctx, e, info, plan, audit, rf, logPath, out, errOut)
 	_ = logFile.Close()
 	return code
@@ -294,8 +295,7 @@ func report(ctx context.Context, e env, info orgimport.RunInfo, plan *orgimport.
 	fmt.Fprintf(out, "report e-mailed to %s (%d bytes, %d attachments built, SES message id %s)\n", strings.Join(recipients, ","), len(raw), len(rep.Attachments), id)
 }
 
-// snapshotInputs copies the effective non-secret inputs (mapping, decisions, shared domains and the
-// state file as it was before the run) into outDir so the artifact and the report zip are a complete record.
+// parseRoutes turns the --routes value into the route list.
 func parseRoutes(spec string) ([]orgimport.Route, error) {
 	var routes []orgimport.Route
 	for _, r := range strings.Split(spec, ",") {
@@ -321,10 +321,14 @@ func hasRoute(routes []orgimport.Route, want orgimport.Route) bool {
 	return false
 }
 
-func snapshotInputs(outDir string, opts orgimport.Options, out, errOut io.Writer) {
+// snapshotInputs copies the effective non-secret inputs (mapping, decisions, shared domains and the
+// state file as it was before the run) into outDir so the artifact and the report zip are a complete
+// record; every file it could not capture is returned as a notice for the report.
+func snapshotInputs(outDir string, opts orgimport.Options, out, errOut io.Writer) []string {
+	var notices []string
 	for _, in := range []struct{ name, src string }{
-		{"input-mapping.csv", opts.Mapping}, {"input-decisions.csv", opts.Decisions},
-		{"input-shared_domains.txt", opts.SharedDomains}, {"input-state.jsonl", opts.State},
+		{orgimport.RecordMapping, opts.Mapping}, {orgimport.RecordDecisions, opts.Decisions},
+		{orgimport.RecordSharedDomains, opts.SharedDomains}, {orgimport.RecordStateBefore, opts.State},
 	} {
 		if in.src == "" {
 			continue
@@ -332,19 +336,53 @@ func snapshotInputs(outDir string, opts orgimport.Options, out, errOut io.Writer
 		dst := filepath.Join(outDir, in.name)
 		data, err := os.ReadFile(filepath.Clean(in.src))
 		if err != nil {
-			if os.IsNotExist(err) && in.name == "input-state.jsonl" {
+			if os.IsNotExist(err) && in.name == orgimport.RecordStateBefore {
 				fmt.Fprintf(out, "input %s: %s does not exist yet (fresh state)\n", in.name, in.src)
 				continue
 			}
-			fmt.Fprintf(errOut, "input %s: cannot read %s: %v\n", in.name, in.src, err)
+			notices = append(notices, fmt.Sprintf("input %s: cannot read %s: %v", in.name, in.src, err))
+			fmt.Fprintf(errOut, "%s\n", notices[len(notices)-1])
 			continue
 		}
 		if err = os.WriteFile(dst, data, 0o600); err != nil {
-			fmt.Fprintf(errOut, "input %s: cannot write %s: %v\n", in.name, dst, err)
+			notices = append(notices, fmt.Sprintf("input %s: cannot write %s: %v", in.name, dst, err))
+			fmt.Fprintf(errOut, "%s\n", notices[len(notices)-1])
 			continue
 		}
 		fmt.Fprintf(out, "input %s: copied %s (%d bytes) to %s\n", in.name, in.src, len(data), dst)
 	}
+	return notices
+}
+
+// captureJournal copies the final journal into outDir as state.jsonl (input-state.jsonl keeps the
+// before-run copy) so the record can resume the run; a journal already at that path is left alone.
+func captureJournal(outDir, statePath string, out, errOut io.Writer) []string {
+	if statePath == "" {
+		return nil
+	}
+	dst := filepath.Join(outDir, orgimport.RecordState)
+	if absSrc, err := filepath.Abs(statePath); err == nil {
+		if absDst, absErr := filepath.Abs(dst); absErr == nil && absSrc == absDst {
+			return nil
+		}
+	}
+	data, err := os.ReadFile(filepath.Clean(statePath))
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Fprintf(out, "journal %s: nothing was journaled\n", statePath)
+			return nil
+		}
+		msg := fmt.Sprintf("journal %s: cannot read: %v", statePath, err)
+		fmt.Fprintf(errOut, "%s\n", msg)
+		return []string{msg}
+	}
+	if err = os.WriteFile(dst, data, 0o600); err != nil {
+		msg := fmt.Sprintf("journal %s: cannot write copy %s: %v", statePath, dst, err)
+		fmt.Fprintf(errOut, "%s\n", msg)
+		return []string{msg}
+	}
+	fmt.Fprintf(out, "journal %s: copied (%d bytes) to %s\n", statePath, len(data), dst)
+	return nil
 }
 
 func runnerName() string {
