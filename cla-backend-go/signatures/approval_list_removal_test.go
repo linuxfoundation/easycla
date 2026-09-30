@@ -60,6 +60,12 @@ type fakeSignaturesTable struct {
 	// failIndex makes every Query against that index fail (an outage isolated to one GSI)
 	failIndex    string
 	beforeUpdate func(item map[string]interface{})
+	// reads records every GetItem and BatchGetItem; unprocessedOnce makes the first BatchGetItem
+	// leave that many keys unprocessed, as DynamoDB may under throttling; unprocessedAlways does
+	// so on every BatchGetItem (a sustained throttle)
+	reads             []fakeCapturedRead
+	unprocessedOnce   int
+	unprocessedAlways int
 }
 
 // fakeIndexKeys lists the attributes DynamoDB puts into LastEvaluatedKey for each index
@@ -79,6 +85,7 @@ type fakeCapturedQuery struct {
 	indexName      string
 	limit          int64
 	attributeNames []string
+	filter         string
 	// startKey is the signature_id of the ExclusiveStartKey, when the query continues a page
 	startKey string
 }
@@ -87,6 +94,31 @@ type fakeAttrValue struct {
 	S    *string
 	N    *string
 	BOOL *bool
+	L    []fakeAttrValue
+}
+
+type fakeGetRequest struct {
+	TableName                string
+	Key                      map[string]fakeAttrValue
+	ConsistentRead           bool
+	ProjectionExpression     string
+	ExpressionAttributeNames map[string]string
+}
+
+type fakeKeysAndAttributes struct {
+	Keys           []map[string]fakeAttrValue
+	ConsistentRead bool
+}
+
+type fakeBatchGetRequest struct {
+	RequestItems map[string]fakeKeysAndAttributes
+}
+
+// fakeCapturedRead records a GetItem (one key) or BatchGetItem (all its keys) and its consistency
+type fakeCapturedRead struct {
+	tableName      string
+	signatureIDs   []string
+	consistentRead bool
 }
 
 type fakeQueryRequest struct {
@@ -127,9 +159,103 @@ func (f *fakeSignaturesTable) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		f.handleUpdate(w, body)
 	case "DynamoDB_20120810.PutItem":
 		f.handlePut(w, body)
+	case "DynamoDB_20120810.GetItem":
+		f.handleGet(w, body)
+	case "DynamoDB_20120810.BatchGetItem":
+		f.handleBatchGet(w, body)
+	case "DynamoDB_20120810.DescribeTable":
+		f.mu.Lock()
+		count := len(f.items)
+		f.mu.Unlock()
+		fakeWriteJSON(w, map[string]interface{}{"Table": map[string]interface{}{"ItemCount": count, "TableStatus": "ACTIVE"}})
 	default:
 		http.Error(w, "unsupported operation", http.StatusBadRequest)
 	}
+}
+
+// handleGet answers a GetItem by signature_id with a copy of the item (empty when missing, or
+// when another table such as the store is asked - its key value is still recorded)
+func (f *fakeSignaturesTable) handleGet(w http.ResponseWriter, body []byte) {
+	var req fakeGetRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	signatureID, recorded := "", ""
+	if key, ok := req.Key["signature_id"]; ok && key.S != nil {
+		signatureID, recorded = *key.S, *key.S
+	} else if key, ok := req.Key["key"]; ok && key.S != nil {
+		recorded = *key.S
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.reads = append(f.reads, fakeCapturedRead{tableName: req.TableName, signatureIDs: []string{recorded}, consistentRead: req.ConsistentRead})
+	resp := map[string]interface{}{}
+	if item := f.find(signatureID); item != nil && signatureID != "" {
+		resp["Item"] = fakeProjectItem(fakeCopyItem(item), fakeProjectedNames(req.ProjectionExpression, req.ExpressionAttributeNames))
+	}
+	fakeWriteJSON(w, resp)
+}
+
+// handleBatchGet answers a BatchGetItem on the signatures table, honoring unprocessedOnce/unprocessedAlways
+func (f *fakeSignaturesTable) handleBatchGet(w http.ResponseWriter, body []byte) {
+	var req fakeBatchGetRequest
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	leaveUnprocessed := max(f.unprocessedOnce, f.unprocessedAlways)
+	responses := map[string]interface{}{}
+	unprocessed := map[string]interface{}{}
+	for tableName, request := range req.RequestItems {
+		captured := fakeCapturedRead{tableName: tableName, consistentRead: request.ConsistentRead}
+		var found []map[string]interface{}
+		var pending []map[string]fakeAttrValue
+		for i, key := range request.Keys {
+			signatureID := ""
+			if value, ok := key["signature_id"]; ok && value.S != nil {
+				signatureID = *value.S
+			}
+			captured.signatureIDs = append(captured.signatureIDs, signatureID)
+			if leaveUnprocessed > 0 && i >= len(request.Keys)-leaveUnprocessed {
+				pending = append(pending, key)
+				continue
+			}
+			if item := f.find(signatureID); item != nil {
+				found = append(found, fakeCopyItem(item))
+			}
+		}
+		f.reads = append(f.reads, captured)
+		responses[tableName] = found
+		if len(pending) > 0 {
+			unprocessed[tableName] = map[string]interface{}{"Keys": fakeKeysToWire(pending), "ConsistentRead": request.ConsistentRead}
+		}
+	}
+	f.unprocessedOnce = 0
+	fakeWriteJSON(w, map[string]interface{}{"Responses": responses, "UnprocessedKeys": unprocessed})
+}
+
+func fakeKeysToWire(keys []map[string]fakeAttrValue) []map[string]interface{} {
+	out := make([]map[string]interface{}, 0, len(keys))
+	for _, key := range keys {
+		wire := map[string]interface{}{}
+		for name, value := range key {
+			wire[name] = fakeAttrToItem(value)
+		}
+		out = append(out, wire)
+	}
+	return out
+}
+
+// fakeCopyItem returns a shallow copy so a response cannot alias the stored row
+func fakeCopyItem(item map[string]interface{}) map[string]interface{} {
+	out := make(map[string]interface{}, len(item))
+	for name, value := range item {
+		out[name] = value
+	}
+	return out
 }
 
 func (f *fakeSignaturesTable) handleQuery(w http.ResponseWriter, body []byte) {
@@ -139,7 +265,7 @@ func (f *fakeSignaturesTable) handleQuery(w http.ResponseWriter, body []byte) {
 		return
 	}
 
-	captured := fakeCapturedQuery{indexName: req.IndexName, limit: aws.Int64Value(req.Limit)}
+	captured := fakeCapturedQuery{indexName: req.IndexName, limit: aws.Int64Value(req.Limit), filter: req.FilterExpression}
 	for _, name := range req.ExpressionAttributeNames {
 		captured.attributeNames = append(captured.attributeNames, name)
 	}
@@ -344,6 +470,12 @@ func fakeAttrToItem(value fakeAttrValue) map[string]interface{} {
 		return map[string]interface{}{"BOOL": *value.BOOL}
 	case value.N != nil:
 		return map[string]interface{}{"N": *value.N}
+	case value.L != nil:
+		list := make([]interface{}, 0, len(value.L))
+		for _, element := range value.L {
+			list = append(list, fakeAttrToItem(element))
+		}
+		return map[string]interface{}{"L": list}
 	}
 	return nil
 }

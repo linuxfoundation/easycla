@@ -572,8 +572,7 @@ func (s *service) IsCLAManagerDesignee(ctx context.Context, companySFID, claGrou
 				}, nil
 			}
 		}
-		log.WithFields(f).Debugf("User %s has %s role at project level", userLFID, utils.CLADesigneeRole)
-		hasRole = true
+		log.WithFields(f).Debugf("User %s does not have %s role for any of the %d projects", userLFID, utils.CLADesigneeRole, len(pcgs))
 
 	}
 

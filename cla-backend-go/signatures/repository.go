@@ -74,6 +74,8 @@ type SignatureRepository interface {
 	InvalidateProjectRecord(ctx context.Context, signatureID, note string) error
 	InvalidateProjectRecordWithMetadata(ctx context.Context, signatureID, note string, metadata *InvalidationMetadata) error
 	ReinvalidateProjectRecordWithMetadata(ctx context.Context, existing *ItemSignature, note string, metadata *InvalidationMetadata) error
+	GetRemovalInvalidatedEmployeeSignatures(ctx context.Context, companyID, claGroupID string) ([]*ItemSignature, error)
+	RestoreRemovalInvalidatedEmployeeSignature(ctx context.Context, snapshot *ItemSignature, note string) (bool, error)
 	UpdateEnvelopeDetails(ctx context.Context, signatureID, envelopeID string, signURL *string) (*models.Signature, error)
 	CreateSignature(ctx context.Context, signature *ItemSignature) error
 	UpdateSignature(ctx context.Context, signatureID string, updates map[string]interface{}) error
@@ -81,6 +83,7 @@ type SignatureRepository interface {
 
 	GetSignature(ctx context.Context, signatureID string) (*models.Signature, error)
 	GetItemSignature(ctx context.Context, signatureID string) (*ItemSignature, error)
+	GetItemSignatureConsistent(ctx context.Context, signatureID string) (*ItemSignature, error)
 	GetActivePullRequestMetadata(ctx context.Context, gitHubAuthorUsername, gitHubAuthorEmail string) (*ActivePullRequest, error)
 	GetIndividualSignature(ctx context.Context, claGroupID, userID string, approved, signed *bool) (*models.Signature, error)
 	GetIndividualSignatures(ctx context.Context, claGroupID, userID string, approved, signed *bool) ([]*models.Signature, error)
@@ -241,6 +244,36 @@ func (repo repository) GetItemSignature(ctx context.Context, signatureID string)
 		return nil, err
 	}
 
+	return &signature, nil
+}
+
+// GetItemSignatureConsistent returns the signature for the specified signature id using a strongly
+// consistent base-table read, so a decision taken on it reflects every write that already completed
+func (repo repository) GetItemSignatureConsistent(ctx context.Context, signatureID string) (*ItemSignature, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.GetItemSignatureConsistent",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"signatureID":    signatureID,
+	}
+
+	result, err := repo.dynamoDBClient.GetItemWithContext(ctx, &dynamodb.GetItemInput{
+		TableName:      aws.String(repo.signatureTableName),
+		Key:            map[string]*dynamodb.AttributeValue{"signature_id": {S: aws.String(signatureID)}},
+		ConsistentRead: aws.Bool(true),
+	})
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error retrieving signature ID: %s", signatureID)
+		return nil, err
+	}
+	if result == nil || len(result.Item) == 0 {
+		return nil, nil
+	}
+
+	var signature ItemSignature
+	if err := dynamodbattribute.UnmarshalMap(result.Item, &signature); err != nil {
+		log.WithFields(f).WithError(err).Warnf("error unmarshalling signature for ID: %s", signatureID)
+		return nil, err
+	}
 	return &signature, nil
 }
 
@@ -2442,6 +2475,204 @@ func appendNote(existing, addition string) string {
 	default:
 		return existing + " " + addition
 	}
+}
+
+// GetRemovalInvalidatedEmployeeSignatures returns the raw signed employee acknowledgments of the company
+// under the CLA group - legacy cla and auto-created ecla rows alike - that are unapproved with approval
+// list removal evidence only (#2980). The company index only supplies the signature ids: the rows are
+// then read strongly consistently from the table and the classifier runs on each of them, so neither
+// index lag nor per-user collapsing can hide an acknowledgment or a deliberate invalidation
+func (repo repository) GetRemovalInvalidatedEmployeeSignatures(ctx context.Context, companyID, claGroupID string) ([]*ItemSignature, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.GetRemovalInvalidatedEmployeeSignatures",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"companyID":      companyID,
+		"claGroupID":     claGroupID,
+	}
+
+	condition := expression.Key("signature_user_ccla_company_id").Equal(expression.Value(companyID)).
+		And(expression.Key("signature_project_id").Equal(expression.Value(claGroupID)))
+	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithProjection(expression.NamesList(expression.Name("signature_id"))).Build()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("error building the employee signature query")
+		return nil, err
+	}
+
+	queryInput := &dynamodb.QueryInput{
+		TableName:                 aws.String(repo.signatureTableName),
+		IndexName:                 aws.String("signature-user-ccla-company-index"),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      expr.Projection(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+	}
+
+	var signatureIDs []string
+	for {
+		results, queryErr := repo.dynamoDBClient.QueryWithContext(ctx, queryInput)
+		if queryErr != nil {
+			log.WithFields(f).WithError(queryErr).Warn("error retrieving the employee signatures")
+			return nil, queryErr
+		}
+		for _, item := range results.Items {
+			if id := item["signature_id"]; id != nil && aws.StringValue(id.S) != "" {
+				signatureIDs = append(signatureIDs, *id.S)
+			}
+		}
+		if len(results.LastEvaluatedKey) == 0 {
+			break
+		}
+		queryInput.ExclusiveStartKey = results.LastEvaluatedKey
+	}
+
+	rows, err := repo.getItemSignaturesConsistent(ctx, signatureIDs)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("error reading the employee signatures")
+		return nil, err
+	}
+	var candidates []*ItemSignature
+	for _, row := range rows {
+		if restorableEmployeeAcknowledgment(row, companyID, claGroupID) {
+			candidates = append(candidates, row)
+		}
+	}
+	log.WithFields(f).Debugf("found %d removal-invalidated employee signatures among %d", len(candidates), len(rows))
+	return candidates, nil
+}
+
+// restorableEmployeeAcknowledgment reports whether the current base-table row is a signed employee acknowledgment of
+// the company under the CLA group whose only invalidation evidence is an approval list removal; the index the row was
+// found through is eventually consistent, so its scope is decided on the row itself
+func restorableEmployeeAcknowledgment(row *ItemSignature, companyID, claGroupID string) bool {
+	return row != nil && row.SignatureUserCompanyID == companyID && row.SignatureProjectID == claGroupID &&
+		row.SignatureReferenceType == utils.SignatureReferenceTypeUser &&
+		(row.SignatureType == utils.SignatureTypeCLA || row.SignatureType == utils.ClaTypeECLA) &&
+		row.SignatureSigned && row.InvalidatedOnlyByApprovalListRemoval()
+}
+
+// BatchGetItem accepts at most 100 keys per call; keys it leaves unprocessed are retried with a growing pause
+const (
+	batchGetItemSize     = 100
+	batchGetItemAttempts = 5
+)
+
+// getItemSignaturesConsistent reads the given signatures from the table with strongly consistent batch reads
+func (repo repository) getItemSignaturesConsistent(ctx context.Context, signatureIDs []string) ([]*ItemSignature, error) {
+	var rows []*ItemSignature
+	for start := 0; start < len(signatureIDs); start += batchGetItemSize {
+		end := min(start+batchGetItemSize, len(signatureIDs))
+		keys := make([]map[string]*dynamodb.AttributeValue, 0, end-start)
+		for _, signatureID := range signatureIDs[start:end] {
+			keys = append(keys, map[string]*dynamodb.AttributeValue{"signature_id": {S: aws.String(signatureID)}})
+		}
+		requests := map[string]*dynamodb.KeysAndAttributes{
+			repo.signatureTableName: {Keys: keys, ConsistentRead: aws.Bool(true)},
+		}
+		for attempt := 0; ; attempt++ {
+			if attempt == batchGetItemAttempts {
+				return nil, fmt.Errorf("%d signatures still unprocessed after %d batch read attempts", len(requests[repo.signatureTableName].Keys), attempt)
+			}
+			if attempt > 0 {
+				time.Sleep(time.Duration(attempt) * 50 * time.Millisecond)
+			}
+			output, err := repo.dynamoDBClient.BatchGetItemWithContext(ctx, &dynamodb.BatchGetItemInput{RequestItems: requests})
+			if err != nil {
+				return nil, err
+			}
+			var page []*ItemSignature
+			if err = dynamodbattribute.UnmarshalListOfMaps(output.Responses[repo.signatureTableName], &page); err != nil {
+				return nil, err
+			}
+			rows = append(rows, page...)
+			if pending := output.UnprocessedKeys[repo.signatureTableName]; pending == nil || len(pending.Keys) == 0 {
+				break
+			}
+			requests = output.UnprocessedKeys
+		}
+	}
+	return rows, nil
+}
+
+// RestoreRemovalInvalidatedEmployeeSignature re-approves an employee acknowledgment whose user an approval
+// list re-add covers again (#2980). The row is re-read consistently and must still be the signed, unapproved,
+// removal-only acknowledgment the decision was taken on; the write clears the attribution and appends the
+// note, pinned to that exact snapshot, so a concurrent deliberate invalidation, deletion or replacement wins
+// and the acknowledgment is reported as not restored
+func (repo repository) RestoreRemovalInvalidatedEmployeeSignature(ctx context.Context, snapshot *ItemSignature, note string) (bool, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.RestoreRemovalInvalidatedEmployeeSignature",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"signatureID":    snapshot.SignatureID,
+	}
+
+	existing, err := repo.GetItemSignatureConsistent(ctx, snapshot.SignatureID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error loading signature %s before restoring it", snapshot.SignatureID)
+		return false, err
+	}
+	switch {
+	case existing == nil:
+		log.WithFields(f).Warnf("signature %s no longer exists - not restoring", snapshot.SignatureID)
+		return false, nil
+	case existing.SignatureApproved:
+		log.WithFields(f).Debugf("signature %s is already approved - nothing to restore", snapshot.SignatureID)
+		return false, nil
+	case !restorableEmployeeAcknowledgment(existing, snapshot.SignatureUserCompanyID, snapshot.SignatureProjectID) ||
+		existing.SignatureReferenceID != snapshot.SignatureReferenceID:
+		log.WithFields(f).Warnf("signature %s changed meanwhile - not restoring", snapshot.SignatureID)
+		return false, nil
+	}
+
+	_, now := utils.CurrentTime()
+	expressionAttributeNames, expressionAttributeValues, updateExpression, conditionExpression := validationUpdateExpression(existing, appendNote(existing.Note, note), now, true)
+	conditionExpression += restorationPins(existing, expressionAttributeNames, expressionAttributeValues)
+
+	input := &dynamodb.UpdateItemInput{
+		Key: map[string]*dynamodb.AttributeValue{
+			"signature_id": {
+				S: aws.String(existing.SignatureID),
+			},
+		},
+		ExpressionAttributeNames:  expressionAttributeNames,
+		ExpressionAttributeValues: expressionAttributeValues,
+		UpdateExpression:          &updateExpression,
+		ConditionExpression:       &conditionExpression,
+		TableName:                 aws.String(repo.signatureTableName),
+	}
+
+	if _, updateErr := repo.dynamoDBClient.UpdateItemWithContext(ctx, input); updateErr != nil {
+		if aerr, ok := updateErr.(awserr.Error); ok && aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
+			log.WithFields(f).Warnf("signature %s changed concurrently - not restoring", existing.SignatureID)
+			return false, nil
+		}
+		log.WithFields(f).WithError(updateErr).Warnf("error restoring signature_approved for signature_id: %s", existing.SignatureID)
+		return false, updateErr
+	}
+	log.WithFields(f).Infof("restored employee acknowledgment %s for user %s", existing.SignatureID, existing.SignatureReferenceID)
+	return true, nil
+}
+
+// restorationPins extends the automatic validation condition with the signed state and identity of the
+// acknowledgment, so the restore never lands on a replaced row
+func restorationPins(existing *ItemSignature, names map[string]*string, values map[string]*dynamodb.AttributeValue) string {
+	names["#SG"] = aws.String("signature_signed")
+	values[":csg"] = &dynamodb.AttributeValue{BOOL: aws.Bool(true)}
+	condition := " AND #SG = :csg"
+	for _, pinned := range []struct{ name, placeholder, attribute, read string }{
+		{"#RT", ":crt", "signature_reference_type", existing.SignatureReferenceType},
+		{"#RID", ":crid", "signature_reference_id", existing.SignatureReferenceID},
+		{"#PID", ":cpid", "signature_project_id", existing.SignatureProjectID},
+		{"#CID", ":ccid", "signature_user_ccla_company_id", existing.SignatureUserCompanyID},
+	} {
+		names[pinned.name] = aws.String(pinned.attribute)
+		values[pinned.placeholder] = &dynamodb.AttributeValue{S: aws.String(pinned.read)}
+		if pinned.read == "" {
+			condition += " AND (attribute_not_exists(" + pinned.name + ") OR " + pinned.name + " = " + pinned.placeholder + ")"
+		} else {
+			condition += " AND " + pinned.name + " = " + pinned.placeholder
+		}
+	}
+	return condition
 }
 
 // GetProjectCompanyEmployeeSignatures returns a list of employee signatures for the specified project and specified company
