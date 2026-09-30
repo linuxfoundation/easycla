@@ -1105,7 +1105,7 @@ paths:
         - $ref: "#/parameters/x-email"
         - $ref: '#/parameters/pageSize'
         - $ref: '#/parameters/path-projectSFID'
-        - $ref: '#/parameters/path-companyID'
+        - $ref: '#/parameters/path-companyReference'
         - $ref: '#/parameters/nextKey'
         - $ref: '#/parameters/searchTerm'
         - $ref: '#/parameters/returnAllEvents'
@@ -2345,7 +2345,7 @@ paths:
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
         - $ref: "#/parameters/path-projectSFID"
-        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-companyReference"
         - $ref: '#/parameters/sortOrder'
       responses:
         '200':
@@ -3188,7 +3188,7 @@ paths:
         - $ref: "#/parameters/x-acl"
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
-        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-companyReference"
         - $ref: "#/parameters/path-projectSFID"
         - name: body
           required: true
@@ -3468,7 +3468,7 @@ paths:
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
         - $ref: "#/parameters/path-claGroupID"
-        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-companyReference"
         - name: body
           in: body
           required: true
@@ -3514,7 +3514,7 @@ paths:
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
         - $ref: "#/parameters/path-projectSFID"
-        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-companyReference"
         - name: body
           in: body
           required: true
@@ -4068,7 +4068,7 @@ paths:
         - $ref: "#/parameters/x-acl"
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
-        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-companyReference"
       produces:
         - application/json
       responses:
@@ -4383,7 +4383,7 @@ paths:
         - $ref: "#/parameters/x-acl"
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
-        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-companyReference"
         - $ref: "#/parameters/path-projectSFID"
       responses:
         '200':
@@ -4413,7 +4413,7 @@ paths:
       security: [ ]
       parameters:
         - $ref: "#/parameters/x-request-id"
-        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-companyReference"
         - $ref: "#/parameters/path-claGroupID"
       responses:
         '200':
@@ -4445,7 +4445,7 @@ paths:
         - $ref: "#/parameters/x-acl"
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
-        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-companyReference"
         - $ref: "#/parameters/path-projectSFID"
       responses:
         '200':
@@ -5365,7 +5365,14 @@ parameters:
     required: true
   path-companyID:
     name: companyID
-    description: id of the company (internal UUIDv4, or the Salesforce ID of an organization without an EasyCLA row yet)
+    description: id of the company
+    in: path
+    type: string
+    required: true
+    pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$' # uuidv4
+  path-companyReference:
+    name: companyID
+    description: Internal company UUIDv4 or external organization ID
     in: path
     type: string
     required: true
