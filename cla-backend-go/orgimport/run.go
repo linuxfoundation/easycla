@@ -465,7 +465,13 @@ func Execute(ctx context.Context, deps Deps, opts Options, plan *Plan) (Summary,
 			return sum, err
 		}
 	}
+	r := &runner{deps: deps, opts: opts, plan: plan}
+	recheck := routeSet(opts.Routes)[RouteRewrite]
+	recheckBudget := opts.Tranche - len(plan.Register) - len(plan.Rewrite)
 	if !plan.Apply {
+		if recheck {
+			sum.Failed += r.recheckEvents(ctx, recheckBudget)
+		}
 		if sum.Failed > 0 {
 			return sum, fmt.Errorf("%d group(s) failed", sum.Failed)
 		}
@@ -483,7 +489,6 @@ func Execute(ctx context.Context, deps Deps, opts Options, plan *Plan) (Summary,
 		}
 		return sum, err
 	}
-	r := &runner{deps: deps, opts: opts, plan: plan}
 	for _, g := range plan.Register {
 		if err := r.register(ctx, g); err != nil {
 			g.Err = err
@@ -510,6 +515,9 @@ func Execute(ctx context.Context, deps Deps, opts Options, plan *Plan) (Summary,
 			}
 			sum.Rewritten++
 		}
+	}
+	if recheck {
+		sum.Failed += r.recheckEvents(ctx, recheckBudget)
 	}
 	if opts.OutDir != "" {
 		if err := writeIngestReports(opts.OutDir, plan); err != nil {

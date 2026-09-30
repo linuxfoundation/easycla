@@ -188,7 +188,12 @@ STAGE=prod bin/org-import ingest --ids lfbd1c2b3a4d5e6f7a8 --mapping map.csv --s
 ```
 
 Order inside one run: all `register` POSTs → (Apex real calls) → **one** shared wait until org-service serves every new id (≤ `--wait-max`)
-→ per rewrite group: `copy_grants` → `rewrite_rows` → `rekey_events` → `delete_old_grants` → `register` → `done`.
+→ per rewrite group: `copy_grants` → `rewrite_rows` → `rekey_events` → `delete_old_grants` → `register` → `done`
+→ events recheck: every previously completed group in the journal is listed again by its old id (the events indexes are eventually consistent,
+and a writer that read the company row before `rewrite_rows` may still add events under the old id) and stragglers are re-keyed
+(`events recheck old -> new: N listed, M re-keyed`; dry run lists only). It runs with the `rewrite` route only, honours `--ids` and the tranche
+budget left after the planned groups (skipped rechecks are counted; groups rewritten by this run are rechecked from the next run on), is never
+journaled (so it repeats every run) and fails — instead of re-keying — a group whose recorded rows are gone or no longer carry the recorded new id.
 A failing step stops that group (state records it), the run continues with the next group and exits 1 with `FAILED …` lines.
 
 Expected runtime: register = seconds per group; rewrite = the org-service wait (new Salesforce accounts take up to ~40 minutes to appear;
@@ -259,6 +264,8 @@ replaces the whole list (one domain per line, `#` comments). Mapping rows are ex
 3. `ingest --routes register --tranche 10 --apply` → verify (below) → `--tranche 100` → rest.
 4. With the mapping file: `ingest --routes rewrite --mapping map.csv --state state.jsonl --tranche 10 --apply` → verify → 100 → rest.
 5. Re-run the same command: it must report nothing new (`registered=0 rewritten=0`, groups `skipped` as done).
+6. After the last rewrite tranche, run `ingest --routes rewrite --mapping map.csv --state state.jsonl --apply` once more without `--tranche`
+   and check the `events recheck: … 0 event(s) listed, … 0 failed, 0 skipped` line; repeat later if it re-keyed anything.
 
 Verification per tranche (pick 3 groups):
 - `GET /b2b_orgs/{new id}` → 200 (member-service).
@@ -313,6 +320,8 @@ GitHub Actions `.github/workflows/org-import-sweep.yml`:
 | copy_grants | `granting … on …` | org-service create failed; nothing else was changed; re-run |
 | rewrite_rows | `… conflict, group stopped` | a row's external id was changed by someone else meanwhile; investigate that row before re-running |
 | rekey_events | `event …` | UpdateItem failed; re-run (already re-keyed events are skipped) |
+| events recheck | `FAILED events recheck old -> new: company … carries … / is gone` | a completed group's row was changed or deleted since; nothing is re-keyed for it — investigate the row (the journal is not changed) |
+| events recheck | `FAILED events recheck old -> new: listing events … / event …` | Query/UpdateItem failed; the other groups are still rechecked; re-run |
 | delete_old_grants | `deleting … grant …` | rows are already rewritten and new grants exist; re-run to finish |
 
 Resume: re-run the same command with the same `--state`; unfinished groups are replayed first (pinned by their `company_ids`, so they are found

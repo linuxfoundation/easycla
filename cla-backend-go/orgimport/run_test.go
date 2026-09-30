@@ -90,12 +90,20 @@ type fakeEvents struct {
 	sfidByEvent map[string]string
 	byGroup     map[string][]string
 	rekeyed     []string
+	lagging     map[string]bool // ids the org-wide index does not serve yet (GSI lag)
+	listErr     map[string]error
+	rekeyErr    map[string]error
+	listed      []string // org-wide listings, by sfid
 }
 
 func (f *fakeEvents) ListEventIDsByCompanySFID(_ context.Context, sfid string) ([]string, error) {
+	f.listed = append(f.listed, sfid)
+	if err := f.listErr[sfid]; err != nil {
+		return nil, err
+	}
 	var out []string
 	for id, s := range f.sfidByEvent {
-		if s == sfid {
+		if s == sfid && !f.lagging[id] {
 			out = append(out, id)
 		}
 	}
@@ -114,6 +122,9 @@ func (f *fakeEvents) ListEventIDsByCompanySFIDCLAGroup(_ context.Context, sfid, 
 }
 
 func (f *fakeEvents) RekeyEventCompanySFID(_ context.Context, id, oldSFID, newSFID string) (bool, error) {
+	if err := f.rekeyErr[id]; err != nil {
+		return false, err
+	}
 	if f.sfidByEvent[id] != oldSFID {
 		return false, nil
 	}
@@ -868,6 +879,258 @@ func TestRewriteReplayAfterCrash(t *testing.T) {
 	st, err = LoadState(statePath)
 	require.NoError(t, err)
 	assert.True(t, st.Done(lfID))
+}
+
+// completedRewrite runs rewriteFixture's group to done and clears the fakes' call logs.
+func completedRewrite(t *testing.T) (*fixture, string, string) {
+	t.Helper()
+	fx, mapping, statePath := rewriteFixture(t)
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}}
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	_, err = Execute(context.Background(), fx.deps(), opts, plan)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"e1", "e2", "e4"}, fx.events.rekeyed)
+	fx.events.rekeyed, fx.events.listed, fx.companies.updates = nil, nil, nil
+	fx.out.Reset()
+	return fx, mapping, statePath
+}
+
+func runIngest(t *testing.T, fx *fixture, opts Options) (Summary, error) {
+	t.Helper()
+	fx.out.Reset()
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	return Execute(context.Background(), fx.deps(), opts, plan)
+}
+
+const (
+	twoLfID   = "lf-legacy-0002"
+	twoSFID   = "0014100000TwoTwoTw"
+	threeLfID = "lf-legacy-0003"
+	threeSFID = "0014100000ThreeThr"
+)
+
+// appendDone journals rec as a completed rewrite group.
+func appendDone(t *testing.T, statePath string, rec StateRecord) {
+	t.Helper()
+	st, err := LoadState(statePath)
+	require.NoError(t, err)
+	rec.Step, rec.Status = StepDone, statusOK
+	require.NoError(t, st.Append(rec, time.Now()))
+}
+
+func TestRecheckRekeysLateEventsOfCompletedGroups(t *testing.T) {
+	fx, mapping, statePath := completedRewrite(t)
+	// e5: served only by the per-CLA-group index during the rewrite; e6: written under the old id afterwards
+	fx.events.sfidByEvent["e5"], fx.events.sfidByEvent["e6"] = lfID, lfID
+	fx.events.byGroup[lfID+"#cg-2"] = append(fx.events.byGroup[lfID+"#cg-2"], "e5")
+	fx.events.lagging = map[string]bool{"e5": true}
+	opts := Options{Stage: "dev", Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}}
+
+	sum, err := runIngest(t, fx, opts)
+	require.NoError(t, err)
+	assert.Equal(t, Summary{Stage: "dev", Mode: ModeDryRun, Eligible: 2}, sum)
+	assert.Empty(t, fx.events.rekeyed, "a dry run never writes")
+	assert.Contains(t, fx.out.String(), "events recheck "+lfID+" -> "+targetSFID+": 2 listed (dry run)\n")
+
+	opts.Apply = true
+	sum, err = runIngest(t, fx, opts)
+	require.NoError(t, err)
+	assert.Equal(t, Summary{Stage: "dev", Mode: ModeApply, Eligible: 2}, sum, "the completed group is not rewritten again")
+	assert.ElementsMatch(t, []string{"e5", "e6"}, fx.events.rekeyed)
+	assert.Equal(t, targetSFID, fx.events.sfidByEvent["e5"])
+	assert.Empty(t, fx.companies.updates)
+	out := fx.out.String()
+	assert.Contains(t, out, "events recheck "+lfID+" -> "+targetSFID+": 2 listed, 2 re-keyed\n")
+	assert.Contains(t, out, "events recheck: 1 previously completed group(s) checked, 2 event(s) listed, 2 re-keyed, 0 failed, 0 skipped (tranche budget)\n")
+	st, err := LoadState(statePath)
+	require.NoError(t, err)
+	assert.True(t, st.Done(lfID), "the recheck is never journaled")
+	assert.Equal(t, StepDone, st.Last[lfID].Step)
+
+	// converged: 0 listed, and the group keeps being rechecked by later runs
+	fx.events.rekeyed, fx.events.listed = nil, nil
+	_, err = runIngest(t, fx, opts)
+	require.NoError(t, err)
+	assert.Empty(t, fx.events.rekeyed)
+	assert.Contains(t, fx.out.String(), "events recheck "+lfID+" -> "+targetSFID+": 0 listed, 0 re-keyed\n")
+	assert.Equal(t, []string{lfID}, fx.events.listed)
+}
+
+func TestRecheckSelection(t *testing.T) {
+	fx, mapping, statePath := completedRewrite(t)
+	fx.company("c-two", "Two Inc", "", twoSFID, "cg-1")
+	fx.platform.sfAccounts[twoSFID] = true
+	appendDone(t, statePath, StateRecord{OldID: twoLfID, NewID: twoSFID, CompanyIDs: []string{"c-two"}})
+	// row-targeted: nothing in the events table is keyed by its old value
+	appendDone(t, statePath, StateRecord{OldID: "malformed", Key: "c-row", NewID: targetSFID, CompanyIDs: []string{"c-row"}})
+	fx.events.sfidByEvent["e6"], fx.events.sfidByEvent["t1"] = lfID, twoLfID
+	base := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}}
+
+	// register-only runs never touch events
+	_, err := runIngest(t, fx, Options{Stage: "dev", Apply: true, State: statePath, Routes: []Route{RouteRegister}})
+	require.NoError(t, err)
+	assert.Empty(t, fx.events.listed)
+	assert.NotContains(t, fx.out.String(), "events recheck")
+
+	// --ids narrows the recheck (old or new id)
+	opts := base
+	opts.IDs = []string{twoSFID}
+	_, err = runIngest(t, fx, opts)
+	require.NoError(t, err)
+	assert.Equal(t, []string{twoLfID}, fx.events.listed)
+	assert.Equal(t, []string{"t1"}, fx.events.rekeyed)
+	assert.Equal(t, twoSFID, fx.events.sfidByEvent["t1"])
+
+	// the tranche budget left after the planned groups bounds the recheck, in key order; row-targeted groups are never listed
+	fx.events.listed, fx.events.rekeyed = nil, nil
+	opts = base
+	opts.Tranche = 1
+	_, err = runIngest(t, fx, opts)
+	require.NoError(t, err)
+	assert.Equal(t, []string{lfID}, fx.events.listed)
+	assert.Equal(t, []string{"e6"}, fx.events.rekeyed)
+	assert.Contains(t, fx.out.String(), "events recheck: 1 previously completed group(s) checked, 1 event(s) listed, 1 re-keyed, 0 failed, 1 skipped (tranche budget)\n")
+
+	// a planned rewrite consumes the budget first and is itself left to the next run
+	fx.company("c-three", "Three Inc", "", threeLfID, "cg-1")
+	fx.platform.sfAccounts[threeSFID] = true
+	fx.platform.orgs[threeSFID] = &Org{ID: threeSFID, Name: "Three Inc"}
+	opts.Mapping = writeMapping(t, filepath.Dir(statePath), lfID+","+targetSFID+",matched,true", threeLfID+","+threeSFID+",matched,true")
+	fx.events.listed = nil
+	sum, err := runIngest(t, fx, opts)
+	require.NoError(t, err)
+	assert.Equal(t, 1, sum.Rewritten)
+	assert.Equal(t, []string{threeLfID}, fx.events.listed, "only the rewrite step listed events")
+	assert.Contains(t, fx.out.String(), "events recheck: 0 previously completed group(s) checked, 0 event(s) listed, 0 re-keyed, 0 failed, 2 skipped (tranche budget)\n")
+
+	// without --tranche every completed group is rechecked
+	fx.events.listed = nil
+	opts.Tranche = 0
+	_, err = runIngest(t, fx, opts)
+	require.NoError(t, err)
+	assert.Equal(t, []string{lfID, twoLfID, threeLfID}, fx.events.listed)
+	assert.NotContains(t, fx.events.listed, "malformed")
+}
+
+func TestRecheckRefusesDriftedRows(t *testing.T) {
+	fx, mapping, statePath := completedRewrite(t)
+	fx.company("c-moved", "Moved Inc", "", liveSFID, "cg-1")
+	appendDone(t, statePath, StateRecord{OldID: twoLfID, NewID: twoSFID, CompanyIDs: []string{"c-moved"}}) // re-pointed by hand since
+	appendDone(t, statePath, StateRecord{OldID: threeLfID, NewID: threeSFID, CompanyIDs: []string{"c-gone"}})
+	fx.events.sfidByEvent["e6"], fx.events.sfidByEvent["t1"] = lfID, twoLfID
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}}
+
+	sum, err := runIngest(t, fx, opts)
+	require.EqualError(t, err, "2 group(s) failed")
+	assert.Equal(t, 2, sum.Failed)
+	assert.Equal(t, []string{lfID}, fx.events.listed, "a drifted group is not listed")
+	assert.Equal(t, []string{"e6"}, fx.events.rekeyed, "the healthy group is still rechecked")
+	assert.Equal(t, twoLfID, fx.events.sfidByEvent["t1"], "never re-keyed towards a stale destination")
+	out := fx.out.String()
+	assert.Contains(t, out, "FAILED events recheck "+twoLfID+" -> "+twoSFID+": company c-moved carries \""+liveSFID+"\", not the recorded "+twoSFID+"\n")
+	assert.Contains(t, out, "FAILED events recheck "+threeLfID+" -> "+threeSFID+": company c-gone is gone\n")
+	assert.Contains(t, out, "events recheck: 1 previously completed group(s) checked, 1 event(s) listed, 1 re-keyed, 2 failed, 0 skipped (tranche budget)\n")
+	st, err := LoadState(statePath)
+	require.NoError(t, err)
+	assert.True(t, st.Done(twoLfID), "the journal is not rewritten")
+}
+
+func TestRecheckErrorsExitNonZeroAndRetryNextRun(t *testing.T) {
+	fx, mapping, statePath := completedRewrite(t)
+	fx.events.sfidByEvent["e6"] = lfID
+	fx.events.listErr = map[string]error{lfID: errors.New("throttled")}
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}}
+
+	sum, err := runIngest(t, fx, opts)
+	require.EqualError(t, err, "1 group(s) failed")
+	assert.Equal(t, 1, sum.Failed)
+	assert.Contains(t, fx.out.String(), "FAILED events recheck "+lfID+" -> "+targetSFID+": listing events of "+lfID+": throttled\n")
+	st, err := LoadState(statePath)
+	require.NoError(t, err)
+	assert.True(t, st.Done(lfID))
+
+	fx.events.listErr = nil
+	_, err = runIngest(t, fx, opts)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"e6"}, fx.events.rekeyed)
+
+	fx.events.sfidByEvent["e7"] = lfID
+	fx.events.rekeyErr = map[string]error{"e7": errors.New("conditional check failed")}
+	sum, err = runIngest(t, fx, opts)
+	require.EqualError(t, err, "1 group(s) failed")
+	assert.Equal(t, 1, sum.Failed)
+	assert.Contains(t, fx.out.String(), "FAILED events recheck "+lfID+" -> "+targetSFID+": event e7: conditional check failed\n")
+
+	// a dry run reports listing failures the same way
+	opts.Apply = false
+	fx.events.listErr = map[string]error{lfID: errors.New("throttled")}
+	sum, err = runIngest(t, fx, opts)
+	require.EqualError(t, err, "1 group(s) failed")
+	assert.Equal(t, ModeDryRun, sum.Mode)
+	assert.Equal(t, targetSFID, fx.events.sfidByEvent["e6"])
+	assert.Equal(t, lfID, fx.events.sfidByEvent["e7"])
+}
+
+// A replayed group carries fresh rows, so the inventory of this run still shows its old id after the
+// rewrite: the group is not rechecked by the run that completes it, but by the next one.
+func TestRecheckLeavesGroupsRewrittenByThisRunToTheNextRun(t *testing.T) {
+	for _, partial := range []bool{false, true} {
+		name := "resumed before rows"
+		if partial {
+			name = "resumed with partially rewritten rows"
+		}
+		t.Run(name, func(t *testing.T) {
+			fx, mapping, statePath := rewriteFixture(t)
+			if partial {
+				fx.companies.rows["c-parent"].CompanyExternalID, fx.companies.rows["c-parent"].PreviousCompanyExternalID = targetSFID, lfID
+			}
+			st, err := LoadState(statePath)
+			require.NoError(t, err)
+			require.NoError(t, st.Append(StateRecord{OldID: lfID, NewID: targetSFID, CompanyIDs: []string{"c-parent", "c-sub"}, Step: StepRows, Status: statusFailed}, time.Now()))
+			opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}}
+			plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+			require.NoError(t, err)
+			require.Len(t, plan.Rewrite, 1)
+			require.True(t, plan.Rewrite[0].Replayed)
+			sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+			require.NoError(t, err, fx.out.String())
+			assert.Equal(t, Summary{Stage: "dev", Mode: ModeApply, Eligible: 2, Rewritten: 1}, sum)
+			assert.Equal(t, targetSFID, fx.companies.rows["c-parent"].CompanyExternalID)
+			assert.Equal(t, targetSFID, fx.companies.rows["c-sub"].CompanyExternalID)
+			assert.ElementsMatch(t, []string{"e1", "e2", "e4"}, fx.events.rekeyed)
+			assert.NotContains(t, fx.out.String(), "events recheck")
+
+			fx.events.sfidByEvent["e6"] = lfID
+			_, err = runIngest(t, fx, opts)
+			require.NoError(t, err)
+			assert.Contains(t, fx.out.String(), "events recheck "+lfID+" -> "+targetSFID+": 1 listed, 1 re-keyed\n")
+			assert.Equal(t, targetSFID, fx.events.sfidByEvent["e6"])
+		})
+	}
+}
+
+func TestRecheckRepairsLateEventAfterEmptyResultAndContinuesPastErrors(t *testing.T) {
+	fx, mapping, statePath := completedRewrite(t)
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}}
+	_, err := runIngest(t, fx, opts)
+	require.NoError(t, err)
+	require.Contains(t, fx.out.String(), "0 event(s) listed")
+	fx.events.sfidByEvent["late-after-empty"] = lfID
+	_, err = runIngest(t, fx, opts)
+	require.NoError(t, err)
+	assert.Equal(t, targetSFID, fx.events.sfidByEvent["late-after-empty"])
+
+	fx.company("c-two", "Two Inc", "", twoSFID, "cg-1")
+	fx.platform.sfAccounts[twoSFID] = true
+	appendDone(t, statePath, StateRecord{OldID: twoLfID, NewID: twoSFID, CompanyIDs: []string{"c-two"}})
+	fx.events.sfidByEvent["next-group"] = twoLfID
+	fx.events.listErr = map[string]error{lfID: errors.New("throttled")}
+	sum, err := runIngest(t, fx, opts)
+	require.EqualError(t, err, "1 group(s) failed")
+	assert.Equal(t, 1, sum.Failed)
+	assert.Equal(t, twoSFID, fx.events.sfidByEvent["next-group"], "the next healthy group is still repaired")
 }
 
 func TestRowTargetedRewriteApply(t *testing.T) {

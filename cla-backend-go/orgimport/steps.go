@@ -164,30 +164,46 @@ func (r *runner) rekeyEvents(ctx context.Context, g *Group) error {
 		fmt.Fprintf(r.deps.Out, "events %s -> %s: skipped (no events repository)\n", g.OldID, g.NewID)
 		return nil
 	}
+	listed, rekeyed, err := r.rekeyListed(ctx, g)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(r.deps.Out, "events %s -> %s: %d listed, %d re-keyed\n", g.OldID, g.NewID, listed, rekeyed)
+	return nil
+}
+
+// listOldEvents returns the distinct ids of the events still keyed by the group's old id.
+func (r *runner) listOldEvents(ctx context.Context, g *Group) ([]string, error) {
 	ids, err := r.deps.Events.ListEventIDsByCompanySFID(ctx, g.OldID)
 	if err != nil {
-		return fmt.Errorf("listing events of %s: %w", g.OldID, err)
+		return nil, fmt.Errorf("listing events of %s: %w", g.OldID, err)
 	}
 	for _, claGroupID := range g.CLAGroupIDs() {
 		more, listErr := r.deps.Events.ListEventIDsByCompanySFIDCLAGroup(ctx, g.OldID, claGroupID)
 		if listErr != nil {
-			return fmt.Errorf("listing events of %s/%s: %w", g.OldID, claGroupID, listErr)
+			return nil, fmt.Errorf("listing events of %s/%s: %w", g.OldID, claGroupID, listErr)
 		}
 		ids = append(ids, more...)
 	}
-	ids = distinct(ids)
-	rekeyed := 0
+	return distinct(ids), nil
+}
+
+// rekeyListed re-keys every listed event and returns the listed and re-keyed counts.
+func (r *runner) rekeyListed(ctx context.Context, g *Group) (listed, rekeyed int, err error) {
+	ids, err := r.listOldEvents(ctx, g)
+	if err != nil {
+		return 0, 0, err
+	}
 	for _, id := range ids {
 		done, rekeyErr := r.deps.Events.RekeyEventCompanySFID(ctx, id, g.OldID, g.NewID)
 		if rekeyErr != nil {
-			return fmt.Errorf("event %s: %w", id, rekeyErr)
+			return len(ids), rekeyed, fmt.Errorf("event %s: %w", id, rekeyErr)
 		}
 		if done {
 			rekeyed++
 		}
 	}
-	fmt.Fprintf(r.deps.Out, "events %s -> %s: %d listed, %d re-keyed\n", g.OldID, g.NewID, len(ids), rekeyed)
-	return nil
+	return len(ids), rekeyed, nil
 }
 
 // deleteOldGrants removes the old org's grants (step 8) after making sure each one exists on the new
