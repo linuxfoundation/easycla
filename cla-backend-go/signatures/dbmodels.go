@@ -94,7 +94,20 @@ func (s *ItemSignature) InvalidatedByApprovalListRemoval() bool {
 	if s.InvalidationReason != "" {
 		return strings.HasPrefix(s.InvalidationReason, ApprovalListRemovalReasonPrefix)
 	}
-	note := strings.Join(strings.Fields(s.Note), " ")
+	return approvalListRemovalNote(s.Note)
+}
+
+// InvalidatedOnlyByApprovalListRemoval reports whether an approval list removal is the only invalidation evidence on
+// the record: a later invalidation recorded with first-write-wins attribution keeps the removal reason but replaces
+// the note, and such a record must not be treated as removal-only
+func (s *ItemSignature) InvalidatedOnlyByApprovalListRemoval() bool {
+	return s.InvalidatedByApprovalListRemoval() && s.InvalidationNote == "" &&
+		(strings.TrimSpace(s.Note) == "" || approvalListRemovalNote(s.Note))
+}
+
+// approvalListRemovalNote reports whether the note is the one verifyUserApprovals writes
+func approvalListRemovalNote(note string) bool {
+	note = strings.Join(strings.Fields(note), " ")
 	if !strings.HasPrefix(note, legacyInvalidationNotePrefix) {
 		return false
 	}

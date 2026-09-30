@@ -255,7 +255,15 @@ instead of dropping the criterion while its members stay approved, while an add-
 invalidation evidence (any attribution attribute, or the legacy "Signature invalidated"
 note) is skipped, so re-adding someone to a list does not silently undo a CLA-manager or
 admin invalidation; the contributor re-acknowledges through the console instead, which
-creates a fresh record. Probe: `utils/sanctioned_write_gate.sh` —
+creates a fresh record. Re-adding an entry ([lfx-self-serve#2980](https://github.com/linuxfoundation/lfx-self-serve/issues/2980))
+re-approves, with or without `autoCreateECLA`, the signed acknowledgments that **only** an
+approval list removal had invalidated (removal attribution or the legacy removal note, no other
+note or `invalidation_note`) and whose user the re-added entries cover; deliberate invalidations
+stay. The list edit succeeds even when that recovery is incomplete — the response is then 400
+`approval list updated, but re-enabling ... failed - re-add the entries to retry` (an unanswered
+GitHub organization lookup counts as a failure). The CCLA is re-read before every restore, so an
+entry removed meanwhile is observed; a GitLab-group-only re-add restores nothing (group
+membership is not evaluated). Probe: `utils/sanctioned_write_gate.sh` —
 PASS = 403 `company_sanctioned` per op; payloads use bogus targets to limit the damage
 where the gate is broken, but a broken gate still runs the real write path: eclaAutoCreate
 has no bogus placeholder (skipped unless `ECLA_AUTO_CREATE_OK=1` — a broken gate persists
