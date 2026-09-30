@@ -29,6 +29,9 @@ type DBModel struct {
 	SanctionOrigin    string   `dynamodbav:"sanction_origin" json:"sanction_origin,omitempty"`
 	SanctionedDate    string   `dynamodbav:"sanctioned_date" json:"sanctioned_date,omitempty"`
 	Version           string   `dynamodbav:"version" json:"version"`
+
+	// PreviousCompanyExternalID is set only by the org import tool when it rewrites company_external_id.
+	PreviousCompanyExternalID string `dynamodbav:"previous_company_external_id,omitempty" json:"previous_company_external_id,omitempty"`
 }
 
 // Invite data model

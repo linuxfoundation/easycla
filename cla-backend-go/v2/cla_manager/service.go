@@ -345,7 +345,7 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 	projectClient := v2ProjectService.GetClient()
 
 	log.WithFields(f).Debugf("loading company by ID...")
-	v1CompanyModel, companyErr := s.companyService.GetCompany(ctx, companyID)
+	v1CompanyModel, companyErr := s.companyService.ResolveCompany(ctx, companyID)
 	if companyErr != nil {
 		log.WithFields(f).Warnf("company not found, error: %+v", companyErr)
 		return nil, companyErr
@@ -596,9 +596,9 @@ func (s *service) CreateCLAManagerDesigneeByGroup(ctx context.Context, params cl
 	var designeeScopes []*models.ClaManagerDesignee
 	userEmail := params.Body.UserEmail.String()
 
-	// Lookup the company by internal ID
-	log.WithFields(f).Debugf("looking up company by internal ID...")
-	v1CompanyModel, err := s.companyService.GetCompany(ctx, params.CompanyID)
+	// Lookup the company by internal ID or SFID (virtual company when no row exists yet)
+	log.WithFields(f).Debugf("looking up company by ID...")
+	v1CompanyModel, err := s.companyService.ResolveCompany(ctx, params.CompanyID)
 	if err != nil || v1CompanyModel == nil {
 		msg := fmt.Sprintf("unable to lookup company by ID: %s", params.CompanyID)
 		log.WithFields(f).WithError(err).Warn(msg)
@@ -683,7 +683,7 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 
 	log.WithFields(f).Debugf("loading company by external ID...")
 	// Search for salesForce Company aka external Company
-	v1CompanyModel, companyErr := s.companyService.GetCompany(ctx, companyID)
+	v1CompanyModel, companyErr := s.companyService.ResolveCompany(ctx, companyID)
 	if companyErr != nil {
 		msg := fmt.Sprintf("EasyCLA - 400 Bad Request - %s", companyErr)
 		log.Warn(msg)
@@ -926,7 +926,7 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 
 	// Get company
 	log.WithFields(f).Debugf("Get company for companyID: %s ", companyID)
-	companyModel, companyErr := s.companyService.GetCompany(ctx, companyID)
+	companyModel, companyErr := s.companyService.ResolveCompany(ctx, companyID)
 	if companyErr != nil {
 		msg := fmt.Sprintf("Problem getting company for companyID: %s ", companyID)
 		log.Warn(msg)

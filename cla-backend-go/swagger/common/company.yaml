@@ -7,8 +7,8 @@ title: Company
 description: Company Model
 properties:
   companyID:
-    description: The company unique internal ID
-    $ref: './common/properties/internal-id.yaml'
+    description: The company unique internal ID (Salesforce ID for an organization without an EasyCLA row yet)
+    $ref: './common/properties/company-id.yaml'
   companyExternalID:
     description: the company external ID
     $ref: './common/properties/external-id.yaml'

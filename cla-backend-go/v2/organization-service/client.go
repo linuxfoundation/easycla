@@ -245,6 +245,49 @@ func (osc *Client) CreateOrgUserRoleOrgScopeProjectOrg(ctx context.Context, emai
 	return nil
 }
 
+// CreateOrgUserRoleScopeByUsername assigns a role scope (organization or project|organization) to a
+// user identified by LFID username; an already-assigned role is not an error.
+func (osc *Client) CreateOrgUserRoleScopeByUsername(ctx context.Context, username string, organizationID string, objectType string, objectID string, roleID string) error {
+	f := logrus.Fields{
+		"functionName":   "organization_service.CreateOrgUserRoleScopeByUsername",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"username":       username,
+		"organizationID": organizationID,
+		"objectType":     objectType,
+		"objectID":       objectID,
+		"roleID":         roleID,
+	}
+
+	params := &organizations.CreateOrgUsrRoleScopesParams{
+		CreateRoleScopes: &models.CreateRolescopes{
+			Username:   username,
+			ObjectID:   &objectID,
+			ObjectType: &objectType,
+			RoleID:     &roleID,
+		},
+		SalesforceID: organizationID,
+		Context:      ctx,
+	}
+	tok, err := token.GetToken()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to fetch token")
+		return err
+	}
+
+	clientAuth := runtimeClient.BearerToken(tok)
+	result, err := osc.cl.Organizations.CreateOrgUsrRoleScopes(params, clientAuth)
+	if err != nil {
+		if _, conflict := err.(*organizations.CreateOrgUsrRoleScopesConflict); conflict {
+			log.WithFields(f).Debug("role scope already assigned")
+			return nil
+		}
+		log.WithFields(f).WithError(err).Warn("unable to assign role scope by username")
+		return err
+	}
+	log.WithFields(f).Debugf("result: %#v", result)
+	return nil
+}
+
 // DeleteRolePermissions removes the specified Org/Project user permissions for with the given role
 func (osc *Client) DeleteRolePermissions(ctx context.Context, organizationID, projectID, role string, authUser *auth.User) error {
 	f := logrus.Fields{

@@ -104,6 +104,18 @@ type Config struct {
 
 	// SelfServe holds the LFX Self Serve trusted-caller configuration
 	SelfServe SelfServe `json:"self_serve"`
+
+	// MemberService holds the LFX v2 member-service client configuration (org import tool only)
+	MemberService MemberService `json:"member_service"`
+}
+
+// MemberService holds the LFX v2 member-service configuration used by the org import tool to
+// register organizations as B2B orgs. It reuses the shared Auth0Platform M2M credentials; only the
+// base URL (cla-member-service-base-url-{stage}) and audience (cla-member-service-auth0-audience-{stage})
+// are configured here, both optional: when empty the register route is unavailable.
+type MemberService struct {
+	BaseURL  string `json:"base_url"`
+	Audience string `json:"audience"`
 }
 
 // SelfServe holds the LFX Self Serve trusted-caller configuration: the Auth0 azp (client ID)

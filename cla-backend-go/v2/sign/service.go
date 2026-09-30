@@ -267,24 +267,13 @@ func (s *service) requestCorporateSignatureWithExpectedCLAGroup(ctx context.Cont
 		return nil, err
 	}
 
-	// 1. Ensure Company Exists
-	var comp *v1Models.Company
-	// Backwards compatible - if the signing entity name is not set, then we fall back to using the CompanySFID lookup
-	// which will return the company record where the company name == signing entity name
-	if input.SigningEntityName == "" {
-		comp, err = s.companyRepo.GetCompanyByExternalID(ctx, utils.StringValue(input.CompanySfid))
-		if err != nil {
-			log.WithFields(f).WithError(err).Warn("unable to fetch company records by signing entity name value")
-			return nil, err
-		}
-	} else {
-		// Big change here - since we can have multiple EasyCLA Company records with the same external SFID, we now
-		// switch over to query by the signing entity name.
-		comp, err = s.companyRepo.GetCompanyBySigningEntityName(ctx, input.SigningEntityName)
-		if err != nil {
-			log.WithFields(f).WithError(err).Warn("unable to fetch company records by signing entity name value")
-			return nil, err
-		}
+	// 1. Resolve the company: the persisted row, or a transient (not yet persisted) model backed by the
+	// platform organization when this is the organization's first CCLA - the row is created later, inside
+	// requestCorporateSignature, only after every validation passed (#2751)
+	comp, err := ResolveSigningCompany(ctx, s.companyRepo, utils.StringValue(input.CompanySfid), input.SigningEntityName)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to resolve the signing company")
+		return nil, err
 	}
 
 	// 1.5 Check if company is sanctioned
@@ -492,6 +481,88 @@ func (s *service) requestCorporateSignatureWithExpectedCLAGroup(ctx context.Cont
 	return &models.CorporateSignatureOutput{
 		SignURL:     signature.SignatureSignURL,
 		SignatureID: signature.SignatureID,
+		CompanyID:   comp.CompanyID,
+	}, nil
+}
+
+// SigningCompanyReader is the company lookup surface ResolveSigningCompany needs
+type SigningCompanyReader interface {
+	GetCompanyByExternalID(ctx context.Context, companySFID string) (*v1Models.Company, error)
+	GetCompanyBySigningEntityName(ctx context.Context, signingEntityName string) (*v1Models.Company, error)
+}
+
+// ResolveSigningCompany returns the company a corporate signature request refers to: the persisted row
+// (by SFID, or by signing entity name) when one exists, otherwise a transient model with an empty
+// CompanyID built from the platform organization. Nothing is persisted here. A requested signing entity
+// name must be the organization name or one of its signing entity names. The transient model carries
+// the organization ID the platform returns (as the former create path persisted it), and a parent row
+// stored under that ID wins over a transient model.
+func ResolveSigningCompany(ctx context.Context, companyRepo SigningCompanyReader, companySFID, signingEntityName string) (*v1Models.Company, error) {
+	f := logrus.Fields{
+		"functionName":      "sign.ResolveSigningCompany",
+		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
+		"companySFID":       companySFID,
+		"signingEntityName": signingEntityName,
+	}
+	var comp *v1Models.Company
+	var err error
+	if signingEntityName == "" {
+		comp, err = companyRepo.GetCompanyByExternalID(ctx, companySFID)
+	} else {
+		comp, err = companyRepo.GetCompanyBySigningEntityName(ctx, signingEntityName)
+	}
+	if err == nil {
+		return comp, nil
+	}
+	if _, notFound := err.(*utils.CompanyNotFound); !notFound || companySFID == "" {
+		return nil, err
+	}
+
+	orgClient := organizationService.GetClient()
+	if orgClient == nil {
+		return nil, err
+	}
+	org, orgErr := orgClient.GetOrganization(ctx, companySFID)
+	if orgErr != nil {
+		if _, ok := orgErr.(*organizations.GetOrgNotFound); ok {
+			log.WithFields(f).Debug("no company row and no organization for the SFID")
+			return nil, err
+		}
+		log.WithFields(f).WithError(orgErr).Warn("problem loading the organization")
+		return nil, orgErr
+	}
+	orgID := strings.TrimSpace(org.ID)
+	if orgID == "" {
+		orgID = companySFID
+	}
+	if signingEntityName == "" && orgID != companySFID {
+		stored, storedErr := companyRepo.GetCompanyByExternalID(ctx, orgID)
+		if storedErr == nil {
+			return stored, nil
+		}
+		if _, notFound := storedErr.(*utils.CompanyNotFound); !notFound {
+			return nil, storedErr
+		}
+	}
+	entityName := strings.TrimSpace(org.Name)
+	if signingEntityName != "" {
+		entityName = ""
+		for _, candidate := range append([]string{org.Name}, org.SigningEntityName...) {
+			if strings.EqualFold(strings.TrimSpace(candidate), strings.TrimSpace(signingEntityName)) {
+				entityName = strings.TrimSpace(candidate)
+				break
+			}
+		}
+		if entityName == "" {
+			log.WithFields(f).Debug("the signing entity name does not belong to the organization")
+			return nil, err
+		}
+	}
+	log.WithFields(f).Debugf("no company row yet - using a transient company for organization %s", org.Name)
+	return &v1Models.Company{
+		CompanyExternalID: orgID,
+		CompanyName:       strings.TrimSpace(org.Name),
+		SigningEntityName: entityName,
 	}, nil
 }
 
@@ -2901,6 +2972,15 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 		return nil, errors.New("unable to lookup latest corporate document for project")
 	}
 
+	// 3.5 First CCLA for this organization: create (or adopt) the company row now that the request is valid
+	if comp.CompanyID == "" {
+		if ensureErr := s.ensureSigningCompanyRow(ctx, comp, claUser, lfUsername); ensureErr != nil {
+			return nil, ensureErr
+		}
+		input.CompanyID = comp.CompanyID
+		f["CompanyID"] = input.CompanyID
+	}
+
 	// 4. Check for active corporate signature record for this project/company combination
 	approved := true
 	log.WithFields(f).Debug("requestCorporateSignature...")
@@ -3265,6 +3345,43 @@ func (s *service) GetUserActiveSignature(ctx context.Context, userID string) (*m
 
 // checkCompanyCompliance queries the Sanctions Screening Service for the given company
 // and persists the result. Returns (sanctioned, error).
+// ensureSigningCompanyRow creates (or adopts) the company row for a transient signing company and
+// copies it into comp; an adopted row that is sanctioned stops the request (#2751)
+func (s *service) ensureSigningCompanyRow(ctx context.Context, comp *v1Models.Company, claUser *v1Models.User, lfUsername string) error {
+	f := logrus.Fields{
+		"functionName":      "sign.ensureSigningCompanyRow",
+		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
+		"companySFID":       comp.CompanyExternalID,
+		"signingEntityName": comp.SigningEntityName,
+	}
+	ensured, created, err := s.companyRepo.EnsureCompanyForExternalID(ctx, comp.CompanyExternalID, comp.CompanyName, comp.SigningEntityName)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to create the company record for the signing organization")
+		return err
+	}
+	if !created {
+		// a row appeared since the request was resolved - its stored compliance state decides
+		wasSanctioned := ensured.IsSanctioned
+		sanctioned, sanctionErr := s.checkCompanyCompliance(ctx, ensured)
+		if sanctionErr != nil {
+			return sanctionErr
+		}
+		if sanctioned {
+			if !wasSanctioned {
+				s.logCompanySanctionedEvent(ctx, ensured, claUser, lfUsername)
+			}
+			return &utils.SanctionedCompanyError{
+				CompanyID:   ensured.CompanyID,
+				CompanySFID: ensured.CompanyExternalID,
+				CompanyName: ensured.CompanyName,
+				Guidance:    utils.CompanySanctionedSigningGuidance,
+			}
+		}
+	}
+	*comp = *ensured
+	return nil
+}
+
 func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.Company) (bool, error) {
 	sssMode := "optional"
 	if s.sssRequired {
@@ -3375,7 +3492,10 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 	// Persist result and reflect it on the in-memory model so downstream gates in this
 	// same request (e.g. ProcessEmployeeSignature) see the just-updated state instead of
 	// the stale value loaded before this check ran.
-	if sanctioned {
+	if company.CompanyID == "" {
+		// transient company (no row yet): nothing to persist, the decision lives on the model and in the cache
+		s.applyComplianceToModel(company, sanctioned)
+	} else if sanctioned {
 		log.WithFields(f).Warnf("SSS returned flagged status for company %s, persisting sanction with origin=sss", company.CompanyID)
 		if persistErr := s.companyRepo.UpdateCompanySanctionStatus(ctx, company.CompanyID, true, sanctionOriginSSS); persistErr != nil {
 			log.WithFields(f).WithError(persistErr).Warnf("failed to persist sanction status for company %s", company.CompanyID)

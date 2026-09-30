@@ -337,6 +337,19 @@ func getAttrBool(item map[string]types.AttributeValue, key string) bool {
 	}
 }
 
+// isSalesforceID reports whether id has the 15- or 18-character alphanumeric Salesforce ID shape.
+func isSalesforceID(id string) bool {
+	if len(id) != 15 && len(id) != 18 {
+		return false
+	}
+	for _, r := range id {
+		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z') {
+			return false
+		}
+	}
+	return true
+}
+
 func getAttrString(item map[string]types.AttributeValue, key string) string {
 	if item == nil {
 		return ""
@@ -8669,7 +8682,22 @@ func (h *Handlers) employeeSignaturePrecheck(ctx context.Context, projectID, com
 	if err != nil {
 		return nil, nil, nil, nil, nil, err
 	}
-	if !found {
+	// A Salesforce organization ID is an admitted company reference (the Contributor Console
+	// looks companies up by SFID): use the parent row when one exists, otherwise the organization
+	// simply has no CCLA yet
+	rowless := false
+	if !found && isSalesforceID(companyID) {
+		company, found, err = h.companies.QueryByExternalID(ctx, companyID)
+		if err != nil {
+			return nil, nil, nil, nil, nil, err
+		}
+		if found {
+			companyID = getAttrString(company, "company_id")
+		} else {
+			rowless = true
+		}
+	}
+	if !found && !rowless {
 		return project, nil, nil, nil, map[string]any{"errors": map[string]any{"company_id": fmt.Sprintf("Company (%s) does not exist.", companyID)}}, nil
 	}
 
@@ -8679,6 +8707,16 @@ func (h *Handlers) employeeSignaturePrecheck(ctx context.Context, projectID, com
 	}
 	if !found {
 		return project, company, nil, nil, map[string]any{"errors": map[string]any{"user_id": fmt.Sprintf("User (%s) does not exist.", userID)}}, nil
+	}
+
+	if rowless {
+		return project, nil, user, nil, map[string]any{"errors": map[string]any{
+			"missing_ccla":        "Company does not have CCLA with this project.",
+			"company_id":          companyID,
+			"company_name":        "",
+			"signing_entity_name": "",
+			"company_external_id": companyID,
+		}}, nil
 	}
 
 	// Find an approved CCLA signature for (company_id, project_id).
@@ -9126,7 +9164,7 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 	if _, err := uuid.Parse(req.ProjectID); err != nil {
 		missing["project_id"] = "invalid uuid"
 	}
-	if _, err := uuid.Parse(req.CompanyID); err != nil {
+	if _, err := uuid.Parse(req.CompanyID); err != nil && !isSalesforceID(req.CompanyID) {
 		missing["company_id"] = "invalid uuid"
 	}
 	if _, err := uuid.Parse(req.UserID); err != nil {
@@ -9165,6 +9203,7 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 		respond.JSON(w, http.StatusOK, errResp)
 		return
 	}
+	req.CompanyID = getAttrString(company, "company_id")
 
 	// If the employee signature already exists, return it.
 	existing, err := h.signatures.QueryByProjectAndReference(ctx, req.ProjectID, req.UserID)
@@ -9503,7 +9542,7 @@ func (h *Handlers) CheckAndPrepareEmployeeSignatureV2(w http.ResponseWriter, r *
 	if _, err := uuid.Parse(req.ProjectID); err != nil {
 		missing["project_id"] = "invalid uuid"
 	}
-	if _, err := uuid.Parse(req.CompanyID); err != nil {
+	if _, err := uuid.Parse(req.CompanyID); err != nil && !isSalesforceID(req.CompanyID) {
 		missing["company_id"] = "invalid uuid"
 	}
 	if _, err := uuid.Parse(req.UserID); err != nil {

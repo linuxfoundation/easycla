@@ -157,9 +157,9 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			"authUser":       utils.StringValue(params.XUSERNAME),
 		}
 
-		// Lookup the company by internal ID
-		log.WithFields(f).Debugf("looking up company by internal ID...")
-		v1CompanyModel, err := v1CompanyService.GetCompany(ctx, params.CompanyID)
+		// Lookup the company by internal ID or SFID (virtual company when no row exists yet)
+		log.WithFields(f).Debugf("looking up company by ID...")
+		v1CompanyModel, err := v1CompanyService.ResolveCompany(ctx, params.CompanyID)
 		if err != nil || v1CompanyModel == nil {
 			msg := fmt.Sprintf("unable to lookup company by ID: %s", params.CompanyID)
 			log.WithFields(f).WithError(err).Warn(msg)
@@ -174,7 +174,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 		// Note: anyone create assign a CLA manager designee...no permissions checks
 		log.WithFields(f).Debugf("processing create CLA Manager Desginee request")
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
-		claManagerDesignee, err := service.CreateCLAManagerDesignee(ctx, params.CompanyID, params.ProjectSFID, params.Body.UserEmail.String())
+		claManagerDesignee, err := service.CreateCLAManagerDesignee(ctx, v1CompanyModel.CompanyID, params.ProjectSFID, params.Body.UserEmail.String())
 		if err != nil {
 			if err == ErrCLAManagerDesigneeConflict {
 				msg := fmt.Sprintf("Conflict assigning cla manager role for Project SFID: %s ", params.ProjectSFID)
@@ -221,7 +221,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 				return cla_manager.NewCreateCLAManagerDesigneeByGroupNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
 			}
 
-			v1CompanyModel, companyErr := v1CompanyService.GetCompany(ctx, params.CompanyID)
+			v1CompanyModel, companyErr := v1CompanyService.ResolveCompany(ctx, params.CompanyID)
 			if companyErr != nil || v1CompanyModel == nil {
 				msg := fmt.Sprintf("unable to lookup company by ID: %s", params.CompanyID)
 				log.WithFields(f).WithError(companyErr).Warn(msg)
@@ -232,6 +232,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 				log.WithFields(f).Warnf("company %s is sanctioned - rejecting CreateCLAManagerDesigneeByGroup", params.CompanyID)
 				return sanctionedResp
 			}
+			params.CompanyID = v1CompanyModel.CompanyID
 
 			designeeScopes, msg, err := service.CreateCLAManagerDesigneeByGroup(ctx, params, projectCLAGroups)
 			if err != nil {
@@ -277,7 +278,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 		}
 
 		if params.Body.CompanyID != "" {
-			v1CompanyModel, companyErr := v1CompanyService.GetCompany(ctx, params.Body.CompanyID)
+			v1CompanyModel, companyErr := v1CompanyService.ResolveCompany(ctx, params.Body.CompanyID)
 			if companyErr != nil || v1CompanyModel == nil {
 				msg := fmt.Sprintf("Problem getting company by ID : %s, error: %+v ", params.Body.CompanyID, companyErr)
 				return cla_manager.NewInviteCompanyAdminBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, companyErr))
@@ -285,6 +286,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			if sanctionedResp := utils.RejectIfCompanySanctioned(ctx, v1CompanyModel); sanctionedResp != nil {
 				return sanctionedResp
 			}
+			params.Body.CompanyID = v1CompanyModel.CompanyID
 		}
 
 		claManagerDesignees, err := service.InviteCompanyAdmin(ctx, params.Body.ContactAdmin, params.Body.CompanyID, *params.Body.ClaGroupID, params.Body.UserEmail.String(), params.Body.Name, &user, params.Body.PullRequestURL)
@@ -349,9 +351,9 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			"authUserEmail":  utils.StringValue(params.XEMAIL),
 		}
 
-		// Lookup the company by internal ID
-		log.WithFields(f).Debugf("looking up company by internal ID...")
-		v1CompanyModel, err := v1CompanyService.GetCompany(ctx, params.CompanyID)
+		// Lookup the company by internal ID or SFID (virtual company when no row exists yet)
+		log.WithFields(f).Debugf("looking up company by ID...")
+		v1CompanyModel, err := v1CompanyService.ResolveCompany(ctx, params.CompanyID)
 		if err != nil || v1CompanyModel == nil {
 			msg := fmt.Sprintf("unable to lookup company by ID: %s", params.CompanyID)
 			log.WithFields(f).WithError(err).Warn(msg)

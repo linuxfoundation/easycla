@@ -464,7 +464,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 			"companyID":      params.CompanyID,
 		}
 
-		companyModel, err := companyService.GetCompany(ctx, params.CompanyID)
+		companyModel, err := companyService.ResolveCompany(ctx, params.CompanyID)
 		if err != nil {
 			msg := fmt.Sprintf("User lookup for company by ID: %s failed : %v", params.CompanyID, err)
 			log.Warn(msg)
@@ -488,7 +488,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		}
 
 		log.WithFields(f).Debug("loading project company signatures...")
-		projectSignatures, err := v2SignatureService.GetProjectCompanySignatures(ctx, params.CompanyID, companyModel.CompanyExternalID, params.ProjectSFID)
+		projectSignatures, err := v2SignatureService.GetProjectCompanySignatures(ctx, companyModel.CompanyID, companyModel.CompanyExternalID, params.ProjectSFID)
 		if err != nil {
 			msg := fmt.Sprintf("error retrieving project signatures for project: %s, company: %s", params.ProjectSFID, params.CompanyID)
 			log.WithFields(f).Warn(msg)
