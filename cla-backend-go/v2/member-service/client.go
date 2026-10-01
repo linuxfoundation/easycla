@@ -87,10 +87,71 @@ func NewClient(cfg Config) (*Client, error) {
 	return &Client{cfg: cfg, httpClient: &http.Client{Timeout: 30 * time.Second}}, nil
 }
 
+const sfidSuffixChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"
+
+// sfid18 returns the canonical 18-character form of a 15- or 18-character Salesforce ID; the
+// gateway matches the path id against b2b_org:<18-char> FGA tuples, so a 15-character id is
+// always refused.
+func sfid18(id string) (string, bool) {
+	id = strings.TrimSpace(id)
+	if len(id) != 15 && len(id) != 18 {
+		return "", false
+	}
+	var b [18]byte
+	copy(b[:], id[:15])
+	for _, c := range b[:15] {
+		if !(c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9') {
+			return "", false
+		}
+	}
+	if len(id) == 18 && !restoreSFIDCase(b[:15], id[15:]) {
+		return "", false
+	}
+	for g := 0; g < 3; g++ {
+		bits := 0
+		for j := 0; j < 5; j++ {
+			if c := b[g*5+j]; c >= 'A' && c <= 'Z' {
+				bits |= 1 << j
+			}
+		}
+		b[15+g] = sfidSuffixChars[bits]
+	}
+	return string(b[:]), true
+}
+
+// restoreSFIDCase re-applies the letter case encoded by the case-insensitive 3-character suffix
+// (bit j of suffix character g set <=> position g*5+j is an uppercase letter).
+func restoreSFIDCase(id []byte, suffix string) bool {
+	for g := 0; g < 3; g++ {
+		s := suffix[g]
+		if s >= 'a' && s <= 'z' {
+			s -= 'a' - 'A'
+		}
+		bits := strings.IndexByte(sfidSuffixChars, s)
+		if bits < 0 {
+			return false
+		}
+		for j := 0; j < 5; j++ {
+			c := &id[g*5+j]
+			switch {
+			case bits&(1<<j) == 0:
+				if *c >= 'A' && *c <= 'Z' {
+					*c += 'a' - 'A'
+				}
+			case *c >= 'a' && *c <= 'z':
+				*c -= 'a' - 'A'
+			case *c < 'A' || *c > 'Z':
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // GetB2BOrg returns the registered B2B org (dry-run liveness check; member-service reads Salesforce).
 func (c *Client) GetB2BOrg(ctx context.Context, uid string) (*B2BOrg, error) {
-	uid = strings.TrimSpace(uid)
-	if len(uid) != 15 && len(uid) != 18 {
+	uid, ok := sfid18(uid)
+	if !ok {
 		return nil, ErrInvalidSFID
 	}
 	tok, err := c.getToken(ctx)
@@ -109,8 +170,8 @@ func (c *Client) GetB2BOrg(ctx context.Context, uid string) (*B2BOrg, error) {
 // RegisterB2BOrg registers the Salesforce account as a B2B org (idempotent on the member-service
 // side) and returns the resulting record.
 func (c *Client) RegisterB2BOrg(ctx context.Context, sfid string) (*B2BOrg, error) {
-	sfid = strings.TrimSpace(sfid)
-	if len(sfid) != 15 && len(sfid) != 18 {
+	sfid, ok := sfid18(sfid)
+	if !ok {
 		return nil, ErrInvalidSFID
 	}
 	tok, err := c.getToken(ctx)

@@ -214,7 +214,11 @@ acknowledgment, mirroring the ICLA invalidate internals: sets
 (enum: `signed-in-error`, `should-be-corporate`, `compliance`, `other`) and `note`
 (≤2048 chars) — logs the event and emails the employee. 400 when the signature is not an employee
 acknowledgment or belongs to another CLA group, 409 when already invalidated; the response echoes
-`signature_id`, `cla_group_id`, `company_id`, `user_id`.
+`signature_id`, `cla_group_id`, `company_id`, `user_id`. On top of the shared auth below the caller
+must be listed in the parent CCLA's `signature_acl` (the exact `CurrentUserInACL` match used by
+approval-list and Auto ECLA writes): no approved, signed parent CCLA for the acknowledgment's
+company and CLA group, or an ACL that does not list the caller (including an empty one), returns
+403 ([lfx-self-serve#3127](https://github.com/linuxfoundation/lfx-self-serve/issues/3127)).
 
 Auth for all five: `project|organization` tree scope for the project/company pair, LF
 admin disallowed (ACS resources `cla_manager_request_admin`,
