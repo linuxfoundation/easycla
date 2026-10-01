@@ -89,35 +89,63 @@ func NewClient(cfg Config) (*Client, error) {
 
 const sfidSuffixChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"
 
-// sfid18 returns the canonical 18-character form of a 15- or 18-character Salesforce ID (same as
-// member-service's sfuuid.Normalize18); the gateway matches the path id against b2b_org:<18-char>
-// FGA tuples, so a 15-character id is always refused.
+// sfid18 returns the canonical 18-character form of a 15- or 18-character Salesforce ID; the
+// gateway matches the path id against b2b_org:<18-char> FGA tuples, so a 15-character id is
+// always refused.
 func sfid18(id string) (string, bool) {
 	id = strings.TrimSpace(id)
-	if len(id) == 18 {
-		id = id[:15]
-	}
-	if len(id) != 15 {
+	if len(id) != 15 && len(id) != 18 {
 		return "", false
 	}
-	for i := 0; i < len(id); i++ {
-		c := id[i]
+	var b [18]byte
+	copy(b[:], id[:15])
+	for _, c := range b[:15] {
 		if !(c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9') {
 			return "", false
 		}
 	}
-	var b [18]byte
-	copy(b[:], id)
+	if len(id) == 18 && !restoreSFIDCase(b[:15], id[15:]) {
+		return "", false
+	}
 	for g := 0; g < 3; g++ {
 		bits := 0
 		for j := 0; j < 5; j++ {
-			if c := id[g*5+j]; c >= 'A' && c <= 'Z' {
+			if c := b[g*5+j]; c >= 'A' && c <= 'Z' {
 				bits |= 1 << j
 			}
 		}
 		b[15+g] = sfidSuffixChars[bits]
 	}
 	return string(b[:]), true
+}
+
+// restoreSFIDCase re-applies the letter case encoded by the case-insensitive 3-character suffix
+// (bit j of suffix character g set <=> position g*5+j is an uppercase letter).
+func restoreSFIDCase(id []byte, suffix string) bool {
+	for g := 0; g < 3; g++ {
+		s := suffix[g]
+		if s >= 'a' && s <= 'z' {
+			s -= 'a' - 'A'
+		}
+		bits := strings.IndexByte(sfidSuffixChars, s)
+		if bits < 0 {
+			return false
+		}
+		for j := 0; j < 5; j++ {
+			c := &id[g*5+j]
+			switch {
+			case bits&(1<<j) == 0:
+				if *c >= 'A' && *c <= 'Z' {
+					*c += 'a' - 'A'
+				}
+			case *c >= 'a' && *c <= 'z':
+				*c -= 'a' - 'A'
+			case *c < 'A' || *c > 'Z':
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // GetB2BOrg returns the registered B2B org (dry-run liveness check; member-service reads Salesforce).

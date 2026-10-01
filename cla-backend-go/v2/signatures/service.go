@@ -49,7 +49,7 @@ var (
 	errNotEcla                = errors.New("signature is not an employee acknowledgment (ecla)")
 	errEclaWrongClaGroup      = errors.New("ecla does not belong to the specified cla group")
 	errEclaAlreadyInvalidated = errors.New("ecla already invalidated")
-	errEclaForbidden          = errors.New("not authorized for the ecla company and project scope")
+	errEclaForbidden          = errors.New("not authorized to invalidate this employee acknowledgment")
 )
 
 // ServiceInterface contains method of v2 signature service

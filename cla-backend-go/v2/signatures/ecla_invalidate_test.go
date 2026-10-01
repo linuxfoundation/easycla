@@ -35,6 +35,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const eclaForbiddenMessage = utils.EasyCLA403Forbidden + " - unable to invalidate ecla - error: not authorized to invalidate this employee acknowledgment"
+
 type capturedEmail struct {
 	subject    string
 	body       string
@@ -753,6 +755,12 @@ func TestInvalidateECLAHandlerMapping(t *testing.T) {
 			if tc.expectedStatus == http.StatusOK {
 				assert.JSONEq(t, `{"signature_id":"sig-1","cla_group_id":"cla-group-1","company_id":"company-1","user_id":"user-1"}`, recorder.Body.String())
 			}
+			if tc.name == "forbidden" {
+				var payload map[string]interface{}
+				require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
+				assert.Equal(t, utils.String403, payload["Code"])
+				assert.Equal(t, eclaForbiddenMessage, payload["Message"])
+			}
 			if tc.name == "sanctioned company" {
 				var payload map[string]interface{}
 				require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
@@ -819,6 +827,7 @@ func TestInvalidateECLAHandlerParentACLDenial(t *testing.T) {
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
 	assert.Equal(t, "403", payload["Code"])
 	assert.Equal(t, "req-3127", payload["x-request-id"])
+	assert.Equal(t, eclaForbiddenMessage, payload["Message"])
 	assert.NotContains(t, payload, "signature_id", "a refusal carries no success payload")
 	assert.Empty(t, sender.sent)
 }

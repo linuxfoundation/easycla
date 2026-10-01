@@ -14,10 +14,13 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const syntheticSFID18 = "001Ab00000CdEfGIAV"
+
 type fakeMemberService struct {
 	t            *testing.T
 	tokenCalls   int
 	getCalls     int
+	getPaths     []string
 	registerBody []map[string]string
 	status       int
 	response     interface{}
@@ -44,11 +47,12 @@ func (f *fakeMemberService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(f.t, "client_credentials", req["grant_type"])
 		assert.Equal(f.t, "https://member.example/", req["audience"])
 		f.encode(w, map[string]interface{}{"access_token": "member-token", "token_type": "Bearer", "expires_in": 3600})
-	case "/b2b_orgs/0014100000Te0G7AAJ":
+	case "/b2b_orgs/0014100000Te0G7AAJ", "/b2b_orgs/" + syntheticSFID18:
 		assert.Equal(f.t, http.MethodGet, r.Method)
 		assert.Equal(f.t, "Bearer member-token", r.Header.Get("Authorization"))
 		assert.Equal(f.t, "1", r.URL.Query().Get("v"))
 		f.getCalls++
+		f.getPaths = append(f.getPaths, r.URL.Path)
 		w.WriteHeader(f.status)
 		if f.response != nil {
 			f.encode(w, f.response)
@@ -141,16 +145,52 @@ func TestSFID18(t *testing.T) {
 		"0014100000Te0RkAAJ": "0014100000Te0RkAAJ",
 		"0014100000Te0Rkaaj": "0014100000Te0RkAAJ",
 		" 0012M00002VjHnZ\n": "0012M00002VjHnZQAV",
+		// synthetic pair: the suffix restores the letter case of any case-folded 18-char form
+		"001Ab00000CdEfG":    syntheticSFID18,
+		syntheticSFID18:      syntheticSFID18,
+		"001ab00000cdefgiav": syntheticSFID18,
+		"001AB00000CDEFGIAV": syntheticSFID18,
+		"001aB00000cDeFgIaV": syntheticSFID18,
+		"001Ab00000CdEfGiav": syntheticSFID18,
+		"001ab00000cdefg":    "001ab00000cdefgAAA",
 	} {
 		got, ok := sfid18(in)
 		assert.True(t, ok, in)
 		assert.Equal(t, want, got, in)
 	}
-	for _, in := range []string{"", "0014100000Te0R", "0014100000Te0RkA", "0014100000Te0RkAAJX", "0014100000Te0R-", "lf-not-an-sfid-xxx"} {
+	// suffix outside A-Z/0-5, or an uppercase bit on a digit position, is malformed
+	for _, in := range []string{"", "0014100000Te0R", "0014100000Te0RkA", "0014100000Te0RkAAJX", "0014100000Te0R-", "lf-not-an-sfid-xxx",
+		"001Ab00000CdEfGIA6", "001Ab00000CdEfGIA-", "001Ab00000CdEfG-AV", "001Ab00000CdEfGJAV", "001Ab00000CdEfGIBV"} {
 		got, ok := sfid18(in)
 		assert.False(t, ok, in)
 		assert.Empty(t, got, in)
 	}
+}
+
+func TestB2BOrgCaseFoldedSFID(t *testing.T) {
+	fake := &fakeMemberService{status: http.StatusOK, response: map[string]string{"uid": syntheticSFID18, "name": "Synthetic Org"}}
+	client := newTestClient(t, fake)
+
+	org, err := client.GetB2BOrg(context.Background(), "001ab00000cdefgiav")
+	require.NoError(t, err)
+	assert.Equal(t, syntheticSFID18, org.UID)
+	assert.Equal(t, []string{"/b2b_orgs/" + syntheticSFID18}, fake.getPaths, "GET path carries the case-restored canonical id")
+
+	fake.status = http.StatusCreated
+	_, err = client.RegisterB2BOrg(context.Background(), "001AB00000CDEFGIAV")
+	require.NoError(t, err)
+	assert.Equal(t, []map[string]string{{"sfid": syntheticSFID18}}, fake.registerBody, "POST payload carries the case-restored canonical id")
+
+	client = newTestClient(t, fake)
+	for _, in := range []string{"001Ab00000CdEfGJAV", "001Ab00000CdEfGIA6"} {
+		_, err = client.GetB2BOrg(context.Background(), in)
+		assert.ErrorIs(t, err, ErrInvalidSFID, in)
+		_, err = client.RegisterB2BOrg(context.Background(), in)
+		assert.ErrorIs(t, err, ErrInvalidSFID, in)
+	}
+	assert.Equal(t, 1, fake.getCalls, "malformed suffixes never reach the service")
+	assert.Len(t, fake.registerBody, 1)
+	assert.Equal(t, 1, fake.tokenCalls, "malformed suffixes are refused before a token is minted")
 }
 
 func TestRegisterB2BOrgErrors(t *testing.T) {
