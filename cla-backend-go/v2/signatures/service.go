@@ -498,6 +498,10 @@ func (s *Service) InvalidateECLA(ctx context.Context, claGroupID string, signatu
 		return nil, errEclaForbidden
 	}
 
+	if cclaErr := s.requireParentCCLAManager(ctx, f, claGroupID, sig.SignatureUserCompanyID, authUser); cclaErr != nil {
+		return nil, cclaErr
+	}
+
 	if sanctionedErr := utils.CheckCompanySanctioned(companyModel); sanctionedErr != nil {
 		log.WithFields(f).Warnf("company %s is sanctioned - rejecting InvalidateECLA", companyModel.CompanyID)
 		return nil, sanctionedErr
@@ -593,6 +597,21 @@ func (s *Service) InvalidateECLA(ctx context.Context, claGroupID string, signatu
 }
 
 // EclaAutoCreate this routine updates the CCLA signature record by adjusting the auto_create_ecla column to the specified value
+
+// requireParentCCLAManager refuses callers outside the approved, signed parent ccla's acl (lfx-self-serve#3127)
+func (s *Service) requireParentCCLAManager(ctx context.Context, f logrus.Fields, claGroupID, companyID string, authUser *auth.User) error {
+	approved, signed := true, true
+	ccla, err := s.v1SignatureRepo.GetCorporateSignature(ctx, claGroupID, companyID, &approved, &signed)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to load the parent ccla signature")
+		return err
+	}
+	if ccla == nil || !utils.CurrentUserInACL(authUser, ccla.SignatureACL) {
+		log.WithFields(f).Debug("caller is not a cla manager of the parent ccla - rejecting InvalidateECLA")
+		return errEclaForbidden
+	}
+	return nil
+}
 func (s *Service) EclaAutoCreate(ctx context.Context, signatureID string, autoCreateECLA bool) error {
 	f := logrus.Fields{
 		"functionName":   "v2.signatures.service.EclaAutoCreate",

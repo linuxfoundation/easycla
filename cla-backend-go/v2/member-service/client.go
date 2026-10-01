@@ -87,10 +87,43 @@ func NewClient(cfg Config) (*Client, error) {
 	return &Client{cfg: cfg, httpClient: &http.Client{Timeout: 30 * time.Second}}, nil
 }
 
+const sfidSuffixChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"
+
+// sfid18 returns the canonical 18-character form of a 15- or 18-character Salesforce ID (same as
+// member-service's sfuuid.Normalize18); the gateway matches the path id against b2b_org:<18-char>
+// FGA tuples, so a 15-character id is always refused.
+func sfid18(id string) (string, bool) {
+	id = strings.TrimSpace(id)
+	if len(id) == 18 {
+		id = id[:15]
+	}
+	if len(id) != 15 {
+		return "", false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if !(c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9') {
+			return "", false
+		}
+	}
+	var b [18]byte
+	copy(b[:], id)
+	for g := 0; g < 3; g++ {
+		bits := 0
+		for j := 0; j < 5; j++ {
+			if c := id[g*5+j]; c >= 'A' && c <= 'Z' {
+				bits |= 1 << j
+			}
+		}
+		b[15+g] = sfidSuffixChars[bits]
+	}
+	return string(b[:]), true
+}
+
 // GetB2BOrg returns the registered B2B org (dry-run liveness check; member-service reads Salesforce).
 func (c *Client) GetB2BOrg(ctx context.Context, uid string) (*B2BOrg, error) {
-	uid = strings.TrimSpace(uid)
-	if len(uid) != 15 && len(uid) != 18 {
+	uid, ok := sfid18(uid)
+	if !ok {
 		return nil, ErrInvalidSFID
 	}
 	tok, err := c.getToken(ctx)
@@ -109,8 +142,8 @@ func (c *Client) GetB2BOrg(ctx context.Context, uid string) (*B2BOrg, error) {
 // RegisterB2BOrg registers the Salesforce account as a B2B org (idempotent on the member-service
 // side) and returns the resulting record.
 func (c *Client) RegisterB2BOrg(ctx context.Context, sfid string) (*B2BOrg, error) {
-	sfid = strings.TrimSpace(sfid)
-	if len(sfid) != 15 && len(sfid) != 18 {
+	sfid, ok := sfid18(sfid)
+	if !ok {
 		return nil, ErrInvalidSFID
 	}
 	tok, err := c.getToken(ctx)

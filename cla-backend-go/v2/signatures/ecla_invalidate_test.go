@@ -70,6 +70,76 @@ func eclaEventArgs() *events.LogEventArgs {
 	}
 }
 
+func parentCCLA(managers ...string) *v1Models.Signature {
+	ccla := &v1Models.Signature{SignatureID: "ccla-1", SignatureACL: []v1Models.User{}}
+	for _, manager := range managers {
+		ccla.SignatureACL = append(ccla.SignatureACL, v1Models.User{LfUsername: manager})
+	}
+	return ccla
+}
+
+// expectParentCCLALookup pins the parent lookup to the acknowledgment's company and cla group and to an approved, signed ccla
+func expectParentCCLALookup(ctx context.Context, t *testing.T, mockRepo *mock_v1_signatures.MockSignatureRepository, ccla *v1Models.Signature, err error) {
+	mockRepo.EXPECT().GetCorporateSignature(ctx, "cla-group-1", "company-1", gomock.Any(), gomock.Any()).DoAndReturn(
+		func(_ context.Context, _, _ string, approved, signed *bool) (*v1Models.Signature, error) {
+			if assert.NotNil(t, approved, "the parent lookup must ask for an approved ccla") {
+				assert.True(t, *approved, "the parent lookup must ask for an approved ccla")
+			}
+			if assert.NotNil(t, signed, "the parent lookup must ask for a signed ccla") {
+				assert.True(t, *signed, "the parent lookup must ask for a signed ccla")
+			}
+			return ccla, err
+		})
+}
+
+// deniedEclaFixture wires the strict mocks of a refused invalidation: the parent lookup is the last
+// permitted repository call - any invalidation, re-invalidation, user/cla group lookup, email or event fails the test
+type deniedEclaFixture struct {
+	repo   *mock_v1_signatures.MockSignatureRepository
+	events *eventsMock.MockService
+	sender *capturingEmailSender
+	svc    *Service
+}
+
+func newDeniedEclaFixture(ctx context.Context, t *testing.T, ctrl *gomock.Controller, sig *v1Signatures.ItemSignature) *deniedEclaFixture {
+	awsSession, err := ini.GetAWSSession()
+	require.NoError(t, err, "unable to create AWS session")
+
+	mockRepo := mock_v1_signatures.NewMockSignatureRepository(ctrl)
+	mockRepo.EXPECT().GetItemSignature(ctx, "sig-1").Return(sig, nil)
+	mockRepo.EXPECT().InvalidateProjectRecordWithMetadata(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+	mockRepo.EXPECT().ReinvalidateProjectRecordWithMetadata(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+	mockCompanyService := mock_company.NewMockIService(ctrl)
+	mockCompanyService.EXPECT().GetCompany(ctx, "company-1").
+		Return(&v1Models.Company{CompanyID: "company-1", CompanyExternalID: "comp-sfid", CompanyName: "Acme"}, nil)
+
+	mockProjectClaGroupsRepo := mock_projects_cla_groups.NewMockRepository(ctrl)
+	mockProjectClaGroupsRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-1").
+		Return([]*projects_cla_groups.ProjectClaGroup{{ProjectSFID: "proj-sfid"}}, nil)
+
+	mockUserService := mock_users.NewMockService(ctrl)
+	mockUserService.EXPECT().GetUser(gomock.Any()).Times(0)
+
+	mockProjectService := mock_project.NewMockService(ctrl)
+	mockProjectService.EXPECT().GetCLAGroupByID(gomock.Any(), gomock.Any()).Times(0)
+
+	mockEvents := eventsMock.NewMockService(ctrl)
+	mockEvents.EXPECT().LogEventWithContext(gomock.Any(), gomock.Any()).Times(0)
+
+	sender := &capturingEmailSender{}
+	prevSender := utils.GetEmailSender()
+	utils.SetEmailSender(sender)
+	t.Cleanup(func() { utils.SetEmailSender(prevSender) })
+
+	return &deniedEclaFixture{
+		repo:   mockRepo,
+		events: mockEvents,
+		sender: sender,
+		svc:    NewService(awsSession, "", mockProjectService, mockCompanyService, nil, mockProjectClaGroupsRepo, mockRepo, mockUserService, nil),
+	}
+}
+
 func TestService_InvalidateECLA(t *testing.T) {
 	t.Setenv("DISABLE_LOCAL_PERMISSION_CHECKS", "false")
 
@@ -107,6 +177,7 @@ func TestService_InvalidateECLA(t *testing.T) {
 			mockProjectClaGroupsRepo := mock_projects_cla_groups.NewMockRepository(ctrl)
 			mockProjectClaGroupsRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-1").
 				Return([]*projects_cla_groups.ProjectClaGroup{{ProjectSFID: "proj-other"}, {ProjectSFID: "proj-sfid"}}, nil)
+			expectParentCCLALookup(ctx, t, mockRepo, parentCCLA("org-admin"), nil)
 
 			mockUserService := mock_users.NewMockService(ctrl)
 			mockUserService.EXPECT().GetUser("user-1").
@@ -226,6 +297,7 @@ func TestService_InvalidateECLAAfterApprovalListRemoval(t *testing.T) {
 			mockProjectClaGroupsRepo := mock_projects_cla_groups.NewMockRepository(ctrl)
 			mockProjectClaGroupsRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-1").
 				Return([]*projects_cla_groups.ProjectClaGroup{{ProjectSFID: "proj-sfid"}}, nil)
+			expectParentCCLALookup(ctx, t, mockRepo, parentCCLA("org-admin"), nil)
 
 			mockUserService := mock_users.NewMockService(ctrl)
 			mockUserService.EXPECT().GetUser("user-1").
@@ -288,6 +360,7 @@ func TestService_InvalidateECLAAfterApprovalListRemoval(t *testing.T) {
 		mockProjectClaGroupsRepo := mock_projects_cla_groups.NewMockRepository(ctrl)
 		mockProjectClaGroupsRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-1").
 			Return([]*projects_cla_groups.ProjectClaGroup{{ProjectSFID: "proj-sfid"}}, nil)
+		expectParentCCLALookup(ctx, t, mockRepo, parentCCLA("org-admin"), nil)
 
 		mockUserService := mock_users.NewMockService(ctrl)
 		mockUserService.EXPECT().GetUser("user-1").
@@ -342,6 +415,7 @@ func TestService_InvalidateECLASanctionedCompany(t *testing.T) {
 		mockProjectClaGroupsRepo := mock_projects_cla_groups.NewMockRepository(ctrl)
 		mockProjectClaGroupsRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-1").
 			Return([]*projects_cla_groups.ProjectClaGroup{{ProjectSFID: "proj-sfid"}}, nil)
+		expectParentCCLALookup(ctx, t, mockRepo, parentCCLA("org-admin"), nil)
 
 		service := NewService(awsSession, "", nil, mockCompanyService, nil, mockProjectClaGroupsRepo, mockRepo, nil, nil)
 
@@ -351,6 +425,31 @@ func TestService_InvalidateECLASanctionedCompany(t *testing.T) {
 		require.True(t, errors.As(err, &sanctionedErr))
 		assert.Equal(t, "company-1", sanctionedErr.CompanyID)
 		assert.Equal(t, "comp-sfid", sanctionedErr.CompanySFID)
+	})
+
+	t.Run("parent acl denial is checked before the sanctions gate", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ctx := context.Background()
+
+		mockRepo := mock_v1_signatures.NewMockSignatureRepository(ctrl)
+		mockRepo.EXPECT().GetItemSignature(ctx, "sig-1").Return(eclaItemSignature(), nil)
+		expectParentCCLALookup(ctx, t, mockRepo, parentCCLA("cla-manager"), nil)
+
+		mockCompanyService := mock_company.NewMockIService(ctrl)
+		mockCompanyService.EXPECT().GetCompany(ctx, "company-1").Return(sanctionedCompany, nil)
+
+		mockProjectClaGroupsRepo := mock_projects_cla_groups.NewMockRepository(ctrl)
+		mockProjectClaGroupsRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-1").
+			Return([]*projects_cla_groups.ProjectClaGroup{{ProjectSFID: "proj-sfid"}}, nil)
+
+		service := NewService(awsSession, "", nil, mockCompanyService, nil, mockProjectClaGroupsRepo, mockRepo, nil, nil)
+
+		result, err := service.InvalidateECLA(ctx, "cla-group-1", "sig-1", managerUser, nil, eclaEventArgs(), nil)
+		assert.Nil(t, result)
+		assert.ErrorIs(t, err, errEclaForbidden, "a non-manager must not learn the sanction status")
+		var sanctionedErr *utils.SanctionedCompanyError
+		assert.False(t, errors.As(err, &sanctionedErr))
 	})
 
 	t.Run("authorization is checked before the sanctions gate", func(t *testing.T) {
@@ -453,6 +552,7 @@ func TestService_InvalidateECLAValidation(t *testing.T) {
 		mockProjectClaGroupsRepo := mock_projects_cla_groups.NewMockRepository(ctrl)
 		mockProjectClaGroupsRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-1").
 			Return([]*projects_cla_groups.ProjectClaGroup{{ProjectSFID: "proj-sfid"}}, nil)
+		expectParentCCLALookup(ctx, t, mockRepo, parentCCLA("org-admin"), nil)
 
 		mockUserService := mock_users.NewMockService(ctrl)
 		mockUserService.EXPECT().GetUser("user-1").
@@ -488,6 +588,7 @@ func TestService_InvalidateECLAValidation(t *testing.T) {
 			mockProjectClaGroupsRepo := mock_projects_cla_groups.NewMockRepository(ctrl)
 			mockProjectClaGroupsRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-1").
 				Return([]*projects_cla_groups.ProjectClaGroup{{ProjectSFID: "proj-sfid"}}, nil).AnyTimes()
+			mockRepo.EXPECT().GetCorporateSignature(ctx, "cla-group-1", "company-1", gomock.Any(), gomock.Any()).Return(parentCCLA("org-admin"), nil).AnyTimes()
 
 			service := NewService(awsSession, "", nil, mockCompanyService, nil, mockProjectClaGroupsRepo, mockRepo, nil, nil)
 
@@ -498,6 +599,96 @@ func TestService_InvalidateECLAValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestService_InvalidateECLARequiresParentCCLAManager(t *testing.T) {
+	t.Setenv("DISABLE_LOCAL_PERMISSION_CHECKS", "false")
+
+	managerUser := &auth.User{UserName: "org-admin", Email: "org-admin@example.com", ACL: auth.ACL{Allowed: true, Scopes: []auth.Scope{{Type: auth.ProjectOrganization, ID: "proj-sfid|comp-sfid"}}}}
+	staffAdmin := &auth.User{UserName: "staff-admin", Email: "staff@example.com", ACL: auth.ACL{Admin: true, Allowed: true}}
+	noScopeUser := &auth.User{UserName: "no-scope", Email: "no-scope@example.com", ACL: auth.ACL{Allowed: true}}
+	lookupDown := errors.New("dynamo down")
+
+	nilACL := parentCCLA()
+	nilACL.SignatureACL = nil
+
+	sameEmailOnly := parentCCLA("someone-else")
+	sameEmailOnly.SignatureACL[0].LfEmail = strfmt.Email(managerUser.Email)
+
+	ownACL := eclaItemSignature()
+	ownACL.SignatureACL = []string{"org-admin"}
+
+	for _, tc := range []struct {
+		name        string
+		sig         *v1Signatures.ItemSignature
+		ccla        *v1Models.Signature
+		lookupErr   error
+		expectedErr error
+	}{
+		{name: "caller absent from a nonempty parent acl", ccla: parentCCLA("cla-manager", "another-manager"), expectedErr: errEclaForbidden},
+		{name: "nil parent acl", ccla: nilACL, expectedErr: errEclaForbidden},
+		{name: "empty parent acl", ccla: parentCCLA(), expectedErr: errEclaForbidden},
+		{name: "username differing only by case", ccla: parentCCLA("Org-Admin"), expectedErr: errEclaForbidden},
+		{name: "username differing only by surrounding whitespace", ccla: parentCCLA(" org-admin "), expectedErr: errEclaForbidden},
+		{name: "same email on a different manager", ccla: sameEmailOnly, expectedErr: errEclaForbidden},
+		{name: "membership in the acknowledgment's own acl", sig: ownACL, ccla: parentCCLA("cla-manager"), expectedErr: errEclaForbidden},
+		{name: "no approved and signed parent ccla", expectedErr: errEclaForbidden},
+		{name: "parent lookup failure is propagated", lookupErr: lookupDown, expectedErr: lookupDown},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			ctx := context.Background()
+
+			sig := tc.sig
+			if sig == nil {
+				sig = eclaItemSignature()
+			}
+			fx := newDeniedEclaFixture(ctx, t, ctrl, sig)
+			expectParentCCLALookup(ctx, t, fx.repo, tc.ccla, tc.lookupErr)
+
+			result, err := fx.svc.InvalidateECLA(ctx, "cla-group-1", "sig-1", managerUser, fx.events, eclaEventArgs(), &models.EclaInvalidationInput{Reason: "compliance"})
+			assert.Nil(t, result)
+			assert.ErrorIs(t, err, tc.expectedErr)
+			assert.Empty(t, fx.sender.sent, "a refused invalidation sends no notification")
+		})
+	}
+
+	// the parent acl is an additional condition: without the acs scope it is not even consulted
+	for _, authUser := range []*auth.User{staffAdmin, noScopeUser} {
+		t.Run("parent acl membership without the acs scope: "+authUser.UserName, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+			ctx := context.Background()
+
+			fx := newDeniedEclaFixture(ctx, t, ctrl, eclaItemSignature())
+			fx.repo.EXPECT().GetCorporateSignature(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+				Return(parentCCLA(authUser.UserName), nil).Times(0)
+
+			result, err := fx.svc.InvalidateECLA(ctx, "cla-group-1", "sig-1", authUser, fx.events, eclaEventArgs(), nil)
+			assert.Nil(t, result)
+			assert.ErrorIs(t, err, errEclaForbidden)
+			assert.Empty(t, fx.sender.sent)
+		})
+	}
+
+	t.Run("the lookup is pinned to the acknowledgment's internal company and cla group", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		ctx := context.Background()
+
+		fx := newDeniedEclaFixture(ctx, t, ctrl, eclaItemSignature())
+		// company-2 is another signing entity of the same organization (same SFID) and cla-group-2 another
+		// agreement of company-1 - both list the caller, neither is the acknowledgment's parent
+		fx.repo.EXPECT().GetCorporateSignature(ctx, "cla-group-1", "company-2", gomock.Any(), gomock.Any()).Return(parentCCLA("org-admin"), nil).Times(0)
+		fx.repo.EXPECT().GetCorporateSignature(ctx, "cla-group-2", "company-1", gomock.Any(), gomock.Any()).Return(parentCCLA("org-admin"), nil).Times(0)
+		expectParentCCLALookup(ctx, t, fx.repo, parentCCLA("cla-manager"), nil)
+
+		result, err := fx.svc.InvalidateECLA(ctx, "cla-group-1", "sig-1", managerUser, fx.events, eclaEventArgs(), nil)
+		assert.Nil(t, result)
+		assert.ErrorIs(t, err, errEclaForbidden)
+		assert.Empty(t, fx.sender.sent)
+	})
 }
 
 type fakeEclaInvalidateService struct {
@@ -571,6 +762,65 @@ func TestInvalidateECLAHandlerMapping(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestInvalidateECLAHandlerParentACLDenial(t *testing.T) {
+	t.Setenv("DISABLE_LOCAL_PERMISSION_CHECKS", "false")
+
+	awsSession, err := ini.GetAWSSession()
+	if err != nil {
+		assert.Fail(t, "unable to create AWS session")
+	}
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// the handler builds its own request context - match it loosely and pin the business arguments
+	mockRepo := mock_v1_signatures.NewMockSignatureRepository(ctrl)
+	mockRepo.EXPECT().GetItemSignature(gomock.Any(), "sig-1").Return(eclaItemSignature(), nil)
+	mockRepo.EXPECT().GetCorporateSignature(gomock.Any(), "cla-group-1", "company-1", gomock.Any(), gomock.Any()).Return(parentCCLA("cla-manager"), nil)
+	mockRepo.EXPECT().InvalidateProjectRecordWithMetadata(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+	mockRepo.EXPECT().ReinvalidateProjectRecordWithMetadata(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+	mockCompanyService := mock_company.NewMockIService(ctrl)
+	mockCompanyService.EXPECT().GetCompany(gomock.Any(), "company-1").
+		Return(&v1Models.Company{CompanyID: "company-1", CompanyExternalID: "comp-sfid", CompanyName: "Acme"}, nil)
+
+	mockProjectClaGroupsRepo := mock_projects_cla_groups.NewMockRepository(ctrl)
+	mockProjectClaGroupsRepo.EXPECT().GetProjectsIdsForClaGroup(gomock.Any(), "cla-group-1").
+		Return([]*projects_cla_groups.ProjectClaGroup{{ProjectSFID: "proj-sfid"}}, nil)
+
+	mockEvents := eventsMock.NewMockService(ctrl)
+	mockEvents.EXPECT().LogEventWithContext(gomock.Any(), gomock.Any()).Times(0)
+
+	sender := &capturingEmailSender{}
+	prevSender := utils.GetEmailSender()
+	utils.SetEmailSender(sender)
+	t.Cleanup(func() { utils.SetEmailSender(prevSender) })
+
+	v2Service := NewService(awsSession, "", nil, mockCompanyService, nil, mockProjectClaGroupsRepo, mockRepo, nil, nil)
+	api := operations.NewEasyclaAPI(nil)
+	Configure(api, nil, nil, mockCompanyService, nil, nil, mockEvents, v2Service, mockProjectClaGroupsRepo)
+	require.NotNil(t, api.SignaturesInvalidateECLAHandler)
+
+	authUser := &auth.User{UserName: "org-admin", Email: "org-admin@example.com", ACL: auth.ACL{Allowed: true, Scopes: []auth.Scope{{Type: auth.ProjectOrganization, ID: "proj-sfid|comp-sfid"}}}}
+	username, email, reqID := authUser.UserName, authUser.Email, "req-3127"
+	recorder := httptest.NewRecorder()
+	api.SignaturesInvalidateECLAHandler.Handle(sigOps.InvalidateECLAParams{
+		HTTPRequest: httptest.NewRequest(http.MethodPut, "/v4/cla-group/cla-group-1/ecla/sig-1/invalidate", nil),
+		XUSERNAME:   &username, XEMAIL: &email, XREQUESTID: &reqID,
+		ClaGroupID: "cla-group-1", SignatureID: "sig-1",
+		Body: models.EclaInvalidationInput{Reason: "compliance"},
+	}, authUser).WriteResponse(recorder, runtime.JSONProducer())
+
+	assert.Equal(t, http.StatusForbidden, recorder.Code, recorder.Body.String())
+	assert.Equal(t, "req-3127", recorder.Header().Get("X-Request-Id"))
+	var payload map[string]interface{}
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
+	assert.Equal(t, "403", payload["Code"])
+	assert.Equal(t, "req-3127", payload["x-request-id"])
+	assert.NotContains(t, payload, "signature_id", "a refusal carries no success payload")
+	assert.Empty(t, sender.sent)
 }
 
 func TestEclaInvalidateJSONContracts(t *testing.T) {

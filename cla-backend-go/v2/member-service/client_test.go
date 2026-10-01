@@ -114,11 +114,43 @@ func TestRegisterB2BOrg(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Infosys Limited", org.Name)
 	assert.Equal(t, 1, fake.getCalls)
+	org, err = client.GetB2BOrg(context.Background(), " 0014100000Te0G7 ")
+	require.NoError(t, err, "15-char ids are sent in the 18-char form the gateway matches tuples on")
+	assert.Equal(t, "Infosys Limited", org.Name)
+	assert.Equal(t, 2, fake.getCalls)
+	fake.status = http.StatusCreated
+	_, err = client.RegisterB2BOrg(context.Background(), "0014100000Te0G7")
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"sfid": "0014100000Te0G7AAJ"}, fake.registerBody[len(fake.registerBody)-1])
 	fake.status = http.StatusNotFound
 	_, err = client.GetB2BOrg(context.Background(), "0014100000Te0G7AAJ")
 	assert.ErrorIs(t, err, ErrOrgNotFound)
 	_, err = client.GetB2BOrg(context.Background(), "lf-not-an-sfid")
 	assert.ErrorIs(t, err, ErrInvalidSFID)
+}
+
+func TestSFID18(t *testing.T) {
+	// real Account id pairs from the dev companies table
+	for in, want := range map[string]string{
+		"0014100000Te0Rk":    "0014100000Te0RkAAJ",
+		"0012h00000hFI9F":    "0012h00000hFI9FAAW",
+		"0014100000Te0G7":    "0014100000Te0G7AAJ",
+		"0012M00002VjHnZ":    "0012M00002VjHnZQAV",
+		"0012M00002p9y2q":    "0012M00002p9y2qQAA",
+		"0014100000Te0yq":    "0014100000Te0yqAAB",
+		"0014100000Te0RkAAJ": "0014100000Te0RkAAJ",
+		"0014100000Te0Rkaaj": "0014100000Te0RkAAJ",
+		" 0012M00002VjHnZ\n": "0012M00002VjHnZQAV",
+	} {
+		got, ok := sfid18(in)
+		assert.True(t, ok, in)
+		assert.Equal(t, want, got, in)
+	}
+	for _, in := range []string{"", "0014100000Te0R", "0014100000Te0RkA", "0014100000Te0RkAAJX", "0014100000Te0R-", "lf-not-an-sfid-xxx"} {
+		got, ok := sfid18(in)
+		assert.False(t, ok, in)
+		assert.Empty(t, got, in)
+	}
 }
 
 func TestRegisterB2BOrgErrors(t *testing.T) {
