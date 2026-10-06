@@ -7,10 +7,13 @@ git status
 echo -n 'proceed (ctrl+c to stop)? '
 read
 
-# git rm -r --cached .
-git rm -rf .
-# git checkout origin/dev -- .
-git checkout dev -- .
-git add -A
+# Exact copy of the dev tree into index + worktree, deletions included
+# (replaces the destructive `git rm -rf .` + `git checkout dev -- .` + `git add -A`).
+git restore --source=dev --staged --worktree -- . || exit 1
+if git diff --quiet dev -- && git diff --cached --quiet dev --; then
+  echo "OK: index and worktree are identical to dev"
+else
+  echo "WARNING: still differs from dev:"; git diff --stat dev --; git diff --cached --stat dev --
+fi
 
 echo "Now you can do: git commit -S -asm 'msg'; git push"
