@@ -218,11 +218,17 @@ func TestRegisterB2BOrgErrors(t *testing.T) {
 	assert.False(t, authErr.Token, "a member-service 403 is not a token failure")
 	tokenCalls := fake.tokenCalls
 
+	fake.status, fake.response = http.StatusUnauthorized, map[string]string{"message": "expired"}
+	_, err = client.RegisterB2BOrg(context.Background(), "0014100000Te0G7AAJ")
+	require.ErrorAs(t, err, &authErr)
+	assert.Equal(t, http.StatusUnauthorized, authErr.Status)
+	assert.Equal(t, tokenCalls, fake.tokenCalls, "the cached token survives a 403")
+
 	fake.status, fake.response = http.StatusServiceUnavailable, map[string]string{"message": "down"}
 	_, err = client.RegisterB2BOrg(context.Background(), "0014100000Te0G7AAJ")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "503")
-	assert.Equal(t, tokenCalls+1, fake.tokenCalls, "token is re-minted after an authorization failure")
+	assert.Equal(t, tokenCalls+1, fake.tokenCalls, "token is re-minted only after a 401")
 
 	fake.status, fake.response = http.StatusCreated, map[string]string{"name": "no uid"}
 	_, err = client.RegisterB2BOrg(context.Background(), "0014100000Te0G7AAJ")

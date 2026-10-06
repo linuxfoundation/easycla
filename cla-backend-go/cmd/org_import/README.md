@@ -145,7 +145,7 @@ STAGE=dev bin/org-import ingest --routes rewrite --mapping map.csv --state state
 Annotated sample:
 
 ```
-org_import ingest stage=dev mode=dry-run eligible_groups=4 register=1 rewrite=1 pending=1 skipped=0
+org_import ingest stage=dev mode=dry-run eligible_groups=4 register=1 rewrite=1 pending=1 unregistered=0 skipped=0
 register 0014100000Te0G7AAJ   shape=001   rows=2 live=live | Live Corp; Live Corp / Live Corp Asia
 rewrite  lfbd1c2b3a4d5e6f7a8  shape=lf    rows=1 new_id=0014100000NewNewNe action=matched domain=legacy.example | Legacy Ltd
 rewrite  0014100000DeadDead1  shape=001   rows=1 live=dead reason=no_mapping | Dead Corp        <- pending: needs a mapping row
@@ -296,7 +296,7 @@ manual rewrite tranche of §5 (a named owner is required, see the design doc).
 GitHub Actions `.github/workflows/org-import-sweep.yml`:
 - Actions tab → "Org import sweep" → Run workflow: `stage` (`dev|prod`), `mode` (`dry-run|apply`), `routes` (default `register`),
   `tranche`, optional `ids`, optional `mapping` / `decisions` / `shared_domains` (the files of §4 pasted as text; rows separated by newlines or
-  `|` — e.g. `old_id,new_id,action,approved|lf…,001…,matched,true`), `notify` (default true; false ⇒ `--no-email`). Without a mapping, rewrite
+  `|` — e.g. `old_id,new_id,action,approved|lf…,001…,matched,true`), `notify` (default true; false ⇒ `--no-email`), `register_unregistered` (default false; true ⇒ `--register-unregistered`; scheduled runs never set it). Without a mapping, rewrite
   candidates are only reported as pending. Same from a shell (the report e-mail of every dry run prints this line ready to paste):
   `gh workflow run org-import-sweep.yml -f stage=dev -f mode=dry-run -f routes=register,rewrite -f mapping="$(tr '\n' '|' < map.csv)"`.
 - State: apply runs upload `state.jsonl` as artifact `org-import-state-<stage>`; the next run of the same stage restores the newest one first,

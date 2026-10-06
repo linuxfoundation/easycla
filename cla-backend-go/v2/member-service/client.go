@@ -218,7 +218,9 @@ func (c *Client) do(req *http.Request, tok, operation string) (*B2BOrg, error) {
 	case resp.StatusCode == http.StatusBadRequest:
 		return nil, fmt.Errorf("%w: %s", ErrInvalidSFID, responseMessage(body, resp.Status))
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		c.forgetToken(tok)
+		if resp.StatusCode == http.StatusUnauthorized {
+			c.forgetToken(tok)
+		}
 		return nil, &AuthError{Status: resp.StatusCode, Message: responseMessage(body, resp.Status)}
 	default:
 		return nil, fmt.Errorf("member-service: %s returned %d: %s", operation, resp.StatusCode, responseMessage(body, resp.Status))

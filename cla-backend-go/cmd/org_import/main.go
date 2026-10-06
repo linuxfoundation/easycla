@@ -176,7 +176,7 @@ func run(args []string, stdin io.Reader) int {
 	info := orgimport.RunInfo{
 		Stage: stage, Command: cmd, Apply: *apply, Args: args, Start: time.Now().UTC(), Runner: runnerName(),
 		Repository: os.Getenv("GITHUB_REPOSITORY"), Revision: buildRevision(), OutDir: *outDir, Notices: notices,
-		Workflow: orgimport.WorkflowInputs{Routes: *routes, Tranche: fmt.Sprint(*tranche), IDs: *ids, Mapping: *mapping, Decisions: *decisions, SharedDomains: *sharedDomains},
+		Workflow: orgimport.WorkflowInputs{Routes: *routes, Tranche: fmt.Sprint(*tranche), IDs: *ids, Mapping: *mapping, Decisions: *decisions, SharedDomains: *sharedDomains, RegisterUnregistered: *registerUnregistered},
 	}
 	if runID := os.Getenv("GITHUB_RUN_ID"); runID != "" {
 		info.RunURL = fmt.Sprintf("%s/%s/actions/runs/%s", os.Getenv("GITHUB_SERVER_URL"), os.Getenv("GITHUB_REPOSITORY"), runID)

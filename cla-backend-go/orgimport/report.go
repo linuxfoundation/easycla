@@ -71,12 +71,13 @@ const (
 
 // WorkflowInputs mirrors the org-import-sweep.yml dispatch inputs for the "how to apply" command.
 type WorkflowInputs struct {
-	Routes        string
-	Tranche       string
-	IDs           string
-	Mapping       string
-	Decisions     string
-	SharedDomains string
+	Routes               string
+	Tranche              string
+	IDs                  string
+	Mapping              string
+	Decisions            string
+	SharedDomains        string
+	RegisterUnregistered bool
 }
 
 // Mode is dry-run or apply.
@@ -332,6 +333,9 @@ func ApplyCommands(info RunInfo) []string {
 		if f[1] != "" {
 			gh += fmt.Sprintf(" -f %s=\"$(tr '\\n' '|' < %s)\"", f[0], recordPath(info.OutDir, f[2]))
 		}
+	}
+	if w.RegisterUnregistered {
+		gh += " -f register_unregistered=true"
 	}
 	return []string{local, gh}
 }
