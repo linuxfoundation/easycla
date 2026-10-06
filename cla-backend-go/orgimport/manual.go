@@ -4,8 +4,11 @@
 package orgimport
 
 import (
+	"errors"
 	"fmt"
 	"strings"
+
+	member_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
 )
 
 // ManualAction is one row of manual_actions.csv: a group the tool will not process on its own.
@@ -48,11 +51,19 @@ func Suggest(reason string) string {
 }
 
 // SuggestError maps a group error to an action; access errors get the ops item instead of "re-run".
+const clientGrantAdvice = "EasyCLA's Auth0 M2M client has no client grant for the member-service audience (SSM cla-member-service-auth0-audience-<stage>): ops must add it (README §2), then re-run."
+
 func SuggestError(err error) string {
 	msg := err.Error()
+	var authErr *member_service.AuthError
 	switch {
+	case errors.As(err, &authErr) && authErr.Token:
+		if authErr.Status == 403 {
+			return clientGrantAdvice
+		}
+		return fmt.Sprintf("the Auth0 token request for the member-service audience failed (%d): check SSM cla-auth0-platform-client-id/-secret-<stage> and cla-member-service-auth0-audience-<stage> (README §2), then re-run.", authErr.Status)
 	case strings.Contains(msg, "client-grant"), strings.Contains(msg, "not authorized to access resource server"):
-		return "EasyCLA's Auth0 M2M client has no client grant for the member-service audience (SSM cla-member-service-auth0-audience-<stage>): ops must add it (README §2), then re-run."
+		return clientGrantAdvice
 	case strings.Contains(msg, "(403)"), strings.Contains(msg, "(401)"):
 		return "member-service refused the call: the client needs auditor (GET /b2b_orgs) and global_org_admin (POST /b2b_orgs) in the member-service Heimdall ruleset (README §2), then re-run."
 	case strings.Contains(msg, ErrNotConfigured.Error()):

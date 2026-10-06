@@ -6,6 +6,7 @@ package orgimport
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -87,7 +88,7 @@ func TestAllForbiddenIsAnAccessError(t *testing.T) {
 		assert.Empty(t, g.Route)
 		assert.Empty(t, g.ManualReason)
 		require.Error(t, g.Err)
-		assert.ErrorContains(t, g.Err, "every Account checked (3)")
+		assert.ErrorContains(t, g.Err, "403 for 3")
 		var authErr *member_service.AuthError
 		assert.ErrorAs(t, g.Err, &authErr)
 		assert.Contains(t, SuggestError(g.Err), "auditor")
@@ -104,7 +105,7 @@ func TestAllForbiddenIsAnAccessError(t *testing.T) {
 	require.NoError(t, err)
 	rows := readCSV(t, filepath.Join(dir, "audit.csv"))
 	for _, r := range rows[1:] {
-		assert.Contains(t, r[12], "every Account checked (3)", r[0])
+		assert.Contains(t, r[12], "403 for 3", r[0])
 	}
 	assert.Contains(t, fx.out.String(), " unregistered=0 ")
 }
@@ -144,6 +145,21 @@ func TestAuditSuggestedAccountFromInventory(t *testing.T) {
 	assert.Equal(t, "", byID["c-unrelated"][15])
 	assert.NotEmpty(t, res.Duplicates)
 	assert.Empty(t, fx.platform.registered)
+	gets := map[string]int{}
+	for _, c := range fx.platform.calls {
+		if strings.HasPrefix(c, "get-org:") {
+			gets[c]++
+		}
+	}
+	assert.Equal(t, 1, gets["get-org:"+newSFID], "audit looks each Account up once")
+	assert.Equal(t, 1, gets["get-org:"+old2SFID])
+}
+
+func TestSuggestErrorAuthError(t *testing.T) {
+	wrap := func(e error) error { return fmt.Errorf("liveness check failed for X: %w", e) }
+	assert.Contains(t, SuggestError(wrap(&member_service.AuthError{Status: 403, Message: "Client is not authorized", Token: true})), "client grant")
+	assert.Contains(t, SuggestError(wrap(&member_service.AuthError{Status: 401, Message: "bad secret", Token: true})), "token request for the member-service audience failed (401)")
+	assert.Contains(t, SuggestError(wrap(&member_service.AuthError{Status: 403, Message: "forbidden"})), "auditor")
 }
 
 // --register-unregistered POSTs the 403 Accounts too and re-reads each one until Heimdall serves it.
@@ -211,7 +227,7 @@ func TestTokenForbiddenIsALivenessError(t *testing.T) {
 	assert.Equal(t, LiveError, g.Live)
 	assert.Empty(t, g.Route)
 	require.Error(t, g.Err)
-	assert.NotContains(t, g.Err.Error(), "every Account checked")
+	assert.NotContains(t, g.Err.Error(), "for no Account")
 	assert.Empty(t, plan.Register)
 	assert.Zero(t, plan.Unregistered())
 	sum, err := Execute(context.Background(), fx.deps(), Options{Apply: true, RegisterUnregistered: true}, plan)

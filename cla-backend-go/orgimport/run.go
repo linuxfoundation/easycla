@@ -289,6 +289,9 @@ func classify(ctx context.Context, deps Deps, g *Group, mapping *Mapping, shared
 
 // lookupOrg records the org-service view of the group's old id.
 func lookupOrg(ctx context.Context, deps Deps, g *Group) {
+	if g.OrgStatus != "" {
+		return
+	}
 	org, err := deps.Orgs.GetOrganization(ctx, g.OldID)
 	switch {
 	case err == nil:
@@ -357,7 +360,7 @@ func livenessGuard(groups []*Group) {
 			continue
 		}
 		g.Live, g.Route, g.ManualReason = LiveError, "", ""
-		g.Err = fmt.Errorf("liveness check failed for %s: member-service answered (403) for every Account checked (%d) and 200 for none: the tool's client cannot see any b2b_org (access tuple missing?): %w", g.OldID, unregistered, g.liveErr)
+		g.Err = fmt.Errorf("liveness check failed for %s: member-service answered 200 or 404 for no Account and 403 for %d: the tool's client cannot see any b2b_org (access tuple missing?): %w", g.OldID, unregistered, g.liveErr)
 	}
 }
 

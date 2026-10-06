@@ -67,7 +67,11 @@ func Audit(ctx context.Context, deps Deps, opts Options) (*AuditResult, error) {
 		return nil, err
 	}
 	groups := inv.EligibleGroups()
+	orgs := lookupOrgs(ctx, deps, inv)
 	for _, g := range groups {
+		if o := orgs[g.OldID]; o != nil {
+			g.Org, g.OrgStatus = o.org, o.status
+		}
 		classify(ctx, deps, g, nil, nil, Options{})
 	}
 	livenessGuard(groups)
@@ -78,7 +82,6 @@ func Audit(ctx context.Context, deps Deps, opts Options) (*AuditResult, error) {
 		}
 	}
 
-	orgs := lookupOrgs(ctx, deps, inv)
 	res := &AuditResult{Tiers: map[string]int{}, Routes: map[Route]int{}, rowByID: map[string]*AuditRow{}, shared: shared}
 	byName, byDomain := map[string][]*Row{}, map[string][]*Row{}
 	known := newAccountIndex()
