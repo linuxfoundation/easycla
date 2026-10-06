@@ -24,6 +24,7 @@ type fakeMemberService struct {
 	registerBody []map[string]string
 	status       int
 	response     interface{}
+	tokenStatus  int
 }
 
 func (f *fakeMemberService) decode(r *http.Request, v interface{}) {
@@ -46,6 +47,11 @@ func (f *fakeMemberService) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		f.decode(r, &req)
 		assert.Equal(f.t, "client_credentials", req["grant_type"])
 		assert.Equal(f.t, "https://member.example/", req["audience"])
+		if f.tokenStatus != 0 {
+			w.WriteHeader(f.tokenStatus)
+			f.encode(w, map[string]string{"error": "access_denied", "error_description": "Client is not authorized"})
+			return
+		}
 		f.encode(w, map[string]interface{}{"access_token": "member-token", "token_type": "Bearer", "expires_in": 3600})
 	case "/b2b_orgs/0014100000Te0G7AAJ", "/b2b_orgs/" + syntheticSFID18:
 		assert.Equal(f.t, http.MethodGet, r.Method)
@@ -209,6 +215,7 @@ func TestRegisterB2BOrgErrors(t *testing.T) {
 	var authErr *AuthError
 	require.ErrorAs(t, err, &authErr)
 	assert.Equal(t, http.StatusForbidden, authErr.Status)
+	assert.False(t, authErr.Token, "a member-service 403 is not a token failure")
 	tokenCalls := fake.tokenCalls
 
 	fake.status, fake.response = http.StatusServiceUnavailable, map[string]string{"message": "down"}
@@ -220,4 +227,16 @@ func TestRegisterB2BOrgErrors(t *testing.T) {
 	fake.status, fake.response = http.StatusCreated, map[string]string{"name": "no uid"}
 	_, err = client.RegisterB2BOrg(context.Background(), "0014100000Te0G7AAJ")
 	assert.Error(t, err)
+}
+
+func TestTokenForbiddenIsFlagged(t *testing.T) {
+	fake := &fakeMemberService{tokenStatus: http.StatusForbidden}
+	client := newTestClient(t, fake)
+	_, err := client.GetB2BOrg(context.Background(), "0014100000Te0G7AAJ")
+	var authErr *AuthError
+	require.ErrorAs(t, err, &authErr)
+	assert.Equal(t, http.StatusForbidden, authErr.Status)
+	assert.True(t, authErr.Token)
+	assert.Contains(t, err.Error(), "Client is not authorized")
+	assert.Zero(t, fake.getCalls)
 }

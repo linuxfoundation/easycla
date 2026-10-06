@@ -245,5 +245,6 @@ func (r *runner) registerNew(ctx context.Context, g *Group) error {
 		return err
 	}
 	fmt.Fprintf(r.deps.Out, "registered %s as b2b_org %s (%s)\n", g.NewID, org.UID, org.Name)
+	r.confirmRegistered(ctx, g.NewID)
 	return nil
 }

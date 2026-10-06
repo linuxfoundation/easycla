@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -135,6 +136,7 @@ func (f *fakeEvents) RekeyEventCompanySFID(_ context.Context, id, oldSFID, newSF
 
 // fakePlatform is org-service + ACS + member-service + Salesforce in one.
 type fakePlatform struct {
+	mu          sync.Mutex
 	orgs        map[string]*Org
 	servedAfter map[string]int
 	grants      map[string][]acs_service.OrgGrant
@@ -146,6 +148,12 @@ type fakePlatform struct {
 	failGetB2B  bool
 	noMembers   bool
 	listHook    func(orgID string)
+	forbidden   map[string]int // remaining 403 answers per id; -1 = always
+	grantsErr   map[string]error
+	tokenDenied bool
+	lookups     map[string]*Org
+	lookupErr   error
+	lookupCalls []string
 }
 
 func newPlatform() *fakePlatform {
@@ -153,6 +161,8 @@ func newPlatform() *fakePlatform {
 }
 
 func (p *fakePlatform) GetOrganization(_ context.Context, id string) (*Org, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.calls = append(p.calls, "get-org:"+id)
 	if n := p.servedAfter[id]; n > 0 {
 		p.servedAfter[id] = n - 1
@@ -165,6 +175,8 @@ func (p *fakePlatform) GetOrganization(_ context.Context, id string) (*Org, erro
 }
 
 func (p *fakePlatform) CreateUserRoleScope(_ context.Context, username, orgID, objectType, objectID, roleID string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.calls = append(p.calls, "create-grant:"+orgID+":"+username+":"+roleID+":"+objectID)
 	if p.failCreate {
 		return errors.New("org-service down")
@@ -175,6 +187,8 @@ func (p *fakePlatform) CreateUserRoleScope(_ context.Context, username, orgID, o
 }
 
 func (p *fakePlatform) DeleteUserRoleScope(_ context.Context, orgID, roleID, grantID, username string) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.calls = append(p.calls, "delete-grant:"+orgID+":"+username+":"+roleID+":"+grantID)
 	kept := p.grants[orgID][:0]
 	for _, g := range p.grants[orgID] {
@@ -187,15 +201,31 @@ func (p *fakePlatform) DeleteUserRoleScope(_ context.Context, orgID, roleID, gra
 }
 
 func (p *fakePlatform) ListOrgGrants(_ context.Context, orgID string) ([]acs_service.OrgGrant, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if p.listHook != nil {
 		p.listHook(orgID)
+	}
+	if err := p.grantsErr[orgID]; err != nil {
+		return nil, err
 	}
 	return append([]acs_service.OrgGrant(nil), p.grants[orgID]...), nil
 }
 
 func (p *fakePlatform) GetB2BOrg(_ context.Context, uid string) (*member_service.B2BOrg, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.calls = append(p.calls, "get-b2b:"+uid)
+	if p.tokenDenied {
+		return nil, &member_service.AuthError{Status: 403, Message: "access_denied", Token: true}
+	}
 	if p.failGetB2B {
+		return nil, &member_service.AuthError{Status: 403, Message: "forbidden"}
+	}
+	if n, ok := p.forbidden[uid]; ok && n != 0 {
+		if n > 0 {
+			p.forbidden[uid] = n - 1
+		}
 		return nil, &member_service.AuthError{Status: 403, Message: "forbidden"}
 	}
 	if !p.sfAccounts[uid] {
@@ -205,6 +235,8 @@ func (p *fakePlatform) GetB2BOrg(_ context.Context, uid string) (*member_service
 }
 
 func (p *fakePlatform) RegisterB2BOrg(_ context.Context, sfid string) (*member_service.B2BOrg, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	p.calls = append(p.calls, "register:"+sfid)
 	if !p.sfAccounts[sfid] {
 		return nil, member_service.ErrOrgNotFound
@@ -213,7 +245,30 @@ func (p *fakePlatform) RegisterB2BOrg(_ context.Context, sfid string) (*member_s
 	return &member_service.B2BOrg{UID: sfid, Name: "acct " + sfid}, nil
 }
 
+func (p *fakePlatform) LookupOrganization(_ context.Context, name, domain string) (*Org, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	key := "name:" + name
+	if domain != "" {
+		key = "domain:" + domain
+	}
+	p.lookupCalls = append(p.lookupCalls, key)
+	if p.lookupErr != nil {
+		return nil, p.lookupErr
+	}
+	if o, ok := p.lookups[key]; ok {
+		return o, nil
+	}
+	return nil, ErrOrgNotFound
+}
+
 func (p *fakePlatform) addGrant(orgID, username, roleID, project string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.addGrantLocked(orgID, username, roleID, project)
+}
+
+func (p *fakePlatform) addGrantLocked(orgID, username, roleID, project string) {
 	p.nextGrant++
 	g := acs_service.OrgGrant{Username: username, RoleID: roleID, RoleName: "role-" + roleID, GrantID: fmt.Sprintf("g%d", p.nextGrant), ScopeID: fmt.Sprintf("s%d", p.nextGrant), ObjectTypeName: objectTypeOrganization, ObjectID: orgID}
 	if project != "" {
@@ -255,6 +310,9 @@ func (fx *fixture) deps() Deps {
 		Sleep: func(_ context.Context, d time.Duration) error { fx.sleeps = append(fx.sleeps, d); return nil }}
 	if !fx.platform.noMembers {
 		d.Members = fx.platform
+	}
+	if fx.platform.lookups != nil || fx.platform.lookupErr != nil {
+		d.Lookup = fx.platform
 	}
 	return d
 }
@@ -506,7 +564,7 @@ func TestBuildPlanClassification(t *testing.T) {
 	assert.Len(t, rows, 14)
 	toSF := readCSV(t, filepath.Join(dir, "out", "to_salesforce.csv"))
 	require.Len(t, toSF, 2, "only rewrite candidates without a mapping go to Salesforce")
-	assert.Equal(t, []string{"lf-unmapped", "Unmapped Ltd", "", "2024-01-02T00:00:00Z", "", "false"}, toSF[1])
+	assert.Equal(t, []string{"lf-unmapped", "Unmapped Ltd", "", "2024-01-02T00:00:00Z", "", "false", ""}, toSF[1])
 	manual := readCSV(t, filepath.Join(dir, "out", "manual_actions.csv"))
 	require.Len(t, manual, 8, "manual + pending groups")
 	byKey := map[string][]string{}
@@ -707,7 +765,7 @@ func TestCleanupPreservesUncopiedGrant(t *testing.T) {
 	fx.platform.listHook = func(orgID string) {
 		if orgID == lfID {
 			if lists++; lists == 2 {
-				fx.platform.addGrant(lfID, "late-user", "role-cla-manager", "cg-1")
+				fx.platform.addGrantLocked(lfID, "late-user", "role-cla-manager", "cg-1")
 			}
 		}
 	}
@@ -1349,6 +1407,7 @@ func TestRewriteWaitsForOrgService(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, sum.Rewritten)
 	assert.Equal(t, []time.Duration{time.Second, time.Second}, fx.sleeps)
+	assert.Contains(t, fx.out.String(), "b2b_org "+targetSFID+" visible after 1 check(s)")
 
 	fx, mapping, statePath = rewriteFixture(t)
 	fx.platform.servedAfter[targetSFID] = 5
@@ -1602,6 +1661,10 @@ func TestAudit(t *testing.T) {
 	fx.platform.orgs["0014100000TwinAAAA"] = &Org{ID: "0014100000TwinAAAA"}
 	fx.platform.orgs["0014100000TwinBBBB"] = &Org{ID: "0014100000TwinBBBB"}
 	fx.platform.sfAccounts["0014100000TwinAAAA"] = true
+	fx.platform.addGrant(liveSFID, "u1", "r1", "")
+	fx.platform.addGrant(liveSFID, "u2", "r1", "")
+	fx.platform.addGrant(liveSFID, "u3", "r2", "proj-1")
+	fx.platform.addGrant(liveSFID2, "u4", "r1", "")
 	counts := map[string]int{"c-dead": 4, "c-empty": 2}
 	deps := fx.deps()
 	deps.ECLAs = eclaCounterFunc(func(_ context.Context, id string) (int, error) { return counts[id], nil })
@@ -1616,11 +1679,16 @@ func TestAudit(t *testing.T) {
 
 	rows := readCSV(t, filepath.Join(dir, "audit.csv"))
 	require.Len(t, rows, 9)
+	require.Equal(t, []string{"company_id", "company_name", "signing_entity_name", "company_external_id", "id_shape", "active_ccla", "ccla_count", "ecla_count", "org_service", "website", "duplicate_sfid_group", "route", "manual_reason", "tier", "acs_roles", "suggested_account"}, rows[0])
 	byID := map[string][]string{}
 	for _, r := range rows[1:] {
 		byID[r[0]] = r
 	}
-	assert.Equal(t, []string{"c-live", "Live Corp", "", liveSFID, "001", "true", "1", "0", "200", "https://live.example", "false", "register", "", TierOK}, byID["c-live"])
+	assert.Equal(t, []string{"c-live", "Live Corp", "", liveSFID, "001", "true", "1", "0", "200", "https://live.example", "false", "register", "", TierOK, "role-r1=2;role-r2=1", ""}, byID["c-live"])
+	assert.Equal(t, "role-r1=2;role-r2=1", byID["c-live-sub"][14], "ACS roles are per old id, so every row of the group shows them")
+	assert.Equal(t, "", byID["c-inactive"][14], "ids outside the eligible groups and duplicate sets are not looked up in ACS")
+	assert.Equal(t, "", byID["c-dead"][14], "an id without grants has an empty cell")
+	assert.Equal(t, "", byID["c-samename-b"][14], "duplicate-set rows are looked up (no grants here)")
 	assert.Equal(t, "rewrite", byID["c-dead"][11])
 	assert.Equal(t, "4", byID["c-dead"][7], "ECLA counts only for manual/duplicate rows")
 	assert.Equal(t, TierDangling, byID["c-dead"][13])
@@ -1765,17 +1833,21 @@ func TestAuditDuplicateCandidates(t *testing.T) {
 		assert.Error(t, err)
 	})
 
-	t.Run("overlapping name and domain sets are both reported", func(t *testing.T) {
+	t.Run("overlapping name and domain sets merge into one", func(t *testing.T) {
 		fx := setup()
 		fx.company("c-twin-c", "Twin", "", "0014100000TwinCCCC", "cg-1")
 		fx.platform.orgs["0014100000TwinCCCC"] = &Org{ID: "0014100000TwinCCCC", Name: "Twin", Website: "https://other.example"}
+		// chained overlap: Other shares a domain with Twin C but not a name with the twins
+		fx.company("c-other", "Other", "", "0014100000OtherAAA", "cg-1")
+		fx.platform.orgs["0014100000OtherAAA"] = &Org{ID: "0014100000OtherAAA", Name: "Other", Website: "other.example"}
 		dir := t.TempDir()
 		res, err := Audit(context.Background(), fx.deps(), Options{Stage: "dev", OutDir: dir})
 		require.NoError(t, err)
 		sets, _ := dupSets(t, dir)
-		assert.Len(t, res.Duplicates, 4)
-		assert.Contains(t, sets, []string{"c-twin-a", "c-twin-b", "c-twin-c"}, "by name")
-		assert.Contains(t, sets, []string{"c-twin-a", "c-twin-b"}, "by domain")
+		assert.Len(t, res.Duplicates, 3)
+		assert.Contains(t, sets, []string{"c-other", "c-twin-a", "c-twin-b", "c-twin-c"}, "name set, domain set and the chained domain set are one candidate set")
+		assert.NotContains(t, sets, []string{"c-twin-a", "c-twin-b"})
+		assert.Contains(t, fx.out.String(), "duplicates=3")
 	})
 }
 

@@ -48,7 +48,7 @@ const usageText = `usage:
   org_import audit  [--out-dir ./org-import-out] [report flags]
   org_import ingest [--apply] [--yes] [--tranche N] [--ids id1,id2] [--mapping map.csv] [--decisions decisions.csv]
                     [--shared-domains domains.txt] [--state state.jsonl] [--routes register,rewrite] [--skip-wait]
-                    [--use-apex] [--out-dir ./org-import-out] [report flags]
+                    [--use-apex] [--register-unregistered] [--out-dir ./org-import-out] [report flags]
   report flags:     [--email-to a@x,b@y] [--no-email] [--no-aws-log] [--aws-log-group /easycla/org-import/<stage>]
 
 Environment: STAGE=dev|prod (required), AWS credentials for that account (AWS_PROFILE/AWS_SDK_LOAD_CONFIG=1
@@ -112,6 +112,7 @@ func run(args []string, stdin io.Reader) int {
 	routes := fs.String("routes", "register,rewrite", "routes to process: register,rewrite")
 	skipWait := fs.Bool("skip-wait", false, "check new ids in org-service once instead of waiting up to 40 minutes")
 	useApex := fs.Bool("use-apex", os.Getenv("ORG_IMPORT_USE_APEX") == trueString, "resolve new ids through the Salesforce Apex endpoint (needs cla-salesforce-apex-* SSM params)")
+	registerUnregistered := fs.Bool("register-unregistered", false, "also POST /b2b_orgs for Accounts whose GET /b2b_orgs answered 403 (unregistered; default: pending)")
 	waitMax := fs.Duration("wait-max", 40*time.Minute, "maximum org-service propagation wait")
 	var rf reportFlags
 	fs.StringVar(&rf.emailTo, "email-to", "", "report recipients (comma-separated); default SSM cla-org-import-report-emails-<stage>")
@@ -140,7 +141,7 @@ func run(args []string, stdin io.Reader) int {
 	var err error
 	opts := orgimport.Options{
 		Stage: stage, Apply: *apply, Tranche: *tranche, Mapping: *mapping, Decisions: *decisions, SharedDomains: *sharedDomains,
-		State: *state, SkipWait: *skipWait, UseApex: *useApex, OutDir: *outDir, WaitMax: *waitMax,
+		State: *state, SkipWait: *skipWait, UseApex: *useApex, RegisterUnregistered: *registerUnregistered, OutDir: *outDir, WaitMax: *waitMax,
 	}
 	if *ids != "" {
 		opts.IDs = strings.Split(*ids, ",")
@@ -475,6 +476,7 @@ func wire(ctx context.Context, stage string, useApex bool) (env, error) {
 		ECLAs:      orgimport.DynamoECLACounter{DB: dynamodb.New(awsSession), Table: fmt.Sprintf("cla-%s-signatures", stage)},
 		Events:     events.NewRekeyRepository(awsSession, stage),
 		Orgs:       orgimport.OrgServiceAdapter{Client: organization_service.GetClient()},
+		Lookup:     orgimport.OrgServiceAdapter{Client: organization_service.GetClient()},
 		ACS:        acs_service.GetClient(),
 	}
 

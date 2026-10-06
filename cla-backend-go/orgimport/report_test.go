@@ -66,6 +66,7 @@ func TestBuildReport(t *testing.T) {
 		"How to apply this plan", "STAGE=dev ./bin/org-import ingest --mapping", "--apply --yes", "gh workflow run org-import-sweep.yml -R linuxfoundation/easycla -f stage=dev -f mode=apply -f routes=rewrite",
 		"-f mapping=&#34;$(tr &#39;\\n&#39; &#39;|&#39; &lt; ", "https://github.com/linuxfoundation/easycla/actions/runs/42", "org-import-out-dev-42", "abc123-dirty", "/easycla/org-import/dev / s1",
 		"1m30s", "line 2", "Attachments", "manual_actions.csv", "plan.csv", "targets.csv", "run.log", "out.zip", "acme.example",
+		"<th align=\"left\">suggested account</th>",
 	} {
 		assert.Contains(t, rep.HTML, want, want)
 	}

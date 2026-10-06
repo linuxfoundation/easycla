@@ -62,8 +62,9 @@ Safety rules:
   on the lfx-api resource server (the audience above) — without it the token request fails with
   `authorization failed (403): Client "…" is not authorized to access resource server` (current state on dev); (2) the client must be in the
   `global_org_admin` team (member-service Heimdall ruleset) for `POST /b2b_orgs` and have `auditor` for `GET /b2b_orgs/{id}` (dry-run liveness).
-  Check: `STAGE=dev bin/org-import ingest --routes register --ids <known live 001 id>` must print `live=live`; `live=error` means the GET
-  is not permitted (never treated as dead) and the run exits 1.
+  Check: `STAGE=dev bin/org-import ingest --routes register --ids <known live 001 id>` must print `live=live`. A 403 on one Account while
+  others answer 200 is `live=unregistered` (no b2b_org yet, §3.2); a 403 on every Account checked, or a 403 from the token endpoint, is
+  `live=error` (never treated as dead) and the run exits 1.
 - Nothing sensitive is ever written: report files contain company names/ids only; tokens stay in memory.
 
 ## 3. Commands
@@ -72,7 +73,7 @@ Safety rules:
 org_import audit  [--out-dir ./org-import-out] [report flags]
 org_import ingest [--apply] [--yes] [--tranche N] [--ids id1,id2] [--mapping map.csv] [--decisions decisions.csv]
                   [--shared-domains domains.txt] [--state state.jsonl] [--routes register,rewrite] [--skip-wait]
-                  [--use-apex] [--wait-max 40m] [--out-dir ./org-import-out] [report flags]
+                  [--use-apex] [--register-unregistered] [--wait-max 40m] [--out-dir ./org-import-out] [report flags]
 report flags:     [--email-to a@x,b@y] [--no-email] [--no-aws-log] [--aws-log-group /easycla/org-import/<stage>]
 ```
 
@@ -90,6 +91,7 @@ report flags:     [--email-to a@x,b@y] [--no-email] [--no-aws-log] [--aws-log-gr
 | `--routes` | `register`, `rewrite` or both (default both) |
 | `--skip-wait` | check the new ids in org-service once instead of polling up to `--wait-max` |
 | `--use-apex` | resolve new ids via the Salesforce Apex endpoint (`ORG_IMPORT_USE_APEX=true` equivalent); refused when the SSM params are missing |
+| `--register-unregistered` | also `POST /b2b_orgs` for Accounts whose GET answered 403 (`live=unregistered`); default: they stay `pending`/`unregistered` |
 | `--wait-max` | org-service propagation wait for new Salesforce accounts (default 40m, poll 30s) |
 | `--email-to` | report recipients, overrides SSM `cla-org-import-report-emails-{stage}` |
 | `--no-email` / `--no-aws-log` | do not send the report e-mail / do not copy run.log to CloudWatch Logs |
@@ -112,16 +114,21 @@ export AWS_PROFILE=lfproduct-dev AWS_SDK_LOAD_CONFIG=1 STAGE=dev
 bin/org-import audit --out-dir ./org-import-out/dev-$(date -u +%F)
 ```
 
-Output line: `audit stage=dev companies=N eligible_groups=M MISSING_SFID=a INVALID_SFID_FORMAT=b SFID_OK=c SFID_DANGLING_OR_DELETED=d UNKNOWN=e register=r rewrite=w manual=m duplicates=k`
+Output line: `audit stage=dev companies=N eligible_groups=M MISSING_SFID=a INVALID_SFID_FORMAT=b SFID_OK=c SFID_DANGLING_OR_DELETED=d UNKNOWN=e register=r rewrite=w manual=m unregistered=u duplicates=k`
 — the five tiers are 1:1 with `utils/audit_company_reachability.sh`; route counts are per row (only rows in eligible groups have a route).
 
 Files (`--out-dir`):
-- `audit.csv` — `company_id, company_name, signing_entity_name, company_external_id, id_shape(001|lf|empty|other), active_ccla, ccla_count, ecla_count, org_service(200|404|err), website, duplicate_sfid_group, route, manual_reason, tier`.
+- `audit.csv` — `company_id, company_name, signing_entity_name, company_external_id, id_shape(001|lf|empty|other), active_ccla, ccla_count, ecla_count, org_service(200|404|err), website, duplicate_sfid_group, route, manual_reason, tier, acs_roles, suggested_account`.
   `ecla_count` is filled only for active rows that are manual, duplicate or unresolvable and for every row of `possible_duplicates.csv` (cheap); `-1` = count failed.
+  `acs_roles` (`role=count;…` of the ACS grants scoped to the old id; `err` = listing failed) is filled for eligible `001`/`lf` groups and every
+  row of `possible_duplicates.csv`. `suggested_account` lists up to three existing Accounts a dead/legacy/manual/duplicate row could belong to:
+  `<id> <name> [inventory:domain|inventory:name|crm:domain|crm:name]` (inventory = other Accounts served by org-service for the same import,
+  crm = org-service lookup by registrable website domain, then by name); candidates are verified in member-service — dropped Accounts are
+  omitted, unverifiable ones (403) carry a `?` suffix. Best effort: lookup failures only warn.
 - `unresolvable.csv` — active rows with empty/invalid ids or dead `001…` ids (#2749 input).
 - `possible_duplicates.csv` — candidate targets for the #3085 review: rows sharing an id with the same (or empty) signing entity name, and rows
   with the same normalized company name **or** the same org-service website domain under different ids (#2056 input). Shared/missing domains
-  (§4.2) never group; a set reached by both name and domain is listed once. Columns: `group, company_id, company_name, signing_entity_name,
+  (§4.2) never group; sets that overlap by name and domain are merged into one. Columns: `group, company_id, company_name, signing_entity_name,
   company_external_id, id_shape, domain, active_ccla, ccla_count, ecla_count` (`ecla_count` empty = not measured, `-1` = count failed).
   Distinct signing entities under one id are **not** duplicates.
 
@@ -152,9 +159,11 @@ c0ffee00-... [manual] empty_external_id: Fill company_external_id (…) or leave
 stage=dev mode=dry-run eligible=4 registered=0 rewritten=0 pending=1 manual=1 failed=0
 ```
 
-- `live=live|dead|unverified|error` — member-service `GET /b2b_orgs/{id}`; `unverified` = member-service not configured for the stage
-  (the group stays `pending`/`crm_unverified`, nothing is written); `error` is never treated as dead.
-- `pending` — rewrite candidates without a resolved new id (no mapping row, or a `register` POST answered 404 = dead account). They appear in `to_salesforce.csv`.
+- `live=live|dead|unregistered|unverified|error` — member-service `GET /b2b_orgs/{id}`; `unregistered` = 403 while other Accounts answer 200
+  (the Account has no b2b_org yet; the group stays `pending`/`unregistered` unless `--register-unregistered`); `unverified` = member-service
+  not configured for the stage (the group stays `pending`/`crm_unverified`, nothing is written); `error` is never treated as dead.
+- `pending` — rewrite candidates without a resolved new id (no mapping row, or a `register` POST answered 404 = dead account) and register
+  candidates that are `unregistered`/`crm_unverified`. Rewrite ones appear in `to_salesforce.csv`.
 - `skipped` — eligible groups excluded by `--routes`, `--tranche`, or already `done` in `--state`.
 - Summary line: `eligible` = groups after `--ids`; `registered`/`rewritten` = groups completed in apply mode; `manual`; `failed` = groups with an
   error — the run exits 1 in dry-run and apply mode alike (a dry run with `live=error` is not a clean dry run).
@@ -162,17 +171,17 @@ stage=dev mode=dry-run eligible=4 registered=0 rewritten=0 pending=1 manual=1 fa
 Runtime: ~10 s on dev, ~7 min on prod (one liveness GET per group).
 
 Files (all rewritten after apply with the final state):
-- `plan.csv` — `key, old_id, id_shape, route, manual_reason, live, org_service, website, domain, shared_domain, new_id, action, decision, reviewer, company_ids, company_names, error`.
-- `manual_actions.csv` — one row per manual/pending/failed group with `reason` and `suggested_action` (what a human must do next).
+- `plan.csv` — `key, old_id, id_shape, route, manual_reason, live, org_service, website, domain, shared_domain, new_id, action, decision, reviewer, company_ids, company_names, error, suggested_account`.
+- `manual_actions.csv` — one row per manual/pending/failed group with `reason`, `suggested_action` (what a human must do next) and `suggested_account` (§3.1).
 - `targets.csv` — rewrite destinations grouped by Account: `target_sfid, groups, old_ids, company_ids, company_names, existing_rows, decision, reviewer, status(ok|needs_decision|distinct_conflict|target_forms_differ)`.
-- `to_salesforce.csv` — `old_id, name, website, ccla_signed_date, domain, shared_domain` — the hand-off to sales ops (§4).
+- `to_salesforce.csv` — `old_id, name, website, ccla_signed_date, domain, shared_domain, suggested_account` — the hand-off to sales ops (§4).
 
 Manual reasons: `empty_external_id`, `invalid_id_shape`, `mapping_ambiguous`, `mapping_not_approved`, `mapping_same_id` (also the 15/18-char form of the same Account),
 `sfid_alias_forms` (rows of one Account carry both its 15- and 18-char id — normalize them to one form first; §4), `target_forms_differ`
 (ids landing on one Account use both forms — normalize the mapping/rows first; a decision does not lift it),
 `target_collision` (several old ids → one Account, or the Account already has EasyCLA rows, and no decision covers it — §4.1), `distinct_conflict`
 (a `distinct` decision spans two ids resolved to the same Account), `missing_website` / `shared_domain` (Apex path only, §4.2),
-`apex_match_needs_approval`, `apex_error`; pending reasons: `no_mapping`, `dead_account`, `crm_unverified` (no member-service for the stage).
+`apex_match_needs_approval`, `apex_error`; pending reasons: `no_mapping`, `dead_account`, `crm_unverified` (no member-service for the stage), `unregistered` (GET answered 403; `--register-unregistered` registers it).
 With `--use-apex` a dry-run `created` has no Account id yet (`new_id=<apex-at-apply>`): the id is assigned by the real call at apply and a
 different answer at apply time (`changed between dry run`) fails the group before any write; a failed resolution is never replayed as approved.
 
@@ -252,10 +261,13 @@ distinct,lfcccc000000000000003;lfdddd000000000000004,,michal,different companies
 
 ### 4.2 Shared domains (`--shared-domains`)
 
-Groups whose website domain is in the shared list (`github.com`, `nowebsite.com`, `gmail.com`, `googlemail.com`, `yahoo.com`, `hotmail.com`,
-`outlook.com`, `live.com`, `icloud.com`, `protonmail.com`, `qq.com`, `163.com`) or who have no website are `manual` (`shared_domain` /
-`missing_website`) instead of being domain-matched by Apex, and `audit` never groups them by domain in `possible_duplicates.csv`. A file
-replaces the whole list (one domain per line, `#` comments). Mapping rows are explicit human decisions and are not gated.
+The website domain is the registrable domain (public suffix list: `startup.google.com` → `google.com`, `comcast.github.io` stays as is).
+Groups whose domain is in the shared list (`github.com`, `nowebsite.com`, `en.wikipedia.org`, `buymeacoffee.com`, `nonameaccount.com`,
+`localhost.localhost`, `gmail.com`, `googlemail.com`, `yahoo.com`, `hotmail.com`, `outlook.com`, `live.com`, `icloud.com`, `protonmail.com`,
+`qq.com`, `163.com`, `bund.de`, `onmicrosoft.com`) or who have no website are `manual` (`shared_domain` / `missing_website`) instead of being
+domain-matched by Apex, and `audit` never groups them by domain in `possible_duplicates.csv`. A listed host and any subdomain of a listed
+domain keep their full host as the domain (`digitalservice.bund.de`, `mainh.onmicrosoft.com`: distinct, not shared). A file replaces the whole
+list (one domain per line, `#` comments). Mapping rows are explicit human decisions and are not gated.
 
 ## 5. Tranche protocol (prod)
 
@@ -306,7 +318,9 @@ GitHub Actions `.github/workflows/org-import-sweep.yml`:
 | Where | Message | Meaning / action |
 |---|---|---|
 | setup | `loading SSM config` / `STAGE is not set` | wrong account/profile or missing stage |
-| planning | `live=error` | member-service GET failed (403 = missing `auditor`, network) — fix access; nothing is classified dead |
+| planning | `live=error` | member-service GET failed (403 on every Account = missing `auditor`/access tuple, token 403, network) — fix access; nothing is classified dead |
+| planning | `live=unregistered` / `unregistered` | the Account answers 403 while others answer 200: no b2b_org yet; pending unless `--register-unregistered` |
+| apply | `WARNING: b2b_org … not yet visible after 5 checks` | the POST succeeded but the GET still answers 403/404 (FGA tuples pending); re-check later, nothing to redo |
 | planning | `live=unverified` / `crm_unverified` | no member-service params for the stage; groups stay pending, nothing is registered |
 | apply | `rewrite apply requires --state` / `member-service is not configured` | refused before the first write; every planned group is reported as failed |
 | any step | `state file …: cannot record` | the journal could not be written; the group stops (rows are never rewritten before their `start` line) |

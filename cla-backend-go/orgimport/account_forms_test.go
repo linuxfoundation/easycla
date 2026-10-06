@@ -259,7 +259,7 @@ func TestCleanupRefusesToDeleteGrantWithoutUsername(t *testing.T) {
 	fx.platform.listHook = func(orgID string) {
 		if orgID == lfID {
 			if lists++; lists == 2 {
-				fx.platform.addGrant(lfID, "", "role-mgr", "cg-1")
+				fx.platform.addGrantLocked(lfID, "", "role-mgr", "cg-1")
 			}
 		}
 	}

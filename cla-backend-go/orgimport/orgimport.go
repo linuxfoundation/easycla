@@ -45,10 +45,11 @@ const (
 
 // Liveness values (Group.Live), run modes and the manual/pending reasons shared by several files.
 const (
-	LiveLive       = "live"
-	LiveDead       = "dead"
-	LiveError      = "error"
-	LiveUnverified = "unverified"
+	LiveLive         = "live"
+	LiveDead         = "dead"
+	LiveError        = "error"
+	LiveUnverified   = "unverified"
+	LiveUnregistered = "unregistered"
 
 	ModeApply  = "apply"
 	ModeDryRun = "dry-run"
@@ -60,6 +61,7 @@ const (
 	ReasonSharedDomain      = "shared_domain"
 	ReasonDistinctConflict  = "distinct_conflict"
 	ReasonCRMUnverified     = "crm_unverified"
+	ReasonUnregistered      = "unregistered"
 	ReasonSFIDAliasForms    = "sfid_alias_forms"
 	ReasonTargetFormsDiffer = "target_forms_differ"
 
@@ -137,12 +139,17 @@ type MemberService interface {
 	RegisterB2BOrg(ctx context.Context, sfid string) (*member_service.B2BOrg, error)
 }
 
+// OrgLookup finds one Account by website domain or by name in org-service (ErrOrgNotFound when none).
+type OrgLookup interface {
+	LookupOrganization(ctx context.Context, name, domain string) (*Org, error)
+}
+
 // ApexService is the Salesforce find-or-create contract (design §4), used only with --use-apex.
 type ApexService interface {
 	FindOrCreate(ctx context.Context, req ApexRequest) (*ApexResult, error)
 }
 
-// Deps are the external dependencies; Members, Events, ECLAs and Apex may be nil.
+// Deps are the external dependencies; Members, Events, ECLAs, Lookup and Apex may be nil.
 type Deps struct {
 	Companies  CompanyStore
 	Signatures CCLALister
@@ -151,6 +158,7 @@ type Deps struct {
 	Orgs       OrgService
 	ACS        ACSService
 	Members    MemberService
+	Lookup     OrgLookup
 	Apex       ApexService
 	Out        io.Writer
 	Now        func() time.Time
@@ -159,20 +167,21 @@ type Deps struct {
 
 // Options are the ingest/audit flags.
 type Options struct {
-	Stage         string
-	Apply         bool
-	Tranche       int
-	IDs           []string
-	Mapping       string
-	Decisions     string
-	SharedDomains string
-	State         string
-	Routes        []Route
-	SkipWait      bool
-	UseApex       bool
-	OutDir        string
-	WaitMax       time.Duration
-	WaitPoll      time.Duration
+	Stage                string
+	Apply                bool
+	Tranche              int
+	IDs                  []string
+	Mapping              string
+	Decisions            string
+	SharedDomains        string
+	State                string
+	Routes               []Route
+	SkipWait             bool
+	UseApex              bool
+	RegisterUnregistered bool
+	OutDir               string
+	WaitMax              time.Duration
+	WaitPoll             time.Duration
 }
 
 // Row is one companies-table row; ExternalID is trimmed for classification, RawExternalID is the
@@ -207,7 +216,9 @@ type Group struct {
 	Decision     *Decision
 	Replayed     bool
 	ViaApex      bool
+	Suggested    string
 	Err          error
+	liveErr      error
 }
 
 // Summary is the one-line run result.
@@ -233,7 +244,7 @@ func (s Summary) String() string {
 // Account is created by Apex at apply time is not pending.
 func (g *Group) Pending() bool {
 	if g.Route == RouteRegister {
-		return g.ManualReason == ReasonCRMUnverified
+		return g.ManualReason == ReasonCRMUnverified || g.ManualReason == ReasonUnregistered
 	}
 	return g.Route == RouteRewrite && g.NewID == "" && !g.ApexCreates()
 }

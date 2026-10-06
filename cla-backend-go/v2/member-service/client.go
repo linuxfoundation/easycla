@@ -32,6 +32,7 @@ var ErrNotConfigured = errors.New("member-service: client not configured")
 type AuthError struct {
 	Status  int
 	Message string
+	Token   bool // the Auth0 token request failed, not the member-service call
 }
 
 func (e *AuthError) Error() string {
@@ -254,14 +255,14 @@ func (c *Client) getToken(ctx context.Context) (string, error) {
 		return "", readErr
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return "", &AuthError{Status: resp.StatusCode, Message: responseMessage(body, resp.Status)}
+		return "", &AuthError{Status: resp.StatusCode, Message: responseMessage(body, resp.Status), Token: true}
 	}
 	var tr struct {
 		AccessToken string `json:"access_token"`
 		ExpiresIn   int    `json:"expires_in"`
 	}
 	if err = json.Unmarshal(body, &tr); err != nil || tr.AccessToken == "" {
-		return "", &AuthError{Status: resp.StatusCode, Message: "empty access token"}
+		return "", &AuthError{Status: resp.StatusCode, Message: "empty access token", Token: true}
 	}
 	c.token = tr.AccessToken
 	c.expiry = time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second)

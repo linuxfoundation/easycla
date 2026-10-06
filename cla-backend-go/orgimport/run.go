@@ -59,8 +59,13 @@ func BuildPlan(ctx context.Context, deps Deps, opts Options) (*Plan, error) {
 		}
 		classify(ctx, deps, g, mapping, shared, opts)
 	}
+	livenessGuard(groups)
 	targets := applyDecisions(groups, inv, mapping, decisions)
+	known := knownAccountsFromGroups(shared, groups)
 	groups = filterIDs(groups, opts.IDs)
+	suggestAccounts(ctx, deps, shared, known, groups, func(g *Group) bool {
+		return g.Err == nil && (g.Route == RouteRewrite || g.Route == RouteManual)
+	})
 
 	plan := &Plan{Stage: opts.Stage, Apply: opts.Apply, Groups: groups, Targets: targets, mapping: mapping, decisions: decisions, shared: shared, state: state, inv: inv}
 	budget := opts.Tranche
@@ -155,6 +160,17 @@ func (p *Plan) Pending() int {
 	return n
 }
 
+// Unregistered counts the Accounts whose GET /b2b_orgs answered 403 (no b2b_org yet).
+func (p *Plan) Unregistered() int {
+	n := 0
+	for _, g := range p.Groups {
+		if g.Live == LiveUnregistered {
+			n++
+		}
+	}
+	return n
+}
+
 func routeSet(routes []Route) map[Route]bool {
 	set := map[Route]bool{}
 	for _, r := range routes {
@@ -240,6 +256,13 @@ func classify(ctx context.Context, deps Deps, g *Group, mapping *Mapping, shared
 			g.Route, g.ManualReason = RouteRegister, ReasonCRMUnverified
 			lookupOrg(ctx, deps, g)
 			return
+		case LiveUnregistered:
+			g.Route, g.liveErr = RouteRegister, liveErr
+			if !opts.RegisterUnregistered {
+				g.ManualReason = ReasonUnregistered
+			}
+			lookupOrg(ctx, deps, g)
+			return
 		case LiveDead:
 			g.Route = RouteRewrite
 		default:
@@ -294,19 +317,47 @@ func classifyRowTargeted(g *Group, mapping *Mapping) {
 }
 
 // liveness asks member-service (the CRM view) whether the Account exists; without member-service
-// the answer is unverified — org-service may still serve an Account deleted from Salesforce.
+// the answer is unverified — org-service may still serve an Account deleted from Salesforce. A 403
+// from member-service itself means the Account has no b2b_org yet (unregistered).
 func liveness(ctx context.Context, deps Deps, id string) (string, error) {
 	if deps.Members == nil {
 		return LiveUnverified, nil
 	}
 	_, err := deps.Members.GetB2BOrg(ctx, id)
-	if errors.Is(err, member_service.ErrOrgNotFound) {
+	var authErr *member_service.AuthError
+	switch {
+	case err == nil:
+		return LiveLive, nil
+	case errors.Is(err, member_service.ErrOrgNotFound):
 		return LiveDead, nil
+	case errors.As(err, &authErr) && authErr.Status == 403 && !authErr.Token:
+		return LiveUnregistered, err
 	}
-	if err != nil {
-		return LiveError, err
+	return LiveError, err
+}
+
+// livenessGuard turns "unregistered" back into the access error when no Account at all answered
+// 200 or 404: the client then cannot see any b2b_org (missing access tuple), not just these ones.
+func livenessGuard(groups []*Group) {
+	seen, unregistered := 0, 0
+	for _, g := range groups {
+		switch g.Live {
+		case LiveLive, LiveDead:
+			seen++
+		case LiveUnregistered:
+			unregistered++
+		}
 	}
-	return LiveLive, nil
+	if unregistered == 0 || seen > 0 {
+		return
+	}
+	for _, g := range groups {
+		if g.Live != LiveUnregistered {
+			continue
+		}
+		g.Live, g.Route, g.ManualReason = LiveError, "", ""
+		g.Err = fmt.Errorf("liveness check failed for %s: member-service answered (403) for every Account checked (%d) and 200 for none: the tool's client cannot see any b2b_org (access tuple missing?): %w", g.OldID, unregistered, g.liveErr)
+	}
 }
 
 func resolveNewID(ctx context.Context, deps Deps, g *Group, mapping *Mapping, shared SharedDomains, opts Options) (newID, action, reason string) {
@@ -364,7 +415,7 @@ func (p *Plan) Print(w io.Writer) {
 	if p.Apply {
 		mode = ModeApply
 	}
-	fmt.Fprintf(w, "org_import ingest stage=%s mode=%s eligible_groups=%d register=%d rewrite=%d pending=%d skipped=%d\n", p.Stage, mode, len(p.Groups), len(p.Register), len(p.Rewrite), p.Pending(), p.Skipped)
+	fmt.Fprintf(w, "org_import ingest stage=%s mode=%s eligible_groups=%d register=%d rewrite=%d pending=%d unregistered=%d skipped=%d\n", p.Stage, mode, len(p.Groups), len(p.Register), len(p.Rewrite), p.Pending(), p.Unregistered(), p.Skipped)
 	for _, g := range p.Groups {
 		fmt.Fprintf(w, "%s\n", describe(g))
 	}
@@ -579,7 +630,39 @@ func (r *runner) register(ctx context.Context, g *Group) error {
 		return err
 	}
 	fmt.Fprintf(r.deps.Out, "registered %s as b2b_org %s (%s)\n", g.OldID, org.UID, org.Name)
+	if g.Live != LiveLive {
+		r.confirmRegistered(ctx, g.OldID)
+	}
 	return nil
+}
+
+const (
+	registerChecks     = 5
+	registerCheckDelay = 3 * time.Second
+)
+
+// confirmRegistered re-reads a freshly registered b2b_org: Heimdall answers 403 until the FGA tuples
+// land, so 403/404 are retried within a small budget and the result is only reported.
+func (r *runner) confirmRegistered(ctx context.Context, sfid string) {
+	for i := 1; i <= registerChecks; i++ {
+		_, err := r.deps.Members.GetB2BOrg(ctx, sfid)
+		var authErr *member_service.AuthError
+		switch {
+		case err == nil:
+			fmt.Fprintf(r.deps.Out, "b2b_org %s visible after %d check(s)\n", sfid, i)
+			return
+		case errors.Is(err, member_service.ErrOrgNotFound), errors.As(err, &authErr) && authErr.Status == 403 && !authErr.Token:
+			if i < registerChecks {
+				if sErr := r.deps.Sleep(ctx, registerCheckDelay); sErr != nil {
+					return
+				}
+			}
+		default:
+			fmt.Fprintf(r.deps.Out, "WARNING: b2b_org %s check failed: %v; the registration itself succeeded\n", sfid, err)
+			return
+		}
+	}
+	fmt.Fprintf(r.deps.Out, "WARNING: b2b_org %s not yet visible after %d checks (FGA tuples pending); the registration itself succeeded\n", sfid, registerChecks)
 }
 
 // resolveApex performs the real Apex call for every rewrite group resolved through --use-apex; a

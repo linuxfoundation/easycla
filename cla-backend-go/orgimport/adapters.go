@@ -37,6 +37,29 @@ func (a OrgServiceAdapter) GetOrganization(ctx context.Context, orgID string) (*
 	return &Org{ID: org.ID, Name: org.Name, Website: org.Link, SigningEntityNames: org.SigningEntityName}, nil
 }
 
+// LookupOrganization finds one Account by name or website domain (ErrOrgNotFound when none).
+func (a OrgServiceAdapter) LookupOrganization(ctx context.Context, name, domain string) (*Org, error) {
+	var namePtr, domainPtr *string
+	if name != "" {
+		namePtr = &name
+	}
+	if domain != "" {
+		domainPtr = &domain
+	}
+	res, err := a.Client.SearchOrgLookup(ctx, namePtr, domainPtr)
+	if err != nil {
+		var notFound *organizations.LookupNotFound
+		if errors.As(err, &notFound) {
+			return nil, ErrOrgNotFound
+		}
+		return nil, err
+	}
+	if res == nil || res.Payload == nil || res.Payload.ID == "" {
+		return nil, ErrOrgNotFound
+	}
+	return &Org{ID: res.Payload.ID, Name: res.Payload.Name, Website: res.Payload.Link}, nil
+}
+
 // CreateUserRoleScope grants a role scope by LFID username; an existing grant is not an error.
 func (a OrgServiceAdapter) CreateUserRoleScope(ctx context.Context, username, organizationID, objectType, objectID, roleID string) error {
 	return a.Client.CreateOrgUserRoleScopeByUsername(ctx, username, organizationID, objectType, objectID, roleID)

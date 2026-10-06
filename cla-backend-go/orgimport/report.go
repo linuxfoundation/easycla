@@ -193,7 +193,7 @@ func writePlanSections(h, t *strings.Builder, info RunInfo, plan *Plan) {
 		t.WriteString("None.\n")
 	} else {
 		h.WriteString("<p>Each row needs a human before the tool can act on it; the suggested action says how.</p>")
-		writeTable(h, t, []string{"key", "old id", "route", "reason", "suggested action", "live", "org-service", "website", "domain", "new id", "action", "company ids", "company names", "error"}, manualRows(plan, actions))
+		writeTable(h, t, []string{"key", "old id", "route", "reason", "suggested action", "live", "org-service", "website", "domain", "new id", "action", "company ids", "company names", "error", "suggested account"}, manualRows(plan, actions))
 	}
 
 	if len(plan.Targets) > 0 {
@@ -256,7 +256,7 @@ func manualRows(plan *Plan, actions []ManualAction) [][]string {
 			errText = g.Err.Error()
 		}
 		domain, _ := plan.domainOf(g)
-		rows = append(rows, []string{g.Key, g.OldID, string(g.Route), a.Reason, a.Suggested, g.Live, g.OrgStatus, g.Website(), domain, g.NewID, g.Action, strings.Join(g.CompanyIDs(), "; "), strings.Join(g.Names(), "; "), errText})
+		rows = append(rows, []string{g.Key, g.OldID, string(g.Route), a.Reason, a.Suggested, g.Live, g.OrgStatus, g.Website(), domain, g.NewID, g.Action, strings.Join(g.CompanyIDs(), "; "), strings.Join(g.Names(), "; "), errText, g.Suggested})
 	}
 	return rows
 }
