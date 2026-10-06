@@ -134,7 +134,7 @@ Done when: every `matched` and every collapse has a named reviewer (Heather, Jua
 
 Prod deploy, prod dry run, then `ingest --routes register --tranche 10 --apply` → verify three groups → 100 → rest. Member Accounts first (their GET returns 200 today); non-member Accounts only after the member-service rule change (Phase 0), otherwise they drop out of the lens index on their next Salesforce edit. Registration has no API undo, so never without member-service and never for an ID the CRM does not serve.
 
-Done when: a second run reports `registered=0`, and the three sampled companies are visible in the lens to a user who already holds a `b2b_org` grant. CLA-manager entry into the lens is the `cla_admin` relation ([m3-fga-model.md](https://github.com/linuxfoundation/easycla/pull/5210)), separate work.
+Done when: a second run reports `failed=0` (the register route keeps no state and re-posts every live group, which also republishes a lost index or FGA message), and the three sampled companies are visible in the lens to a user who already holds a `b2b_org` grant. CLA-manager entry into the lens is the `cla_admin` relation ([m3-fga-model.md](https://github.com/linuxfoundation/easycla/pull/5210)), separate work.
 
 ### Phase 4 — prod `rewrite` (~1,290 groups, mapping CSV)
 
