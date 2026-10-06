@@ -120,8 +120,8 @@ Output line: `audit stage=dev companies=N eligible_groups=M MISSING_SFID=a INVAL
 Files (`--out-dir`):
 - `audit.csv` — `company_id, company_name, signing_entity_name, company_external_id, id_shape(001|lf|empty|other), active_ccla, ccla_count, ecla_count, org_service(200|404|err), website, duplicate_sfid_group, route, manual_reason, tier, acs_roles, suggested_account`.
   `ecla_count` is filled only for active rows that are manual, duplicate or unresolvable and for every row of `possible_duplicates.csv` (cheap); `-1` = count failed.
-  `acs_roles` (`role=count;…` of the ACS grants scoped to the old id; `err` = listing failed) is filled for eligible `001`/`lf` groups and every
-  row of `possible_duplicates.csv`. `suggested_account` lists up to three existing Accounts a dead/legacy/manual/duplicate row could belong to:
+  `acs_roles` (`role=count;…` of the ACS grants scoped to the old id; `err` = listing failed) is filled in `audit.csv` for eligible `001`/`lf` groups and
+  for duplicate-set rows with those id shapes (`possible_duplicates.csv` has no `acs_roles` column). `suggested_account` lists up to three existing Accounts a dead/legacy/manual/duplicate row could belong to:
   `<id> <name> [inventory:domain|inventory:name|crm:domain|crm:name]` (inventory = other Accounts served by org-service for the same import,
   crm = org-service lookup by registrable website domain, then by name); candidates are verified in member-service — dropped Accounts are
   omitted, unverifiable ones (403) carry a `?` suffix. Best effort: lookup failures only warn.

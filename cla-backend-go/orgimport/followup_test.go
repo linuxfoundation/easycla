@@ -300,3 +300,35 @@ func TestAuditACSRolesError(t *testing.T) {
 	require.Len(t, rows, 2)
 	assert.Equal(t, "err", rows[1][14])
 }
+
+func TestPlanSuggestedAccountFromInventory(t *testing.T) {
+	const (
+		oldSFID  = "0014100000OldAAAAA"
+		old2SFID = "0014100000OldBBBBB"
+		newSFID  = "0014100000NewCCCCC"
+	)
+	fx := newFixture()
+	fx.company("c-old", "Acme", "", oldSFID, "cg-1")
+	fx.company("c-old2", "Widgets", "", old2SFID, "cg-1")
+	fx.company("c-new", "Acme", "", newSFID, "cg-1")
+	fx.company("c-lf", "Acme", "", "lf-acme-legacy-01", "cg-1")
+	fx.company("c-unrelated", "Zeta", "", liveSFID2, "cg-1")
+	fx.platform.sfAccounts[newSFID] = true
+	fx.platform.sfAccounts[liveSFID2] = true
+	fx.platform.orgs[newSFID] = &Org{ID: newSFID, Name: "Acme Inc.", Website: "https://www.acme.example"}
+	fx.platform.orgs[old2SFID] = &Org{ID: old2SFID, Name: "Widgets", Website: "https://labs.acme.example/x"}
+	fx.platform.orgs[liveSFID2] = &Org{ID: liveSFID2, Name: "Zeta", Website: "https://zeta.example"}
+
+	plan, err := BuildPlan(context.Background(), fx.deps(), Options{Stage: "dev"})
+	require.NoError(t, err)
+	live := groupByKey(plan.Groups, newSFID)
+	require.NotNil(t, live)
+	assert.Equal(t, LiveLive, live.Live)
+	assert.Equal(t, "200", live.OrgStatus)
+	assert.Equal(t, "", live.Suggested, "a live Account never suggests itself")
+	assert.Equal(t, newSFID+" Acme Inc. [inventory:name]", groupByKey(plan.Groups, oldSFID).Suggested)
+	assert.Equal(t, newSFID+" Acme Inc. [inventory:domain]", groupByKey(plan.Groups, old2SFID).Suggested)
+	assert.Equal(t, newSFID+" Acme Inc. [inventory:name]", groupByKey(plan.Groups, "lf-acme-legacy-01").Suggested)
+	assert.Equal(t, "", groupByKey(plan.Groups, liveSFID2).Suggested)
+	assert.Empty(t, fx.platform.registered)
+}

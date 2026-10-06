@@ -251,6 +251,7 @@ func classify(ctx context.Context, deps Deps, g *Group, mapping *Mapping, shared
 		switch g.Live {
 		case LiveLive:
 			g.Route = RouteRegister
+			lookupOrg(ctx, deps, g)
 			return
 		case LiveUnverified:
 			g.Route, g.ManualReason = RouteRegister, ReasonCRMUnverified
