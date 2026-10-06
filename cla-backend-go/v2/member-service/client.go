@@ -32,6 +32,7 @@ var ErrNotConfigured = errors.New("member-service: client not configured")
 type AuthError struct {
 	Status  int
 	Message string
+	Token   bool // the Auth0 token request failed, not the member-service call
 }
 
 func (e *AuthError) Error() string {
@@ -217,7 +218,9 @@ func (c *Client) do(req *http.Request, tok, operation string) (*B2BOrg, error) {
 	case resp.StatusCode == http.StatusBadRequest:
 		return nil, fmt.Errorf("%w: %s", ErrInvalidSFID, responseMessage(body, resp.Status))
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		c.forgetToken(tok)
+		if resp.StatusCode == http.StatusUnauthorized {
+			c.forgetToken(tok)
+		}
 		return nil, &AuthError{Status: resp.StatusCode, Message: responseMessage(body, resp.Status)}
 	default:
 		return nil, fmt.Errorf("member-service: %s returned %d: %s", operation, resp.StatusCode, responseMessage(body, resp.Status))
@@ -254,14 +257,14 @@ func (c *Client) getToken(ctx context.Context) (string, error) {
 		return "", readErr
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return "", &AuthError{Status: resp.StatusCode, Message: responseMessage(body, resp.Status)}
+		return "", &AuthError{Status: resp.StatusCode, Message: responseMessage(body, resp.Status), Token: true}
 	}
 	var tr struct {
 		AccessToken string `json:"access_token"`
 		ExpiresIn   int    `json:"expires_in"`
 	}
 	if err = json.Unmarshal(body, &tr); err != nil || tr.AccessToken == "" {
-		return "", &AuthError{Status: resp.StatusCode, Message: "empty access token"}
+		return "", &AuthError{Status: resp.StatusCode, Message: "empty access token", Token: true}
 	}
 	c.token = tr.AccessToken
 	c.expiry = time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second)

@@ -37,6 +37,9 @@ type AuditRow struct {
 	Route        Route
 	ManualReason string
 	Tier         string
+	OrgName      string
+	ACSRoles     string
+	Suggested    string
 }
 
 // AuditResult is the audit output; Duplicates are the candidate-target sets (rows sharing an id,
@@ -48,6 +51,7 @@ type AuditResult struct {
 	Routes     map[Route]int
 	Duplicates [][]*Row
 	rowByID    map[string]*AuditRow
+	shared     SharedDomains
 }
 
 // Audit classifies every company row (reads only) and writes audit.csv, unresolvable.csv and
@@ -63,9 +67,14 @@ func Audit(ctx context.Context, deps Deps, opts Options) (*AuditResult, error) {
 		return nil, err
 	}
 	groups := inv.EligibleGroups()
+	orgs := lookupOrgs(ctx, deps, inv)
 	for _, g := range groups {
+		if o := orgs[g.OldID]; o != nil {
+			g.Org, g.OrgStatus = o.org, o.status
+		}
 		classify(ctx, deps, g, nil, nil, Options{})
 	}
+	livenessGuard(groups)
 	groupByRow := map[string]*Group{}
 	for _, g := range groups {
 		for _, r := range g.Rows {
@@ -73,15 +82,16 @@ func Audit(ctx context.Context, deps Deps, opts Options) (*AuditResult, error) {
 		}
 	}
 
-	orgs := lookupOrgs(ctx, deps, inv)
-	res := &AuditResult{Tiers: map[string]int{}, Routes: map[Route]int{}, rowByID: map[string]*AuditRow{}}
+	res := &AuditResult{Tiers: map[string]int{}, Routes: map[Route]int{}, rowByID: map[string]*AuditRow{}, shared: shared}
 	byName, byDomain := map[string][]*Row{}, map[string][]*Row{}
+	known := newAccountIndex()
 	for _, row := range inv.Rows {
 		ar := &AuditRow{Row: row, Shape: ShapeOf(row.ExternalID)}
 		if o := orgs[row.ExternalID]; o != nil {
 			ar.OrgStatus = o.status
 			if o.org != nil {
-				ar.Website = o.org.Website
+				ar.Website, ar.OrgName = o.org.Website, o.org.Name
+				known.add(shared, row.ExternalID, o.org, row.CompanyName)
 			}
 		}
 		ar.Tier = tier(row.ExternalID, ar.OrgStatus)
@@ -106,6 +116,23 @@ func Audit(ctx context.Context, deps Deps, opts Options) (*AuditResult, error) {
 
 	res.collectDuplicates(byName, byDomain)
 	res.countECLAs(ctx, deps.ECLAs)
+	inDup := map[string]bool{}
+	for _, set := range res.Duplicates {
+		for _, r := range set {
+			inDup[r.CompanyID] = true
+		}
+	}
+	res.collectACSRoles(ctx, deps.ACS, inDup)
+	suggestRows(ctx, deps, shared, known, res.Rows, func(ar *AuditRow) bool {
+		if inDup[ar.Row.CompanyID] {
+			return true
+		}
+		g := groupByRow[ar.Row.CompanyID]
+		if g == nil || g.Err != nil {
+			return false
+		}
+		return g.Route == RouteManual || !(ar.Shape == ShapeSFID && ar.OrgStatus == "200" && g.Live != LiveDead)
+	})
 
 	if opts.OutDir != "" {
 		if err = writeAuditReports(opts.OutDir, res); err != nil {
@@ -121,8 +148,47 @@ func Audit(ctx context.Context, deps Deps, opts Options) (*AuditResult, error) {
 	for _, t := range []string{TierMissing, TierInvalid, TierOK, TierDangling, TierUnknown} {
 		fmt.Fprintf(deps.Out, " %s=%d", t, res.Tiers[t])
 	}
-	fmt.Fprintf(deps.Out, " register=%d rewrite=%d manual=%d duplicates=%d\n", res.Routes[RouteRegister], res.Routes[RouteRewrite], res.Routes[RouteManual], len(res.Duplicates))
+	unregistered := 0
+	for _, g := range groups {
+		if g.Live == LiveUnregistered {
+			unregistered++
+		}
+	}
+	fmt.Fprintf(deps.Out, " register=%d rewrite=%d manual=%d unregistered=%d duplicates=%d\n", res.Routes[RouteRegister], res.Routes[RouteRewrite], res.Routes[RouteManual], unregistered, len(res.Duplicates))
 	return res, nil
+}
+
+// collectACSRoles fills ACSRoles for the external ids of the eligible groups (001/lf) and of every
+// row in a candidate set (4 workers); a failed listing shows as "err".
+func (res *AuditResult) collectACSRoles(ctx context.Context, acs ACSService, inDup map[string]bool) {
+	if acs == nil {
+		return
+	}
+	want := map[string]bool{}
+	for _, g := range res.Groups {
+		if g.Shape == ShapeSFID || g.Shape == ShapeLF {
+			want[g.OldID] = true
+		}
+	}
+	for _, ar := range res.Rows {
+		if inDup[ar.Row.CompanyID] && (ar.Shape == ShapeSFID || ar.Shape == ShapeLF) {
+			want[ar.Row.ExternalID] = true
+		}
+	}
+	ids := make([]string, 0, len(want))
+	for id := range want {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	roles := make([]string, len(ids))
+	runWorkers(len(ids), func(i int) { roles[i] = acsRoles(ctx, acs, ids[i]) })
+	byID := make(map[string]string, len(ids))
+	for i, id := range ids {
+		byID[id] = roles[i]
+	}
+	for _, ar := range res.Rows {
+		ar.ACSRoles = byID[ar.Row.ExternalID]
+	}
 }
 
 func (ar *AuditRow) unresolvable() bool {
@@ -131,25 +197,68 @@ func (ar *AuditRow) unresolvable() bool {
 
 // collectDuplicates builds the candidate-target sets: rows sharing an id (with the same or empty
 // signing entity), then rows with the same normalized name or the same non-shared domain under
-// different ids.
+// different ids. Overlapping sets are merged into one (union by company id).
 func (res *AuditResult) collectDuplicates(byName, byDomain map[string][]*Row) {
+	var sets [][]*Row
 	for _, g := range res.Groups {
 		if g.Duplicate {
-			res.addDuplicates(g.Rows)
+			sets = append(sets, g.Rows)
 		}
 	}
-	for _, sets := range []map[string][]*Row{byName, byDomain} {
-		keys := make([]string, 0, len(sets))
-		for k := range sets {
+	for _, m := range []map[string][]*Row{byName, byDomain} {
+		keys := make([]string, 0, len(m))
+		for k := range m {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			if rows := sets[k]; k != "" && len(rows) >= 2 && distinctExternalIDs(rows) {
-				res.addDuplicates(rows)
+			if rows := m[k]; k != "" && len(rows) >= 2 && distinctExternalIDs(rows) {
+				sets = append(sets, rows)
 			}
 		}
 	}
+	for _, set := range mergeOverlapping(sets) {
+		res.addDuplicates(set)
+	}
+}
+
+// mergeOverlapping unions sets sharing a row; sets and rows keep their first-appearance order.
+func mergeOverlapping(sets [][]*Row) [][]*Row {
+	parent := map[string]string{}
+	var find func(string) string
+	find = func(x string) string {
+		if parent[x] != x {
+			parent[x] = find(parent[x])
+		}
+		return parent[x]
+	}
+	var order []*Row
+	seenRow := map[string]bool{}
+	for _, set := range sets {
+		for _, r := range set {
+			if _, ok := parent[r.CompanyID]; !ok {
+				parent[r.CompanyID] = r.CompanyID
+			}
+			if !seenRow[r.CompanyID] {
+				seenRow[r.CompanyID] = true
+				order = append(order, r)
+			}
+			parent[find(r.CompanyID)] = find(set[0].CompanyID)
+		}
+	}
+	index := map[string]int{}
+	var out [][]*Row
+	for _, r := range order {
+		root := find(r.CompanyID)
+		i, ok := index[root]
+		if !ok {
+			i = len(out)
+			index[root] = i
+			out = append(out, nil)
+		}
+		out[i] = append(out[i], r)
+	}
+	return out
 }
 
 // countECLAs fills ECLACount for the active manual/duplicate/unresolvable rows and for every row of a
@@ -282,12 +391,12 @@ func writeAuditReports(dir string, res *AuditResult) error {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
-	rows := [][]string{{"company_id", "company_name", "signing_entity_name", "company_external_id", "id_shape", "active_ccla", "ccla_count", "ecla_count", "org_service", "website", "duplicate_sfid_group", "route", "manual_reason", "tier"}}
+	rows := [][]string{{"company_id", "company_name", "signing_entity_name", "company_external_id", "id_shape", "active_ccla", "ccla_count", "ecla_count", "org_service", "website", "duplicate_sfid_group", "route", "manual_reason", "tier", "acs_roles", "suggested_account"}}
 	var unresolvable [][]string
 	unresolvable = append(unresolvable, []string{"company_id", "company_name", "signing_entity_name", "company_external_id", "id_shape", "ccla_count", "ecla_count", "org_service", "manual_reason"})
 	for _, ar := range res.Rows {
 		r := ar.Row
-		rows = append(rows, []string{r.CompanyID, r.CompanyName, r.SigningEntityName, r.ExternalID, string(ar.Shape), strconv.FormatBool(r.ActiveCCLA), strconv.Itoa(r.CCLACount), strconv.Itoa(ar.ECLACount), ar.OrgStatus, ar.Website, strconv.FormatBool(ar.Duplicate), string(ar.Route), ar.ManualReason, ar.Tier})
+		rows = append(rows, []string{r.CompanyID, r.CompanyName, r.SigningEntityName, r.ExternalID, string(ar.Shape), strconv.FormatBool(r.ActiveCCLA), strconv.Itoa(r.CCLACount), strconv.Itoa(ar.ECLACount), ar.OrgStatus, ar.Website, strconv.FormatBool(ar.Duplicate), string(ar.Route), ar.ManualReason, ar.Tier, ar.ACSRoles, ar.Suggested})
 		if r.ActiveCCLA && ar.unresolvable() {
 			unresolvable = append(unresolvable, []string{r.CompanyID, r.CompanyName, r.SigningEntityName, r.ExternalID, string(ar.Shape), strconv.Itoa(r.CCLACount), strconv.Itoa(ar.ECLACount), ar.OrgStatus, ar.ManualReason})
 		}
@@ -297,7 +406,7 @@ func writeAuditReports(dir string, res *AuditResult) error {
 		for _, r := range set {
 			shape, domain, ecla := string(ShapeOf(r.ExternalID)), "", ""
 			if ar := res.rowByID[r.CompanyID]; ar != nil {
-				shape, domain = string(ar.Shape), Domain(ar.Website)
+				shape, domain = string(ar.Shape), res.shared.Domain(ar.Website)
 				if ar.ECLACounted {
 					ecla = strconv.Itoa(ar.ECLACount)
 				}
@@ -317,9 +426,9 @@ func writeIngestReports(dir string, plan *Plan) error {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
-	rows := [][]string{{"key", "old_id", "id_shape", "route", "manual_reason", "live", "org_service", "website", "domain", "shared_domain", "new_id", "action", "decision", "reviewer", "company_ids", "company_names", "error"}}
-	toSF := [][]string{{"old_id", "name", "website", "ccla_signed_date", "domain", "shared_domain"}}
-	manual := [][]string{{"key", "old_id", "route", "reason", "suggested_action", "live", "org_service", "website", "domain", "shared_domain", "new_id", "action", "company_ids", "company_names", "error"}}
+	rows := [][]string{{"key", "old_id", "id_shape", "route", "manual_reason", "live", "org_service", "website", "domain", "shared_domain", "new_id", "action", "decision", "reviewer", "company_ids", "company_names", "error", "suggested_account"}}
+	toSF := [][]string{{"old_id", "name", "website", "ccla_signed_date", "domain", "shared_domain", "suggested_account"}}
+	manual := [][]string{{"key", "old_id", "route", "reason", "suggested_action", "live", "org_service", "website", "domain", "shared_domain", "new_id", "action", "company_ids", "company_names", "error", "suggested_account"}}
 	for _, g := range plan.Groups {
 		names := strings.Join(g.Names(), ";")
 		errText := ""
@@ -331,10 +440,10 @@ func writeIngestReports(dir string, plan *Plan) error {
 		if g.Decision != nil {
 			decision, reviewer = g.Decision.Kind, g.Decision.Reviewer
 		}
-		rows = append(rows, []string{g.Key, g.OldID, string(g.Shape), string(g.Route), g.ManualReason, g.Live, g.OrgStatus, g.Website(), domain, shared, g.NewID, g.Action, decision, reviewer, strings.Join(g.CompanyIDs(), ";"), names, errText})
+		rows = append(rows, []string{g.Key, g.OldID, string(g.Shape), string(g.Route), g.ManualReason, g.Live, g.OrgStatus, g.Website(), domain, shared, g.NewID, g.Action, decision, reviewer, strings.Join(g.CompanyIDs(), ";"), names, errText, g.Suggested})
 		if g.ManualReason == ReasonNoMapping || g.ManualReason == ReasonDeadAccount {
 			req := apexRequest(g, true)
-			toSF = append(toSF, []string{g.OldID, req.Name, req.Website, req.CCLASignedDate, domain, shared})
+			toSF = append(toSF, []string{g.OldID, req.Name, req.Website, req.CCLASignedDate, domain, shared, g.Suggested})
 		}
 	}
 	for _, a := range plan.ManualActions() {
@@ -344,7 +453,7 @@ func writeIngestReports(dir string, plan *Plan) error {
 			errText = g.Err.Error()
 		}
 		domain, shared := plan.domainOf(g)
-		manual = append(manual, []string{g.Key, g.OldID, string(g.Route), a.Reason, a.Suggested, g.Live, g.OrgStatus, g.Website(), domain, shared, g.NewID, g.Action, strings.Join(g.CompanyIDs(), ";"), strings.Join(g.Names(), ";"), errText})
+		manual = append(manual, []string{g.Key, g.OldID, string(g.Route), a.Reason, a.Suggested, g.Live, g.OrgStatus, g.Website(), domain, shared, g.NewID, g.Action, strings.Join(g.CompanyIDs(), ";"), strings.Join(g.Names(), ";"), errText, g.Suggested})
 	}
 	targets := [][]string{{"target_sfid", "groups", "old_ids", "company_ids", "company_names", "existing_rows", "decision", "reviewer", "status"}}
 	for _, t := range plan.Targets {

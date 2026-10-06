@@ -66,6 +66,7 @@ func TestBuildReport(t *testing.T) {
 		"How to apply this plan", "STAGE=dev ./bin/org-import ingest --mapping", "--apply --yes", "gh workflow run org-import-sweep.yml -R linuxfoundation/easycla -f stage=dev -f mode=apply -f routes=rewrite",
 		"-f mapping=&#34;$(tr &#39;\\n&#39; &#39;|&#39; &lt; ", "https://github.com/linuxfoundation/easycla/actions/runs/42", "org-import-out-dev-42", "abc123-dirty", "/easycla/org-import/dev / s1",
 		"1m30s", "line 2", "Attachments", "manual_actions.csv", "plan.csv", "targets.csv", "run.log", "out.zip", "acme.example",
+		"<th align=\"left\">suggested account</th>",
 	} {
 		assert.Contains(t, rep.HTML, want, want)
 	}
@@ -130,11 +131,11 @@ func TestBuildReportEscapesAndTruncates(t *testing.T) {
 }
 
 func TestApplyCommands(t *testing.T) {
-	cmds := ApplyCommands(RunInfo{Stage: "prod", OutDir: "/runs/out 1", Args: []string{"ingest", "--apply", "--yes", "--ids", "a,b", "--mapping", "/home/op/my map.csv", "--no-email"},
-		Workflow: WorkflowInputs{Routes: "register,rewrite", Tranche: "10", IDs: "a,b", Mapping: "/home/op/my map.csv", Decisions: "d.csv", SharedDomains: "s.txt"}})
+	cmds := ApplyCommands(RunInfo{Stage: "prod", OutDir: "/runs/out 1", Args: []string{"ingest", "--apply", "--yes", "--ids", "a,b", "--mapping", "/home/op/my map.csv", "--no-email", "--register-unregistered"},
+		Workflow: WorkflowInputs{Routes: "register,rewrite", Tranche: "10", IDs: "a,b", Mapping: "/home/op/my map.csv", Decisions: "d.csv", SharedDomains: "s.txt", RegisterUnregistered: true}})
 	require.Len(t, cmds, 2)
-	assert.Equal(t, `STAGE=prod ./bin/org-import ingest --ids a,b --mapping "${RECORD:-/runs/out 1}/input-mapping.csv" --state "${RECORD:-/runs/out 1}/state.jsonl" --apply --yes`, cmds[0])
-	assert.Equal(t, `gh workflow run org-import-sweep.yml -R linuxfoundation/easycla -f stage=prod -f mode=apply -f routes=register,rewrite -f tranche=10 -f ids=a,b -f mapping="$(tr '\n' '|' < "${RECORD:-/runs/out 1}/input-mapping.csv")" -f decisions="$(tr '\n' '|' < "${RECORD:-/runs/out 1}/input-decisions.csv")" -f shared_domains="$(tr '\n' '|' < "${RECORD:-/runs/out 1}/input-shared_domains.txt")"`, cmds[1])
+	assert.Equal(t, `STAGE=prod ./bin/org-import ingest --ids a,b --mapping "${RECORD:-/runs/out 1}/input-mapping.csv" --register-unregistered --state "${RECORD:-/runs/out 1}/state.jsonl" --apply --yes`, cmds[0])
+	assert.Equal(t, `gh workflow run org-import-sweep.yml -R linuxfoundation/easycla -f stage=prod -f mode=apply -f routes=register,rewrite -f tranche=10 -f ids=a,b -f mapping="$(tr '\n' '|' < "${RECORD:-/runs/out 1}/input-mapping.csv")" -f decisions="$(tr '\n' '|' < "${RECORD:-/runs/out 1}/input-decisions.csv")" -f shared_domains="$(tr '\n' '|' < "${RECORD:-/runs/out 1}/input-shared_domains.txt")" -f register_unregistered=true`, cmds[1])
 	assert.Equal(t, "''", shellQuote(""))
 	assert.Equal(t, `'it'\''s'`, shellQuote("it's"))
 	assert.Equal(t, []string{"a@x.org", "b@y.org", "c@z.org"}, ParseRecipients(" a@x.org, b@y.org;c@z.org\n"))
@@ -166,6 +167,7 @@ func TestApplyCommandsUseTheRecord(t *testing.T) {
 	// without --state the apply command still carries a persistent journal (rewrite apply requires one)
 	cmds = ApplyCommands(RunInfo{Stage: "dev", OutDir: "/r", Args: []string{"ingest", "--routes", "register"}})
 	assert.Equal(t, `STAGE=dev ./bin/org-import ingest --routes register --state "${RECORD:-/r}/state.jsonl" --apply --yes`, cmds[0])
+	assert.NotContains(t, cmds[1], "register_unregistered", "the workflow input is only passed when the run used it")
 
 	// the RECORD default is safe inside double quotes
 	assert.Equal(t, `"${RECORD:-/a b/\$x/\}y\"\\z\`+"`"+`}/state.jsonl"`, recordPath(`/a b/$x/}y"\z`+"`", RecordState))

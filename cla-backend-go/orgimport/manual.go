@@ -4,8 +4,11 @@
 package orgimport
 
 import (
+	"errors"
 	"fmt"
 	"strings"
+
+	member_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
 )
 
 // ManualAction is one row of manual_actions.csv: a group the tool will not process on its own.
@@ -32,6 +35,7 @@ var suggestions = map[string]string{
 	"missing_website":           "Org-service has no website for the organization: automatic domain match is impossible — add a mapping row after sales ops name the Account.",
 	"shared_domain":             "Website domain is shared (github.com, nowebsite.com, mail provider): never matched automatically — add a mapping row after sales ops name the Account.",
 	"apex_error":                "Apex call failed: re-run; if it persists check cla-salesforce-apex-* and the endpoint.",
+	ReasonUnregistered:          "Account exists in Salesforce but has no b2b_org yet (GET /b2b_orgs answered 403): re-run with --register-unregistered to POST /b2b_orgs for it, or wait for the member-service access tuple.",
 	ReasonCRMUnverified:         "Account liveness cannot be verified without member-service: set SSM cla-member-service-base-url-<stage> / cla-member-service-auth0-audience-<stage> and the Auth0 client grant + Heimdall roles (README §2), then re-run.",
 }
 
@@ -47,11 +51,19 @@ func Suggest(reason string) string {
 }
 
 // SuggestError maps a group error to an action; access errors get the ops item instead of "re-run".
+const clientGrantAdvice = "EasyCLA's Auth0 M2M client has no client grant for the member-service audience (SSM cla-member-service-auth0-audience-<stage>): ops must add it (README §2), then re-run."
+
 func SuggestError(err error) string {
 	msg := err.Error()
+	var authErr *member_service.AuthError
 	switch {
+	case errors.As(err, &authErr) && authErr.Token:
+		if authErr.Status == 403 {
+			return clientGrantAdvice
+		}
+		return fmt.Sprintf("the Auth0 token request for the member-service audience failed (%d): check SSM cla-auth0-platform-client-id/-secret-<stage> and cla-member-service-auth0-audience-<stage> (README §2), then re-run.", authErr.Status)
 	case strings.Contains(msg, "client-grant"), strings.Contains(msg, "not authorized to access resource server"):
-		return "EasyCLA's Auth0 M2M client has no client grant for the member-service audience (SSM cla-member-service-auth0-audience-<stage>): ops must add it (README §2), then re-run."
+		return clientGrantAdvice
 	case strings.Contains(msg, "(403)"), strings.Contains(msg, "(401)"):
 		return "member-service refused the call: the client needs auditor (GET /b2b_orgs) and global_org_admin (POST /b2b_orgs) in the member-service Heimdall ruleset (README §2), then re-run."
 	case strings.Contains(msg, ErrNotConfigured.Error()):

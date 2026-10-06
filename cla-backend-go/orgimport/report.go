@@ -71,12 +71,13 @@ const (
 
 // WorkflowInputs mirrors the org-import-sweep.yml dispatch inputs for the "how to apply" command.
 type WorkflowInputs struct {
-	Routes        string
-	Tranche       string
-	IDs           string
-	Mapping       string
-	Decisions     string
-	SharedDomains string
+	Routes               string
+	Tranche              string
+	IDs                  string
+	Mapping              string
+	Decisions            string
+	SharedDomains        string
+	RegisterUnregistered bool
 }
 
 // Mode is dry-run or apply.
@@ -193,7 +194,7 @@ func writePlanSections(h, t *strings.Builder, info RunInfo, plan *Plan) {
 		t.WriteString("None.\n")
 	} else {
 		h.WriteString("<p>Each row needs a human before the tool can act on it; the suggested action says how.</p>")
-		writeTable(h, t, []string{"key", "old id", "route", "reason", "suggested action", "live", "org-service", "website", "domain", "new id", "action", "company ids", "company names", "error"}, manualRows(plan, actions))
+		writeTable(h, t, []string{"key", "old id", "route", "reason", "suggested action", "live", "org-service", "website", "domain", "new id", "action", "company ids", "company names", "error", "suggested account"}, manualRows(plan, actions))
 	}
 
 	if len(plan.Targets) > 0 {
@@ -256,7 +257,7 @@ func manualRows(plan *Plan, actions []ManualAction) [][]string {
 			errText = g.Err.Error()
 		}
 		domain, _ := plan.domainOf(g)
-		rows = append(rows, []string{g.Key, g.OldID, string(g.Route), a.Reason, a.Suggested, g.Live, g.OrgStatus, g.Website(), domain, g.NewID, g.Action, strings.Join(g.CompanyIDs(), "; "), strings.Join(g.Names(), "; "), errText})
+		rows = append(rows, []string{g.Key, g.OldID, string(g.Route), a.Reason, a.Suggested, g.Live, g.OrgStatus, g.Website(), domain, g.NewID, g.Action, strings.Join(g.CompanyIDs(), "; "), strings.Join(g.Names(), "; "), errText, g.Suggested})
 	}
 	return rows
 }
@@ -332,6 +333,9 @@ func ApplyCommands(info RunInfo) []string {
 		if f[1] != "" {
 			gh += fmt.Sprintf(" -f %s=\"$(tr '\\n' '|' < %s)\"", f[0], recordPath(info.OutDir, f[2]))
 		}
+	}
+	if w.RegisterUnregistered {
+		gh += " -f register_unregistered=true"
 	}
 	return []string{local, gh}
 }

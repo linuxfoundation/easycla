@@ -52,6 +52,10 @@ on:
         description: E-mail the full run report to SSM cla-org-import-report-emails-<stage>
         type: boolean
         default: true
+      register_unregistered:
+        description: Also register Accounts whose member-service GET answered 403 (default leaves them pending)
+        type: boolean
+        default: false
   schedule:
     - cron: '0 6 * * *'
 
@@ -75,6 +79,7 @@ jobs:
           IN_TRANCHE: ${{ inputs.tranche }}
           IN_IDS: ${{ inputs.ids }}
           IN_NOTIFY: ${{ inputs.notify }}
+          IN_REGISTER_UNREGISTERED: ${{ inputs.register_unregistered }}
           SWEEP_DEV: ${{ vars.ORG_IMPORT_SWEEP_DEV }}
           SWEEP_PROD: ${{ vars.ORG_IMPORT_SWEEP_PROD }}
         run: |
@@ -87,17 +92,17 @@ jobs:
             esac
           }
           entry() {
-            jq -cn --arg stage "$1" --arg mode "$2" --arg routes "$3" --arg tranche "$4" --arg ids "$5" --arg notify "$6" --arg role "$(role "$1")" \
-              '{stage:$stage, mode:$mode, routes:$routes, tranche:$tranche, ids:$ids, notify:$notify, role:$role}'
+            jq -cn --arg stage "$1" --arg mode "$2" --arg routes "$3" --arg tranche "$4" --arg ids "$5" --arg notify "$6" --arg register_unregistered "$7" --arg role "$(role "$1")" \
+              '{stage:$stage, mode:$mode, routes:$routes, tranche:$tranche, ids:$ids, notify:$notify, register_unregistered:$register_unregistered, role:$role}'
           }
           entries=()
           if [ "$EVENT" = workflow_dispatch ]; then
-            entries+=("$(entry "$IN_STAGE" "$IN_MODE" "$IN_ROUTES" "${IN_TRANCHE:-0}" "$IN_IDS" "${IN_NOTIFY:-true}")")
+            entries+=("$(entry "$IN_STAGE" "$IN_MODE" "$IN_ROUTES" "${IN_TRANCHE:-0}" "$IN_IDS" "${IN_NOTIFY:-true}" "${IN_REGISTER_UNREGISTERED:-false}")")
           else
             for pair in "dev:${SWEEP_DEV:-off}" "prod:${SWEEP_PROD:-off}"; do
               stage="${pair%%:*}"; mode="${pair#*:}"
               case "$mode" in
-                dry-run|apply) entries+=("$(entry "$stage" "$mode" register 0 '' true)") ;;
+                dry-run|apply) entries+=("$(entry "$stage" "$mode" register 0 '' true false)") ;;
                 *) echo "scheduled sweep for $stage is off" ;;
               esac
             done
@@ -219,6 +224,7 @@ jobs:
           TRANCHE: ${{ matrix.tranche }}
           IDS: ${{ matrix.ids }}
           NOTIFY: ${{ matrix.notify }}
+          REGISTER_UNREGISTERED: ${{ matrix.register_unregistered }}
         run: |
           set -euo pipefail
           args=(ingest --routes "$ROUTES" --out-dir org-import-out --state org-import-out/state.jsonl)
@@ -228,6 +234,7 @@ jobs:
           [ -s org-import-out/decisions.csv ] && args+=(--decisions org-import-out/decisions.csv)
           [ -s org-import-out/shared_domains.txt ] && args+=(--shared-domains org-import-out/shared_domains.txt)
           [ "$NOTIFY" = false ] && args+=(--no-email)
+          [ "$REGISTER_UNREGISTERED" = true ] && args+=(--register-unregistered)
           [ "$MODE" = apply ] && args+=(--apply --yes)
           echo "bin/org-import ${args[*]}"
           bin/org-import "${args[@]}"

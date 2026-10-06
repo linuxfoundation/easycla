@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"golang.org/x/net/publicsuffix"
 )
 
 // Decision kinds recorded by the duplicate review (lfx-self-serve #3085).
@@ -282,8 +284,9 @@ type SharedDomains map[string]bool
 
 // DefaultSharedDomains is the built-in list; the #3085 review file replaces it (--shared-domains).
 var DefaultSharedDomains = []string{
-	"github.com", "nowebsite.com",
+	"github.com", "nowebsite.com", "en.wikipedia.org", "buymeacoffee.com", "nonameaccount.com", "localhost.localhost",
 	"gmail.com", "googlemail.com", "yahoo.com", "hotmail.com", "outlook.com", "live.com", "icloud.com", "protonmail.com", "qq.com", "163.com",
+	"bund.de", "onmicrosoft.com",
 }
 
 // LoadSharedDomains reads one domain per line (`#` comments); an empty path yields the default list.
@@ -317,8 +320,14 @@ func LoadSharedDomains(path string) (SharedDomains, error) {
 	return set, nil
 }
 
-// Domain extracts the registrable host of a website value (scheme, path and www. stripped).
+// Domain extracts the registrable domain of a website value (public suffix list; scheme, path and
+// www. stripped): startup.google.com -> google.com, comcast.github.io stays (private suffix).
 func Domain(website string) string {
+	return registrable(hostOf(website))
+}
+
+// hostOf extracts the host of a website value (scheme, path and www. stripped).
+func hostOf(website string) string {
 	website = strings.TrimSpace(strings.ToLower(website))
 	if website == "" {
 		return ""
@@ -331,6 +340,27 @@ func Domain(website string) string {
 		return normalizeDomain(website)
 	}
 	return normalizeDomain(u.Hostname())
+}
+
+func registrable(host string) string {
+	if host == "" {
+		return ""
+	}
+	if d, err := publicsuffix.EffectiveTLDPlusOne(host); err == nil {
+		return d
+	}
+	return host
+}
+
+// Domain is the matching key of a website: its registrable domain, except that a listed shared
+// parent (bund.de, onmicrosoft.com) keeps its subdomains apart.
+func (s SharedDomains) Domain(website string) string {
+	host := hostOf(website)
+	reg := registrable(host)
+	if s[host] || (host != reg && s[reg]) {
+		return host
+	}
+	return reg
 }
 
 func normalizeDomain(host string) string {
@@ -346,7 +376,7 @@ func normalizeDomain(host string) string {
 
 // Shared reports whether website has no domain or a listed shared domain; the reason is the manual reason.
 func (s SharedDomains) Shared(website string) (string, string) {
-	d := Domain(website)
+	d := s.Domain(website)
 	switch {
 	case d == "":
 		return "", "missing_website"
