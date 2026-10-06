@@ -1,0 +1,24 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: CLA Manager Request List
+description: A list of CLA Manager access requests
+properties:
+  requests:
+    type: array
+    description: The CLA Manager access requests
+    x-omitempty: false
+    items:
+      $ref: '#/definitions/cla-manager-request'
+  resultCount:
+    type: integer
+    format: int64
+    x-omitempty: false
+    description: Number of requests returned after optional pageSize/offset paging was applied
+  totalCount:
+    type: integer
+    format: int64
+    x-omitempty: false
+    description: Total number of requests before optional pageSize/offset paging was applied

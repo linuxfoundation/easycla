@@ -90,6 +90,75 @@ func (s *CompaniesStore) QueryByName(ctx context.Context, companyName string) ([
 	return items, nil
 }
 
+// QueryByExternalID returns the parent company row of a Salesforce organization ID: the row
+// without a distinct signing entity name (or, when every row is a signing entity, any row), the
+// oldest one first and the smallest company_id on ties - the same pick as the v1 backend.
+func (s *CompaniesStore) QueryByExternalID(ctx context.Context, companyExternalID string) (map[string]types.AttributeValue, bool, error) {
+	if s == nil || s.client == nil {
+		return nil, false, nil
+	}
+
+	items := make([]map[string]types.AttributeValue, 0, 1)
+	var startKey map[string]types.AttributeValue
+	for {
+		out, err := s.client.Query(ctx, &dynamodb.QueryInput{
+			TableName:              aws.String(s.table),
+			IndexName:              aws.String("external-company-index"),
+			KeyConditionExpression: aws.String("company_external_id = :e"),
+			ExpressionAttributeValues: map[string]types.AttributeValue{
+				":e": &types.AttributeValueMemberS{Value: companyExternalID},
+			},
+			ExclusiveStartKey: startKey,
+		})
+		if err != nil {
+			return nil, false, err
+		}
+		items = append(items, out.Items...)
+		if len(out.LastEvaluatedKey) == 0 {
+			break
+		}
+		startKey = out.LastEvaluatedKey
+	}
+	winner := PickParentCompany(items)
+	return winner, winner != nil, nil
+}
+
+// PickParentCompany selects the parent row among the rows of one organization (see QueryByExternalID).
+func PickParentCompany(items []map[string]types.AttributeValue) map[string]types.AttributeValue {
+	var candidates []map[string]types.AttributeValue
+	for _, it := range items {
+		entity := attrString(it, "signing_entity_name")
+		if entity == "" || entity == attrString(it, "company_name") {
+			candidates = append(candidates, it)
+		}
+	}
+	if len(candidates) == 0 {
+		candidates = items
+	}
+	var winner map[string]types.AttributeValue
+	for _, it := range candidates {
+		if winner == nil || companyRowIsOlder(it, winner) {
+			winner = it
+		}
+	}
+	return winner
+}
+
+func companyRowIsOlder(it, winner map[string]types.AttributeValue) bool {
+	c, w := attrString(it, "date_created"), attrString(winner, "date_created")
+	if c != w {
+		return c < w
+	}
+	return attrString(it, "company_id") < attrString(winner, "company_id")
+}
+
+func attrString(item map[string]types.AttributeValue, key string) string {
+	if av, ok := item[key].(*types.AttributeValueMemberS); ok {
+		return av.Value
+	}
+	return ""
+}
+
 func (s *CompaniesStore) ScanAll(ctx context.Context) ([]map[string]types.AttributeValue, error) {
 	if s == nil || s.client == nil {
 		return nil, nil

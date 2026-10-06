@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"reflect"
 	"regexp"
 	"strconv"
 	"strings"
@@ -102,6 +103,8 @@ const (
 	errNilGitHubRepositoryOrOwner = "unable to get github repository - repository response is nil or owner is nil"
 	githubStatusStateFailure      = "failure"
 	githubStatusMissingCLA        = "Missing CLA Authorization."
+	// restoreDecisionRounds bounds the evaluate/re-read rounds of a restore decision while the approval list keeps changing
+	restoreDecisionRounds = 3
 )
 
 // listUserPublicOrgs is the indirection that lets unit tests for
@@ -109,6 +112,10 @@ const (
 // a real OAuth client. Production callers always go through
 // github.ListUserPublicOrgs.
 var listUserPublicOrgs = github.ListUserPublicOrgs
+
+// getOrganizationMembers is the same indirection for the GitHub App /orgs/<org>/members
+// call the approval list organization removal uses to pick the acknowledgments to re-check
+var getOrganizationMembers = github.GetOrganizationMembers
 
 // NewService creates a new signature service
 func NewService(repo SignatureRepository, companyService company.IService, usersService users.Service, eventsService events.Service, githubOrgValidation bool, repositoryService repositories.Service, githubOrgService github_organizations.ServiceInterface, claGroupService service2.Service, gitLabApp *gitlab_api.App, CLABaseAPIURL, CLALandingPage, CLALogoURL string) SignatureService {
@@ -559,6 +566,14 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 	invalidated := github.ModelProjectUserCache.InvalidateByProject(claGroupModel.ProjectID)
 	log.WithFields(f).Infof("invalidated %d ProjectUserCache entries for project %s after approval list update", invalidated, claGroupModel.ProjectID)
 
+	// Re-approve the signed employee acknowledgments that only an approval list removal had invalidated, when the
+	// entries just added cover their user again (#2980). The list edit already succeeded and the remaining side
+	// effects still run, but an incomplete recovery is reported to the caller - re-adding the entries retries it
+	restoredUsers, restoreErr := s.restoreRemovalInvalidatedEmployeeSignatures(ctx, userModel, claGroupModel, companyModel, corporateSigModel.SignatureID, params)
+	if restoreErr != nil {
+		log.WithFields(f).WithError(restoreErr).Warnf("problem restoring removal-invalidated employee acknowledgments for company ID: %s, project ID: %s, cla group ID: %s", companyModel.CompanyID, claGroupModel.ProjectID, claGroupID)
+	}
+
 	// If auto create ECLA is enabled for this Corporate Agreement, then create an ECLA for each employee that was added to the approval list
 	// we get the complete user list as output from the processing of the approval list
 	var userModelList []*models.User
@@ -576,6 +591,7 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 		}
 		userModelList = userList
 	}
+	userModelList = appendMissingUsers(userModelList, restoredUsers)
 
 	var wg sync.WaitGroup
 
@@ -623,7 +639,201 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 	// Wait until all the go routines are done - if we don't wait, the behavior is undefined
 	wg.Wait()
 
+	if restoreErr != nil {
+		return nil, fmt.Errorf("approval list updated, but re-enabling the employee acknowledgments disabled by an earlier approval list removal failed - re-add the entries to retry: %w", restoreErr)
+	}
 	return updatedCorporateSignature, nil
+}
+
+// restoreRemovalInvalidatedEmployeeSignatures re-approves the signed employee acknowledgments of the company under
+// the CLA group that only an approval list removal had invalidated, when the entries just added cover their user
+// again (#2980). Deliberate invalidations are never touched, a remove-only edit restores nothing, and only a
+// positive match against the persisted post-edit entries counts; the corporate signature is read again before
+// every guarded restore so a list change committed meanwhile is observed. Returns the users whose acknowledgment
+// was restored plus every lookup/evaluation/write failure met on the way - an unanswered GitHub organization
+// membership lookup is such a failure, not a negative decision
+func (s service) restoreRemovalInvalidatedEmployeeSignatures(ctx context.Context, claManager *models.User, claGroupModel *models.ClaGroup, companyModel *models.Company, cclaSignatureID string, params *models.ApprovalList) ([]*models.User, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.service.restoreRemovalInvalidatedEmployeeSignatures",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"claGroupID":     claGroupModel.ProjectID,
+		"companyID":      companyModel.CompanyID,
+		"signatureID":    cclaSignatureID,
+	}
+	if params == nil || len(params.AddEmailApprovalList)+len(params.AddDomainApprovalList)+len(params.AddGithubUsernameApprovalList)+
+		len(params.AddGithubOrgApprovalList)+len(params.AddGitlabUsernameApprovalList)+len(params.AddGitlabOrgApprovalList) == 0 {
+		return nil, nil
+	}
+
+	// decide on the CCLA as actually written, not on the eventually consistent index read
+	cclaSignature, err := s.repo.GetItemSignatureConsistent(ctx, cclaSignatureID)
+	if err != nil {
+		return nil, fmt.Errorf("unable to load corporate signature %s: %w", cclaSignatureID, err)
+	}
+	if cclaSignature == nil || !cclaSignature.SignatureSigned || !cclaSignature.SignatureApproved {
+		log.WithFields(f).Warn("corporate signature is no longer signed and approved - not restoring employee acknowledgments")
+		return nil, nil
+	}
+	added := addedApprovalCriteria(cclaSignature, params)
+	if added == nil {
+		log.WithFields(f).Debug("none of the added approval list entries is in effect - nothing to restore")
+		return nil, nil
+	}
+
+	candidates, err := s.repo.GetRemovalInvalidatedEmployeeSignatures(ctx, companyModel.CompanyID, claGroupModel.ProjectID)
+	if err != nil {
+		return nil, fmt.Errorf("unable to load the removal-invalidated employee acknowledgments: %w", err)
+	}
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+
+	note := fmt.Sprintf("Re-enabled employee acknowledgment previously disabled by approval list removal via CLA Manager %s approval list edit on %s.",
+		utils.GetBestUsername(claManager), utils.CurrentSimpleDateTimeString())
+	decider := &restoreDecider{svc: s, ctx: ctx, f: f, cclaSignatureID: cclaSignatureID, params: params, added: added}
+	usersByID := map[string]*models.User{}
+	var restored []*models.User
+	var failures []error
+	for _, candidate := range candidates {
+		user, known := usersByID[candidate.SignatureReferenceID]
+		if !known {
+			user, err = s.usersService.GetUser(candidate.SignatureReferenceID)
+			if err != nil {
+				failures = append(failures, fmt.Errorf("unable to load user %s of signature %s: %w", candidate.SignatureReferenceID, candidate.SignatureID, err))
+				continue
+			}
+			usersByID[candidate.SignatureReferenceID] = user
+		}
+		if user == nil {
+			log.WithFields(f).Warnf("user %s of signature %s not found - not restoring", candidate.SignatureReferenceID, candidate.SignatureID)
+			continue
+		}
+		restorable, stop, decideErr := decider.decide(user, candidate)
+		if decideErr != nil {
+			failures = append(failures, decideErr)
+		}
+		if stop {
+			break
+		}
+		if !restorable {
+			continue
+		}
+		done, restoreErr := s.repo.RestoreRemovalInvalidatedEmployeeSignature(ctx, candidate, note)
+		if restoreErr != nil {
+			failures = append(failures, fmt.Errorf("unable to restore signature %s: %w", candidate.SignatureID, restoreErr))
+			continue
+		}
+		if done {
+			log.WithFields(f).Infof("restored employee acknowledgment %s of user %s", candidate.SignatureID, candidate.SignatureReferenceID)
+			restored = appendMissingUsers(restored, []*models.User{user})
+		}
+	}
+	return restored, errors.Join(failures...)
+}
+
+// restoreDecider decides, for one approval list edit, whether a candidate acknowledgment may be restored: its user
+// must match the added entries in effect on the corporate signature as re-read after the evaluation (#2980)
+type restoreDecider struct {
+	svc             service
+	ctx             context.Context
+	f               logrus.Fields
+	cclaSignatureID string
+	params          *models.ApprovalList
+	added           *models.Signature
+}
+
+// evaluate matches the user against the added entries - an unanswered GitHub organization membership lookup is a
+// failure, not a negative decision
+func (d *restoreDecider) evaluate(user *models.User, candidate *ItemSignature) (bool, error) {
+	approved, lookupFailed, err := d.svc.EvaluateUserApproval(d.ctx, user, d.added)
+	if err != nil {
+		return false, fmt.Errorf("unable to evaluate user %s of signature %s: %w", candidate.SignatureReferenceID, candidate.SignatureID, err)
+	}
+	if !approved && lookupFailed {
+		return false, fmt.Errorf("unable to evaluate user %s of signature %s: the GitHub organization membership lookup failed", candidate.SignatureReferenceID, candidate.SignatureID)
+	}
+	return approved, nil
+}
+
+// decide reports (restorable, stop, failure): the corporate signature is re-read after every positive evaluation
+// and the user evaluated again whenever the added entries in effect changed meanwhile, so the decision is made
+// against the committed list; stop means the corporate signature or the added entries are gone
+func (d *restoreDecider) decide(user *models.User, candidate *ItemSignature) (bool, bool, error) {
+	for round := 0; round < restoreDecisionRounds; round++ {
+		approved, err := d.evaluate(user, candidate)
+		if err != nil || !approved {
+			return false, false, err
+		}
+		current, reloadErr := d.svc.repo.GetItemSignatureConsistent(d.ctx, d.cclaSignatureID)
+		if reloadErr != nil {
+			return false, true, fmt.Errorf("unable to reload corporate signature %s: %w", d.cclaSignatureID, reloadErr)
+		}
+		if current == nil || !current.SignatureSigned || !current.SignatureApproved {
+			log.WithFields(d.f).Warn("corporate signature is no longer signed and approved - not restoring the remaining employee acknowledgments")
+			return false, true, nil
+		}
+		stillAdded := addedApprovalCriteria(current, d.params)
+		if stillAdded == nil {
+			log.WithFields(d.f).Warn("the added approval list entries are no longer in effect - not restoring the remaining employee acknowledgments")
+			return false, true, nil
+		}
+		if reflect.DeepEqual(stillAdded, d.added) {
+			return true, false, nil
+		}
+		d.added = stillAdded
+	}
+	return false, false, fmt.Errorf("unable to evaluate user %s of signature %s: the approval list kept changing", candidate.SignatureReferenceID, candidate.SignatureID)
+}
+
+// addedApprovalCriteria returns, as an approval list to evaluate users against, the submitted additions that are
+// in effect on the corporate signature after the edit (persisted entries are trimmed, exact case), or nil when
+// none of them is
+func addedApprovalCriteria(cclaSignature *ItemSignature, params *models.ApprovalList) *models.Signature {
+	inEffect := func(persisted, submitted []string) []string {
+		var out []string
+		for _, entry := range submitted {
+			entry = strings.TrimSpace(entry)
+			if entry != "" && utils.StringInSlice(entry, persisted) && !utils.StringInSlice(entry, out) {
+				out = append(out, entry)
+			}
+		}
+		return out
+	}
+	added := &models.Signature{
+		SignatureID:                cclaSignature.SignatureID,
+		EmailApprovalList:          inEffect(cclaSignature.EmailApprovalList, params.AddEmailApprovalList),
+		DomainApprovalList:         inEffect(cclaSignature.EmailDomainApprovalList, params.AddDomainApprovalList),
+		GithubUsernameApprovalList: inEffect(cclaSignature.GitHubUsernameApprovalList, params.AddGithubUsernameApprovalList),
+		GithubOrgApprovalList:      inEffect(cclaSignature.GitHubOrgApprovalList, params.AddGithubOrgApprovalList),
+		GitlabUsernameApprovalList: inEffect(cclaSignature.GitlabUsernameApprovalList, params.AddGitlabUsernameApprovalList),
+		// GitLab group membership is not evaluated by EvaluateUserApproval - group-only re-adds restore nothing
+		GitlabOrgApprovalList: inEffect(cclaSignature.GitlabOrgApprovalList, params.AddGitlabOrgApprovalList),
+	}
+	if len(added.EmailApprovalList)+len(added.DomainApprovalList)+len(added.GithubUsernameApprovalList)+
+		len(added.GithubOrgApprovalList)+len(added.GitlabUsernameApprovalList)+len(added.GitlabOrgApprovalList) == 0 {
+		return nil
+	}
+	return added
+}
+
+// appendMissingUsers appends the users not yet on the list, by user ID
+func appendMissingUsers(list []*models.User, users []*models.User) []*models.User {
+	for _, user := range users {
+		if user == nil {
+			continue
+		}
+		present := false
+		for _, existing := range list {
+			if existing != nil && existing.UserID == user.UserID {
+				present = true
+				break
+			}
+		}
+		if !present {
+			list = append(list, user)
+		}
+	}
+	return list
 }
 
 func (s service) createOrGetEmployeeModels(ctx context.Context, claGroupModel *models.ClaGroup, companyModel *models.Company, corporateSignatureModel *models.Signature) ([]*models.User, error) { // nolint gocyclomatic
@@ -879,8 +1089,8 @@ func (s service) processEmployeeSignatures(ctx context.Context, companyModel *mo
 
 	var responseErr error
 	var wg sync.WaitGroup
-	resultChan := make(chan *EmployeeModel)
-	errChan := make(chan error)
+	resultChan := make(chan *EmployeeModel, len(userList))
+	errChan := make(chan error, len(userList))
 
 	// For each item in the email approval list...
 	for _, employeeUserModel := range userList {
@@ -901,10 +1111,12 @@ func (s service) processEmployeeSignatures(ctx context.Context, companyModel *mo
 			employeeUserModel := employeeModel.User
 			log.WithFields(f).Debugf("processing employee signature record for user: %+s", employeeUserModel.UserID)
 			if employeeSignatureModel != nil {
-				if !employeeSignatureModel.SignatureApproved || !employeeSignatureModel.SignatureSigned {
+				if employeeModel.Invalidated {
+					log.WithFields(f).Debugf("employee signature record %s for user %s was invalidated - leaving it alone, it needs an explicit re-approval", employeeSignatureModel.SignatureID, employeeUserModel.UserID)
+				} else if !employeeSignatureModel.SignatureApproved || !employeeSignatureModel.SignatureSigned {
 					// If record exists, this will update the record
 					log.WithFields(f).Debugf("updating employee signature record for: %+v", employeeSignatureModel)
-					updateErr := s.repo.ValidateProjectRecord(ctx, employeeSignatureModel.SignatureID, "signed and approved employee acknowledgement since auto_create_ecla feature flag set to true")
+					updateErr := s.repo.ValidateProjectRecordUnlessInvalidated(ctx, employeeSignatureModel.SignatureID, "signed and approved employee acknowledgment since auto_create_ecla feature flag set to true")
 					if updateErr != nil {
 						log.WithFields(f).WithError(updateErr).Warnf("problem updating employee signature record for: %+v", employeeSignatureModel)
 						responseErr = updateErr
@@ -913,7 +1125,7 @@ func (s service) processEmployeeSignatures(ctx context.Context, companyModel *mo
 					log.WithFields(f).Debugf("employee signature record already exists for: %+v", employeeUserModel)
 				}
 			} else {
-				// Ok, auto-create the employee acknowledgement record
+				// Ok, auto-create the employee acknowledgment record
 				log.WithFields(f).Debugf("creating employee signature record for user: %+s", employeeUserModel.UserID)
 				createErr := s.repo.CreateProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, employeeUserModel)
 				if createErr != nil {
@@ -1495,7 +1707,7 @@ func (s service) HasUserSigned(ctx context.Context, user *models.User, projectID
 		companyAffiliation = true
 
 		// Get employee signature
-		log.WithFields(f).Debugf("ECLA signature check - user has a company: %s - looking for user's employee acknowledgement...", companyID)
+		log.WithFields(f).Debugf("ECLA signature check - user has a company: %s - looking for user's employee acknowledgment...", companyID)
 
 		// Load the company - make sure it is valid
 		companyModel, compModelErr := s.companyService.GetCompany(ctx, companyID)
@@ -1539,19 +1751,19 @@ func (s service) ProcessEmployeeSignature(ctx context.Context, companyModel *mod
 
 	// Sanctions gate: a sanctioned company's employees are not authorized. is_sanctioned
 	// is the persisted gate (SSS origin="sss" or a manual/admin block); honor it here so
-	// employee-acknowledgement (ECLA) authorization fails for sanctioned companies on
+	// employee-acknowledgment (ECLA) authorization fails for sanctioned companies on
 	// GitHub PR checks and authorization queries. By design this enforces the persisted
 	// flag, not a live SSS call (the live screen at the sign/request entry points keeps it
 	// fresh).
 	if companyModel.IsSanctioned {
-		log.WithFields(f).Warnf("company %s is sanctioned (origin=%q); employee acknowledgement not authorized", companyModel.CompanyID, companyModel.SanctionOrigin)
+		log.WithFields(f).Warnf("company %s is sanctioned (origin=%q); employee acknowledgment not authorized", companyModel.CompanyID, companyModel.SanctionOrigin)
 		notSigned := false
 		return &notSigned, nil
 	}
 
 	var wg sync.WaitGroup
-	resultChannel := make(chan *EmployeeModel)
-	errorChannel := make(chan error)
+	resultChannel := make(chan *EmployeeModel, 1)
+	errorChannel := make(chan error, 1)
 	hasSigned := false
 	projectID := claGroupModel.ProjectID
 	companyID := companyModel.CompanyID
@@ -1571,7 +1783,7 @@ func (s service) ProcessEmployeeSignature(ctx context.Context, companyModel *mod
 		if result != nil {
 			employeeSignature := result.Signature
 			if employeeSignature != nil {
-				// log.WithFields(f).Debugf("ECLA Signature check - located employee acknowledgement - signature id: %s", employeeSignature.SignatureID)
+				// log.WithFields(f).Debugf("ECLA Signature check - located employee acknowledgment - signature id: %s", employeeSignature.SignatureID)
 				log.WithFields(f).Debugf("ecla signature check -  :%+v", employeeSignature)
 
 				// Get corporate ccla signature of company to access the approval list
@@ -1598,7 +1810,7 @@ func (s service) ProcessEmployeeSignature(ctx context.Context, companyModel *mod
 					}
 				}
 			} else {
-				log.WithFields(f).Debugf("ECLA Signature check - unable to locate employee acknowledgement for user: %s, company: %s, project: %s", user.UserID, companyID, projectID)
+				log.WithFields(f).Debugf("ECLA Signature check - unable to locate employee acknowledgment for user: %s, company: %s, project: %s", user.UserID, companyID, projectID)
 			}
 		}
 	}

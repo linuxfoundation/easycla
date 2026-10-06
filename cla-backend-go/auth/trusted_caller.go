@@ -44,10 +44,12 @@ type TrustedCaller struct {
 }
 
 // TrustedCallerVerifier verifies bearer tokens against a single Auth0 tenant's JWKS and reports
-// whether the token's azp claim names an allow-listed client
+// whether the token's azp claim names an allow-listed client and its aud claim carries the
+// expected audience
 type TrustedCallerVerifier struct {
 	wellKnownURL     string
 	algorithm        string
+	audience         string
 	allowedClientIDs map[string]bool
 
 	mu            sync.Mutex
@@ -60,16 +62,21 @@ type TrustedCallerVerifier struct {
 }
 
 // NewTrustedCallerVerifier creates a verifier for the Auth0 tenant at the given domain that
-// trusts the given client IDs. An empty allow-list yields a disabled verifier (see Enabled).
-func NewTrustedCallerVerifier(domain, algorithm string, allowedClientIDs []string) (*TrustedCallerVerifier, error) {
+// trusts the given client IDs when their tokens carry the given audience. An empty allow-list
+// yields a disabled verifier (see Enabled).
+func NewTrustedCallerVerifier(domain, algorithm string, allowedClientIDs []string, audience string) (*TrustedCallerVerifier, error) {
 	allowed := make(map[string]bool, len(allowedClientIDs))
 	for _, clientID := range allowedClientIDs {
 		if clientID = strings.TrimSpace(clientID); clientID != "" {
 			allowed[clientID] = true
 		}
 	}
+	audience = strings.TrimSpace(audience)
 	if len(allowed) > 0 && domain == "" {
 		return nil, errors.New("missing Domain for the trusted caller verifier")
+	}
+	if len(allowed) > 0 && audience == "" {
+		return nil, errors.New("missing Audience for the trusted caller verifier")
 	}
 	if algorithm == "" {
 		algorithm = defaultJWTAlgorithm
@@ -78,6 +85,7 @@ func NewTrustedCallerVerifier(domain, algorithm string, allowedClientIDs []strin
 	verifier := &TrustedCallerVerifier{
 		wellKnownURL:     "https://" + path.Join(domain, ".well-known/jwks.json"),
 		algorithm:        algorithm,
+		audience:         audience,
 		allowedClientIDs: allowed,
 		now:              time.Now,
 	}
@@ -91,7 +99,9 @@ func (v *TrustedCallerVerifier) Enabled() bool {
 }
 
 // Verify signature-verifies the bearer token in the Authorization header against the tenant JWKS
-// and reports the client (azp) and subject it was issued to
+// and reports the client (azp) and subject it was issued to. Trusted requires both an
+// allow-listed azp and the expected audience: SS's still user-visible OIDC token shares the
+// azp but carries the LFX v2 API audience, so an audience-agnostic azp check would accept it.
 func (v *TrustedCallerVerifier) Verify(authorization string) (*TrustedCaller, error) {
 	rawToken, err := bearerToken(authorization)
 	if err != nil {
@@ -114,11 +124,9 @@ func (v *TrustedCallerVerifier) Verify(authorization string) (*TrustedCaller, er
 	clientID := stringClaim(claims, "azp")
 
 	// Matching azp against an allow-list is sound ONLY while no user can hold a token carrying an
-	// allow-listed azp - only then does the azp mean "the SS backend built this request". Minting
-	// server-side with a client secret is NOT sufficient: the token SS currently sends here is
-	// minted that way and then handed to every logged-in user as v1Token by SS's
-	// GET /api/profile/developer, so that client ID must not be allow-listed. Allow-list only a
-	// client whose tokens are never surfaced to a user; otherwise any user can pass any identity.
+	// allow-listed azp AND this audience - only then does it mean "the SS backend built this
+	// request". Allow-list only a client whose API-gateway tokens are never surfaced to a user;
+	// otherwise any user can pass any identity.
 	//
 	// Transitional mechanism (P3/P9 of the trust-SS decision): at M6, once EasyCLA runs on the
 	// K8s cluster, it should call lfx.auth-service.user_identity.list itself over NATS and drop
@@ -126,7 +134,7 @@ func (v *TrustedCallerVerifier) Verify(authorization string) (*TrustedCaller, er
 	return &TrustedCaller{
 		ClientID: clientID,
 		Subject:  stringClaim(claims, "sub"),
-		Trusted:  clientID != "" && v.allowedClientIDs[clientID],
+		Trusted:  clientID != "" && v.allowedClientIDs[clientID] && claims.VerifyAudience(v.audience, true),
 	}, nil
 }
 

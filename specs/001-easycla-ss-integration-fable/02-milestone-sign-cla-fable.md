@@ -1,8 +1,10 @@
 # Milestone 2 — Sign-CLA entry + My CLAs actions in Self Serve (hands off to Contributor Console)
 
-**Status**: Implemented (dark-launched behind the `my-clas-m2-enabled` flag) — implementation artifacts in [m2-sign-cla-handoff/](m2-sign-cla-handoff/) (PR [linuxfoundation/easycla#5144](https://github.com/linuxfoundation/easycla/pull/5144)); delivery epic [linuxfoundation/lfx-self-serve#1229](https://github.com/linuxfoundation/lfx-self-serve/issues/1229)
+**Status**: Implemented (dark-launched behind the `my-clas-m2-enabled` flag) — PR [linuxfoundation/easycla#5144](https://github.com/linuxfoundation/easycla/pull/5144); delivery epic [linuxfoundation/lfx-self-serve#1229](https://github.com/linuxfoundation/lfx-self-serve/issues/1229)
 **Depends on**: M1 (identity mapping, SS `cla` module, My CLAs page) | **Retires**: nothing | **Effort**: M
-**Spec**: [spec.md](spec.md) | **Overview**: [00-overview-fable.md](00-overview-fable.md)
+**Spec**: [spec.md](spec.md) | **Overview**: [00-overview-fable.md](00-overview-fable.md) | **API reference**: [docs/MY_CLAS_API.md](../../docs/MY_CLAS_API.md) | **Status semantics**: [docs/MY_CLAS_STATUS_MATRIX.md](../../docs/MY_CLAS_STATUS_MATRIX.md)
+
+> **Program scope**: the program aims to complete **M1–M3**. **M4 and M5 are not planned yet** — see [00-overview-fable.md](00-overview-fable.md).
 
 ## Merge note (2026-09-01)
 
@@ -34,17 +36,18 @@ Extend M1's read-only My CLAs page (Me lens, Profile → CLAs tab) with four add
   - **GitLab-only groups are blocked** with an explanatory dialog (SS cannot verify a GitLab identity yet) — a documented gap, not a bug.
   - The return hand-off is a host-validated absolute URL back to `/profile/clas`.
 - **Manager requests**: one shared `ContactClaManagerComponent` modal and one endpoint for all three request types (`approval` / `removal` / `contact`); managers resolved via `GET /api/me/clas/:signatureId/cla-managers`, message required only for `contact`. ECLA rows only; blocked during impersonation. A `claManager: true` row additionally gets a **"Manage in CCLA Console"** deep link (navigation only).
-- **Status pills**: `valid`, `needs_attention` (with a "no longer matches approval criteria" note), `invalidated`, `revoked` (sanctions; read-only — no row actions at all), `unknown` (rendered as an em-dash). Revoked ≠ Invalidated is deliberately enforced (see the [status matrix](https://github.com/linuxfoundation/easycla/pull/5155)).
+- **Status pills**: `valid`, `needs_attention` (with a "no longer matches approval criteria" note), `invalidated`, `revoked` (sanctions; read-only — no row actions at all), `unknown` (rendered as an em-dash). Revoked ≠ Invalidated is deliberately enforced (see [docs/MY_CLAS_STATUS_MATRIX.md](../../docs/MY_CLAS_STATUS_MATRIX.md), the single source of truth for the status a My CLAs row shows).
 - **Signed as** line under the Signed date, from the producer's `signedVia`/`signedAs` fields.
+- **The three manager actions are scoped differently from one another** (`packages/shared/src/utils/cla-manager-actions.utils.ts`), so "invalid row" and "row with an action" are not the same set: Request approval requires `status=needs_attention` with `statusReason=not_on_approval_list` (`canRequestClaApproval`); Request Removal is offered on any non-revoked ECLA (`canRequestClaRemoval`); Contact CLA Manager on `valid` and `needs_attention` (`canContactClaManager`). Only `revoked` rows carry no action at all.
 
 ### EasyCLA backend (`cla-backend-go`, all under `/cla-service/v4`)
 
-Documented in [docs/MY_CLAS_API.md](https://github.com/linuxfoundation/easycla/blob/dev/docs/MY_CLAS_API.md); M2 added, on top of M1's three read endpoints:
+Documented in [docs/MY_CLAS_API.md](../../docs/MY_CLAS_API.md); M2 added, on top of M1's three read endpoints:
 
 | Endpoint | Purpose |
 |---|---|
 | `GET /v4/my-clas/{signatureID}/cla-managers` | List the CLA managers of the CCLA covering an owned ECLA |
-| `POST /v4/my-clas/{signatureID}/cla-manager-requests` | Email a removal/approval/contact request to selected managers; writes a request record + audit event, **never signature state** |
+| `POST /v4/my-clas/{signatureID}/cla-manager-requests` | Email a removal/approval/contact request to selected managers; returns a generated request ID and logs a best-effort audit event — **no request record is persisted**, and **never signature state** |
 | `GET /v4/cla-group/search` | Case-insensitive search over CLA group / Salesforce project / linked org names + repo-URL resolution (in-process cache, ~30 min TTL) |
 | `POST /v4/self-serve/prepare-sign` | Verifies the identity, creates the EasyCLA user record if missing, records the signing session, returns the Contributor Console hand-off `signUrl` |
 

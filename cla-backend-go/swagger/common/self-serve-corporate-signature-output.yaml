@@ -1,0 +1,32 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: Self Serve Corporate Signature Output
+description: The created corporate signature with its identifiers
+properties:
+  signature_id:
+    type: string
+    x-omitempty: false
+    description: id of the signature
+  sign_url:
+    type: string
+    x-omitempty: false
+    description: signing url - empty when the request was sent as an email to the signing authority
+  cla_group_id:
+    type: string
+    x-omitempty: false
+    description: id of the CLA Group the signature belongs to
+  project_sfid:
+    type: string
+    x-omitempty: false
+    description: salesforce id of the project the signature was requested for
+  company_id:
+    type: string
+    x-omitempty: false
+    description: internal EasyCLA id of the company (signing entity) the signature belongs to
+  company_sfid:
+    type: string
+    x-omitempty: false
+    description: salesforce id of the company the signature was requested for

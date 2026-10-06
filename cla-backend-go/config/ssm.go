@@ -279,6 +279,9 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 
 	loadOptionalSelfServeConfig(ssmClient, stage, &config, f)
 
+	config.MemberService.BaseURL = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-member-service-base-url-%s", stage), f)
+	config.MemberService.Audience = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-member-service-auth0-audience-%s", stage), f)
+
 	return config
 }
 
@@ -350,9 +353,9 @@ func getOptionalSSMString(ssmClient *ssm.SSM, key string, f logrus.Fields) strin
 	})
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == ssm.ErrCodeParameterNotFound {
-			log.WithFields(f).Debugf("optional SSM key %s not provisioned - sanctions screening disabled until it is set", key)
+			log.WithFields(f).Debugf("optional SSM key %s not provisioned - the feature depending on it stays disabled until it is set", key)
 		} else {
-			log.WithFields(f).WithError(err).Warnf("unable to read optional SSM key %s - sanctions screening disabled", key)
+			log.WithFields(f).WithError(err).Warnf("unable to read optional SSM key %s - the feature depending on it stays disabled", key)
 		}
 		return ""
 	}

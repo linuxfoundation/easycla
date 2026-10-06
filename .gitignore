@@ -289,3 +289,6 @@ spans*.json
 .claude/*
 /*user_emails.json
 .venv
+copilot-*.md
+/e2e-tests/
+org-import-out/

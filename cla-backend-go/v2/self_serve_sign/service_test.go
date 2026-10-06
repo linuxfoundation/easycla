@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -19,22 +20,31 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/user"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/my_clas"
+	v2Sign "github.com/linuxfoundation/easycla/cla-backend-go/v2/sign"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type fakeMyClas struct {
 	allowed *my_clas.Identity
 	skipped []string
 	err     error
+	callers []*my_clas.Caller
 }
 
-func (f *fakeMyClas) AuthorizeIdentity(_ context.Context, currentUsername string, _ bool, _ *my_clas.Identity) (*my_clas.Identity, []string, error) {
+// AuthorizeIdentity mirrors my_clas.effectiveIdentity: an admin or trusted caller's identities pass
+// through verbatim, anyone else gets the configured verified subset
+func (f *fakeMyClas) AuthorizeIdentity(_ context.Context, caller *my_clas.Caller, requested *my_clas.Identity) (*my_clas.Identity, []string, error) {
+	f.callers = append(f.callers, caller)
 	if f.err != nil {
 		return nil, nil, f.err
 	}
 	allowed := *f.allowed
+	if caller.Admin || caller.Trusted {
+		allowed = *requested
+	}
 	if allowed.LfUsername == "" {
-		allowed.LfUsername = currentUsername
+		allowed.LfUsername = caller.Username
 	}
 	return &allowed, append([]string{}, f.skipped...), nil
 }
@@ -112,12 +122,22 @@ func (f *fakeCLAGroups) GetCLAGroupByID(_ context.Context, _ string) (*v1Models.
 }
 
 type fakeProjectsCLAGroups struct {
-	projects []*projects_cla_groups.ProjectClaGroup
-	err      error
+	projects    []*projects_cla_groups.ProjectClaGroup
+	pcg         *projects_cla_groups.ProjectClaGroup
+	err         error
+	pcgErr      error
+	projectSFID string
+	pcgCalls    int
 }
 
 func (f *fakeProjectsCLAGroups) GetProjectsIdsForClaGroup(_ context.Context, _ string) ([]*projects_cla_groups.ProjectClaGroup, error) {
 	return f.projects, f.err
+}
+
+func (f *fakeProjectsCLAGroups) GetClaGroupIDForProject(_ context.Context, projectSFID string) (*projects_cla_groups.ProjectClaGroup, error) {
+	f.pcgCalls++
+	f.projectSFID = projectSFID
+	return f.pcg, f.pcgErr
 }
 
 type fakeStore struct {
@@ -178,7 +198,7 @@ func TestPrepareSignResolvesExistingUserByGithubID(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{GithubIDs: []int64{26589865}, GithubUsernames: []string{"octocat"}}},
 		users, enabledCLAGroup(), store)
 
-	result, err := svc.PrepareSign(context.Background(), "lgryglicki", "l@example.org", false, &models.PrepareSignInput{
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "l@example.org", &models.PrepareSignInput{
 		ClaGroupID:     stringRef(testCLAGroupID),
 		ReturnURL:      uriRef(testReturnURL),
 		GithubID:       26589865,
@@ -207,7 +227,7 @@ func TestPrepareSignCreatesUserForFirstTimeSigner(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{GithubUsernames: []string{"octocat"}}, skipped: []string{"githubId:26589865"}},
 		users, enabledCLAGroup(), &fakeStore{})
 
-	result, err := svc.PrepareSign(context.Background(), "lgryglicki", "l@example.org", false, &models.PrepareSignInput{
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "l@example.org", &models.PrepareSignInput{
 		ClaGroupID:     stringRef(testCLAGroupID),
 		ReturnURL:      uriRef(testReturnURL),
 		GithubID:       26589865,
@@ -231,7 +251,7 @@ func TestPrepareSignKeepsUnmatchedGithubIDSkipped(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{GithubUsernames: []string{"octocat"}}, skipped: []string{"githubId:999"}},
 		users, enabledCLAGroup(), &fakeStore{})
 
-	result, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 		ClaGroupID:     stringRef(testCLAGroupID),
 		ReturnURL:      uriRef(testReturnURL),
 		GithubID:       999,
@@ -250,7 +270,7 @@ func TestPrepareSignIgnoresARecordBoundToAnotherGithubID(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{GithubUsernames: []string{"octocat"}}},
 		users, enabledCLAGroup(), &fakeStore{})
 
-	result, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 		ClaGroupID:     stringRef(testCLAGroupID),
 		ReturnURL:      uriRef(testReturnURL),
 		GithubID:       26589865,
@@ -268,7 +288,7 @@ func TestPrepareSignRejectsUnverifiedIdentity(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{}, skipped: []string{"githubId:26589865", "githubUsername:octocat"}},
 		&fakeUsers{}, enabledCLAGroup(), &fakeStore{})
 
-	_, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+	_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 		ClaGroupID:     stringRef(testCLAGroupID),
 		ReturnURL:      uriRef(testReturnURL),
 		GithubID:       26589865,
@@ -283,7 +303,7 @@ func TestPrepareSignRejectsAnotherLFUsername(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{LfUsername: "lgryglicki"}, skipped: []string{"lfUsername:someone-else"}},
 		&fakeUsers{}, enabledCLAGroup(), &fakeStore{})
 
-	_, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+	_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 		ClaGroupID: stringRef(testCLAGroupID),
 		ReturnURL:  uriRef(testReturnURL),
 		LfUsername: "someone-else",
@@ -298,7 +318,7 @@ func TestPrepareSignDefaultsToTheAuthenticatedLFUsername(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{}},
 		&fakeUsers{byLFUsername: map[string]*v1Models.User{"lgryglicki": existing}}, enabledCLAGroup(), &fakeStore{})
 
-	result, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 		ClaGroupID: stringRef(testCLAGroupID),
 		ReturnURL:  uriRef(testReturnURL),
 	})
@@ -315,7 +335,7 @@ func TestPrepareSignEnrichesOnlyMissingIdentityFields(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{GithubIDs: []int64{26589865}, GithubUsernames: []string{"octocat"}}},
 		users, enabledCLAGroup(), &fakeStore{})
 
-	_, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+	_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 		ClaGroupID:     stringRef(testCLAGroupID),
 		ReturnURL:      uriRef(testReturnURL),
 		GithubID:       26589865,
@@ -332,7 +352,7 @@ func TestPrepareSignUnknownCLAGroup(t *testing.T) {
 	svc := newTestService(&fakeMyClas{allowed: &my_clas.Identity{}}, &fakeUsers{},
 		&fakeCLAGroups{err: errNotFound}, &fakeStore{})
 
-	_, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+	_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 		ClaGroupID: stringRef(testCLAGroupID),
 		ReturnURL:  uriRef(testReturnURL),
 	})
@@ -344,7 +364,7 @@ func TestPrepareSignSigningNotEnabled(t *testing.T) {
 	svc := newTestService(&fakeMyClas{allowed: &my_clas.Identity{}}, &fakeUsers{},
 		&fakeCLAGroups{claGroup: &v1Models.ClaGroup{ProjectID: testCLAGroupID}}, &fakeStore{})
 
-	_, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+	_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 		ClaGroupID: stringRef(testCLAGroupID),
 		ReturnURL:  uriRef(testReturnURL),
 	})
@@ -355,7 +375,7 @@ func TestPrepareSignSigningNotEnabled(t *testing.T) {
 func TestPrepareSignRequiresAnIdentityForAnAdminWithoutAPrincipal(t *testing.T) {
 	svc := newTestService(&fakeMyClas{allowed: &my_clas.Identity{}}, &fakeUsers{}, enabledCLAGroup(), &fakeStore{})
 
-	_, err := svc.PrepareSign(context.Background(), "", "", true, &models.PrepareSignInput{
+	_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Admin: true}, "", &models.PrepareSignInput{
 		ClaGroupID: stringRef(testCLAGroupID),
 		ReturnURL:  uriRef(testReturnURL),
 	})
@@ -370,7 +390,7 @@ func TestPrepareSignStoresProviderIDsAsNumbers(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{GithubIDs: []int64{26589865}, GithubUsernames: []string{"octocat"}, GitlabIDs: []int64{77}}},
 		users, enabledCLAGroup(), &fakeStore{})
 
-	_, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+	_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 		ClaGroupID:     stringRef(testCLAGroupID),
 		ReturnURL:      uriRef(testReturnURL),
 		GithubID:       26589865,
@@ -388,7 +408,7 @@ func TestPrepareSignRecordsTheVerifiedIdentityACL(t *testing.T) {
 		t.Helper()
 		store := &fakeStore{}
 		svc := newTestService(&fakeMyClas{allowed: allowed}, &fakeUsers{}, enabledCLAGroup(), store)
-		_, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, input)
+		_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", input)
 		assert.NoError(t, err)
 		var metadata map[string]interface{}
 		assert.NoError(t, json.Unmarshal([]byte(store.value), &metadata))
@@ -417,7 +437,7 @@ func TestPrepareSignDoesNotBindTheAdminIdentityToAnotherContributor(t *testing.T
 		&fakeMyClas{allowed: &my_clas.Identity{GithubIDs: []int64{26589865}, GithubUsernames: []string{"octocat"}}},
 		users, enabledCLAGroup(), &fakeStore{})
 
-	result, err := svc.PrepareSign(context.Background(), "lfadmin", "admin@example.org", true, &models.PrepareSignInput{
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lfadmin", Admin: true}, "admin@example.org", &models.PrepareSignInput{
 		ClaGroupID:     stringRef(testCLAGroupID),
 		ReturnURL:      uriRef(testReturnURL),
 		GithubID:       26589865,
@@ -440,7 +460,7 @@ func TestPrepareSignLetsAnAdminPrepareForThemselves(t *testing.T) {
 	users := &fakeUsers{byLFUsername: map[string]*v1Models.User{"lfadmin": admin}}
 	svc := newTestService(&fakeMyClas{allowed: &my_clas.Identity{LfUsername: "lfadmin"}}, users, enabledCLAGroup(), &fakeStore{})
 
-	result, err := svc.PrepareSign(context.Background(), "lfadmin", "admin@example.org", true, &models.PrepareSignInput{
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lfadmin", Admin: true}, "admin@example.org", &models.PrepareSignInput{
 		ClaGroupID: stringRef(testCLAGroupID),
 		ReturnURL:  uriRef(testReturnURL),
 		LfUsername: "lfadmin",
@@ -451,11 +471,144 @@ func TestPrepareSignLetsAnAdminPrepareForThemselves(t *testing.T) {
 	assert.Nil(t, users.created)
 }
 
+// trustedTestService fails on any GitHub API round trip - a trusted caller's identities must be
+// accepted without one
+func trustedTestService(t *testing.T, myClas MyClasService, users UsersService) *service {
+	t.Helper()
+	svc := newTestService(myClas, users, enabledCLAGroup(), &fakeStore{})
+	svc.githubUserDetails = func(username string) (*githubsdk.User, error) {
+		t.Errorf("unexpected GitHub lookup for %s on the trusted path", username)
+		return nil, errNotFound
+	}
+	return svc
+}
+
+func TestPrepareSignTrustedCallerCreatesTheUserWithoutVerification(t *testing.T) {
+	users := &fakeUsers{}
+	// the verified subset is empty on purpose: a trusted caller must not depend on it
+	myClas := &fakeMyClas{allowed: &my_clas.Identity{}}
+	svc := trustedTestService(t, myClas, users)
+
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki", Trusted: true}, "l@example.org", &models.PrepareSignInput{
+		ClaGroupID:     stringRef(testCLAGroupID),
+		ReturnURL:      uriRef(testReturnURL),
+		GithubID:       26589865,
+		GithubUsername: "octocat",
+		Email:          "octocat@example.org",
+	})
+
+	assert.NoError(t, err)
+	assert.True(t, result.UserCreated)
+	assert.Equal(t, "created-user-id", result.UserID)
+	assert.Empty(t, result.SkippedIdentities)
+	assert.Equal(t, "lgryglicki", result.LfUsername)
+	assert.ElementsMatch(t, []string{"github-id:26589865", "github-username:octocat", "email:octocat@example.org", "lf-username:lgryglicki"}, result.Identity)
+	assert.Equal(t, "26589865", users.created.GithubID)
+	assert.Equal(t, "octocat", users.created.GithubUsername)
+	assert.Equal(t, "lgryglicki", users.created.LfUsername)
+	assert.Equal(t, "octocat@example.org", string(users.created.LfEmail))
+	if assert.Len(t, myClas.callers, 1) {
+		assert.Equal(t, &my_clas.Caller{Username: "lgryglicki", Trusted: true}, myClas.callers[0])
+	}
+}
+
+func TestPrepareSignTrustedCallerStillResolvesTheExistingRecord(t *testing.T) {
+	existing := &v1Models.User{UserID: "existing-user-id", GithubID: "26589865", GithubUsername: "octocat"}
+	users := &fakeUsers{byGithubID: map[string]*v1Models.User{"26589865": existing}}
+	svc := trustedTestService(t, &fakeMyClas{allowed: &my_clas.Identity{}}, users)
+
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki", Trusted: true}, "l@example.org", &models.PrepareSignInput{
+		ClaGroupID:     stringRef(testCLAGroupID),
+		ReturnURL:      uriRef(testReturnURL),
+		GithubID:       26589865,
+		GithubUsername: "octocat",
+	})
+
+	assert.NoError(t, err)
+	assert.False(t, result.UserCreated)
+	assert.Equal(t, "existing-user-id", result.UserID)
+	assert.Nil(t, users.created)
+	assert.Equal(t, "lgryglicki", users.updates["lf_username"])
+}
+
+func TestPrepareSignTrustedCallerWithoutAUsernameUsesTheProvidedIdentity(t *testing.T) {
+	users := &fakeUsers{}
+	svc := trustedTestService(t, &fakeMyClas{allowed: &my_clas.Identity{}}, users)
+
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Trusted: true}, "", &models.PrepareSignInput{
+		ClaGroupID:     stringRef(testCLAGroupID),
+		ReturnURL:      uriRef(testReturnURL),
+		LfUsername:     "someone",
+		GitlabID:       77,
+		GitlabUsername: "someone",
+	})
+
+	assert.NoError(t, err)
+	assert.True(t, result.UserCreated)
+	assert.Equal(t, "someone", result.LfUsername)
+	assert.Equal(t, "someone", users.created.LfUsername)
+	assert.Equal(t, "77", users.created.GitlabID)
+	assert.Equal(t, "someone", users.created.GitlabUsername)
+}
+
+func TestPrepareSignTrustedCallerStillRequiresAnIdentity(t *testing.T) {
+	svc := trustedTestService(t, &fakeMyClas{allowed: &my_clas.Identity{}}, &fakeUsers{})
+
+	_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Trusted: true}, "", &models.PrepareSignInput{
+		ClaGroupID: stringRef(testCLAGroupID),
+		ReturnURL:  uriRef(testReturnURL),
+	})
+
+	assert.ErrorIs(t, err, ErrIdentityRequired)
+}
+
+func TestPrepareSignTrustedAdminKeepsTheCallerBinding(t *testing.T) {
+	users := &fakeUsers{}
+	svc := trustedTestService(t, &fakeMyClas{allowed: &my_clas.Identity{}}, users)
+
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lfadmin", Admin: true, Trusted: true}, "admin@example.org", &models.PrepareSignInput{
+		ClaGroupID:     stringRef(testCLAGroupID),
+		ReturnURL:      uriRef(testReturnURL),
+		GithubID:       26589865,
+		GithubUsername: "octocat",
+	})
+
+	assert.NoError(t, err)
+	assert.True(t, result.UserCreated)
+	assert.Equal(t, "lfadmin", users.created.LfUsername)
+	assert.Equal(t, "admin@example.org", string(users.created.LfEmail))
+}
+
+func TestPrepareSignUntrustedCallerStillVerifiesTheGithubID(t *testing.T) {
+	users := &fakeUsers{}
+	lookups := 0
+	svc := newTestService(
+		&fakeMyClas{allowed: &my_clas.Identity{GithubUsernames: []string{"octocat"}}, skipped: []string{"githubId:26589865"}},
+		users, enabledCLAGroup(), &fakeStore{})
+	svc.githubUserDetails = func(username string) (*githubsdk.User, error) {
+		lookups++
+		id := int64(26589865)
+		return &githubsdk.User{ID: &id}, nil
+	}
+
+	result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
+		ClaGroupID:     stringRef(testCLAGroupID),
+		ReturnURL:      uriRef(testReturnURL),
+		GithubID:       26589865,
+		GithubUsername: "octocat",
+	})
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, lookups)
+	assert.Empty(t, result.SkippedIdentities)
+	assert.Equal(t, "26589865", users.created.GithubID)
+}
+
 func TestPrepareSignRejectsANonHTTPSReturnURL(t *testing.T) {
 	for _, returnURL := range []string{"http://openprofile.dev/my-clas", "javascript:alert(1)", "/my-clas", "https://"} {
 		svc := newTestService(&fakeMyClas{allowed: &my_clas.Identity{LfUsername: "lgryglicki"}}, &fakeUsers{}, enabledCLAGroup(), &fakeStore{})
 
-		_, err := svc.PrepareSign(context.Background(), "lgryglicki", "", false, &models.PrepareSignInput{
+		_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "", &models.PrepareSignInput{
 			ClaGroupID: stringRef(testCLAGroupID),
 			ReturnURL:  uriRef(returnURL),
 		})
@@ -470,7 +623,7 @@ func TestPrepareSignDoesNotCreateAUserWhenTheLookupFails(t *testing.T) {
 		&fakeMyClas{allowed: &my_clas.Identity{GithubUsernames: []string{"octocat"}}},
 		users, enabledCLAGroup(), &fakeStore{})
 
-	_, err := svc.PrepareSign(context.Background(), "lgryglicki", "l@example.org", false, &models.PrepareSignInput{
+	_, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "l@example.org", &models.PrepareSignInput{
 		ClaGroupID:     stringRef(testCLAGroupID),
 		ReturnURL:      uriRef(testReturnURL),
 		GithubUsername: "octocat",
@@ -494,7 +647,7 @@ func TestPrepareSignTreatsEveryNotFoundShapeAsAMiss(t *testing.T) {
 				&fakeMyClas{allowed: &my_clas.Identity{GithubUsernames: []string{"octocat"}, Emails: []string{"l@example.org"}}},
 				users, enabledCLAGroup(), &fakeStore{})
 
-			result, err := svc.PrepareSign(context.Background(), "lgryglicki", "l@example.org", false, &models.PrepareSignInput{
+			result, err := svc.PrepareSign(context.Background(), &my_clas.Caller{Username: "lgryglicki"}, "l@example.org", &models.PrepareSignInput{
 				ClaGroupID:     stringRef(testCLAGroupID),
 				ReturnURL:      uriRef(testReturnURL),
 				GithubUsername: "octocat",
@@ -507,4 +660,483 @@ func TestPrepareSignTreatsEveryNotFoundShapeAsAMiss(t *testing.T) {
 			assert.Nil(t, users.created)
 		})
 	}
+}
+
+type fakeCorporateSign struct {
+	lfUsername    string
+	authorization string
+	claGroupID    string
+	input         *models.CorporateSignatureInput
+	output        *models.CorporateSignatureOutput
+	err           error
+	calls         int
+}
+
+func (f *fakeCorporateSign) RequestCorporateSignatureForCLAGroup(_ context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput, expectedCLAGroupID string) (*models.CorporateSignatureOutput, error) {
+	f.calls++
+	f.lfUsername, f.authorization, f.input = lfUsername, authorizationHeader, input
+	f.claGroupID = expectedCLAGroupID
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.output, nil
+}
+
+type fakeCompanyRepo struct {
+	byExternalID *v1Models.Company
+	byEntityName *v1Models.Company
+	err          error
+	sfid         string
+	entityName   string
+	calls        int
+}
+
+func (f *fakeCompanyRepo) GetCompanyByExternalID(_ context.Context, companySFID string) (*v1Models.Company, error) {
+	f.calls++
+	f.sfid = companySFID
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.byExternalID, nil
+}
+
+func (f *fakeCompanyRepo) GetCompanyBySigningEntityName(_ context.Context, signingEntityName string) (*v1Models.Company, error) {
+	f.calls++
+	f.entityName = signingEntityName
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.byEntityName, nil
+}
+
+const (
+	testProjectSFID     = "a09P000000DsCE9IAN"
+	testCompanySFID     = "0014100000Te0fZAAR"
+	testCompanyID       = "9b8e7d66-40a5-4cde-9f00-3e1d1a2b3c4d"
+	testEntityCompanyID = "1c9f8e77-51b6-4def-8a11-4f2e2b3c4d5e"
+	testEntityName      = "My Company Signing Entity, Ltd."
+	testAuthorityName   = "Alex Contributor"
+	testAuthorityEmail  = "contributor@example.org"
+	testSignatureID     = "7f0f1c22-3a51-49f5-b6a8-0f9d6a2e1c22"
+	testSignURL         = "https://demo.docusign.net/signing/startinsession.aspx?t=abc"
+)
+
+func newCorporateTestService(corporateSign CorporateSignService, companies CompanyRepository, projectsClaGroups ProjectsCLAGroupsRepository) *service {
+	return &service{corporateSignService: corporateSign, companyRepo: companies, projectsClaGroupsRepo: projectsClaGroups}
+}
+
+func corporateFakes() (*fakeCompanyRepo, *fakeProjectsCLAGroups) {
+	companies := &fakeCompanyRepo{
+		byExternalID: &v1Models.Company{CompanyID: testCompanyID, CompanyExternalID: testCompanySFID},
+		byEntityName: &v1Models.Company{CompanyID: testEntityCompanyID, CompanyExternalID: testCompanySFID, SigningEntityName: testEntityName},
+	}
+	return companies, &fakeProjectsCLAGroups{pcg: &projects_cla_groups.ProjectClaGroup{ProjectSFID: testProjectSFID, ClaGroupID: testCLAGroupID}}
+}
+
+func corporateInput() *models.SelfServeCorporateSignatureInput {
+	return &models.SelfServeCorporateSignatureInput{
+		ClaGroupID:     testCLAGroupID,
+		ProjectSfid:    stringRef(testProjectSFID),
+		CompanySfid:    stringRef(testCompanySFID),
+		AuthorityAcked: true,
+		EmbargoAcked:   true,
+		ReturnURL:      strfmt.URI(testReturnURL),
+	}
+}
+
+func TestRequestCorporateSignatureRequiresBothAttestations(t *testing.T) {
+	testCases := []struct {
+		name           string
+		authorityAcked bool
+		embargoAcked   bool
+		authorityName  string
+		authorityEmail strfmt.Email
+	}{
+		{"both missing", false, false, "", ""},
+		{"authority only", true, false, "", ""},
+		{"embargo only", false, true, "", ""},
+		{"self-sign with a named signatory still requires both", false, false, testAuthorityName, testAuthorityEmail},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			corporateSign := &fakeCorporateSign{}
+			companies, projectsClaGroups := corporateFakes()
+			svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+			input := corporateInput()
+			input.AuthorityAcked = tc.authorityAcked
+			input.EmbargoAcked = tc.embargoAcked
+			input.AuthorityName = tc.authorityName
+			input.AuthorityEmail = tc.authorityEmail
+
+			result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", input)
+
+			assert.ErrorIs(t, err, ErrAttestationRequired)
+			assert.Nil(t, result)
+			assert.Zero(t, corporateSign.calls)
+			assert.Zero(t, companies.calls)
+		})
+	}
+}
+
+func TestRequestCorporateSignatureSkipsAttestationsWhenSendAsEmail(t *testing.T) {
+	testCases := []struct {
+		name           string
+		authorityAcked bool
+		embargoAcked   bool
+	}{
+		{"both missing", false, false},
+		{"authority only", true, false},
+		{"embargo only", false, true},
+		{"both true", true, true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{SignatureID: testSignatureID, SignURL: testSignURL}}
+			companies, projectsClaGroups := corporateFakes()
+			svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+			input := corporateInput()
+			input.SendAsEmail = true
+			input.AuthorityAcked = tc.authorityAcked
+			input.EmbargoAcked = tc.embargoAcked
+			input.AuthorityName = testAuthorityName
+			input.AuthorityEmail = testAuthorityEmail
+
+			result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", input)
+
+			assert.NoError(t, err)
+			assert.Equal(t, 1, corporateSign.calls)
+			assert.True(t, corporateSign.input.SendAsEmail)
+			assert.Equal(t, testAuthorityName, corporateSign.input.AuthorityName)
+			assert.Equal(t, strfmt.Email(testAuthorityEmail), corporateSign.input.AuthorityEmail)
+			assert.Equal(t, testSignatureID, result.SignatureID)
+			assert.Equal(t, testCLAGroupID, result.ClaGroupID)
+			assert.Equal(t, testCLAGroupID, corporateSign.claGroupID)
+		})
+	}
+}
+
+func TestRequestCorporateSignatureRequiresSignatoryWhenSendAsEmail(t *testing.T) {
+	testCases := []struct {
+		name           string
+		authorityName  string
+		authorityEmail strfmt.Email
+	}{
+		{"name missing", "", testAuthorityEmail},
+		{"name whitespace", "  ", testAuthorityEmail},
+		{"email missing", testAuthorityName, ""},
+		{"email whitespace", testAuthorityName, "  "},
+		{"both missing", "", ""},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			corporateSign := &fakeCorporateSign{}
+			companies, projectsClaGroups := corporateFakes()
+			svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+			input := corporateInput()
+			input.SendAsEmail = true
+			input.AuthorityAcked = false
+			input.EmbargoAcked = false
+			input.AuthorityName = tc.authorityName
+			input.AuthorityEmail = tc.authorityEmail
+
+			result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", input)
+
+			assert.ErrorIs(t, err, ErrSignatoryRequired)
+			assert.Nil(t, result)
+			assert.Zero(t, corporateSign.calls)
+			assert.Zero(t, companies.calls)
+		})
+	}
+}
+
+func TestRequestCorporateSignatureDelegatesVerbatim(t *testing.T) {
+	corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{SignatureID: testSignatureID, SignURL: testSignURL, CompanyID: testEntityCompanyID}}
+	companies, projectsClaGroups := corporateFakes()
+	svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+	input := corporateInput()
+	input.SigningEntityName = testEntityName
+	input.SendAsEmail = true
+	input.AuthorityName = "Derk Miyamoto"
+	input.AuthorityEmail = "derk@example.org"
+
+	result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token-123", input)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, corporateSign.calls)
+	assert.Equal(t, "lgryglicki", corporateSign.lfUsername)
+	assert.Equal(t, testCLAGroupID, corporateSign.claGroupID)
+	assert.Equal(t, "Bearer token-123", corporateSign.authorization)
+	assert.Equal(t, &models.CorporateSignatureInput{
+		ProjectSfid:       stringRef(testProjectSFID),
+		CompanySfid:       stringRef(testCompanySFID),
+		SigningEntityName: testEntityName,
+		SendAsEmail:       true,
+		AuthorityName:     "Derk Miyamoto",
+		AuthorityEmail:    "derk@example.org",
+		ReturnURL:         strfmt.URI(testReturnURL),
+	}, corporateSign.input)
+	assert.Equal(t, testSignatureID, result.SignatureID)
+	assert.Equal(t, testSignURL, result.SignURL)
+	assert.Equal(t, testCLAGroupID, result.ClaGroupID)
+	assert.Equal(t, testEntityCompanyID, result.CompanyID)
+	assert.Equal(t, testProjectSFID, result.ProjectSfid)
+	assert.Equal(t, testCompanySFID, result.CompanySfid)
+}
+
+func TestRequestCorporateSignatureResolvesTheSigningCompany(t *testing.T) {
+	testCases := []struct {
+		name              string
+		signingEntityName string
+		expectedCompanyID string
+		expectedSfid      string
+		expectedEntity    string
+	}{
+		{"by company SFID", "", testCompanyID, testCompanySFID, ""},
+		{"by signing entity name", testEntityName, testEntityCompanyID, "", testEntityName},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{SignatureID: testSignatureID, SignURL: testSignURL, CompanyID: tc.expectedCompanyID}}
+			companies, projectsClaGroups := corporateFakes()
+			svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+			input := corporateInput()
+			input.SigningEntityName = tc.signingEntityName
+
+			result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", input)
+
+			assert.NoError(t, err)
+			assert.Equal(t, 1, companies.calls)
+			assert.Equal(t, tc.expectedSfid, companies.sfid)
+			assert.Equal(t, tc.expectedEntity, companies.entityName)
+			assert.Equal(t, testProjectSFID, projectsClaGroups.projectSFID)
+			assert.Equal(t, testSignatureID, result.SignatureID)
+			assert.Equal(t, testSignURL, result.SignURL)
+			assert.Equal(t, testCLAGroupID, result.ClaGroupID)
+			assert.Equal(t, tc.expectedCompanyID, result.CompanyID)
+			assert.Equal(t, testProjectSFID, result.ProjectSfid)
+			assert.Equal(t, testCompanySFID, result.CompanySfid)
+		})
+	}
+}
+
+func TestRequestCorporateSignatureRejectsAForeignSigningEntity(t *testing.T) {
+	corporateSign := &fakeCorporateSign{}
+	companies, projectsClaGroups := corporateFakes()
+	companies.byEntityName.CompanyExternalID = "0014100000Te0fXAAR"
+	svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+	input := corporateInput()
+	input.SigningEntityName = testEntityName
+
+	result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", input)
+
+	assert.ErrorIs(t, err, ErrSigningEntityMismatch)
+	assert.Nil(t, result)
+	assert.Zero(t, corporateSign.calls)
+}
+
+// prod holds signing-entity company records without a company_external_id (168 of 3693 as of
+// 2026-09) - rejecting those would break legitimate signings, while a takeover target's own
+// record carries its non-empty SFID, so the mismatch guard still covers it
+func TestRequestCorporateSignatureAllowsASigningEntityWithoutAnExternalID(t *testing.T) {
+	corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{SignatureID: testSignatureID, SignURL: testSignURL, CompanyID: testEntityCompanyID}}
+	companies, projectsClaGroups := corporateFakes()
+	companies.byEntityName.CompanyExternalID = ""
+	svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+	input := corporateInput()
+	input.SigningEntityName = testEntityName
+
+	result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", input)
+
+	assert.NoError(t, err)
+	assert.Equal(t, 1, corporateSign.calls)
+	assert.Equal(t, testEntityCompanyID, result.CompanyID)
+	assert.Equal(t, testCLAGroupID, result.ClaGroupID)
+}
+
+func TestRequestCorporateSignatureCompanyLookupFailuresPropagate(t *testing.T) {
+	lookupErr := &utils.CompanyNotFound{Message: "no company records found with matching external SFID", CompanySFID: testCompanySFID}
+	testCases := []struct {
+		name         string
+		setup        func(companies *fakeCompanyRepo)
+		expectedErr  error
+		expectedText string
+	}{
+		{"lookup error", func(companies *fakeCompanyRepo) { companies.err = lookupErr }, lookupErr, "no company records found with matching external SFID"},
+		{"no company record", func(companies *fakeCompanyRepo) { companies.byExternalID = nil }, nil, "company not found for SFID " + testCompanySFID},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			corporateSign := &fakeCorporateSign{}
+			companies, projectsClaGroups := corporateFakes()
+			tc.setup(companies)
+			svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+
+			result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", corporateInput())
+
+			assert.Error(t, err)
+			assert.Contains(t, err.Error(), tc.expectedText)
+			if tc.expectedErr != nil {
+				assert.ErrorIs(t, err, tc.expectedErr)
+			}
+			assert.Nil(t, result)
+			assert.Zero(t, corporateSign.calls)
+		})
+	}
+}
+
+func TestRequestCorporateSignatureCLAGroupLookupFailuresPropagate(t *testing.T) {
+	testCases := []struct {
+		name  string
+		setup func(projectsClaGroups *fakeProjectsCLAGroups)
+	}{
+		{"lookup error", func(p *fakeProjectsCLAGroups) {
+			p.pcg, p.pcgErr = nil, projects_cla_groups.ErrProjectNotAssociatedWithClaGroup
+		}},
+		{"no mapping record", func(p *fakeProjectsCLAGroups) { p.pcg, p.pcgErr = nil, nil }},
+		{"empty mapping group", func(p *fakeProjectsCLAGroups) { p.pcg.ClaGroupID = "" }},
+		{"blank mapping group", func(p *fakeProjectsCLAGroups) { p.pcg.ClaGroupID = "  " }},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			corporateSign := &fakeCorporateSign{}
+			companies, projectsClaGroups := corporateFakes()
+			tc.setup(projectsClaGroups)
+			svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+
+			result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", corporateInput())
+
+			assert.ErrorIs(t, err, projects_cla_groups.ErrProjectNotAssociatedWithClaGroup)
+			assert.Nil(t, result)
+			assert.Zero(t, corporateSign.calls)
+		})
+	}
+}
+
+func TestRequestCorporateSignatureRequiresSelectedCLAGroupForEmail(t *testing.T) {
+	for _, claGroupID := range []string{"", " \t "} {
+		t.Run(fmt.Sprintf("%q", claGroupID), func(t *testing.T) {
+			corporateSign := &fakeCorporateSign{}
+			companies, mappings := corporateFakes()
+			svc := newCorporateTestService(corporateSign, companies, mappings)
+			input := corporateInput()
+			input.ClaGroupID = claGroupID
+			input.SendAsEmail = true
+			input.AuthorityName = testAuthorityName
+			input.AuthorityEmail = testAuthorityEmail
+
+			result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "", input)
+
+			assert.ErrorIs(t, err, v2Sign.ErrCLAGroupRequired)
+			assert.Nil(t, result)
+			assert.Zero(t, corporateSign.calls)
+			assert.Zero(t, companies.calls)
+			assert.Zero(t, mappings.pcgCalls)
+		})
+	}
+}
+
+func TestRequestCorporateSignatureRejectsMismatchedSelectedCLAGroup(t *testing.T) {
+	for _, sendAsEmail := range []bool{false, true} {
+		for _, claGroupID := range []string{
+			"62db1b81-6f4a-4b2e-9a4a-0f2d9f0a1b22",
+			"00000000-0000-0000-0000-000000000000",
+			"not-a-cla-group-id",
+		} {
+			t.Run(fmt.Sprintf("email=%t/group=%s", sendAsEmail, claGroupID), func(t *testing.T) {
+				corporateSign := &fakeCorporateSign{}
+				companies, mappings := corporateFakes()
+				svc := newCorporateTestService(corporateSign, companies, mappings)
+				input := corporateInput()
+				input.ClaGroupID = claGroupID
+				input.SendAsEmail = sendAsEmail
+				input.AuthorityName = testAuthorityName
+				input.AuthorityEmail = testAuthorityEmail
+
+				result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "", input)
+
+				assert.ErrorIs(t, err, v2Sign.ErrCLAGroupMismatch)
+				assert.Nil(t, result)
+				assert.Zero(t, corporateSign.calls)
+			})
+		}
+	}
+}
+
+func TestRequestCorporateSignatureSelfSignWithoutSelectionStillBindsResolvedGroup(t *testing.T) {
+	corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{SignatureID: testSignatureID}}
+	companies, mappings := corporateFakes()
+	svc := newCorporateTestService(corporateSign, companies, mappings)
+	input := corporateInput()
+	input.ClaGroupID = ""
+
+	result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "", input)
+
+	require.NoError(t, err)
+	assert.Equal(t, testCLAGroupID, corporateSign.claGroupID)
+	assert.Equal(t, testCLAGroupID, result.ClaGroupID)
+	assert.Equal(t, testSignatureID, result.SignatureID)
+}
+
+func TestRequestCorporateSignatureAcceptsEquivalentSelectedCLAGroup(t *testing.T) {
+	for _, sendAsEmail := range []bool{false, true} {
+		for _, selected := range []string{
+			testCLAGroupID,
+			" " + testCLAGroupID + " ",
+			strings.ToUpper(testCLAGroupID),
+			strings.ReplaceAll(testCLAGroupID, "-", ""),
+			strings.ToUpper(strings.ReplaceAll(testCLAGroupID, "-", "")),
+		} {
+			t.Run(fmt.Sprintf("email=%t/group=%s", sendAsEmail, selected), func(t *testing.T) {
+				corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{SignatureID: testSignatureID}}
+				companies, mappings := corporateFakes()
+				svc := newCorporateTestService(corporateSign, companies, mappings)
+				input := corporateInput()
+				input.ClaGroupID = selected
+				input.SendAsEmail = sendAsEmail
+				input.AuthorityName = testAuthorityName
+				input.AuthorityEmail = testAuthorityEmail
+
+				result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "", input)
+
+				require.NoError(t, err)
+				assert.Equal(t, testCLAGroupID, corporateSign.claGroupID)
+				assert.Equal(t, testCLAGroupID, result.ClaGroupID)
+			})
+		}
+	}
+}
+
+func TestRequestCorporateSignatureDelegateErrorsPropagate(t *testing.T) {
+	delegateErr := errors.New("company does not exist")
+	corporateSign := &fakeCorporateSign{err: delegateErr}
+	companies, projectsClaGroups := corporateFakes()
+	svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+
+	result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", corporateInput())
+
+	assert.ErrorIs(t, err, delegateErr)
+	assert.Nil(t, result)
+	assert.Equal(t, 1, corporateSign.calls)
+}
+
+func TestRequestCorporateSignatureReturnsIDsEvenWithoutASignatureID(t *testing.T) {
+	corporateSign := &fakeCorporateSign{output: &models.CorporateSignatureOutput{CompanyID: testCompanyID}}
+	companies, projectsClaGroups := corporateFakes()
+	svc := newCorporateTestService(corporateSign, companies, projectsClaGroups)
+
+	result, err := svc.RequestCorporateSignature(context.Background(), "lgryglicki", "Bearer token", corporateInput())
+
+	assert.NoError(t, err)
+	assert.Empty(t, result.SignatureID)
+	assert.Empty(t, result.SignURL)
+	assert.Equal(t, testCLAGroupID, result.ClaGroupID)
+	assert.Equal(t, testCompanyID, result.CompanyID)
+	assert.Equal(t, testProjectSFID, result.ProjectSfid)
+	assert.Equal(t, testCompanySFID, result.CompanySfid)
 }

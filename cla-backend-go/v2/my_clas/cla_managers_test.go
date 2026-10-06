@@ -125,7 +125,7 @@ func TestGetMyClasSignedIdentity(t *testing.T) {
 	}
 	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
 
-	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 	require.NoError(t, err)
 	byID := map[string]models.MyCla{}
 	for _, row := range result.Clas {
@@ -181,7 +181,7 @@ func TestGetMyClasFlaggedAndClaManager(t *testing.T) {
 	}
 	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
-	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 	require.NoError(t, err)
 	byID := map[string]models.MyCla{}
 	for _, row := range result.Clas {
@@ -210,7 +210,7 @@ func TestGetMyClasNotAClaManager(t *testing.T) {
 	repo, signaturesService, companies := managersFixture()
 	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
-	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{})
+	result, err := svc.GetMyClas(context.Background(), &Caller{Username: "someone"}, &Identity{}, nil, nil)
 	require.NoError(t, err)
 	for _, row := range result.Clas {
 		assert.False(t, row.ClaManager)
@@ -222,7 +222,7 @@ func TestGetMyClaManagers(t *testing.T) {
 	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{names: map[string]string{"cla-group-1": "My CLA Group"}})
 	caller := &Caller{Username: "someone"}
 
-	result, err := svc.GetMyClaManagers(context.Background(), caller, &Identity{}, "sig-ecla")
+	result, err := svc.GetMyClaManagers(context.Background(), caller, &Identity{}, "sig-ecla", nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Equal(t, "sig-ecla", result.SignatureID)
@@ -237,11 +237,11 @@ func TestGetMyClaManagers(t *testing.T) {
 	assert.Equal(t, models.MyClaManager{LfUsername: "manager-two", Name: "Manager Two", Email: "manager-two@corp.example.org"}, result.Managers[1], "the additional-emails list is the email fallback")
 	assert.Equal(t, models.MyClaManager{LfUsername: "acl-no-lfid", Name: "acl-no-lfid"}, result.Managers[2], "the plain username is the LF username fallback")
 
-	result, err = svc.GetMyClaManagers(context.Background(), caller, &Identity{}, "sig-icla")
+	result, err = svc.GetMyClaManagers(context.Background(), caller, &Identity{}, "sig-icla", nil, nil)
 	require.NoError(t, err)
 	assert.Nil(t, result, "ICLAs have no CLA managers")
 
-	result, err = svc.GetMyClaManagers(context.Background(), caller, &Identity{}, "sig-of-somebody-else")
+	result, err = svc.GetMyClaManagers(context.Background(), caller, &Identity{}, "sig-of-somebody-else", nil, nil)
 	require.NoError(t, err)
 	assert.Nil(t, result, "signatures not owned by the resolved identity are not found")
 }
@@ -252,7 +252,7 @@ func TestGetMyClaManagersCallerIsManager(t *testing.T) {
 	ccla.SignatureACL = append(ccla.SignatureACL, v1Models.User{LfUsername: "SomeOne"})
 	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
-	result, err := svc.GetMyClaManagers(context.Background(), &Caller{Username: "someone"}, &Identity{}, "sig-ecla")
+	result, err := svc.GetMyClaManagers(context.Background(), &Caller{Username: "someone"}, &Identity{}, "sig-ecla", nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.True(t, result.ClaManager, "the caller shows up as a CLA manager, case-insensitively")
@@ -262,7 +262,7 @@ func TestGetMyClaManagersNoCcla(t *testing.T) {
 	repo, _, companies := managersFixture()
 	svc := newTestService(repo, &fakePlatform{}, &fakeSignatures{}, companies, &fakeClaGroups{})
 
-	result, err := svc.GetMyClaManagers(context.Background(), &Caller{Username: "someone"}, &Identity{}, "sig-ecla")
+	result, err := svc.GetMyClaManagers(context.Background(), &Caller{Username: "someone"}, &Identity{}, "sig-ecla", nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result)
 	assert.Empty(t, result.Managers, "no current CCLA yields an empty manager list")
@@ -277,11 +277,11 @@ func TestGetMyClaManagersOwnershipEnforced(t *testing.T) {
 	repo.byUserID["user-v"] = []*signatures.ItemSignature{ecla("sig-victim", "company-1", "2024-01-01T00:00:00Z", true)}
 	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
 
-	result, err := svc.GetMyClaManagers(context.Background(), &Caller{Username: "someone"}, &Identity{LfUsername: "victim"}, "sig-victim")
+	result, err := svc.GetMyClaManagers(context.Background(), &Caller{Username: "someone"}, &Identity{LfUsername: "victim"}, "sig-victim", nil, nil)
 	require.NoError(t, err)
 	assert.Nil(t, result, "a non-admin cannot resolve somebody else's ECLA")
 
-	result, err = svc.GetMyClaManagers(context.Background(), &Caller{Username: "staff-admin", Admin: true}, &Identity{LfUsername: "victim"}, "sig-victim")
+	result, err = svc.GetMyClaManagers(context.Background(), &Caller{Username: "staff-admin", Admin: true}, &Identity{LfUsername: "victim"}, "sig-victim", nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, result, "an admin can")
 }
@@ -493,7 +493,7 @@ func TestMyClasJSONContract(t *testing.T) {
 	svc, _, _ := newRequestTestService(repo, &fakeSignatures{}, companies)
 	caller := &Caller{Username: "someone"}
 
-	list, err := svc.GetMyClas(context.Background(), caller, &Identity{})
+	list, err := svc.GetMyClas(context.Background(), caller, &Identity{}, nil, nil)
 	require.NoError(t, err)
 	byID := map[string]models.MyCla{}
 	for _, row := range list.Clas {
@@ -507,7 +507,7 @@ func TestMyClasJSONContract(t *testing.T) {
 		}
 	}
 
-	managers, err := svc.GetMyClaManagers(context.Background(), caller, &Identity{}, "sig-ecla")
+	managers, err := svc.GetMyClaManagers(context.Background(), caller, &Identity{}, "sig-ecla", nil, nil)
 	require.NoError(t, err)
 	decoded := decodeJSON(t, managers)
 	require.Contains(t, decoded, "managers")
@@ -592,4 +592,52 @@ func TestCreateMyClaManagerRequestSubjectStaysSingleLine(t *testing.T) {
 	assert.NotContains(t, subject, "\n")
 	assert.NotContains(t, subject, "\r")
 	assert.Contains(t, subject, "request from EvilBcc: victim@example.org for Good Corp")
+}
+
+func TestGetMyClaManagersPaging(t *testing.T) {
+	repo, signaturesService, companies := managersFixture()
+	svc := newTestService(repo, &fakePlatform{}, signaturesService, companies, &fakeClaGroups{})
+	caller := &Caller{Username: "someone"}
+
+	// no paging params - the stored ACL order, with totalCount mirroring resultCount
+	all, err := svc.GetMyClaManagers(context.Background(), caller, &Identity{}, "sig-ecla", nil, nil)
+	require.NoError(t, err)
+	require.NotNil(t, all)
+	assert.Equal(t, int64(3), all.ResultCount)
+	assert.Equal(t, int64(3), all.TotalCount)
+	assert.Equal(t, "manager-one", all.Managers[0].LfUsername, "the unpaged order is the stored ACL order")
+
+	// paged windows are sorted by LF username: acl-no-lfid, manager-one, manager-two
+	pageSize := int64(2)
+	offset := int64(0)
+	page, err := svc.GetMyClaManagers(context.Background(), caller, &Identity{}, "sig-ecla", &pageSize, &offset)
+	require.NoError(t, err)
+	require.NotNil(t, page)
+	assert.Equal(t, int64(3), page.TotalCount)
+	assert.Equal(t, int64(2), page.ResultCount)
+	require.Len(t, page.Managers, 2)
+	assert.Equal(t, "acl-no-lfid", page.Managers[0].LfUsername)
+	assert.Equal(t, "manager-one", page.Managers[1].LfUsername)
+
+	offset = 2
+	page, err = svc.GetMyClaManagers(context.Background(), caller, &Identity{}, "sig-ecla", &pageSize, &offset)
+	require.NoError(t, err)
+	require.NotNil(t, page)
+	require.Len(t, page.Managers, 1)
+	assert.Equal(t, "manager-two", page.Managers[0].LfUsername)
+	assert.Equal(t, int64(1), page.ResultCount)
+	assert.Equal(t, int64(3), page.TotalCount)
+
+	offset = 30
+	page, err = svc.GetMyClaManagers(context.Background(), caller, &Identity{}, "sig-ecla", &pageSize, &offset)
+	require.NoError(t, err)
+	require.NotNil(t, page)
+	assert.Empty(t, page.Managers)
+	assert.Equal(t, int64(0), page.ResultCount)
+	assert.Equal(t, int64(3), page.TotalCount)
+
+	// a paged call must not disturb a later unpaged call
+	all, err = svc.GetMyClaManagers(context.Background(), caller, &Identity{}, "sig-ecla", nil, nil)
+	require.NoError(t, err)
+	assert.Equal(t, "manager-one", all.Managers[0].LfUsername)
 }

@@ -1,7 +1,9 @@
 # Milestone 3 — CCLA Management in the Organization Lens; retire the Corporate CLA Console
 
-**Status**: Draft | **Depends on**: M1–M2 (plumbing, My CLAs surface); the designee hand-off stays in the Contributor Console (reached via M2's sign entry) | **Retires**: Corporate CLA Console **and its GraphQL BFF** | **Effort**: XL
+**Status**: In progress (started 2026-09) | **Depends on**: M1–M2 (plumbing, My CLAs surface); the designee hand-off stays in the Contributor Console (reached via M2's sign entry) | **Retires**: Corporate CLA Console **and its GraphQL BFF** | **Effort**: XL
 **Spec**: [spec.md](spec.md) | **Overview**: [00-overview-fable.md](00-overview-fable.md)
+
+> **Program scope**: M3 is the **last planned milestone**. **M4 and M5 are not planned yet** — see [00-overview-fable.md](00-overview-fable.md).
 
 ## Goal
 

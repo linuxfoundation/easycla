@@ -40,11 +40,10 @@ const (
 
 // IService interface defining the functions for the company service
 type IService interface { // nolint
-	CreateOrgFromExternalID(ctx context.Context, signingEntityName, companySFID string) (*models.Company, error)
-
 	GetCompanies(ctx context.Context) (*models.Companies, error)
 	GetCompany(ctx context.Context, companyID string) (*models.Company, error)
 	GetCompanyByExternalID(ctx context.Context, companySFID string) (*models.Company, error)
+	ResolveCompany(ctx context.Context, companyIDOrSFID string) (*models.Company, error)
 	GetCompaniesByExternalID(ctx context.Context, companySFID string, includeChildCompanies bool) ([]*models.Company, error)
 	GetCompanyBySigningEntityName(ctx context.Context, signingEntityName, companySFID string) (*models.Company, error)
 	SearchCompanyByName(ctx context.Context, companyName string, nextKey string) (*models.Companies, error)
@@ -641,19 +640,77 @@ func (s service) GetCompanyByExternalID(ctx context.Context, companySFID string)
 	}
 	log.WithFields(f).Debug("Searching company by external ID...")
 	comp, err := s.repo.GetCompanyByExternalID(ctx, companySFID)
-	if err == nil {
-		log.WithFields(f).Debugf("Loaded and returning company: %+v...", comp)
-		return comp, nil
+	if err != nil {
+		return nil, err
 	}
+	log.WithFields(f).Debugf("Loaded and returning company: %+v...", comp)
+	return comp, nil
+}
 
-	if _, ok := err.(*utils.CompanyNotFound); ok {
-		comp, err = s.CreateOrgFromExternalID(ctx, "", companySFID)
-		if err != nil {
-			return comp, err
-		}
+// ResolveCompany returns the persisted company for an internal ID or a Salesforce ID; when no row
+// exists it returns a non-persisted virtual company (CompanyID = CompanyExternalID = SFID) built
+// from the organization service. Only "not found" outcomes fall through (never for an internal
+// UUID, which cannot name an organization); other errors propagate. A row stored under the ID the
+// organization service returns for the reference (its authoritative spelling) wins over a virtual company.
+func (s service) ResolveCompany(ctx context.Context, companyIDOrSFID string) (*models.Company, error) {
+	f := logrus.Fields{
+		"functionName":    "company.service.ResolveCompany",
+		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
+		"companyIDOrSFID": companyIDOrSFID,
+	}
+	comp, err := s.repo.GetCompany(ctx, companyIDOrSFID)
+	if err == nil {
 		return comp, nil
 	}
-	return nil, err
+	if _, ok := err.(*utils.CompanyNotFound); !ok {
+		return nil, err
+	}
+	comp, err = s.repo.GetCompanyByExternalID(ctx, companyIDOrSFID)
+	if err == nil {
+		return comp, nil
+	}
+	if _, ok := err.(*utils.CompanyNotFound); !ok {
+		return nil, err
+	}
+	if utils.IsUUIDv4(companyIDOrSFID) {
+		log.WithFields(f).Debug("no company row for an internal id - not found")
+		return nil, err
+	}
+	orgClient := organization_service.GetClient()
+	if orgClient == nil {
+		return nil, err
+	}
+	org, orgErr := orgClient.GetOrganization(ctx, companyIDOrSFID)
+	if orgErr != nil {
+		if _, ok := orgErr.(*organizations.GetOrgNotFound); ok {
+			log.WithFields(f).Debug("no company row and no organization - not found")
+			return nil, &utils.CompanyNotFound{Message: "no company or organization matching the id", CompanyID: companyIDOrSFID}
+		}
+		log.WithFields(f).WithError(orgErr).Warn("problem loading organization")
+		return nil, orgErr
+	}
+	if org.ID != "" && org.ID != companyIDOrSFID {
+		comp, err = s.repo.GetCompanyByExternalID(ctx, org.ID)
+		if err == nil {
+			return comp, nil
+		}
+		if _, ok := err.(*utils.CompanyNotFound); !ok {
+			return nil, err
+		}
+	}
+	log.WithFields(f).Debugf("no company row - returning virtual company for organization %s", org.Name)
+	return VirtualCompany(org.ID, org.Name), nil
+}
+
+// VirtualCompany is the non-persisted view of an organization that has no EasyCLA row yet.
+func VirtualCompany(companySFID, companyName string) *models.Company {
+	return &models.Company{
+		CompanyID:         companySFID,
+		CompanyExternalID: companySFID,
+		CompanyName:       companyName,
+		SigningEntityName: companyName,
+		IsSanctioned:      false,
+	}
 }
 
 func (s service) GetCompaniesByExternalID(ctx context.Context, companySFID string, includeChildCompanies bool) ([]*models.Company, error) {
@@ -744,13 +801,6 @@ func (s service) SearchOrganizationByName(ctx context.Context, orgName string, w
 					var signingEntityNames []string
 					if len(org.SigningEntityName) > 0 {
 						signingEntityNames = utils.TrimSpaceFromItems(org.SigningEntityName)
-						for _, signingEntityName := range signingEntityNames {
-							// Auto-create the internal record, if needed
-							_, err = s.CreateOrgFromExternalID(ctx, signingEntityName, org.ID)
-							if err != nil {
-								log.WithFields(f).WithError(err).Warnf("Unable to create organization from external ID: %s using signing entity name: %s", org.ID, signingEntityName)
-							}
-						}
 						resultsChannel <- &models.Org{
 							OrganizationID:      org.ID,
 							OrganizationName:    org.Name,
@@ -797,145 +847,4 @@ func (s service) SearchOrganizationByName(ctx context.Context, orgName string, w
 	})
 
 	return result, nil
-}
-
-// CreateOrgFromExternalID creates a new EasyCLA company from the external SF Organization ID
-func (s service) CreateOrgFromExternalID(ctx context.Context, signingEntityName, companySFID string) (*models.Company, error) {
-	f := logrus.Fields{
-		"functionName":      "company.service.CreateOrgFromExternalID",
-		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
-		"companySFID":       companySFID,
-		"signingEntityName": signingEntityName,
-	}
-
-	var companyModel *models.Company
-	var lookupErr error
-
-	// Lookup the company in our database...does it exist?
-	companyModel, lookupErr = s.GetCompanyBySigningEntityName(ctx, signingEntityName, companySFID)
-	if lookupErr != nil {
-		log.WithFields(f).WithError(lookupErr).Debug("problem locating internal company record by signing entity name and SFID - must not exist yet")
-	}
-
-	// Already exists - no need to create in our own database
-	if companyModel != nil {
-		return companyModel, nil
-	}
-
-	osc := organization_service.GetClient()
-	log.WithFields(f).Debugf("Searching organization by company SFID in the organization service...")
-	org, err := osc.GetOrganization(ctx, companySFID)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warn("getting organization details failed")
-		return nil, err
-	}
-
-	// Add some fields to the logger
-	f["companyName"] = org.Name
-	f["companyStatus"] = org.Status
-
-	// Query the platform user service to locate the company admin
-	log.WithFields(f).Debugf("getting company-admin information...")
-	companyAdmin, err := getCompanyAdmin(ctx, companySFID)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("unable to load company admin information for company: %s", companySFID)
-	}
-
-	var claUser *models.User
-	if companyAdmin != nil {
-		f["company-admin"] = companyAdmin
-		log.WithFields(f).Debugf("loaded company admin: %+v", companyAdmin)
-
-		log.WithFields(f).Debugf("getting user information from cla")
-		claUser, err = s.userService.GetUserByLFUserName(companyAdmin.LfUsername)
-		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("problem loading user by username: %s", companyAdmin.LfUsername)
-			return nil, err
-		}
-
-		if claUser == nil {
-			// create cla-user
-			log.WithFields(f).Debugf("cla user not found. creating cla user.")
-			claUser, err = s.userService.CreateUser(companyAdmin, nil)
-			if err != nil {
-				log.WithFields(f).WithError(err).Warn("creating cla user failed")
-				return nil, err
-			}
-		}
-	} else {
-		log.WithFields(f).Debug("unable to load company admin from companySFID - admin not found")
-	}
-
-	additionalNote := ""
-	if signingEntityName == "" {
-		additionalNote = fmt.Sprintf("signing entity name not set - using organization name: %s", org.Name)
-		log.WithFields(f).Debugf("%s", additionalNote)
-		signingEntityName = org.Name
-	}
-
-	_, now := utils.CurrentTime()
-	newComp := &models.Company{
-		CompanyExternalID: org.ID,
-		CompanyName:       org.Name,
-		SigningEntityName: signingEntityName,
-		IsSanctioned:      false,
-		Note:              fmt.Sprintf("%s - Created based on SF Organization Service record - %s", now, additionalNote),
-	}
-	if companyAdmin != nil {
-		newComp.CompanyACL = []string{companyAdmin.LfUsername}
-	}
-	if claUser != nil {
-		newComp.CompanyManagerID = claUser.UserID
-	}
-
-	f["company"] = newComp
-	log.WithFields(f).Debugf("creating cla company record")
-	// create company
-	comp, err := s.repo.CreateCompany(ctx, newComp)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("creating cla company failed")
-		return nil, err
-	}
-
-	log.WithFields(f).Debugf("Created company %s with Signing Entity Name: %s with ID: %s",
-		comp.CompanyName, signingEntityName, comp.CompanyID)
-	return comp, nil
-}
-
-// getCompanyAdmin is helper function which queries org-service to get first company-admin
-func getCompanyAdmin(ctx context.Context, companySFID string) (*models.User, error) {
-	f := logrus.Fields{
-		"functionName":   "company.service.getCompanyAdmin",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"companySFID":    companySFID,
-	}
-	osc := organization_service.GetClient()
-	result, err := osc.ListOrgUserAdminScopes(ctx, companySFID, nil)
-	if err != nil {
-		if _, ok := err.(*organizations.ListOrgUsrAdminScopesNotFound); !ok {
-			log.WithFields(f).Warnf("getting company-admin failed. error = %s", err.Error())
-			return nil, err
-		}
-	}
-	if result != nil {
-		for _, usc := range result.Userroles {
-			for _, rs := range usc.RoleScopes {
-				if rs.RoleName == "company-admin" {
-					companyAdmin := &models.User{
-						LfEmail:        strfmt.Email(usc.Contact.EmailAddress),
-						LfUsername:     usc.Contact.Username,
-						UserExternalID: usc.Contact.ID,
-						Username:       usc.Contact.Name,
-					}
-					log.WithFields(f).WithField("company-admin", companyAdmin).Debug("company-admin found")
-					return companyAdmin, nil
-				}
-			}
-		}
-	}
-	log.WithFields(f).Warnf("no company-admin found")
-	return nil, &utils.CompanyAdminNotFound{
-		CompanySFID: companySFID,
-		Err:         nil,
-	}
 }

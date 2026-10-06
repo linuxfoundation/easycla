@@ -1,6 +1,6 @@
 # Introduction to EasyCLA
 
-[![Build Status](https://github.com/linuxfoundation/easycla/actions/workflows/deploy-prod.yml/badge.svg)](https://github.com/linuxfoundation/easycla/actions/workflows/deploy-prod.yml)
+[![Build Status](https://github.com/linuxfoundation/easycla/actions/workflows/deploy-prod.yml/badge.svg)](https://github.com/linuxfoundation/easycla/actions/workflows/deploy-prod.yml).
 
 The Contributor License Agreement \(CLA\) service of the Linux Foundation lets project contributors read, sign, and submit contributor license agreements easily.
 

@@ -24,6 +24,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/company"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
+	v2ProjectServiceClient "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/client/project"
 )
 
 // Configure sets up the middleware handlers
@@ -117,6 +118,37 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			return company.NewGetCompanyByExternalIDOK().WithXRequestID(reqID).WithPayload(v2CompanyModel)
 		})
 
+	api.CompanyGetCompanyClaGroupsHandler = company.GetCompanyClaGroupsHandlerFunc(
+		func(params company.GetCompanyClaGroupsParams, authUser *auth.User) middleware.Responder {
+			reqID := utils.GetRequestID(params.XREQUESTID)
+			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+			f := logrus.Fields{
+				"functionName":   "v2.company.handlers.CompanyGetCompanyClaGroupsHandler",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+				"companySFID":    params.CompanySFID,
+				"authUserName":   utils.StringValue(params.XUSERNAME),
+				"authUserEmail":  utils.StringValue(params.XEMAIL),
+			}
+
+			log.WithFields(f).Debug("checking permissions")
+			if !utils.IsUserAuthorizedForOrganization(ctx, authUser, params.CompanySFID, utils.ALLOW_ADMIN_SCOPE) {
+				msg := fmt.Sprintf("user %s does not have access to GetCompanyClaGroups with Organization scope of %s",
+					authUser.UserName, params.CompanySFID)
+				log.WithFields(f).Warn(msg)
+				return company.NewGetCompanyClaGroupsForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+			}
+
+			result, err := service.GetCompanyClaGroups(ctx, params.CompanySFID, params.PageSize, params.Offset)
+			if err != nil {
+				msg := fmt.Sprintf("unable to load CLA groups for company SFID: %s", params.CompanySFID)
+				log.WithFields(f).WithError(err).Warn(msg)
+				return company.NewGetCompanyClaGroupsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+			}
+
+			return company.NewGetCompanyClaGroupsOK().WithXRequestID(reqID).WithPayload(result)
+		})
+
 	api.CompanyGetCompanyProjectClaManagersHandler = company.GetCompanyProjectClaManagersHandlerFunc(
 		func(params company.GetCompanyProjectClaManagersParams, authUser *auth.User) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
@@ -150,6 +182,13 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 
 			result, err := service.GetCompanyProjectCLAManagers(ctx, v2CompanyModel, params.ProjectSFID)
 			if err != nil {
+				var projectNotFound *v2ProjectServiceClient.GetProjectNotFound
+				if errors.As(err, &projectNotFound) {
+					msg := fmt.Sprintf("project not found in the project service: %s", params.ProjectSFID)
+					log.WithFields(f).WithError(err).Warn(msg)
+					return company.NewGetCompanyProjectClaManagersNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, msg))
+				}
+
 				msg := "unable to load company project CLA managers"
 				log.WithFields(f).WithError(err).Warn(msg)
 				return company.NewGetCompanyProjectClaManagersBadRequest().WithXRequestID(reqID).WithPayload(

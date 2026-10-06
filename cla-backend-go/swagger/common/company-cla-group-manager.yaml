@@ -1,0 +1,16 @@
+# Copyright The Linux Foundation and each contributor to CommunityBridge.
+# SPDX-License-Identifier: MIT
+
+type: object
+x-nullable: false
+title: Company CLA Group Manager
+description: A CLA manager on the CCLA signature ACL
+properties:
+  userID:
+    type: string
+    x-omitempty: false
+    description: EasyCLA user ID (UUID)
+  lfUsername:
+    type: string
+    x-omitempty: false
+    description: LF username (LFID)

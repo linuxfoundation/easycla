@@ -33,6 +33,7 @@ import (
 	v1ClaManager "github.com/linuxfoundation/easycla/cla-backend-go/cla_manager"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	v1Signatures "github.com/linuxfoundation/easycla/cla-backend-go/signatures"
 	v1User "github.com/linuxfoundation/easycla/cla-backend-go/user"
 	easyCLAUser "github.com/linuxfoundation/easycla/cla-backend-go/users"
 	v2AcsService "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
@@ -63,6 +64,8 @@ var (
 	ErrClaGroupNotFound = errors.New("cla group not found")
 	//ErrClaGroupBadRequest returns error if cla group bad request
 	ErrClaGroupBadRequest = errors.New("cla group bad request")
+
+	errRequestNotFound = errors.New("cla manager request not found")
 )
 
 const (
@@ -80,6 +83,7 @@ type service struct {
 	v2CompanyService     v2Company.Service
 	eventService         events.Service
 	projectCGRepo        projects_cla_groups.Repository
+	signatureService     v1Signatures.SignatureService
 }
 
 // Service interface
@@ -93,6 +97,10 @@ type Service interface {
 	CreateCLAManagerDesigneeByGroup(ctx context.Context, params cla_manager.CreateCLAManagerDesigneeByGroupParams, projectCLAGroups []*projects_cla_groups.ProjectClaGroup) ([]*models.ClaManagerDesignee, string, error)
 	ProjectCompanySignedOrNot(ctx context.Context, signedAtFoundation bool, projectCLAGroups []*projects_cla_groups.ProjectClaGroup, companyModel *v1Models.Company) error
 	IsCLAManagerDesignee(ctx context.Context, companySFID, claGroupID, userLFID string) (*models.UserRoleStatus, error)
+	GetCLAManagerRequests(ctx context.Context, companyModel *v1Models.Company, claGroupID string, pageSize, offset *int64) (*models.ClaManagerRequestList, error)
+	GetCLAManagerRequest(ctx context.Context, companyModel *v1Models.Company, claGroupID, requestID string) (*models.ClaManagerRequest, error)
+	ApproveCLAManagerRequest(ctx context.Context, authUser *auth.User, companyModel *v1Models.Company, claGroupID, requestID string) (*models.ClaManagerRequest, error)
+	DenyCLAManagerRequest(ctx context.Context, authUser *auth.User, companyModel *v1Models.Company, claGroupID, requestID string) (*models.ClaManagerRequest, error)
 
 	// Email Functions
 	SendEmailToCLAManager(ctx context.Context, input *EmailToCLAManagerModel, projectSFIDs []string)
@@ -107,7 +115,7 @@ type Service interface {
 // NewService returns instance of CLA Manager service
 func NewService(emailTemplateService emails.EmailTemplateService, compService company.IService, projService service2.Service, mgrService v1ClaManager.IService, claUserService easyCLAUser.Service,
 	repoService repositories.Service, v2CompService v2Company.Service,
-	evService events.Service, projectCGroupRepo projects_cla_groups.Repository) Service {
+	evService events.Service, projectCGroupRepo projects_cla_groups.Repository, sigService v1Signatures.SignatureService) Service {
 	return &service{
 		emailTemplateService: emailTemplateService,
 		companyService:       compService,
@@ -118,6 +126,7 @@ func NewService(emailTemplateService emails.EmailTemplateService, compService co
 		v2CompanyService:     v2CompService,
 		eventService:         evService,
 		projectCGRepo:        projectCGroupRepo,
+		signatureService:     sigService,
 	}
 }
 
@@ -336,7 +345,7 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 	projectClient := v2ProjectService.GetClient()
 
 	log.WithFields(f).Debugf("loading company by ID...")
-	v1CompanyModel, companyErr := s.companyService.GetCompany(ctx, companyID)
+	v1CompanyModel, companyErr := s.companyService.ResolveCompany(ctx, companyID)
 	if companyErr != nil {
 		log.WithFields(f).Warnf("company not found, error: %+v", companyErr)
 		return nil, companyErr
@@ -563,8 +572,7 @@ func (s *service) IsCLAManagerDesignee(ctx context.Context, companySFID, claGrou
 				}, nil
 			}
 		}
-		log.WithFields(f).Debugf("User %s has %s role at project level", userLFID, utils.CLADesigneeRole)
-		hasRole = true
+		log.WithFields(f).Debugf("User %s does not have %s role for any of the %d projects", userLFID, utils.CLADesigneeRole, len(pcgs))
 
 	}
 
@@ -587,9 +595,9 @@ func (s *service) CreateCLAManagerDesigneeByGroup(ctx context.Context, params cl
 	var designeeScopes []*models.ClaManagerDesignee
 	userEmail := params.Body.UserEmail.String()
 
-	// Lookup the company by internal ID
-	log.WithFields(f).Debugf("looking up company by internal ID...")
-	v1CompanyModel, err := s.companyService.GetCompany(ctx, params.CompanyID)
+	// Lookup the company by internal ID or SFID (virtual company when no row exists yet)
+	log.WithFields(f).Debugf("looking up company by ID...")
+	v1CompanyModel, err := s.companyService.ResolveCompany(ctx, params.CompanyID)
 	if err != nil || v1CompanyModel == nil {
 		msg := fmt.Sprintf("unable to lookup company by ID: %s", params.CompanyID)
 		log.WithFields(f).WithError(err).Warn(msg)
@@ -674,7 +682,7 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 
 	log.WithFields(f).Debugf("loading company by external ID...")
 	// Search for salesForce Company aka external Company
-	v1CompanyModel, companyErr := s.companyService.GetCompany(ctx, companyID)
+	v1CompanyModel, companyErr := s.companyService.ResolveCompany(ctx, companyID)
 	if companyErr != nil {
 		msg := fmt.Sprintf("EasyCLA - 400 Bad Request - %s", companyErr)
 		log.Warn(msg)
@@ -917,7 +925,7 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 
 	// Get company
 	log.WithFields(f).Debugf("Get company for companyID: %s ", companyID)
-	companyModel, companyErr := s.companyService.GetCompany(ctx, companyID)
+	companyModel, companyErr := s.companyService.ResolveCompany(ctx, companyID)
 	if companyErr != nil {
 		msg := fmt.Sprintf("Problem getting company for companyID: %s ", companyID)
 		log.Warn(msg)

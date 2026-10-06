@@ -65,7 +65,7 @@
   ```
   v2/check-prepare-employee-signature
   ```
-- This checks whether the company follows a **Corporate CLA (CCLA)** or an **Entity CLA (ECLA)** flow.
+- This checks whether the company follows a **Corporate CLA (CCLA)** flow and whether the contributor needs an **employee acknowledgment** under it (the employee acknowledges the company's CCLA rather than signing a separate agreement; `ecla` survives only as the internal type identifier).
 
 ---
 

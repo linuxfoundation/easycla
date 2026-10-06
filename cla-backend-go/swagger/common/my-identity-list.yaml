@@ -14,6 +14,11 @@ properties:
     format: int64
     x-omitempty: false
     description: The number of identities returned
+  totalCount:
+    type: integer
+    format: int64
+    x-omitempty: false
+    description: Total number of identities before optional pageSize/offset paging was applied
   identities:
     type: array
     x-omitempty: false
