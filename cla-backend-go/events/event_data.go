@@ -550,7 +550,7 @@ func (ed *SignatureAutoCreateECLAUpdatedEventData) GetEventDetailsString(args *L
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
 	}
 	if args.ProjectSFID != "" {
-		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectSFID)
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
@@ -916,7 +916,7 @@ func (ed *GitLabOrganizationUpdatedEventData) GetEventDetailsString(args *LogEve
 		data = fmt.Sprintf("%s for the project %s", data, args.ProjectName)
 	}
 	if args.ProjectSFID != "" {
-		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectSFID)
 	}
 	if args.UserName != "" {
 		data = fmt.Sprintf("%s by the user %s", data, args.UserName)
@@ -986,7 +986,7 @@ func (ed *CLAManagerDeletedEventData) GetEventDetailsString(args *LogEventArgs) 
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
 	}
 	if args.ProjectSFID != "" {
-		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectSFID)
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
@@ -1041,7 +1041,7 @@ func (ed *CLAApprovalListAddEmailData) GetEventDetailsString(args *LogEventArgs)
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
 	}
 	if args.ProjectSFID != "" {
-		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectSFID)
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
@@ -1063,7 +1063,7 @@ func (ed *CLAApprovalListRemoveEmailData) GetEventDetailsString(args *LogEventAr
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
 	}
 	if args.ProjectSFID != "" {
-		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectSFID)
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
@@ -1085,7 +1085,7 @@ func (ed *CLAApprovalListAddDomainData) GetEventDetailsString(args *LogEventArgs
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
 	}
 	if args.ProjectSFID != "" {
-		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectSFID)
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
@@ -1107,7 +1107,7 @@ func (ed *CLAApprovalListRemoveDomainData) GetEventDetailsString(args *LogEventA
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
 	}
 	if args.ProjectSFID != "" {
-		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectSFID)
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
@@ -1129,7 +1129,7 @@ func (ed *CLAApprovalListAddGitHubUsernameData) GetEventDetailsString(args *LogE
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
 	}
 	if args.ProjectSFID != "" {
-		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectSFID)
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
@@ -1151,7 +1151,7 @@ func (ed *CLAApprovalListRemoveGitHubUsernameData) GetEventDetailsString(args *L
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
 	}
 	if args.ProjectSFID != "" {
-		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectSFID)
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
@@ -1173,7 +1173,7 @@ func (ed *CLAApprovalListAddGitHubOrgData) GetEventDetailsString(args *LogEventA
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
 	}
 	if args.ProjectSFID != "" {
-		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectSFID)
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
@@ -1195,7 +1195,7 @@ func (ed *CLAApprovalListRemoveGitHubOrgData) GetEventDetailsString(args *LogEve
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
 	}
 	if args.ProjectSFID != "" {
-		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectSFID)
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
@@ -1217,7 +1217,7 @@ func (ed *CLAApprovalListAddGitLabUsernameData) GetEventDetailsString(args *LogE
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
 	}
 	if args.ProjectSFID != "" {
-		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectSFID)
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
@@ -1239,7 +1239,7 @@ func (ed *CLAApprovalListRemoveGitLabUsernameData) GetEventDetailsString(args *L
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
 	}
 	if args.ProjectSFID != "" {
-		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectSFID)
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
@@ -1261,7 +1261,7 @@ func (ed *CLAApprovalListAddGitLabGroupData) GetEventDetailsString(args *LogEven
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
 	}
 	if args.ProjectSFID != "" {
-		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectSFID)
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
@@ -1283,7 +1283,7 @@ func (ed *CLAApprovalListRemoveGitLabGroupData) GetEventDetailsString(args *LogE
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
 	}
 	if args.ProjectSFID != "" {
-		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectSFID)
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)
@@ -1589,7 +1589,7 @@ func (ed *AssignRoleScopeData) GetEventDetailsString(args *LogEventArgs) (string
 		data = data + fmt.Sprintf(" for the project %s", args.ProjectName)
 	}
 	if args.ProjectSFID != "" {
-		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectName)
+		data = data + fmt.Sprintf(" with project SFID %s", args.ProjectSFID)
 	}
 	if args.CompanyName != "" {
 		data = data + fmt.Sprintf(" for the company %s", args.CompanyName)

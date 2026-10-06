@@ -193,6 +193,41 @@ func TestSignatureProjectInvalidatedEventDataSingleSignature(t *testing.T) {
 	assert.Equal(t, "The signature sig-2 was invalidated (approved set to false).", details)
 }
 
+func TestEventDetailsStringUsesProjectSFID(t *testing.T) {
+	// covers the 16 formatters that printed args.ProjectName after the "with project SFID" label
+	args := &LogEventArgs{UserName: testUser, ProjectName: "Sample Project", ProjectSFID: "proj-sfid-123"}
+
+	testCases := []struct {
+		name      string
+		eventData EventData
+	}{
+		{name: "SignatureAutoCreateECLAUpdated", eventData: &SignatureAutoCreateECLAUpdatedEventData{}},
+		{name: "GitLabOrganizationUpdated", eventData: &GitLabOrganizationUpdatedEventData{}},
+		{name: "CLAManagerDeleted", eventData: &CLAManagerDeletedEventData{}},
+		{name: "CLAApprovalListAddEmail", eventData: &CLAApprovalListAddEmailData{}},
+		{name: "CLAApprovalListRemoveEmail", eventData: &CLAApprovalListRemoveEmailData{}},
+		{name: "CLAApprovalListAddDomain", eventData: &CLAApprovalListAddDomainData{}},
+		{name: "CLAApprovalListRemoveDomain", eventData: &CLAApprovalListRemoveDomainData{}},
+		{name: "CLAApprovalListAddGitHubUsername", eventData: &CLAApprovalListAddGitHubUsernameData{}},
+		{name: "CLAApprovalListRemoveGitHubUsername", eventData: &CLAApprovalListRemoveGitHubUsernameData{}},
+		{name: "CLAApprovalListAddGitHubOrg", eventData: &CLAApprovalListAddGitHubOrgData{}},
+		{name: "CLAApprovalListRemoveGitHubOrg", eventData: &CLAApprovalListRemoveGitHubOrgData{}},
+		{name: "CLAApprovalListAddGitLabUsername", eventData: &CLAApprovalListAddGitLabUsernameData{}},
+		{name: "CLAApprovalListRemoveGitLabUsername", eventData: &CLAApprovalListRemoveGitLabUsernameData{}},
+		{name: "CLAApprovalListAddGitLabGroup", eventData: &CLAApprovalListAddGitLabGroupData{}},
+		{name: "CLAApprovalListRemoveGitLabGroup", eventData: &CLAApprovalListRemoveGitLabGroupData{}},
+		{name: "AssignRoleScope", eventData: &AssignRoleScopeData{}},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(tt *testing.T) {
+			details, _ := tc.eventData.GetEventDetailsString(args)
+			assert.Contains(tt, details, " with project SFID proj-sfid-123")
+			assert.NotContains(tt, details, "with project SFID Sample Project")
+		})
+	}
+}
+
 func TestCompanySanctionedEventData(t *testing.T) {
 	eventData := &CompanySanctionedEventData{}
 	args := &LogEventArgs{CompanyName: "Flagged Corp"}

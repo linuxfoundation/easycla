@@ -31,7 +31,7 @@ import (
 )
 
 // Configure setups handlers on api with service
-func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRepo v1Company.IRepository, projectsClaGroupsRepo projects_cla_groups.Repository, projectService v1ProjectService.Service) { // nolint
+func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyService v1Company.IService, projectsClaGroupsRepo projects_cla_groups.Repository, projectService v1ProjectService.Service) { // nolint
 	api.EventsGetRecentEventsHandler = events.GetRecentEventsHandlerFunc(
 		func(params events.GetRecentEventsParams, authUser *auth.User) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
@@ -285,7 +285,7 @@ func Configure(api *operations.EasyclaAPI, service v1Events.Service, v1CompanyRe
 				"companyID":      params.CompanyID,
 			}
 
-			v1Company, compErr := v1CompanyRepo.GetCompany(ctx, params.CompanyID)
+			v1Company, compErr := v1CompanyService.ResolveCompany(ctx, params.CompanyID)
 			if compErr != nil {
 				log.WithFields(f).Warnf("unable to fetch company by ID:%s ", params.CompanyID)
 				return events.NewGetCompanyProjectEventsBadRequest().WithPayload(errorResponse(reqID, compErr))

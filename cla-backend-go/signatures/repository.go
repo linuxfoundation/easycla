@@ -41,6 +41,7 @@ import (
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/expression"
@@ -69,8 +70,12 @@ type SignatureRepository interface {
 	AddGithubOrganizationToApprovalList(ctx context.Context, signatureID, githubOrganizationID string) ([]models.GithubOrg, error)
 	DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID, githubOrganizationID string) ([]models.GithubOrg, error)
 	ValidateProjectRecord(ctx context.Context, signatureID, note string) error
+	ValidateProjectRecordUnlessInvalidated(ctx context.Context, signatureID, note string) error
 	InvalidateProjectRecord(ctx context.Context, signatureID, note string) error
 	InvalidateProjectRecordWithMetadata(ctx context.Context, signatureID, note string, metadata *InvalidationMetadata) error
+	ReinvalidateProjectRecordWithMetadata(ctx context.Context, existing *ItemSignature, note string, metadata *InvalidationMetadata) error
+	GetRemovalInvalidatedEmployeeSignatures(ctx context.Context, companyID, claGroupID string) ([]*ItemSignature, error)
+	RestoreRemovalInvalidatedEmployeeSignature(ctx context.Context, snapshot *ItemSignature, note string) (bool, error)
 	UpdateEnvelopeDetails(ctx context.Context, signatureID, envelopeID string, signURL *string) (*models.Signature, error)
 	CreateSignature(ctx context.Context, signature *ItemSignature) error
 	UpdateSignature(ctx context.Context, signatureID string, updates map[string]interface{}) error
@@ -78,6 +83,7 @@ type SignatureRepository interface {
 
 	GetSignature(ctx context.Context, signatureID string) (*models.Signature, error)
 	GetItemSignature(ctx context.Context, signatureID string) (*ItemSignature, error)
+	GetItemSignatureConsistent(ctx context.Context, signatureID string) (*ItemSignature, error)
 	GetActivePullRequestMetadata(ctx context.Context, gitHubAuthorUsername, gitHubAuthorEmail string) (*ActivePullRequest, error)
 	GetIndividualSignature(ctx context.Context, claGroupID, userID string, approved, signed *bool) (*models.Signature, error)
 	GetIndividualSignatures(ctx context.Context, claGroupID, userID string, approved, signed *bool) ([]*models.Signature, error)
@@ -104,6 +110,7 @@ type SignatureRepository interface {
 	AddSignedOn(ctx context.Context, signatureID string) error
 	GetClaGroupICLASignatures(ctx context.Context, claGroupID string, searchTerm *string, approved, signed *bool, pageSize int64, nextKey string, withExtraDetails bool) (*models.IclaSignatures, error)
 	GetClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, pageSize *int64, nextKey *string, searchTerm *string) (*models.CorporateContributorList, error)
+	CountClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, approvedOnly bool, searchTerm *string) (int64, error)
 	EclaAutoCreate(ctx context.Context, signatureID string, autoCreateECLA bool) error
 	ActivateSignature(ctx context.Context, signatureID string) error
 	GetICLAByDate(ctx context.Context, startDate string) ([]ItemSignature, error)
@@ -237,6 +244,36 @@ func (repo repository) GetItemSignature(ctx context.Context, signatureID string)
 		return nil, err
 	}
 
+	return &signature, nil
+}
+
+// GetItemSignatureConsistent returns the signature for the specified signature id using a strongly
+// consistent base-table read, so a decision taken on it reflects every write that already completed
+func (repo repository) GetItemSignatureConsistent(ctx context.Context, signatureID string) (*ItemSignature, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.GetItemSignatureConsistent",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"signatureID":    signatureID,
+	}
+
+	result, err := repo.dynamoDBClient.GetItemWithContext(ctx, &dynamodb.GetItemInput{
+		TableName:      aws.String(repo.signatureTableName),
+		Key:            map[string]*dynamodb.AttributeValue{"signature_id": {S: aws.String(signatureID)}},
+		ConsistentRead: aws.Bool(true),
+	})
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error retrieving signature ID: %s", signatureID)
+		return nil, err
+	}
+	if result == nil || len(result.Item) == 0 {
+		return nil, nil
+	}
+
+	var signature ItemSignature
+	if err := dynamodbattribute.UnmarshalMap(result.Item, &signature); err != nil {
+		log.WithFields(f).WithError(err).Warnf("error unmarshalling signature for ID: %s", signatureID)
+		return nil, err
+	}
 	return &signature, nil
 }
 
@@ -2143,8 +2180,30 @@ func (repo repository) InvalidateProjectRecord(ctx context.Context, signatureID,
 // first-write-wins so a re-invalidation never destroys the record of a prior invalidation;
 // attributes missing on pre-feature records are still populated.
 func (repo repository) InvalidateProjectRecordWithMetadata(ctx context.Context, signatureID, note string, metadata *InvalidationMetadata) error {
+	return repo.invalidateProjectRecord(ctx, "v1.signatures.repository.InvalidateProjectRecordWithMetadata", signatureID, note, metadata, nil, false)
+}
+
+// invalidateApprovedProjectRecord is the approval list removal write: it lands only while the record
+// is still approved, so an already invalidated acknowledgment - even one invalidated after the removal
+// read it - stays untouched (#2897) and the removal is reported as not applied
+func (repo repository) invalidateApprovedProjectRecord(ctx context.Context, signatureID, note string, metadata *InvalidationMetadata) (bool, error) {
+	err := repo.invalidateProjectRecord(ctx, "v1.signatures.repository.invalidateApprovedProjectRecord", signatureID, note, metadata, nil, true)
+	if errors.Is(err, ErrSignatureModifiedConcurrently) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// ReinvalidateProjectRecordWithMetadata deliberately invalidates a removal-voided record, replacing its
+// attribution; the write is pinned to the snapshot the decision was made on and reports
+// ErrSignatureModifiedConcurrently when the record changed meanwhile
+func (repo repository) ReinvalidateProjectRecordWithMetadata(ctx context.Context, existing *ItemSignature, note string, metadata *InvalidationMetadata) error {
+	return repo.invalidateProjectRecord(ctx, "v1.signatures.repository.ReinvalidateProjectRecordWithMetadata", existing.SignatureID, note, metadata, existing, false)
+}
+
+func (repo repository) invalidateProjectRecord(ctx context.Context, functionName, signatureID, note string, metadata *InvalidationMetadata, pinned *ItemSignature, approvedOnly bool) error {
 	f := logrus.Fields{
-		"functionName":   "v1.signatures.repository.InvalidateProjectRecordWithMetadata",
+		"functionName":   functionName,
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"signatureID":    signatureID,
 	}
@@ -2153,7 +2212,7 @@ func (repo repository) InvalidateProjectRecordWithMetadata(ctx context.Context, 
 
 	_, now := utils.CurrentTime()
 
-	expressionAttributeNames, expressionAttributeValues, updateExpression := invalidationUpdateExpression(note, now, metadata)
+	expressionAttributeNames, expressionAttributeValues, updateExpression := invalidationUpdateExpression(note, now, metadata, pinned != nil)
 
 	input := &dynamodb.UpdateItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
@@ -2166,9 +2225,24 @@ func (repo repository) InvalidateProjectRecordWithMetadata(ctx context.Context, 
 		UpdateExpression:          &updateExpression,
 		TableName:                 aws.String(signatureTableName),
 	}
+	if pinned != nil {
+		input.ConditionExpression = aws.String(reinvalidationCondition(pinned, expressionAttributeNames, expressionAttributeValues))
+	} else if approvedOnly {
+		expressionAttributeNames["#ID"] = aws.String("signature_id")
+		expressionAttributeValues[":ca"] = &dynamodb.AttributeValue{BOOL: aws.Bool(true)}
+		input.ConditionExpression = aws.String("attribute_exists(#ID) AND #A = :ca")
+	}
 
 	_, updateErr := repo.dynamoDBClient.UpdateItem(input)
 	if updateErr != nil {
+		if aerr, ok := updateErr.(awserr.Error); ok && aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
+			if approvedOnly {
+				log.WithFields(f).Debugf("signature %s is not approved - leaving it untouched", signatureID)
+			} else {
+				log.WithFields(f).Warnf("signature %s changed concurrently - invalidation not applied", signatureID)
+			}
+			return ErrSignatureModifiedConcurrently
+		}
 		log.WithFields(f).Warnf("error updating signature_approved for signature_id : %s error : %v ", signatureID, updateErr)
 		return updateErr
 	}
@@ -2176,9 +2250,35 @@ func (repo repository) InvalidateProjectRecordWithMetadata(ctx context.Context, 
 	return nil
 }
 
+// reinvalidationCondition pins the overwrite to the removal-voided snapshot it was decided on: the record
+// still exists, is still unapproved and carries the same note and attribution (a pinned attribute may
+// only be missing when it was read as its zero value)
+func reinvalidationCondition(existing *ItemSignature, names map[string]*string, values map[string]*dynamodb.AttributeValue) string {
+	names["#ID"] = aws.String("signature_id")
+	values[":ca"] = &dynamodb.AttributeValue{BOOL: aws.Bool(false)}
+	condition := "attribute_exists(#ID) AND (attribute_not_exists(#A) OR #A = :ca)"
+	for _, pinned := range []struct{ name, placeholder, attribute, read string }{
+		{"#S", ":cs", "note", existing.Note},
+		{"#DI", ":cdi", "date_invalidated", existing.DateInvalidated},
+		{"#IB", ":cib", "invalidated_by", existing.InvalidatedBy},
+		{"#IR", ":cir", "invalidation_reason", existing.InvalidationReason},
+		{"#IN", ":cin", "invalidation_note", existing.InvalidationNote},
+	} {
+		names[pinned.name] = aws.String(pinned.attribute)
+		values[pinned.placeholder] = &dynamodb.AttributeValue{S: aws.String(pinned.read)}
+		if pinned.read == "" {
+			condition += " AND (attribute_not_exists(" + pinned.name + ") OR " + pinned.name + " = " + pinned.placeholder + ")"
+		} else {
+			condition += " AND " + pinned.name + " = " + pinned.placeholder
+		}
+	}
+	return condition
+}
+
 // invalidationUpdateExpression assembles the invalidation update: approval revoked, note replaced,
-// every attribution attribute first-write-wins via if_not_exists, date_modified refreshed.
-func invalidationUpdateExpression(note, now string, metadata *InvalidationMetadata) (map[string]*string, map[string]*dynamodb.AttributeValue, string) {
+// every attribution attribute first-write-wins via if_not_exists, date_modified refreshed;
+// overwrite mode sets the attribution plainly and removes what is not supplied.
+func invalidationUpdateExpression(note, now string, metadata *InvalidationMetadata, overwrite bool) (map[string]*string, map[string]*dynamodb.AttributeValue, string) {
 	expressionAttributeNames := map[string]*string{}
 	expressionAttributeValues := map[string]*dynamodb.AttributeValue{}
 	updateExpression := "SET " // nolint
@@ -2191,82 +2291,388 @@ func invalidationUpdateExpression(note, now string, metadata *InvalidationMetada
 	expressionAttributeValues[":s"] = &dynamodb.AttributeValue{S: aws.String(note)}
 	updateExpression = updateExpression + " #S = :s,"
 
+	assign := func(name, value string) string {
+		if overwrite {
+			return fmt.Sprintf(" %s = %s,", name, value)
+		}
+		return fmt.Sprintf(" %s = if_not_exists(%s, %s),", name, name, value)
+	}
+
 	expressionAttributeNames["#DI"] = aws.String("date_invalidated")
 	expressionAttributeValues[":di"] = &dynamodb.AttributeValue{S: aws.String(now)}
-	updateExpression = updateExpression + " #DI = if_not_exists(#DI, :di),"
+	updateExpression = updateExpression + assign("#DI", ":di")
 
-	if metadata != nil {
-		if metadata.InvalidatedBy != "" {
-			expressionAttributeNames["#IB"] = aws.String("invalidated_by")
-			expressionAttributeValues[":ib"] = &dynamodb.AttributeValue{S: aws.String(metadata.InvalidatedBy)}
-			updateExpression = updateExpression + " #IB = if_not_exists(#IB, :ib),"
-		}
-		if metadata.Reason != "" {
-			expressionAttributeNames["#IR"] = aws.String("invalidation_reason")
-			expressionAttributeValues[":ir"] = &dynamodb.AttributeValue{S: aws.String(metadata.Reason)}
-			updateExpression = updateExpression + " #IR = if_not_exists(#IR, :ir),"
-		}
-		if metadata.Note != "" {
-			expressionAttributeNames["#IN"] = aws.String("invalidation_note")
-			expressionAttributeValues[":in"] = &dynamodb.AttributeValue{S: aws.String(metadata.Note)}
-			updateExpression = updateExpression + " #IN = if_not_exists(#IN, :in),"
+	var stale []string
+	attribution := func(name, value, attribute, content string) {
+		if content != "" {
+			expressionAttributeNames[name] = aws.String(attribute)
+			expressionAttributeValues[value] = &dynamodb.AttributeValue{S: aws.String(content)}
+			updateExpression = updateExpression + assign(name, value)
+		} else if overwrite {
+			expressionAttributeNames[name] = aws.String(attribute)
+			stale = append(stale, name)
 		}
 	}
+	var invalidatedBy, reason, invalidationNote string
+	if metadata != nil {
+		invalidatedBy, reason, invalidationNote = metadata.InvalidatedBy, metadata.Reason, metadata.Note
+	}
+	attribution("#IB", ":ib", "invalidated_by", invalidatedBy)
+	attribution("#IR", ":ir", "invalidation_reason", reason)
+	attribution("#IN", ":in", "invalidation_note", invalidationNote)
 
 	expressionAttributeNames["#M"] = aws.String("date_modified")
 	expressionAttributeValues[":m"] = &dynamodb.AttributeValue{S: aws.String(now)}
 	updateExpression = updateExpression + " #M = :m"
+	if len(stale) > 0 {
+		updateExpression = updateExpression + " REMOVE " + strings.Join(stale, ", ")
+	}
 
 	return expressionAttributeNames, expressionAttributeValues, updateExpression
 }
 
-// ValidateProjectRecord validates the specified project record by setting the signature_approved flag to true
+// ErrSignatureModifiedConcurrently is returned when a record changed between its read and the
+// conditional write built on that read
+var ErrSignatureModifiedConcurrently = errors.New("signature modified concurrently")
+
+// ValidateProjectRecord deliberately re-approves the record, invalidated or not: approval set, note
+// appended, invalidation attribution removed, date_modified refreshed
 func (repo repository) ValidateProjectRecord(ctx context.Context, signatureID, note string) error {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.ValidateProjectRecord",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"signatureID":    signatureID,
 	}
+	existing, err := repo.loadSignatureForValidation(ctx, f, signatureID)
+	if err != nil {
+		return err
+	}
+	if err := repo.writeValidation(ctx, f, existing, note, false); errors.Is(err, ErrSignatureModifiedConcurrently) {
+		log.WithFields(f).Warnf("signature %s changed concurrently - re-validation not applied", signatureID)
+		return fmt.Errorf("signature %s: %w", signatureID, err)
+	} else if err != nil {
+		return err
+	}
+	return nil
+}
 
-	// Update project signatures for signature_approved and notes attributes
-	signatureTableName := fmt.Sprintf("cla-%s-signatures", repo.stage)
+// ValidateProjectRecordUnlessInvalidated is the automatic variant (approval-list edits, auto-create):
+// a record that is invalidated at read time, or gets invalidated before the write lands, is left alone
+func (repo repository) ValidateProjectRecordUnlessInvalidated(ctx context.Context, signatureID, note string) error {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.ValidateProjectRecordUnlessInvalidated",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"signatureID":    signatureID,
+	}
+	existing, err := repo.loadSignatureForValidation(ctx, f, signatureID)
+	if err != nil {
+		return err
+	}
+	if signatureInvalidated(existing) {
+		log.WithFields(f).Warnf("signature %s was invalidated meanwhile - not re-approving", signatureID)
+		return nil
+	}
+	if err := repo.writeValidation(ctx, f, existing, note, true); errors.Is(err, ErrSignatureModifiedConcurrently) {
+		log.WithFields(f).Warnf("signature %s changed concurrently - not re-approving", signatureID)
+		return nil
+	} else if err != nil {
+		return err
+	}
+	return nil
+}
 
-	expressionAttributeNames := map[string]*string{}
-	expressionAttributeValues := map[string]*dynamodb.AttributeValue{}
-	updateExpression := "SET " // nolint
+func (repo repository) loadSignatureForValidation(ctx context.Context, f logrus.Fields, signatureID string) (*ItemSignature, error) {
+	existing, lookupErr := repo.GetItemSignature(ctx, signatureID)
+	if lookupErr != nil {
+		log.WithFields(f).WithError(lookupErr).Warnf("error loading signature %s before re-validation", signatureID)
+		return nil, lookupErr
+	}
+	if existing == nil {
+		notFoundErr := fmt.Errorf("signature %s not found - unable to re-validate", signatureID)
+		log.WithFields(f).Warn(notFoundErr.Error())
+		return nil, notFoundErr
+	}
+	return existing, nil
+}
 
-	expressionAttributeNames["#A"] = aws.String("signature_approved")
-	expressionAttributeValues[":a"] = &dynamodb.AttributeValue{BOOL: aws.Bool(true)}
-	updateExpression = updateExpression + " #A = :a,"
-
-	// Set embago acknowledged flag
-	// expressionAttributeNames["#E"] = aws.String("signature_embargo_acked")
-	// expressionAttributeValues[":e"] = &dynamodb.AttributeValue{BOOL: aws.Bool(true)}
-	// updateExpression = updateExpression + " #E = :e,"
-
-	expressionAttributeNames["#S"] = aws.String("note")
-	expressionAttributeValues[":s"] = &dynamodb.AttributeValue{S: aws.String(note)}
-	updateExpression = updateExpression + " #S = :s"
+func (repo repository) writeValidation(ctx context.Context, f logrus.Fields, existing *ItemSignature, note string, automatic bool) error {
+	_, now := utils.CurrentTime()
+	expressionAttributeNames, expressionAttributeValues, updateExpression, conditionExpression := validationUpdateExpression(existing, appendNote(existing.Note, note), now, automatic)
 
 	input := &dynamodb.UpdateItemInput{
 		Key: map[string]*dynamodb.AttributeValue{
 			"signature_id": {
-				S: aws.String(signatureID),
+				S: aws.String(existing.SignatureID),
 			},
 		},
 		ExpressionAttributeNames:  expressionAttributeNames,
 		ExpressionAttributeValues: expressionAttributeValues,
 		UpdateExpression:          &updateExpression,
-		TableName:                 aws.String(signatureTableName),
+		ConditionExpression:       &conditionExpression,
+		TableName:                 aws.String(repo.signatureTableName),
 	}
 
-	_, updateErr := repo.dynamoDBClient.UpdateItem(input)
+	_, updateErr := repo.dynamoDBClient.UpdateItemWithContext(ctx, input)
 	if updateErr != nil {
-		log.WithFields(f).Warnf("error updating signature_approved for signature_id : %s error : %v ", signatureID, updateErr)
+		if aerr, ok := updateErr.(awserr.Error); ok && aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
+			return ErrSignatureModifiedConcurrently
+		}
+		log.WithFields(f).Warnf("error updating signature_approved for signature_id : %s error : %v ", existing.SignatureID, updateErr)
 		return updateErr
 	}
-
 	return nil
+}
+
+// the condition pins the write to the snapshot it was decided on: the record still exists and its
+// note is unchanged; the automatic variant additionally requires the same approval and attribution.
+// A pinned attribute may only be missing when it was read as its zero value
+func validationUpdateExpression(existing *ItemSignature, note, now string, automatic bool) (map[string]*string, map[string]*dynamodb.AttributeValue, string, string) {
+	expressionAttributeNames := map[string]*string{
+		"#ID": aws.String("signature_id"),
+		"#A":  aws.String("signature_approved"),
+		"#S":  aws.String("note"),
+		"#M":  aws.String("date_modified"),
+		"#DI": aws.String("date_invalidated"),
+		"#IB": aws.String("invalidated_by"),
+		"#IR": aws.String("invalidation_reason"),
+		"#IN": aws.String("invalidation_note"),
+	}
+	expressionAttributeValues := map[string]*dynamodb.AttributeValue{
+		":a": {BOOL: aws.Bool(true)},
+		":s": {S: aws.String(note)},
+		":m": {S: aws.String(now)},
+	}
+	pin := func(name, placeholder string, read *dynamodb.AttributeValue, zero bool) string {
+		expressionAttributeValues[placeholder] = read
+		if zero {
+			return " AND (attribute_not_exists(" + name + ") OR " + name + " = " + placeholder + ")"
+		}
+		return " AND " + name + " = " + placeholder
+	}
+	pinString := func(name, placeholder, read string) string {
+		return pin(name, placeholder, &dynamodb.AttributeValue{S: aws.String(read)}, read == "")
+	}
+	updateExpression := "SET #A = :a, #S = :s, #M = :m REMOVE #DI, #IB, #IR, #IN"
+	conditionExpression := "attribute_exists(#ID)" + pinString("#S", ":cs", existing.Note)
+	if automatic {
+		conditionExpression += pin("#A", ":ca", &dynamodb.AttributeValue{BOOL: aws.Bool(existing.SignatureApproved)}, !existing.SignatureApproved) +
+			pinString("#DI", ":cdi", existing.DateInvalidated) + pinString("#IB", ":cib", existing.InvalidatedBy) +
+			pinString("#IR", ":cir", existing.InvalidationReason) + pinString("#IN", ":cin", existing.InvalidationNote)
+	}
+	return expressionAttributeNames, expressionAttributeValues, updateExpression, conditionExpression
+}
+
+// appendNote joins the existing note and the addition with a single space, keeping whichever one is
+// present when the other is blank
+func appendNote(existing, addition string) string {
+	existing = strings.TrimSpace(existing)
+	addition = strings.TrimSpace(addition)
+	switch {
+	case existing == "":
+		return addition
+	case addition == "":
+		return existing
+	default:
+		return existing + " " + addition
+	}
+}
+
+// GetRemovalInvalidatedEmployeeSignatures returns the raw signed employee acknowledgments of the company
+// under the CLA group - legacy cla and auto-created ecla rows alike - that are unapproved with approval
+// list removal evidence only (#2980). The company index only supplies the signature ids: the rows are
+// then read strongly consistently from the table and the classifier runs on each of them, so neither
+// index lag nor per-user collapsing can hide an acknowledgment or a deliberate invalidation
+func (repo repository) GetRemovalInvalidatedEmployeeSignatures(ctx context.Context, companyID, claGroupID string) ([]*ItemSignature, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.GetRemovalInvalidatedEmployeeSignatures",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"companyID":      companyID,
+		"claGroupID":     claGroupID,
+	}
+
+	condition := expression.Key("signature_user_ccla_company_id").Equal(expression.Value(companyID)).
+		And(expression.Key("signature_project_id").Equal(expression.Value(claGroupID)))
+	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithProjection(expression.NamesList(expression.Name("signature_id"))).Build()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("error building the employee signature query")
+		return nil, err
+	}
+
+	queryInput := &dynamodb.QueryInput{
+		TableName:                 aws.String(repo.signatureTableName),
+		IndexName:                 aws.String("signature-user-ccla-company-index"),
+		KeyConditionExpression:    expr.KeyCondition(),
+		ProjectionExpression:      expr.Projection(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+	}
+
+	var signatureIDs []string
+	for {
+		results, queryErr := repo.dynamoDBClient.QueryWithContext(ctx, queryInput)
+		if queryErr != nil {
+			log.WithFields(f).WithError(queryErr).Warn("error retrieving the employee signatures")
+			return nil, queryErr
+		}
+		for _, item := range results.Items {
+			if id := item["signature_id"]; id != nil && aws.StringValue(id.S) != "" {
+				signatureIDs = append(signatureIDs, *id.S)
+			}
+		}
+		if len(results.LastEvaluatedKey) == 0 {
+			break
+		}
+		queryInput.ExclusiveStartKey = results.LastEvaluatedKey
+	}
+
+	rows, err := repo.getItemSignaturesConsistent(ctx, signatureIDs)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("error reading the employee signatures")
+		return nil, err
+	}
+	var candidates []*ItemSignature
+	for _, row := range rows {
+		if restorableEmployeeAcknowledgment(row, companyID, claGroupID) {
+			candidates = append(candidates, row)
+		}
+	}
+	log.WithFields(f).Debugf("found %d removal-invalidated employee signatures among %d", len(candidates), len(rows))
+	return candidates, nil
+}
+
+// restorableEmployeeAcknowledgment reports whether the current base-table row is a signed employee acknowledgment of
+// the company under the CLA group whose only invalidation evidence is an approval list removal; the index the row was
+// found through is eventually consistent, so its scope is decided on the row itself
+func restorableEmployeeAcknowledgment(row *ItemSignature, companyID, claGroupID string) bool {
+	return row != nil && row.SignatureUserCompanyID == companyID && row.SignatureProjectID == claGroupID &&
+		row.SignatureReferenceType == utils.SignatureReferenceTypeUser &&
+		(row.SignatureType == utils.SignatureTypeCLA || row.SignatureType == utils.ClaTypeECLA) &&
+		row.SignatureSigned && row.InvalidatedOnlyByApprovalListRemoval()
+}
+
+// BatchGetItem accepts at most 100 keys per call; keys it leaves unprocessed are retried with a growing pause
+const (
+	batchGetItemSize     = 100
+	batchGetItemAttempts = 5
+)
+
+// getItemSignaturesConsistent reads the given signatures from the table with strongly consistent batch reads
+func (repo repository) getItemSignaturesConsistent(ctx context.Context, signatureIDs []string) ([]*ItemSignature, error) {
+	var rows []*ItemSignature
+	for start := 0; start < len(signatureIDs); start += batchGetItemSize {
+		end := min(start+batchGetItemSize, len(signatureIDs))
+		keys := make([]map[string]*dynamodb.AttributeValue, 0, end-start)
+		for _, signatureID := range signatureIDs[start:end] {
+			keys = append(keys, map[string]*dynamodb.AttributeValue{"signature_id": {S: aws.String(signatureID)}})
+		}
+		requests := map[string]*dynamodb.KeysAndAttributes{
+			repo.signatureTableName: {Keys: keys, ConsistentRead: aws.Bool(true)},
+		}
+		for attempt := 0; ; attempt++ {
+			if attempt == batchGetItemAttempts {
+				return nil, fmt.Errorf("%d signatures still unprocessed after %d batch read attempts", len(requests[repo.signatureTableName].Keys), attempt)
+			}
+			if attempt > 0 {
+				time.Sleep(time.Duration(attempt) * 50 * time.Millisecond)
+			}
+			output, err := repo.dynamoDBClient.BatchGetItemWithContext(ctx, &dynamodb.BatchGetItemInput{RequestItems: requests})
+			if err != nil {
+				return nil, err
+			}
+			var page []*ItemSignature
+			if err = dynamodbattribute.UnmarshalListOfMaps(output.Responses[repo.signatureTableName], &page); err != nil {
+				return nil, err
+			}
+			rows = append(rows, page...)
+			if pending := output.UnprocessedKeys[repo.signatureTableName]; pending == nil || len(pending.Keys) == 0 {
+				break
+			}
+			requests = output.UnprocessedKeys
+		}
+	}
+	return rows, nil
+}
+
+// RestoreRemovalInvalidatedEmployeeSignature re-approves an employee acknowledgment whose user an approval
+// list re-add covers again (#2980). The row is re-read consistently and must still be the signed, unapproved,
+// removal-only acknowledgment the decision was taken on; the write clears the attribution and appends the
+// note, pinned to that exact snapshot, so a concurrent deliberate invalidation, deletion or replacement wins
+// and the acknowledgment is reported as not restored
+func (repo repository) RestoreRemovalInvalidatedEmployeeSignature(ctx context.Context, snapshot *ItemSignature, note string) (bool, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.RestoreRemovalInvalidatedEmployeeSignature",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"signatureID":    snapshot.SignatureID,
+	}
+
+	existing, err := repo.GetItemSignatureConsistent(ctx, snapshot.SignatureID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("error loading signature %s before restoring it", snapshot.SignatureID)
+		return false, err
+	}
+	switch {
+	case existing == nil:
+		log.WithFields(f).Warnf("signature %s no longer exists - not restoring", snapshot.SignatureID)
+		return false, nil
+	case existing.SignatureApproved:
+		log.WithFields(f).Debugf("signature %s is already approved - nothing to restore", snapshot.SignatureID)
+		return false, nil
+	case !restorableEmployeeAcknowledgment(existing, snapshot.SignatureUserCompanyID, snapshot.SignatureProjectID) ||
+		existing.SignatureReferenceID != snapshot.SignatureReferenceID:
+		log.WithFields(f).Warnf("signature %s changed meanwhile - not restoring", snapshot.SignatureID)
+		return false, nil
+	}
+
+	_, now := utils.CurrentTime()
+	expressionAttributeNames, expressionAttributeValues, updateExpression, conditionExpression := validationUpdateExpression(existing, appendNote(existing.Note, note), now, true)
+	conditionExpression += restorationPins(existing, expressionAttributeNames, expressionAttributeValues)
+
+	input := &dynamodb.UpdateItemInput{
+		Key: map[string]*dynamodb.AttributeValue{
+			"signature_id": {
+				S: aws.String(existing.SignatureID),
+			},
+		},
+		ExpressionAttributeNames:  expressionAttributeNames,
+		ExpressionAttributeValues: expressionAttributeValues,
+		UpdateExpression:          &updateExpression,
+		ConditionExpression:       &conditionExpression,
+		TableName:                 aws.String(repo.signatureTableName),
+	}
+
+	if _, updateErr := repo.dynamoDBClient.UpdateItemWithContext(ctx, input); updateErr != nil {
+		if aerr, ok := updateErr.(awserr.Error); ok && aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException {
+			log.WithFields(f).Warnf("signature %s changed concurrently - not restoring", existing.SignatureID)
+			return false, nil
+		}
+		log.WithFields(f).WithError(updateErr).Warnf("error restoring signature_approved for signature_id: %s", existing.SignatureID)
+		return false, updateErr
+	}
+	log.WithFields(f).Infof("restored employee acknowledgment %s for user %s", existing.SignatureID, existing.SignatureReferenceID)
+	return true, nil
+}
+
+// restorationPins extends the automatic validation condition with the signed state and identity of the
+// acknowledgment, so the restore never lands on a replaced row
+func restorationPins(existing *ItemSignature, names map[string]*string, values map[string]*dynamodb.AttributeValue) string {
+	names["#SG"] = aws.String("signature_signed")
+	values[":csg"] = &dynamodb.AttributeValue{BOOL: aws.Bool(true)}
+	condition := " AND #SG = :csg"
+	for _, pinned := range []struct{ name, placeholder, attribute, read string }{
+		{"#RT", ":crt", "signature_reference_type", existing.SignatureReferenceType},
+		{"#RID", ":crid", "signature_reference_id", existing.SignatureReferenceID},
+		{"#PID", ":cpid", "signature_project_id", existing.SignatureProjectID},
+		{"#CID", ":ccid", "signature_user_ccla_company_id", existing.SignatureUserCompanyID},
+	} {
+		names[pinned.name] = aws.String(pinned.attribute)
+		values[pinned.placeholder] = &dynamodb.AttributeValue{S: aws.String(pinned.read)}
+		if pinned.read == "" {
+			condition += " AND (attribute_not_exists(" + pinned.name + ") OR " + pinned.name + " = " + pinned.placeholder + ")"
+		} else {
+			condition += " AND " + pinned.name + " = " + pinned.placeholder
+		}
+	}
+	return condition
 }
 
 // GetProjectCompanyEmployeeSignatures returns a list of employee signatures for the specified project and specified company
@@ -2457,6 +2863,35 @@ func getLatestSignatures(signatures []*models.Signature) []*models.Signature {
 type EmployeeModel struct {
 	Signature *models.Signature
 	User      *models.User
+	// Invalidated is set when the record still carries invalidation evidence - such records are
+	// left alone by the auto-create ECLA flows and need an explicit re-approval
+	Invalidated bool
+}
+
+// signatureInvalidated reports whether a not-approved record carries invalidation evidence: any of
+// the attribution attributes, or the legacy "Signature invalidated ..." note, which is the only
+// marker the pre-M2 approval-list removals wrote
+func signatureInvalidated(sig *ItemSignature) bool {
+	if sig == nil || sig.SignatureApproved {
+		return false
+	}
+	return sig.DateInvalidated != "" || sig.InvalidatedBy != "" || sig.InvalidationReason != "" || sig.InvalidationNote != "" ||
+		strings.Contains(strings.ToLower(sig.Note), "invalidated")
+}
+
+// invalidatedSignatureIDs returns the IDs of the query output items that signatureInvalidated flags
+func invalidatedSignatureIDs(items []map[string]*dynamodb.AttributeValue) (map[string]bool, error) {
+	var dbSignatures []ItemSignature
+	if err := dynamodbattribute.UnmarshalListOfMaps(items, &dbSignatures); err != nil {
+		return nil, err
+	}
+	flagged := map[string]bool{}
+	for i := range dbSignatures {
+		if signatureInvalidated(&dbSignatures[i]) {
+			flagged[dbSignatures[i].SignatureID] = true
+		}
+	}
+	return flagged, nil
 }
 
 func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User, wg *sync.WaitGroup, resultChannel chan<- *EmployeeModel, errorChannel chan<- error) {
@@ -2485,18 +2920,12 @@ func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, c
 		return
 	}
 
-	// This is the keys we want to match
-	condition := expression.Key("signature_reference_id").Equal(expression.Value(employeeUserModel.UserID))
-
-	var filterAdded bool
-	var filter expression.ConditionBuilder
-
-	// Check for approved signatures
-	filter = addAndCondition(filter, expression.Name("signature_user_ccla_company_id").Equal(expression.Value(companyModel.CompanyID)), &filterAdded)
-	filter = addAndCondition(filter, expression.Name("signature_project_id").Equal(expression.Value(claGroupModel.ProjectID)), &filterAdded)
+	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupModel.ProjectID)).
+		And(expression.Key("signature_reference_id").Equal(expression.Value(employeeUserModel.UserID)))
+	filter := expression.Name("signature_user_ccla_company_id").Equal(expression.Value(companyModel.CompanyID))
 
 	log.WithFields(f).Debugf("running employee signature query on table: %s", repo.signatureTableName)
-	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithFilter(filter).WithProjection(buildProjection()).Build()
+	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithFilter(filter).WithProjection(buildInvalidationAwareProjection()).Build()
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("error building expression for employee signature query, company model: %+v, CLA group model: %+v, employee model: %+v",
 			companyModel, claGroupModel, employeeUserModel)
@@ -2512,20 +2941,29 @@ func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, c
 		FilterExpression:          expr.Filter(),
 		ProjectionExpression:      expr.Projection(),
 		TableName:                 aws.String(repo.signatureTableName),
-		IndexName:                 aws.String("reference-signature-index"), // Name of a secondary index to scan
-		Limit:                     aws.Int64(10),
+		IndexName:                 aws.String(SignatureProjectReferenceIndex),
+		Limit:                     aws.Int64(100),
 	}
 
-	// Make the DynamoDB Query API call
-	results, errQuery := repo.dynamoDBClient.Query(queryInput)
-	if errQuery != nil {
-		log.WithFields(f).WithError(errQuery).Warnf("error retrieving project company employee acknowledgement record for company model: %+v, CLA group model: %+v, employee model: %+v",
-			companyModel, claGroupModel, employeeUserModel)
-		errorChannel <- errQuery
-		return
+	var items []map[string]*dynamodb.AttributeValue
+	for {
+		results, errQuery := repo.dynamoDBClient.Query(queryInput)
+		if errQuery != nil {
+			log.WithFields(f).WithError(errQuery).Warnf("error retrieving project company employee acknowledgment record for company model: %+v, CLA group model: %+v, employee model: %+v",
+				companyModel, claGroupModel, employeeUserModel)
+			errorChannel <- errQuery
+			return
+		}
+		if results != nil {
+			items = append(items, results.Items...)
+		}
+		if results == nil || results.LastEvaluatedKey["signature_id"] == nil {
+			break
+		}
+		queryInput.ExclusiveStartKey = results.LastEvaluatedKey
 	}
 
-	if results == nil || len(results.Items) == 0 {
+	if len(items) == 0 {
 		log.WithFields(f).Debug("No ecla records found!")
 		resultChannel <- &EmployeeModel{
 			Signature: nil,
@@ -2533,11 +2971,11 @@ func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, c
 		}
 		return
 	}
-	log.WithFields(f).Debugf("returned %d results", len(results.Items))
+	log.WithFields(f).Debugf("returned %d results", len(items))
 	// Convert the list of DB models to a list of response models
-	signatureList, modelErr := repo.buildProjectSignatureModels(ctx, results, claGroupModel.ProjectID, LoadACLDetails)
+	signatureList, modelErr := repo.buildProjectSignatureModels(ctx, &dynamodb.QueryOutput{Items: items}, claGroupModel.ProjectID, LoadACLDetails)
 	if modelErr != nil {
-		log.WithFields(f).WithError(modelErr).Warnf("error converting DB model to response model for project company employee acknowledgement record for company model: %+v, CLA group model: %+v, employee model: %+v",
+		log.WithFields(f).WithError(modelErr).Warnf("error converting DB model to response model for project company employee acknowledgment record for company model: %+v, CLA group model: %+v, employee model: %+v",
 			companyModel, claGroupModel, employeeUserModel)
 		errorChannel <- modelErr
 		return
@@ -2553,9 +2991,18 @@ func (repo repository) GetProjectCompanyEmployeeSignature(ctx context.Context, c
 			companyModel, claGroupModel, employeeUserModel)
 	}
 
+	invalidated, flagErr := invalidatedSignatureIDs(items)
+	if flagErr != nil {
+		log.WithFields(f).WithError(flagErr).Warnf("error reading the invalidation attributes of the employee acknowledgment record for company model: %+v, CLA group model: %+v, employee model: %+v",
+			companyModel, claGroupModel, employeeUserModel)
+		errorChannel <- flagErr
+		return
+	}
+
 	resultChannel <- &EmployeeModel{
-		Signature: signatureList[0],
-		User:      employeeUserModel,
+		Signature:   signatureList[0],
+		User:        employeeUserModel,
+		Invalidated: invalidated[signatureList[0].SignatureID],
 	}
 }
 
@@ -2580,8 +3027,8 @@ func (repo repository) CreateProjectCompanyEmployeeSignature(ctx context.Context
 	}
 
 	var wg sync.WaitGroup
-	resultChan := make(chan *EmployeeModel)
-	errorChan := make(chan error)
+	resultChan := make(chan *EmployeeModel, 1)
+	errorChan := make(chan error, 1)
 
 	wg.Add(1)
 	go repo.GetProjectCompanyEmployeeSignature(ctx, companyModel, claGroupModel, employeeUserModel, &wg, resultChan, errorChan)
@@ -2597,10 +3044,14 @@ func (repo repository) CreateProjectCompanyEmployeeSignature(ctx context.Context
 			existingSig := result.Signature
 			// If exists, need to update
 			if existingSig != nil {
-				log.WithFields(f).Debug("found existing employee acknowledgement")
+				log.WithFields(f).Debug("found existing employee acknowledgment")
+				if result.Invalidated {
+					log.WithFields(f).Debugf("existing employee acknowledgment %s was invalidated - leaving it alone, it needs an explicit re-approval", existingSig.SignatureID)
+					return nil
+				}
 				if !existingSig.SignatureApproved {
-					log.WithFields(f).Debugf("found existing employee acknowledgement, but not currently approved.")
-					validateRecordErr := repo.ValidateProjectRecord(ctx, existingSig.SignatureID, fmt.Sprintf(" Enabled previously disabled employee acknowledgement via CLA Manager approval list edit with auto-enable feature flag configured on %s.", utils.CurrentSimpleDateTimeString()))
+					log.WithFields(f).Debugf("found existing employee acknowledgment, but not currently approved.")
+					validateRecordErr := repo.ValidateProjectRecordUnlessInvalidated(ctx, existingSig.SignatureID, fmt.Sprintf(" Enabled previously disabled employee acknowledgment via CLA Manager approval list edit with auto-enable feature flag configured on %s.", utils.CurrentSimpleDateTimeString()))
 					if validateRecordErr != nil {
 						return validateRecordErr
 					}
@@ -2614,8 +3065,9 @@ func (repo repository) CreateProjectCompanyEmployeeSignature(ctx context.Context
 
 	for err := range errorChan {
 		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("error creating project company employee signature for company model: %+v, CLA group model: %+v, employee model: %+v",
+			log.WithFields(f).WithError(err).Warnf("error looking up the employee acknowledgment for company model: %+v, CLA group model: %+v, employee model: %+v - not creating one",
 				companyModel, claGroupModel, employeeUserModel)
+			return err
 		}
 	}
 
@@ -3352,7 +3804,6 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		CompanyID:               companyID,
 	}
 
-	// Just grab and use the first one - need to figure out conflict resolution if more than one
 	expressionAttributeNames := map[string]*string{}
 	expressionAttributeValues := map[string]*dynamodb.AttributeValue{}
 	haveAdditions := false
@@ -3361,7 +3812,6 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 	employeeSignatureParams := signatures.GetProjectCompanyEmployeeSignaturesParams{
 		ProjectID: projectID,
 		CompanyID: companyID,
-		PageSize:  utils.Int64(10),
 	}
 
 	//authUser := auth.User{
@@ -3716,6 +4166,21 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 
 	if len(params.AddGithubOrgApprovalList) > 0 || len(params.RemoveGithubOrgApprovalList) > 0 {
 		columnName := SignatureGitHubOrgApprovalListColumn
+
+		// everything the removal depends on is resolved before this branch writes anything:
+		// removing the last organization drops the column right away, and a lookup failing
+		// afterwards would leave the criterion gone with every member still approved.
+		// An add-only request (no removal list, or an explicitly empty one) resolves nothing.
+		var removedOrgMembers []string
+		var removedOrgECLAs []*models.Signature
+		if len(params.RemoveGithubOrgApprovalList) > 0 {
+			var targetsErr error
+			removedOrgMembers, removedOrgECLAs, targetsErr = repo.gitHubOrgRemovalTargets(ctx, projectID, companyID, params.RemoveGithubOrgApprovalList)
+			if targetsErr != nil {
+				return nil, targetsErr
+			}
+		}
+
 		attrList := buildApprovalAttributeList(ctx, cclaSignature.GithubOrgApprovalList, params.AddGithubOrgApprovalList, params.RemoveGithubOrgApprovalList)
 		// If no entries after consolidating all the updates, we need to remove the column
 		if attrList == nil || attrList.L == nil {
@@ -3738,48 +4203,15 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			repo.updateApprovalTable(ctx, params.AddGithubOrgApprovalList, utils.GithubOrgApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, true)
 		}
 
-		if params.RemoveGithubOrgApprovalList != nil {
+		if len(params.RemoveGithubOrgApprovalList) > 0 {
 			approvalList.Criteria = utils.GitHubOrgCriteria
 			approvalList.ApprovalList = params.RemoveGithubOrgApprovalList
 			approvalList.Action = utils.RemoveApprovals
 			approvalList.Version = claGroupModel.Version
-			// Get repositories by CLAGroup
-			repositories, getRepoByCLAGroupErr := repo.repositoriesRepo.GitHubGetRepositoriesByCLAGroup(ctx, projectID, true)
-			if getRepoByCLAGroupErr != nil {
-				msg := fmt.Sprintf("unable to fetch repositories for cla group ID: %s ", projectID)
-				log.WithFields(f).WithError(getRepoByCLAGroupErr).Warn(msg)
-				return nil, errors.New(msg)
-			}
-			var ghOrgRepositories []*models.GithubRepository
-			var ghOrgs []*models.GithubOrganization
-			for _, repository := range repositories {
-				// Check for matching organization name in repositories table against approvalList removal GitHub organizations
-				if utils.StringInSlice(repository.RepositoryOrganizationName, approvalList.ApprovalList) {
-					ghOrgRepositories = append(ghOrgRepositories, repository)
-				}
-			}
-
-			for _, ghOrgRepo := range ghOrgRepositories {
-				ghOrg, getGHOrgErr := repo.ghOrgRepo.GetGitHubOrganization(ctx, ghOrgRepo.RepositoryOrganizationName)
-				if getGHOrgErr != nil {
-					msg := fmt.Sprintf("unable to get gh org by name: %s ", ghOrgRepo.RepositoryOrganizationName)
-					log.WithFields(f).WithError(getGHOrgErr).Warn(msg)
-					return nil, errors.New(msg)
-				}
-				ghOrgs = append(ghOrgs, ghOrg)
-			}
-
-			var ghUsernames []string
-			for _, ghOrg := range ghOrgs {
-				ghOrgUsers, getOrgMembersErr := github.GetOrganizationMembers(ctx, ghOrg.OrganizationName, ghOrg.OrganizationInstallationID)
-				if getOrgMembersErr != nil {
-					msg := fmt.Sprintf("unable to fetch github organization users for org: %s ", ghOrg.OrganizationName)
-					log.WithFields(f).WithError(getOrgMembersErr).Warnf("%s", msg)
-					return nil, errors.New(msg)
-				}
-				ghUsernames = append(ghUsernames, ghOrgUsers...)
-			}
-			approvalList.GitHubUsernames = utils.RemoveDuplicates(ghUsernames)
+			approvalList.GitHubUsernames = removedOrgMembers
+			// ICLAs carry no company link, so an organization removal never considers them
+			approvalList.ICLAs = nil
+			approvalList.ECLAs = removedOrgECLAs
 
 			repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs)
 			repo.updateApprovalTable(ctx, params.RemoveGithubOrgApprovalList, utils.GithubOrgApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, false)
@@ -4161,8 +4593,8 @@ func (repo repository) sendEmail(ctx context.Context, email string, approvalList
 			}
 		}
 	} else if removalType == CCLAECLA {
-		subject := fmt.Sprintf("EasyCLA: Employee Acknowledgement invalidated for %s", approvalList.ClaGroupName)
-		log.WithFields(f).Debugf("sending employee acknowledgement invalidation email to :%s ", email)
+		subject := fmt.Sprintf("EasyCLA: Employee Acknowledgment invalidated for %s", approvalList.ClaGroupName)
+		log.WithFields(f).Debugf("sending employee acknowledgment invalidation email to :%s ", email)
 		body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateCCLAECLASignatureTemplateName, InvalidateCCLAECLASignatureTemplate, params)
 		if renderErr != nil {
 			log.WithFields(f).Debugf("unable to render email approval template for user: %s ", email)
@@ -4173,8 +4605,8 @@ func (repo repository) sendEmail(ctx context.Context, email string, approvalList
 			}
 		}
 	} else if removalType == CCLAICLAECLA {
-		subject := fmt.Sprintf("EasyCLA: Employee Acknowledgement invalidated for %s", approvalList.ClaGroupName)
-		log.WithFields(f).Debugf("sending employee acknowledgement invalidation email to :%s ", email)
+		subject := fmt.Sprintf("EasyCLA: Employee Acknowledgment invalidated for %s", approvalList.ClaGroupName)
+		log.WithFields(f).Debugf("sending employee acknowledgment invalidation email to :%s ", email)
 		body, renderErr := utils.RenderTemplate(approvalList.Version, InvalidateCCLAICLAECLASignatureTemplateName, InvalidateCCLAICLAECLASignatureTemplate, params)
 		if renderErr != nil {
 			log.WithFields(f).Debugf("unable to render email approval template for user: %s ", email)
@@ -4205,7 +4637,7 @@ func employeeSignatureListed(eclas []*models.Signature, userID string) bool {
 	return false
 }
 
-// getEmployeeSignatureByUserID looks up the active employee acknowledgement (ECLA) for the given
+// getEmployeeSignatureByUserID looks up the active employee acknowledgment (ECLA) for the given
 // user, project and company by user ID alone - no filtering on the user_email/user_github_username
 // signature attributes, which older ECLA records may lack
 func (repo repository) getEmployeeSignatureByUserID(ctx context.Context, projectID, companyID, userID string) (*models.Signature, error) {
@@ -4428,7 +4860,7 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 	email := getBestEmail(user)
 	invalidationMetadata := &InvalidationMetadata{
 		InvalidatedBy: utils.GetBestUsername(claManager),
-		Reason:        fmt.Sprintf("approved list removal (%s)", approvalList.Criteria),
+		Reason:        ApprovalListRemovalReasonPrefix + approvalList.Criteria + ")",
 	}
 	invalidated := false
 
@@ -4454,15 +4886,14 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 		}
 		// the coverage veto subsumes the earlier per-field email/GH-username checks
 		if matched != nil && *matched {
-			if !userStillApproved(user, approvalList) {
+			if !stillCovered(ctx, f, user, approvalList, signatureID) {
 				//Invalidate record
 				note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), utils.EmailDomainCriteria)
-				err := repo.InvalidateProjectRecordWithMetadata(ctx, signatureID, note, invalidationMetadata)
+				invalidated, err = repo.invalidateApprovedProjectRecord(ctx, signatureID, note, invalidationMetadata)
 				if err != nil {
 					log.WithFields(f).Warnf("unable to invalidate record for signatureID: %s ", signatureID)
 					return user, false, err
 				}
-				invalidated = true
 
 				// Update Gerrit group users
 				//				if utils.StringInSlice(user.LfUsername, approvalList.GerritICLAECLAs) {
@@ -4482,31 +4913,28 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 		}
 	} else if approvalList.Criteria == utils.GitHubOrgCriteria {
 		// Handle GH Org Approvals
-		if utils.StringInSlice(user.GithubUsername, approvalList.GitHubUsernames) {
-			if !utils.StringInSlice(getBestEmail(user), approvalList.EmailApprovals) && !utils.StringInSlice(user.GithubUsername, approvalList.GitHubUsernameApprovals) {
+		if containsFold(approvalList.GitHubUsernames, user.GithubUsername) {
+			if !stillCovered(ctx, f, user, approvalList, signatureID) {
 				//Invalidate record
 
 				note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), utils.GitHubOrgCriteria)
-				err := repo.InvalidateProjectRecordWithMetadata(ctx, signatureID, note, invalidationMetadata)
+				invalidated, err = repo.invalidateApprovedProjectRecord(ctx, signatureID, note, invalidationMetadata)
 				if err != nil {
 					log.WithFields(f).Warnf("unable to invalidate record for signatureID: %s ", signatureID)
 					return user, false, err
 				}
-				invalidated = true
 			}
 		}
 	} else if approvalList.Criteria == utils.GitHubUsernameCriteria || approvalList.Criteria == utils.GitlabUsernameCriteria || approvalList.Criteria == utils.EmailCriteria {
-		if userStillApproved(user, approvalList) {
-			log.WithFields(f).Debugf("user: %s still covered by another approval list criteria - skipping invalidation of signature: %s", userID, signatureID)
+		if stillCovered(ctx, f, user, approvalList, signatureID) {
 			return user, false, nil
 		}
 		note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), approvalList.Criteria)
-		err := repo.InvalidateProjectRecordWithMetadata(ctx, signatureID, note, invalidationMetadata)
+		invalidated, err = repo.invalidateApprovedProjectRecord(ctx, signatureID, note, invalidationMetadata)
 		if err != nil {
 			log.WithFields(f).Warnf("unable to invalidate record for signatureID: %s ", signatureID)
 			return user, false, err
 		}
-		invalidated = true
 	}
 
 	return user, invalidated, nil
@@ -4529,8 +4957,9 @@ func effectiveApprovals(current, add, remove []string) []string {
 
 // userStillApproved reports whether the user remains covered by any approval list criteria.
 // The approvalList approval fields must already reflect the full pending update (see
-// effectiveApprovals). GitHub/GitLab org membership is not re-checked here, consistent with
-// the sibling criteria branches.
+// effectiveApprovals). GitHub organization membership is a network lookup and lives in
+// remainingGitHubOrgCoverage; GitLab group membership is not re-checked, like the enforcement
+// gate does not evaluate it.
 func userStillApproved(user *models.User, approvalList *ApprovalList) bool {
 	if user == nil {
 		return false
@@ -4572,6 +5001,136 @@ func containsFold(list []string, value string) bool {
 		}
 	}
 	return false
+}
+
+// remainingGitHubOrgCoverage mirrors the enforcement gate's organization check
+// (EvaluateUserApproval): the user's public GitHub organizations against the approved
+// organizations left after the pending update. undetermined reports a failed lookup, when
+// coverage cannot be told either way. No lookup is made without a GitHub username or without
+// remaining approved organizations.
+func remainingGitHubOrgCoverage(ctx context.Context, user *models.User, approvalList *ApprovalList) (covered bool, undetermined bool) {
+	login := strings.TrimSpace(user.GithubUsername)
+	if login == "" || len(approvalList.GitHubOrgApprovals) == 0 {
+		return false, false
+	}
+	userOrgs, err := listUserPublicOrgs(ctx, login)
+	if err != nil {
+		return false, true
+	}
+	for _, org := range userOrgs {
+		if containsFold(approvalList.GitHubOrgApprovals, org) {
+			return true, false
+		}
+	}
+	return false, false
+}
+
+// stillCovered decides whether an approval list removal leaves the user's acknowledgment
+// covered: the list criteria first, then the remaining approved GitHub organizations the way
+// the enforcement gate evaluates them. A failed organization lookup counts as covered -
+// invalidating what cannot be re-checked would be destructive, and the gate re-evaluates the
+// lists on every check regardless of the stored approval flag.
+func stillCovered(ctx context.Context, f logrus.Fields, user *models.User, approvalList *ApprovalList, signatureID string) bool {
+	if userStillApproved(user, approvalList) {
+		log.WithFields(f).Debugf("user: %s still covered by another approval list criteria - skipping invalidation of signature: %s", user.UserID, signatureID)
+		return true
+	}
+	covered, undetermined := remainingGitHubOrgCoverage(ctx, user, approvalList)
+	if undetermined {
+		log.WithFields(f).Warnf("unable to list the public GitHub organizations of user: %s - cannot tell whether an approved organization still covers signature: %s, skipping its invalidation", user.UserID, signatureID)
+		return true
+	}
+	if covered {
+		log.WithFields(f).Debugf("user: %s still covered by an approved GitHub organization - skipping invalidation of signature: %s", user.UserID, signatureID)
+	}
+	return covered
+}
+
+// gitHubOrgRemovalTargets resolves what an approval list organization removal needs before
+// anything is written: the members of the removed organizations (through the CLA group's
+// repositories and the installed GitHub App) and the company's approved employee
+// acknowledgments they are matched against. Any failed lookup fails the removal - a partial
+// answer would either exempt members or leave the criterion removed without enforcing it.
+func (repo repository) gitHubOrgRemovalTargets(ctx context.Context, projectID, companyID string, removedOrgs []string) ([]string, []*models.Signature, error) {
+	f := logrus.Fields{
+		"functionName":   "v1.signatures.repository.gitHubOrgRemovalTargets",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"projectID":      projectID,
+		"companyID":      companyID,
+		"removedOrgs":    removedOrgs,
+	}
+
+	// Get repositories by CLAGroup
+	repositories, getRepoByCLAGroupErr := repo.repositoriesRepo.GitHubGetRepositoriesByCLAGroup(ctx, projectID, true)
+	if getRepoByCLAGroupErr != nil {
+		msg := fmt.Sprintf("unable to fetch repositories for cla group ID: %s ", projectID)
+		log.WithFields(f).WithError(getRepoByCLAGroupErr).Warn(msg)
+		return nil, nil, errors.New(msg)
+	}
+	var ghOrgRepositories []*models.GithubRepository
+	var ghOrgs []*models.GithubOrganization
+	for _, repository := range repositories {
+		// Check for matching organization name in repositories table against approvalList removal GitHub organizations -
+		// GitHub organization names are case-insensitive and the gate approves members that way too
+		if containsFold(removedOrgs, repository.RepositoryOrganizationName) {
+			ghOrgRepositories = append(ghOrgRepositories, repository)
+		}
+	}
+
+	for _, ghOrgRepo := range ghOrgRepositories {
+		ghOrg, getGHOrgErr := repo.ghOrgRepo.GetGitHubOrganization(ctx, ghOrgRepo.RepositoryOrganizationName)
+		if getGHOrgErr != nil {
+			msg := fmt.Sprintf("unable to get gh org by name: %s ", ghOrgRepo.RepositoryOrganizationName)
+			log.WithFields(f).WithError(getGHOrgErr).Warn(msg)
+			return nil, nil, errors.New(msg)
+		}
+		ghOrgs = append(ghOrgs, ghOrg)
+	}
+
+	var ghUsernames []string
+	for _, ghOrg := range ghOrgs {
+		ghOrgUsers, getOrgMembersErr := getOrganizationMembers(ctx, ghOrg.OrganizationName, ghOrg.OrganizationInstallationID)
+		if getOrgMembersErr != nil {
+			msg := fmt.Sprintf("unable to fetch github organization users for org: %s ", ghOrg.OrganizationName)
+			log.WithFields(f).WithError(getOrgMembersErr).Warnf("%s", msg)
+			return nil, nil, errors.New(msg)
+		}
+		ghUsernames = append(ghUsernames, ghOrgUsers...)
+	}
+
+	// the members only select whom to re-check - the acknowledgments themselves have to be
+	// loaded too, otherwise invalidateSignatures has nothing to iterate
+	eclas, eclaErr := repo.approvedEmployeeSignatures(ctx, projectID, companyID)
+	if eclaErr != nil {
+		msg := fmt.Sprintf("unable to load the employee acknowledgments for company ID: %s project ID: %s", companyID, projectID)
+		log.WithFields(f).WithError(eclaErr).Warn(msg)
+		return nil, nil, errors.New(msg)
+	}
+	return utils.RemoveDuplicates(ghUsernames), eclas, nil
+}
+
+// approvedEmployeeSignatures returns the company's employee acknowledgments for the CLA group
+// that are still approved and signed - the only records an approval list removal can
+// invalidate; re-invalidating an already invalid one would only replace its note and notify
+// the contributor again. A failed lookup is returned as such, never as an empty set.
+func (repo repository) approvedEmployeeSignatures(ctx context.Context, projectID, companyID string) ([]*models.Signature, error) {
+	eclas, err := repo.GetProjectCompanyEmployeeSignatures(ctx, signatures.GetProjectCompanyEmployeeSignaturesParams{
+		CompanyID: companyID,
+		ProjectID: projectID,
+	}, &ApprovalCriteria{})
+	if err != nil {
+		return nil, err
+	}
+	if eclas == nil {
+		return nil, nil
+	}
+	approved := make([]*models.Signature, 0, len(eclas.Signatures))
+	for _, ecla := range eclas.Signatures {
+		if ecla != nil && ecla.SignatureApproved && ecla.SignatureSigned {
+			approved = append(approved, ecla)
+		}
+	}
+	return approved, nil
 }
 
 // removeColumn is a helper function to remove a given column when we need to zero out the column value - typically the approval list
@@ -5116,11 +5675,17 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 		"companyID":      aws.StringValue(companyID),
 	}
 
-	totalCountChannel := make(chan int64, 1)
-	go repo.getTotalCorporateContributorCount(ctx, claGroupID, companyID, searchTerm, totalCountChannel)
-
-	totalCount := <-totalCountChannel
+	// The total is computed over exactly the row set returned below (company + signed, any approval
+	// state, same search term) so paging and the rendered count never disagree
+	totalCount, countErr := repo.CountClaGroupCorporateContributors(ctx, claGroupID, companyID, false, searchTerm)
+	if countErr != nil {
+		return nil, countErr
+	}
 	log.WithFields(f).Debugf("total corporate contributor count: %d", totalCount)
+	term := corporateContributorSearchTerm(searchTerm)
+	if term != "" {
+		f["searchTerm"] = term
+	}
 	// If the page size is nil, set it to the default
 	if pageSize == nil {
 		pageSize = aws.Int64(10)
@@ -5133,28 +5698,18 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 	log.WithFields(f).Debugf("total corporate contributor count: %d, page size: %d", totalCount, *pageSize)
 
 	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID))
-	// if companyID != nil {
-	// 	sortKey := fmt.Sprintf("%s#%v#%v#%v", utils.ClaTypeECLA, true, true, *companyID)
-	// 	condition = condition.And(expression.Key("sigtype_signed_approved_id").Equal(expression.Value(sortKey)))
-	// } else {
-	// 	sortKeyPrefix := fmt.Sprintf("%s#%v#%v", utils.ClaTypeECLA, true, true)
-	// 	condition = condition.And(expression.Key("sigtype_signed_approved_id").BeginsWith(sortKeyPrefix))
-	// }
-	filter := expression.Name("signature_user_ccla_company_id").Equal(expression.Value(companyID))
-	// filter = filter.And(expression.Name("signature_type").Equal(expression.Value(utils.ClaTypeECLA)))
+	// The sigtype_signed_approved_id GSI is not used here: historical acknowledgments may lack the
+	// key (the stream stamps it on new writes, no backfill), so the filter goes on the plain
+	// attributes. The search term is matched in memory (DynamoDB contains() is case-sensitive), so a
+	// search reads the company's rows in bigger evaluation windows to fill the page in fewer round trips
+	filter := corporateContributorFilter(companyID, false)
+	evaluationLimit := *pageSize
+	if term != "" {
+		evaluationLimit = HugePageSize
+	}
 
 	// Create our builder
-	builder := expression.NewBuilder().WithKeyCondition(condition).WithProjection(buildProjection()).WithFilter(filter)
-
-	if searchTerm != nil {
-		searchTermValue := utils.StringValue(searchTerm)
-		f["searchTerm"] = searchTermValue
-		log.WithFields(f).Debugf("adding search term filter for: '%s'", searchTermValue)
-		builder.WithFilter(expression.Name("signature_reference_name_lower").Contains(strings.ToLower(searchTermValue)).
-			Or(expression.Name("user_email").Contains(strings.ToLower(searchTermValue))).
-			Or(expression.Name("github_username").Contains(strings.ToLower(searchTermValue))).
-			Or(expression.Name("userDocusignName").Contains(strings.ToLower(searchTermValue))))
-	}
+	builder := expression.NewBuilder().WithKeyCondition(condition).WithProjection(buildInvalidationAwareProjection()).WithFilter(filter)
 
 	// Use the builder to create the expression
 	expr, err := builder.Build()
@@ -5173,7 +5728,7 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 		FilterExpression:          expr.Filter(),
 		TableName:                 aws.String(repo.signatureTableName),
 		IndexName:                 aws.String(SignatureProjectIDIndex),
-		Limit:                     aws.Int64(*pageSize),
+		Limit:                     aws.Int64(evaluationLimit),
 	}
 
 	if nextKey != nil {
@@ -5193,6 +5748,10 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 		return out, nil
 	}
 	var lastEvaluatedKey string
+	// continuationKey is the last row handed out when the page filled up with rows still to come -
+	// what the caller passes back as nextKey (DynamoDB's own key is only usable while the page is
+	// still being filled)
+	var continuationKey string
 
 	currentCount := int64(0)
 
@@ -5215,7 +5774,10 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 		}
 
 		log.WithFields(f).Debugf("located %d signatures...", len(dbSignatures))
-		for _, sig := range dbSignatures {
+		for i, sig := range dbSignatures {
+			if !corporateContributorMatches(&sig, term) {
+				continue
+			}
 			var sigCreatedTime = sig.DateCreated
 			t, err := utils.ParseDateTime(sig.DateCreated)
 			if err != nil {
@@ -5248,18 +5810,23 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 			signatureVersion := fmt.Sprintf("v%s.%s", strconv.Itoa(sig.SignatureDocumentMajorVersion), strconv.Itoa(sig.SignatureDocumentMinorVersion))
 
 			sigName := sig.UserName
+			githubID, gitlabID, lfID := sig.UserGithubUsername, sig.UserGitlabUsername, sig.UserLFUsername
 			user, userErr := repo.usersRepo.GetUser(sig.SignatureReferenceID)
 			if userErr != nil {
 				log.WithFields(f).Warnf("unable to get user for id: %s, error: %v ", sig.SignatureReferenceID, userErr)
 			}
-			if user != nil && sigName == "" {
-				sigName = user.Username
+			if user != nil {
+				sigName = firstNonEmpty(sigName, user.Username)
+				githubID = firstNonEmpty(githubID, user.GithubUsername)
+				gitlabID = firstNonEmpty(gitlabID, user.GitlabUsername)
+				lfID = firstNonEmpty(lfID, user.LfUsername)
 			}
 
 			out.List = append(out.List, &models.CorporateContributor{
 				SignatureID:            sig.SignatureID,
-				GithubID:               sig.UserGithubUsername,
-				LinuxFoundationID:      sig.UserLFUsername,
+				GithubID:               githubID,
+				GitlabID:               gitlabID,
+				LinuxFoundationID:      lfID,
 				Name:                   sigName,
 				SignatureVersion:       signatureVersion,
 				Email:                  sig.UserEmail,
@@ -5269,11 +5836,19 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 				SignatureModified:      sig.DateModified,
 				SignatureApproved:      sig.SignatureApproved,
 				SignatureSigned:        sig.SignatureSigned,
+				InvalidatedAt:          formatStoredTime(sig.DateInvalidated),
+				InvalidatedBy:          sig.InvalidatedBy,
+				InvalidationReason:     sig.InvalidationReason,
+				InvalidationNote:       sig.InvalidationNote,
+				Note:                   sig.Note,
 			})
 
 			// Increment the current count
 			currentCount++
 			if currentCount >= *pageSize {
+				if i+1 < len(dbSignatures) || results.LastEvaluatedKey["signature_id"] != nil {
+					continuationKey = sig.SignatureID
+				}
 				break
 			}
 		}
@@ -5292,45 +5867,99 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 
 	out.ResultCount = currentCount
 	out.TotalCount = totalCount
-	out.NextKey = lastEvaluatedKey
+	// A first page holding every matching row is complete whatever DynamoDB says about the rest
+	// of the key range (the remaining items can only be the filtered-out ones)
+	if nextKey == nil && currentCount >= totalCount {
+		continuationKey = ""
+	}
+	out.NextKey = continuationKey
 
 	return out, nil
 }
 
-func (repo repository) getTotalCorporateContributorCount(ctx context.Context, claGroupID string, companyID, searchTerm *string, totalCountChannel chan int64) {
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func corporateContributorFilter(companyID *string, approvedOnly bool) expression.ConditionBuilder {
+	filter := expression.Name("signature_user_ccla_company_id").Equal(expression.Value(companyID)).
+		And(expression.Name("signature_signed").Equal(expression.Value(true)))
+	if approvedOnly {
+		filter = filter.And(expression.Name("signature_approved").Equal(expression.Value(true)))
+	}
+	return filter
+}
+
+func corporateContributorSearchTerm(searchTerm *string) string {
+	if searchTerm == nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(*searchTerm))
+}
+
+func corporateContributorSearchProjection() expression.ProjectionBuilder {
+	return buildCountProjection().AddNames(
+		expression.Name("signature_reference_name_lower"),
+		expression.Name("user_email"),
+		expression.Name("user_lf_username"),
+		expression.Name("user_name"),
+		expression.Name(SignatureUserGitHubUsername),
+		expression.Name(SignatureUserGitlabUsername),
+		expression.Name("user_docusign_name"),
+	)
+}
+
+// case-insensitive: DynamoDB contains() is case-sensitive and would miss a mixed-case login
+func corporateContributorMatches(sig *ItemSignature, term string) bool {
+	if term == "" {
+		return true
+	}
+	for _, value := range []string{sig.SignatureReferenceNameLower, sig.UserEmail, sig.UserLFUsername, sig.UserName,
+		sig.UserGithubUsername, sig.UserGitlabUsername, sig.UserDocusignName} {
+		if value != "" && strings.Contains(strings.ToLower(value), term) {
+			return true
+		}
+	}
+	return false
+}
+
+// CountClaGroupCorporateContributors counts the company's signed employee acknowledgments under the
+// CLA group - every approval state (the corporate-contributors list total) or approved only (the
+// approvedContributorsCount of the organization CLA landing list) - optionally narrowed by the same
+// search term as the list
+func (repo repository) CountClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, approvedOnly bool, searchTerm *string) (int64, error) {
 	f := logrus.Fields{
-		"functionName":   "v1.signature.repository.getTotalCorporateContributorCount",
+		"functionName":   "v1.signature.repository.CountClaGroupCorporateContributors",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"claGroupID":     claGroupID,
-		"companyID":      companyID,
-		"searchTerm":     searchTerm,
+		"companyID":      aws.StringValue(companyID),
+		"approvedOnly":   approvedOnly,
 	}
 
 	pageSize := int64(HugePageSize)
 	f["pageSize"] = pageSize
-
-	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID))
-
-	filter := expression.Name("signature_user_ccla_company_id").Equal(expression.Value(companyID)).And(expression.Name("signature_approved").Equal(expression.Value(true))).And(expression.Name("signature_signed").Equal(expression.Value(true)))
-
-	builder := expression.NewBuilder().WithKeyCondition(condition).WithFilter(filter)
-
-	if searchTerm != nil {
-		searchTermValue := *searchTerm
-		builder = builder.WithFilter(expression.Name("user_name").Contains(strings.ToLower(searchTermValue)).
-			Or(expression.Name("user_email").Contains(strings.ToLower(searchTermValue))).
-			Or(expression.Name("github_username").Contains(strings.ToLower(searchTermValue))).
-			Or(expression.Name("userDocusignName").Contains(strings.ToLower(searchTermValue))))
+	term := corporateContributorSearchTerm(searchTerm)
+	projection := buildCountProjection()
+	if term != "" {
+		f["searchTerm"] = term
+		projection = corporateContributorSearchProjection()
 	}
 
-	beforeQuery, _ := utils.CurrentTime()
-	log.WithFields(f).Debugf("running total signature count query for claGroupID: %s, companyID: %s", claGroupID, *companyID)
+	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID))
+	filter := corporateContributorFilter(companyID, approvedOnly)
 
-	expr, err := builder.WithProjection(buildCountProjection()).Build()
+	beforeQuery, _ := utils.CurrentTime()
+	log.WithFields(f).Debugf("running total signature count query for claGroupID: %s, companyID: %s", claGroupID, aws.StringValue(companyID))
+
+	expr, err := expression.NewBuilder().WithKeyCondition(condition).WithFilter(filter).WithProjection(projection).Build()
 	if err != nil {
 		log.WithFields(f).Warnf("error building expression for cla group: %s, error: %v", claGroupID, err)
-		totalCountChannel <- 0
-		return
+		return 0, err
 	}
 
 	queryInput := &dynamodb.QueryInput{
@@ -5352,12 +5981,23 @@ func (repo repository) getTotalCorporateContributorCount(ctx context.Context, cl
 		results, errQuery := repo.dynamoDBClient.QueryWithContext(ctx, queryInput)
 		if errQuery != nil {
 			log.WithFields(f).Warnf("error querying signatures for cla group: %s, error: %v", claGroupID, errQuery)
-			totalCountChannel <- 0
-			return
+			return 0, errQuery
 		}
 
-		// Add the count to the total
-		totalCount += *results.Count
+		if term == "" {
+			totalCount += *results.Count
+		} else {
+			var dbSignatures []ItemSignature
+			if unmarshalErr := dynamodbattribute.UnmarshalListOfMaps(results.Items, &dbSignatures); unmarshalErr != nil {
+				log.WithFields(f).WithError(unmarshalErr).Warnf("error unmarshalling signatures for cla group: %s", claGroupID)
+				return 0, unmarshalErr
+			}
+			for i := range dbSignatures {
+				if corporateContributorMatches(&dbSignatures[i], term) {
+					totalCount++
+				}
+			}
+		}
 
 		// Set the last evaluated key
 		if results.LastEvaluatedKey["signature_id"] != nil {
@@ -5370,8 +6010,15 @@ func (repo repository) getTotalCorporateContributorCount(ctx context.Context, cl
 
 	log.WithFields(f).Debugf("total signature count query took: %s", time.Since(beforeQuery))
 
-	totalCountChannel <- totalCount
+	return totalCount, nil
+}
 
+// formatStoredTime normalizes a stored date attribute for the API, leaving an absent one absent
+func formatStoredTime(value string) string {
+	if value == "" {
+		return ""
+	}
+	return utils.FormatTimeString(value)
 }
 
 // EclaAutoCreate this routine updates the CCLA signature record by adjusting the auto_create_ecla column to the specified value

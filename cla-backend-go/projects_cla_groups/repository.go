@@ -174,7 +174,7 @@ func (repo *repo) GetClaGroupIDForProject(ctx context.Context, projectSFID strin
 		pcgs, foundationErr := repo.GetProjectsIdsForFoundation(ctx, projectSFID)
 		if foundationErr != nil {
 			log.WithFields(f).Warnf("unable to lookup CLA Group associated with project, error: %+v", foundationErr)
-			return nil, err
+			return nil, foundationErr
 		}
 
 		if len(pcgs) == 0 {

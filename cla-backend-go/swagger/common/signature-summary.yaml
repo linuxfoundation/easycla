@@ -16,7 +16,7 @@ properties:
     description: >
       CLA Type field - identifies the specify signature type - individual, employee or corporate signature, valid options:
       * `icla` - for individual contributor signature records (individuals not associated with a corporation)
-      * `ecla` - for employee contributor signature records (acknowledgements from corporate contributors)
+      * `ecla` - for employee contributor signature records (acknowledgments from corporate contributors)
       * `ccla` - for corporate contributor signature records (created by CLA Signatories and managed by CLA Managers)
     enum: [ icla,ecla,ccla ]
   signatureSigned:

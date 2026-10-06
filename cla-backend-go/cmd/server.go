@@ -459,13 +459,12 @@ func server(localMode bool) http.Handler {
 
 	v2ClaSearchService := v2ClaSearch.NewService(v2ClaSearch.NewRepository(awsSession, stage))
 	v2MyClasService := v2MyClas.NewService(v2MyClas.NewRepository(awsSession, stage), user_service.GetClient(), v2MyClas.NewAuth0IdentityService(configFile.Auth0Platform.URL, configFile.Auth0Platform.ClientID, configFile.Auth0Platform.ClientSecret), v1SignaturesService, v1CompanyRepo, v1ProjectClaGroupRepo, project_service.GetClient(), eventsService, v2MyClas.NewSanctionsScreener(sssClient, sssEnabled, sssRequired))
-	v2SelfServeSignService := v2SelfServeSign.NewService(v2MyClasService, usersService, v1ProjectService, v1ProjectClaGroupRepo, storeRepository, configFile.CLAContributorv2Base)
-	trustedCallerVerifier, err := auth.NewTrustedCallerVerifier(configFile.Auth0.Domain, configFile.Auth0.Algorithm, configFile.SelfServe.TrustedClientIDs)
+	trustedCallerVerifier, err := auth.NewTrustedCallerVerifier(configFile.Auth0.Domain, configFile.Auth0.Algorithm, configFile.SelfServe.TrustedClientIDs, configFile.Auth0Platform.Audience)
 	if err != nil {
 		logrus.Panic(err)
 	}
 	v1ClaManagerService := cla_manager.NewService(claManagerReqRepo, v1ProjectClaGroupRepo, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService, configFile.CorporateConsoleV2URL)
-	v2ClaManagerService := v2ClaManager.NewService(emailTemplateService, v1CompanyService, v1ProjectService, v1ClaManagerService, usersService, v1RepositoriesService, v2CompanyService, eventsService, v1ProjectClaGroupRepo)
+	v2ClaManagerService := v2ClaManager.NewService(emailTemplateService, v1CompanyService, v1ProjectService, v1ClaManagerService, usersService, v1RepositoriesService, v2CompanyService, eventsService, v1ProjectClaGroupRepo, v1SignaturesService)
 	v1ApprovalListService := approval_list.NewService(approvalListRepo, v1ProjectClaGroupRepo, v1ProjectService, usersRepo, v1CompanyRepo, v1CLAGroupRepo, signaturesRepo, emailTemplateService, configFile.CorporateConsoleV2URL, http.DefaultClient)
 	authorizer := auth.NewAuthorizer(authValidator, userRepo)
 	v2MetricsService := metrics.NewService(metricsRepo, v1ProjectClaGroupRepo)
@@ -478,6 +477,7 @@ func server(localMode bool) http.Handler {
 	v2ClaGroupService := cla_groups.NewService(v1ProjectService, templateService, v1ProjectClaGroupRepo, v1ClaManagerService, v1SignaturesService, metricsRepo, gerritService, v1RepositoriesService, eventsService)
 
 	v2SignService := sign.NewService(configFile.ClaAPIV4Base, configFile.ClaV1ApiURL, v1CompanyRepo, v1CLAGroupRepo, v1ProjectClaGroupRepo, v1CompanyService, v2ClaGroupService, configFile.DocuSignPrivateKey, usersService, v1SignaturesService, storeRepository, v1RepositoriesService, githubOrganizationsService, gitlabOrganizationsService, configFile.CLALandingPage, configFile.CLALogoURL, emailService, eventsService, gitlabActivityService, gitlabApp, gerritService, sssClient, sssRequired, sssEnabled)
+	v2SelfServeSignService := v2SelfServeSign.NewService(v2MyClasService, usersService, v1ProjectService, v1ProjectClaGroupRepo, storeRepository, v2SignService, v1CompanyRepo, configFile.CLAContributorv2Base)
 
 	sessionStore, err := dynastore.New(dynastore.Path("/"), dynastore.HTTPOnly(), dynastore.TableName(configFile.SessionStoreTableName), dynastore.DynamoDB(dynamodb.New(awsSession)))
 	if err != nil {
@@ -508,7 +508,7 @@ func server(localMode bool) http.Handler {
 	version.Configure(api, Version, Commit, Branch, BuildDate)
 	v2Version.Configure(v2API, Version, Commit, Branch, BuildDate)
 	events.Configure(api, eventsService)
-	v2Events.Configure(v2API, eventsService, v1CompanyRepo, v1ProjectClaGroupRepo, v1ProjectService)
+	v2Events.Configure(v2API, eventsService, v1CompanyService, v1ProjectClaGroupRepo, v1ProjectService)
 	v2Metrics.Configure(v2API, v2MetricsService, v1CompanyRepo)
 	github_organizations.Configure(api, githubOrganizationsService, eventsService)
 	v2GithubOrganizations.Configure(v2API, v2GithubOrganizationsService, eventsService)
@@ -521,7 +521,7 @@ func server(localMode bool) http.Handler {
 	v2Gerrits.Configure(v2API, gerritService, v1ProjectService, eventsService, v1ProjectClaGroupRepo)
 	v2Company.Configure(v2API, v2CompanyService, v1ProjectClaGroupRepo, configFile.LFXPortalURL)
 	v2CurrentUser.Configure(v2API, v2CurrentUserService)
-	v2SelfServeSign.Configure(v2API, v2SelfServeSignService)
+	v2SelfServeSign.Configure(v2API, v2SelfServeSignService, trustedCallerVerifier)
 	v2ClaSearch.Configure(v2API, v2ClaSearchService)
 	v2MyClas.Configure(v2API, v2MyClasService, trustedCallerVerifier)
 	cla_manager.Configure(api, v1ClaManagerService, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService)

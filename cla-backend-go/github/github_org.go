@@ -130,18 +130,48 @@ func GetOrganizationMembers(ctx context.Context, orgName string, installationID 
 		return nil, errors.New(msg)
 	}
 
-	users, resp, err := client.Organizations.ListMembers(ctx, orgName, nil)
+	return listOrganizationMembers(ctx, client, orgName)
+}
 
-	if resp.StatusCode < 200 || resp.StatusCode > 299 || err != nil {
-		msg := fmt.Sprintf("List Org Members failed for Organization: %s with no success response code %d. error = %s", orgName, resp.StatusCode, err.Error())
-		log.WithFields(f).Warnf("%s", msg)
-		return nil, errors.New(msg)
+// listOrganizationMembers walks every page of GET /orgs/<org>/members (GitHub pages the
+// endpoint, 30 members by default). A failure on any page is returned as a failure: a partial
+// member set would silently exempt the members past it from the approval list re-check.
+func listOrganizationMembers(ctx context.Context, client *github.Client, orgName string) ([]string, error) {
+	f := logrus.Fields{
+		"functionName":   "github.listOrganizationMembers",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"orgName":        orgName,
 	}
 
 	var ghUsernames []string
-	for _, user := range users {
-		log.WithFields(f).Debugf("user :%s found for organization: %s", *user.Login, orgName)
-		ghUsernames = append(ghUsernames, *user.Login)
+	opt := &github.ListMembersOptions{ListOptions: github.ListOptions{PerPage: 100, Page: 1}}
+	for {
+		users, resp, err := client.Organizations.ListMembers(ctx, orgName, opt)
+		if err != nil {
+			msg := fmt.Sprintf("List Org Members failed for Organization: %s on page %d. error = %s", orgName, opt.Page, err.Error())
+			log.WithFields(f).Warnf("%s", msg)
+			return nil, errors.New(msg)
+		}
+		if resp == nil || resp.StatusCode < 200 || resp.StatusCode > 299 {
+			statusCode := 0
+			if resp != nil {
+				statusCode = resp.StatusCode
+			}
+			msg := fmt.Sprintf("List Org Members failed for Organization: %s on page %d with no success response code %d", orgName, opt.Page, statusCode)
+			log.WithFields(f).Warnf("%s", msg)
+			return nil, errors.New(msg)
+		}
+
+		for _, user := range users {
+			if user == nil || user.Login == nil {
+				continue
+			}
+			log.WithFields(f).Debugf("user :%s found for organization: %s", *user.Login, orgName)
+			ghUsernames = append(ghUsernames, *user.Login)
+		}
+		if resp.NextPage == 0 {
+			return ghUsernames, nil
+		}
+		opt.Page = resp.NextPage
 	}
-	return ghUsernames, nil
 }

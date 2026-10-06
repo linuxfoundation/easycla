@@ -1105,7 +1105,7 @@ paths:
         - $ref: "#/parameters/x-email"
         - $ref: '#/parameters/pageSize'
         - $ref: '#/parameters/path-projectSFID'
-        - $ref: '#/parameters/path-companyID'
+        - $ref: '#/parameters/path-companyReference'
         - $ref: '#/parameters/nextKey'
         - $ref: '#/parameters/searchTerm'
         - $ref: '#/parameters/returnAllEvents'
@@ -2345,7 +2345,7 @@ paths:
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
         - $ref: "#/parameters/path-projectSFID"
-        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-companyReference"
         - $ref: '#/parameters/sortOrder'
       responses:
         '200':
@@ -2550,7 +2550,7 @@ paths:
         '401':
           $ref: '#/responses/unauthorized'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '404':
           $ref: '#/responses/not-found'
         '500':
@@ -2619,7 +2619,7 @@ paths:
         '401':
           $ref: '#/responses/unauthorized'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '404':
           $ref: '#/responses/not-found'
         '500':
@@ -2716,7 +2716,7 @@ paths:
         '400':
           $ref: '#/responses/invalid-request'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '404':
           $ref: '#/responses/not-found'
         '409':
@@ -2753,7 +2753,7 @@ paths:
   /my-clas:
     get:
       summary: Get My CLAs
-      description: Returns the signed ICLAs and ECLAs (employee acknowledgements) matching the provided identity - LF username, emails, GitHub/GitLab/Gerrit identities - aggregated across all matching EasyCLA user records, deduplicated, with validity evaluated against the current company CCLA approval lists. Unless the caller is an admin or a trusted LFX Self Serve client, every provided identity must belong to the authenticated user (their EasyCLA user records, or the identities connected to their LF account in the platform user-service); unverifiable ones are not searched and are reported in skippedIdentities. A trusted caller has its Authorization bearer token signature-verified against the Auth0 JWKS in-handler and its azp claim on the configured Self Serve client-ID allow-list; while that allow-list is configured every request needs a verifiable bearer token and a missing or unverifiable one is 401
+      description: Returns the signed ICLAs and employee acknowledgments matching the provided identity - LF username, emails, GitHub/GitLab/Gerrit identities - aggregated across all matching EasyCLA user records, deduplicated, with validity evaluated against the current company CCLA approval lists. Unless the caller is an admin or a trusted LFX Self Serve client, every provided identity must belong to the authenticated user (their EasyCLA user records, or the identities connected to their LF account in the platform user-service); unverifiable ones are not searched and are reported in skippedIdentities. A trusted caller has its Authorization bearer token signature-verified against the Auth0 JWKS in-handler, its azp claim on the configured Self Serve client-ID allow-list and its aud claim carrying the configured platform API audience (both are required - an allow-listed azp with another audience is not trusted); while that allow-list is configured every request needs a verifiable bearer token and a missing or unverifiable one is 401
       operationId: getMyClas
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -2768,6 +2768,8 @@ paths:
         - $ref: "#/parameters/myClasGitlabId"
         - $ref: "#/parameters/myClasGitlabUsername"
         - $ref: "#/parameters/myClasGerritUsername"
+        - $ref: "#/parameters/pageSize"
+        - $ref: "#/parameters/offset"
       responses:
         '200':
           description: 'Success'
@@ -2791,7 +2793,7 @@ paths:
   /my-clas/{signatureID}/pdf:
     get:
       summary: Get a signed ICLA PDF download link
-      description: Returns a time-limited download URL for a signed ICLA PDF owned by the provided identity - unknown, not-owned and ECLA signature IDs return 404. Identity-ownership enforcement and trusted-caller token verification are as in GET /my-clas, so a caller that is neither an admin nor a trusted LFX Self Serve client can only download its own documents
+      description: Returns a time-limited download URL for a signed ICLA PDF owned by the provided identity - unknown, not-owned and employee-acknowledgment signature IDs return 404. Identity-ownership enforcement and trusted-caller token verification are as in GET /my-clas, so a caller that is neither an admin nor a trusted LFX Self Serve client can only download its own documents
       operationId: getMyClaPdf
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -2836,8 +2838,8 @@ paths:
 
   /my-clas/{signatureID}/cla-managers:
     get:
-      summary: Get the CLA managers for an ECLA
-      description: Returns the CLA managers of the company CCLA covering the given ECLA, so the contributor can pick whom to contact for a removal or approval request - unknown, not-owned and ICLA signature IDs return 404. Identity-ownership enforcement and trusted-caller token verification are as in GET /my-clas
+      summary: Get the CLA managers for an employee acknowledgment
+      description: Returns the CLA managers of the company CCLA covering the given employee acknowledgment, so the contributor can pick whom to contact for a removal or approval request - unknown, not-owned and ICLA signature IDs return 404. Identity-ownership enforcement and trusted-caller token verification are as in GET /my-clas
       operationId: getMyClaManagers
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -2858,6 +2860,8 @@ paths:
         - $ref: "#/parameters/myClasGitlabId"
         - $ref: "#/parameters/myClasGitlabUsername"
         - $ref: "#/parameters/myClasGerritUsername"
+        - $ref: "#/parameters/pageSize"
+        - $ref: "#/parameters/offset"
       responses:
         '200':
           description: 'Success'
@@ -2882,8 +2886,8 @@ paths:
 
   /my-clas/{signatureID}/cla-manager-requests:
     post:
-      summary: Request removal or approval from, or send a message to, the CLA managers of an ECLA
-      description: Records a contributor request against their own ECLA and emails it to the selected CLA managers of the covering company CCLA - removal (take me off the coverage), approval (add me back to the approval list) or contact (just deliver the contributor's free-form message, required and non-blank for this type, no change requested). recipients must be a non-empty subset of the managers from GET /my-clas/{signatureID}/cla-managers; empty only when none resolves, and the request is then recorded without email. No signature state changes. Unknown, not-owned and ICLA signature IDs return 404. An ECLA flagged for a sanctioned company is deliberately still accepted - a removal request is legitimate there. Identity-ownership enforcement and trusted-caller token verification are as in GET /my-clas
+      summary: Request removal or approval from, or send a message to, the CLA managers of an employee acknowledgment
+      description: Records a contributor request against their own employee acknowledgment and emails it to the selected CLA managers of the covering company CCLA - removal (take me off the coverage), approval (add me back to the approval list) or contact (just deliver the contributor's free-form message, required and non-blank for this type, no change requested). recipients must be a non-empty subset of the managers from GET /my-clas/{signatureID}/cla-managers; empty only when none resolves, and the request is then recorded without email. No signature state changes. Unknown, not-owned and ICLA signature IDs return 404. An employee acknowledgment flagged for a sanctioned company is deliberately still accepted - a removal request is legitimate there. Identity-ownership enforcement and trusted-caller token verification are as in GET /my-clas
       operationId: createMyClaManagerRequest
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -2941,6 +2945,8 @@ paths:
         - $ref: "#/parameters/x-acl"
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/pageSize"
+        - $ref: "#/parameters/offset"
       responses:
         '200':
           description: 'Success'
@@ -2962,7 +2968,7 @@ paths:
   /self-serve/prepare-sign:
     post:
       summary: Prepare Sign
-      description: Prepares a proactive (no pull/merge request) signing session started from LFX Self Serve - verifies that the provided identity belongs to the authenticated user with the same rules as GET /my-clas (their EasyCLA user records first, then the identities connected to their LF account in the platform user-service), creates the EasyCLA user record when the verified identity has none, records the return URL for the signing session, and returns the Contributor Console URL to hand off to so the contributor can choose ICLA or ECLA there
+      description: Prepares a proactive (no pull/merge request) signing session started from LFX Self Serve - verifies that the provided identity belongs to the authenticated user with the same rules as GET /my-clas (their EasyCLA user records first, then the identities connected to their LF account in the platform user-service and Auth0; a trusted Self Serve caller - bearer token with an allow-listed azp and the expected audience - has the provided identity accepted as its own without those checks), looks the identity up in the existing EasyCLA user records in both cases, creates the EasyCLA user record when none matches, records the return URL for the signing session, and returns the Contributor Console URL to hand off to so the contributor can choose an ICLA or an employee acknowledgment there
       operationId: prepareSign
       parameters:
         - $ref: "#/parameters/x-request-id"
@@ -2991,6 +2997,46 @@ paths:
           $ref: '#/responses/forbidden'
         '404':
           $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - self_serve_sign
+
+  /self-serve/request-corporate-signature:
+    post:
+      summary: Requests and generates a new Corporate Signature from LFX Self Serve
+      description: Creates a new corporate signature given project and company IDs, exactly as /request-corporate-signature does, after verifying the two Self Serve attestations on self-sign - the request is rejected with a 400 unless both authority_acked and embargo_acked are true, except when send_as_email is true, in which case cla_group_id, authority_name and authority_email are required instead and the attestations are not. Self-sign may omit cla_group_id. Any supplied cla_group_id must match the project's resolved CLA group, including the group actually used by the signing engine; mismatches are rejected with a 400 before a signing envelope is created or emailed. A company blocked for trade compliance is rejected with the typed 403 `company_sanctioned` body described by the 403 response
+      operationId: selfServeRequestCorporateSignature
+      parameters:
+        - $ref: "#/parameters/authorization"
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - name: input
+          in: body
+          schema:
+            $ref: '#/definitions/self-serve-corporate-signature-input'
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/self-serve-corporate-signature-output'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden-or-company-sanctioned'
+        '404':
+          $ref: '#/responses/not-found'
+        '409':
+          $ref: '#/responses/conflict'
         '500':
           $ref: '#/responses/internal-server-error'
       tags:
@@ -3103,6 +3149,36 @@ paths:
         - company
 
   /company/{companyID}/project/{projectSFID}/cla-manager/requests:
+    get:
+      summary: Lists the CLA Manager requests for the specified Company and Project
+      description: Returns the CLA Manager access requests for the CLA Group associated with the project
+      operationId: getCLAManagerRequests
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-projectSFID"
+        - $ref: "#/parameters/pageSize"
+        - $ref: "#/parameters/offset"
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: "#/definitions/cla-manager-request-list"
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - cla-manager
     post:
       summary: Adds a CLA Manager Designee to the specified Company and Project
       description: User proposes a CLA Manager making the proposed user CLA Manager Designee
@@ -3112,7 +3188,7 @@ paths:
         - $ref: "#/parameters/x-acl"
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
-        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-companyReference"
         - $ref: "#/parameters/path-projectSFID"
         - name: body
           required: true
@@ -3158,12 +3234,122 @@ paths:
         '404':
           $ref: '#/responses/not-found'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '409':
           $ref: '#/responses/conflict'
       tags:
         - cla-manager
 
+  /company/{companyID}/project/{projectSFID}/cla-manager/requests/{requestID}:
+    get:
+      summary: Gets the CLA Manager request for the specified Company, Project and request ID
+      description: Returns the specified CLA Manager access request
+      operationId: getCLAManagerRequest
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-projectSFID"
+        - name: requestID
+          description: The CLA Manager request ID
+          in: path
+          type: string
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: "#/definitions/cla-manager-request"
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - cla-manager
+
+  /company/{companyID}/project/{projectSFID}/cla-manager/requests/{requestID}/approve:
+    put:
+      summary: Approves the CLA Manager request for the specified Company, Project and request ID
+      description: Approves the request, adds the requesting user to the CCLA signature ACL as a CLA Manager and notifies the requester and the existing CLA Managers
+      operationId: approveCLAManagerRequest
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-projectSFID"
+        - name: requestID
+          description: The CLA Manager request ID
+          in: path
+          type: string
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: "#/definitions/cla-manager-request"
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden-or-company-sanctioned'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - cla-manager
+
+  /company/{companyID}/project/{projectSFID}/cla-manager/requests/{requestID}/deny:
+    put:
+      summary: Denies the CLA Manager request for the specified Company, Project and request ID
+      description: Denies the request and notifies the requester and the existing CLA Managers
+      operationId: denyCLAManagerRequest
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-projectSFID"
+        - name: requestID
+          description: The CLA Manager request ID
+          in: path
+          type: string
+          required: true
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: "#/definitions/cla-manager-request"
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden-or-company-sanctioned'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - cla-manager
 
   /company/{companyID}/project/{projectSFID}/cla-manager:
     post:
@@ -3196,7 +3382,7 @@ paths:
         '401':
           $ref: '#/responses/unauthorized'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '409':
           $ref: '#/responses/conflict'
         '500':
@@ -3265,7 +3451,7 @@ paths:
         '401':
           $ref: '#/responses/unauthorized'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '409':
           $ref: '#/responses/conflict'
       tags:
@@ -3282,7 +3468,7 @@ paths:
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
         - $ref: "#/parameters/path-claGroupID"
-        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-companyReference"
         - name: body
           in: body
           required: true
@@ -3309,7 +3495,7 @@ paths:
         '401':
           $ref: '#/responses/unauthorized'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '404':
           $ref: '#/responses/not-found'
         '409':
@@ -3328,7 +3514,7 @@ paths:
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
         - $ref: "#/parameters/path-projectSFID"
-        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-companyReference"
         - name: body
           in: body
           required: true
@@ -3355,7 +3541,7 @@ paths:
         '401':
           $ref: '#/responses/unauthorized'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '409':
           $ref: '#/responses/conflict'
       tags:
@@ -3833,6 +4019,45 @@ paths:
       tags:
         - signatures
 
+  /cla-group/{claGroupID}/ecla/{signatureID}/invalidate:
+    put:
+      summary: Invalidate an employee acknowledgment record
+      description: Invalidates a given employee acknowledgment (`ecla` signature) record - also stamps date_invalidated, invalidated_by and the optional invalidation_reason/invalidation_note from the body
+      operationId: invalidateECLA
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/path-claGroupID"
+        - $ref: "#/parameters/path-signatureID"
+        - name: body
+          in: body
+          required: false
+          schema:
+            $ref: '#/definitions/ecla-invalidation-input'
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: "#/definitions/ecla-invalidate-result"
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden-or-company-sanctioned'
+        '404':
+          $ref: '#/responses/not-found'
+        '409':
+          $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - signatures
+
   /company/{companyID}:
     get:
       summary: Get Company By Internal ID
@@ -3843,7 +4068,7 @@ paths:
         - $ref: "#/parameters/x-acl"
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
-        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-companyReference"
       produces:
         - application/json
       responses:
@@ -3901,6 +4126,75 @@ paths:
           $ref: '#/responses/not-found'
       tags:
         - company
+
+  /company/external/{companySFID}/cla-groups:
+    get:
+      summary: Get Company CLA Groups
+      description: Returns the CLA groups of the organization - one entry per signing entity and CLA group, an empty list when the company or CLA groups do not exist
+      operationId: getCompanyClaGroups
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: '#/parameters/path-companySFID'
+        - $ref: '#/parameters/pageSize'
+        - $ref: '#/parameters/offset'
+      produces:
+        - application/json
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/company-cla-groups'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '403':
+          $ref: '#/responses/forbidden'
+      tags:
+        - company
+
+  /company/external/{companySFID}/cla-group/{claGroupID}/corporate-contributors:
+    get:
+      summary: List corporate contributors by company SFID
+      description: Returns the corporate contributors (employee acknowledgments) of the CLA Group for the company identified by its SFID - the same data as /cla-group/{claGroupID}/corporate-contributors on an organization-scoped path, so organization-scoped (CLA manager) tokens are authorized at the API gateway. The optional companyID query parameter selects one signing-entity record of the company - when omitted the parent record is used
+      operationId: listCompanyClaGroupCorporateContributors
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: '#/parameters/path-companySFID'
+        - $ref: "#/parameters/path-claGroupID"
+        - $ref: '#/parameters/companyID'
+        - $ref: '#/parameters/searchTerm'
+        - $ref: '#/parameters/pageSize'
+        - $ref: '#/parameters/nextKey'
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/corporate-contributor-list'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '403':
+          $ref: '#/responses/forbidden'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - signatures
 
   /company/name/{companyName}:
     get:
@@ -4089,7 +4383,7 @@ paths:
         - $ref: "#/parameters/x-acl"
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
-        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-companyReference"
         - $ref: "#/parameters/path-projectSFID"
       responses:
         '200':
@@ -4119,7 +4413,7 @@ paths:
       security: [ ]
       parameters:
         - $ref: "#/parameters/x-request-id"
-        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-companyReference"
         - $ref: "#/parameters/path-claGroupID"
       responses:
         '200':
@@ -4151,7 +4445,7 @@ paths:
         - $ref: "#/parameters/x-acl"
         - $ref: "#/parameters/x-username"
         - $ref: "#/parameters/x-email"
-        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-companyReference"
         - $ref: "#/parameters/path-projectSFID"
       responses:
         '200':
@@ -4298,7 +4592,8 @@ paths:
     post:
       summary: Requests and generates a new Corporate Signature
       description: Creates a new signature given project and company IDs. The manager will be redirected to the
-        return_url once signature is complete.
+        return_url once signature is complete. A company blocked for trade compliance is rejected with the typed
+        403 `company_sanctioned` body described by the 403 response.
       operationId: requestCorporateSignature
       parameters:
         - $ref: "#/parameters/authorization"
@@ -4325,7 +4620,7 @@ paths:
         '401':
           $ref: '#/responses/unauthorized'
         '403':
-          $ref: '#/responses/forbidden'
+          $ref: '#/responses/forbidden-or-company-sanctioned'
         '404':
           $ref: '#/responses/not-found'
         '500':
@@ -4718,6 +5013,8 @@ paths:
           description: Successfully received and processed the callback data for corporate signatures.
         '400':
           description: Invalid request.
+        '403':
+          $ref: '#/responses/forbidden-or-company-sanctioned'
       tags:
         - sign
     
@@ -4821,6 +5118,21 @@ responses:
         description: The unique request ID value - assigned/set by the API Gateway based on the session
     schema:
       $ref: '#/definitions/error-response'
+  forbidden-or-company-sanctioned:
+    description: |
+      Insufficient privilege to execute action, or the company is blocked for trade
+      compliance. Only the plain permissions failure follows the declared error-response
+      schema; the trade-compliance body deviates from it (swagger 2.0 cannot express the
+      union) and is exactly
+      `{"code": "company_sanctioned", "message": "...", "company_id": "...", "company_sfid": "...", "x-request-id": "..."}`
+      - parse it from the raw body and key off lowercase `code` to distinguish the
+      sanctions case from a plain permissions failure.
+    headers:
+      x-request-id:
+        type: string
+        description: The unique request ID value - assigned/set by the API Gateway based on the session
+    schema:
+      $ref: '#/definitions/error-response'
   not-found:
     description: Not found
     headers:
@@ -4894,6 +5206,13 @@ parameters:
     required: false
     minimum: 0
     exclusiveMinimum: true
+  offset:
+    name: offset
+    description: The optional number of leading results to skip before assembling the page - when omitted no results are skipped
+    in: query
+    type: integer
+    required: false
+    minimum: 0
   returnAllEvents:
     name: returnAllEvents
     description: The optional parameter which would avoid pagination and it will return all data
@@ -4965,7 +5284,7 @@ parameters:
     description: >
       CLA Type query parameter - allows the caller to specify either individual, employee or corporate signature, valid options:
       * `icla` - for individual contributor signature records (individuals not associated with a corporation)
-      * `ecla` - for employee contributor signature records (acknowledgements from corporate contributors)
+      * `ecla` - for employee contributor signature records (acknowledgments from corporate contributors)
       * `ccla` - for corporate contributor signature records (created by CLA Signatories and managed by CLA Managers)
     in: query
     type: string
@@ -4976,7 +5295,7 @@ parameters:
     description: >
       CLA Type query parameter - allows the caller to specify either individual, employee or corporate signature, valid options:
       * `icla` - for individual contributor signature records (individuals not associated with a corporation)
-      * `ecla` - for employee contributor signature records (acknowledgements from corporate contributors)
+      * `ecla` - for employee contributor signature records (acknowledgments from corporate contributors)
       * `ccla` - for corporate contributor signature records (created by CLA Signatories and managed by CLA Managers)
     in: query
     type: string
@@ -5051,6 +5370,13 @@ parameters:
     type: string
     required: true
     pattern: '^[a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}$' # uuidv4
+  path-companyReference:
+    name: companyID
+    description: Internal company UUIDv4 or external organization ID
+    in: path
+    type: string
+    required: true
+    pattern: '^([a-fA-F0-9]{8}-?[a-fA-F0-9]{4}-?4[a-fA-F0-9]{3}-?[89ab][a-fA-F0-9]{3}-?[a-fA-F0-9]{12}|[0-9A-Za-z]{15}|[0-9A-Za-z]{18})$' # uuidv4 | salesforce id
   path-companySFID:
     name: companySFID
     description: salesforce id of the company
@@ -5163,7 +5489,7 @@ parameters:
     required: true
   myClasLfUsername:
     name: lfUsername
-    description: The LF username (LFID) of the user - when omitted, the authenticated principal's username is used; unless the caller is an admin or a trusted LFX Self Serve client, a different value is not searched and is reported in skippedIdentities. The caller-supplied identity list is transitional - at M6, once EasyCLA runs on the K8s cluster, it should call lfx.auth-service.user_identity.list over NATS itself and drop both the list and the azp allow-list authorizing it
+    description: The LF username (LFID) of the user - when omitted, the authenticated principal's username is used; unless the caller is an admin or a trusted LFX Self Serve client, a different value is not searched and is reported in skippedIdentities. The caller-supplied identity list is transitional - at M5, once EasyCLA runs on the K8s cluster, it should call lfx.auth-service.user_identity.list over NATS itself and drop both the list and the azp allow-list authorizing it
     in: query
     type: string
     required: false
@@ -5297,6 +5623,18 @@ definitions:
   icla-invalidation-input:
     $ref: './common/icla-invalidation-input.yaml'
 
+  ecla-invalidation-input:
+    $ref: './common/ecla-invalidation-input.yaml'
+
+  ecla-invalidate-result:
+    $ref: './common/ecla-invalidate-result.yaml'
+
+  cla-manager-request:
+    $ref: './common/cla-manager-request.yaml'
+
+  cla-manager-request-list:
+    $ref: './common/cla-manager-request-list.yaml'
+
   my-identity-list:
     $ref: './common/my-identity-list.yaml'
 
@@ -5314,6 +5652,24 @@ definitions:
 
   cla-search-org:
     $ref: './common/cla-search-org.yaml'
+
+  company-cla-groups:
+    $ref: './common/company-cla-groups.yaml'
+
+  company-cla-group:
+    $ref: './common/company-cla-group.yaml'
+
+  company-cla-group-project:
+    $ref: './common/company-cla-group-project.yaml'
+
+  company-cla-group-manager:
+    $ref: './common/company-cla-group-manager.yaml'
+
+  self-serve-corporate-signature-input:
+    $ref: './common/self-serve-corporate-signature-input.yaml'
+
+  self-serve-corporate-signature-output:
+    $ref: './common/self-serve-corporate-signature-output.yaml'
 
   #--------------------------------------
   # Docusign Webhook Payload
@@ -6277,7 +6633,7 @@ definitions:
         x-omitempty: false
         example: "The Linux Foundation Subsidiary 1"
       signing_entity_id:
-        $ref: './common/properties/internal-id.yaml'
+        $ref: './common/properties/company-id.yaml'
       cla_group_id:
         type: string
         x-omitempty: false
@@ -6470,6 +6826,9 @@ definitions:
       sign_url:
         type: string
         description: signing url
+      company_id:
+        type: string
+        description: internal id of the EasyCLA company row the signature belongs to
 
   individual-signature-output:
     type: object
@@ -6640,7 +6999,7 @@ definitions:
     properties:
       auto_create_ecla:
         type: boolean
-        description: flag to indicate if the product should automatically create an employee acknowledgement for a given user when the CLA manager adds the user to the email, GitLab username, or GitLab username approval list
+        description: flag to indicate if the product should automatically create an employee acknowledgment for a given user when the CLA manager adds the user to the email, GitHub username, or GitLab username approval list
         example: true
 
   project-github-organizations:

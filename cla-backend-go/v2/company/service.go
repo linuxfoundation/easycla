@@ -17,6 +17,7 @@ import (
 	"github.com/go-openapi/strfmt"
 
 	"github.com/sirupsen/logrus"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
@@ -90,6 +91,7 @@ type Service interface {
 	GetCompanyProjectActiveCLAs(ctx context.Context, companyID string, projectSFID string) (*models.ActiveClaList, error)
 	GetCompanyProjectContributors(ctx context.Context, params *v2Ops.GetCompanyProjectContributorsParams) (*models.CorporateContributorList, error)
 	GetCompanyProjectCLA(ctx context.Context, authUser *auth.User, companySFID, projectSFID string, companyID *string) (*models.CompanyProjectClaList, error)
+	GetCompanyClaGroups(ctx context.Context, companySFID string, pageSize, offset *int64) (*models.CompanyClaGroups, error)
 	CreateCompany(ctx context.Context, params *v2Ops.CreateCompanyParams) (*models.CompanyOutput, error)
 	CreateCompanyFromSFModel(ctx context.Context, orgModel *orgModels.Organization, authUser *auth.User) (*models.CompanyOutput, error)
 	GetCompanyByName(ctx context.Context, companyName string) (*models.Company, error)
@@ -647,7 +649,7 @@ func (s *service) GetCompanyByID(ctx context.Context, companyID string) (*models
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companyID":      companyID,
 	}
-	companyModel, err := s.companyRepo.GetCompany(ctx, companyID)
+	companyModel, err := s.v1CompanyService.ResolveCompany(ctx, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -766,7 +768,7 @@ func (s *service) CreateContributor(ctx context.Context, companyID string, proje
 		return nil, scopeErr
 	}
 
-	v1CompanyModel, companyErr := s.v1CompanyService.GetCompanyByExternalID(ctx, companyID)
+	v1CompanyModel, companyErr := s.v1CompanyService.ResolveCompany(ctx, companyID)
 	if companyErr != nil {
 		log.Error("company not found", companyErr)
 	}
@@ -855,28 +857,9 @@ func (s *service) GetCompanyBySFID(ctx context.Context, companySFID string) (*mo
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 		"companySFID":    companySFID,
 	}
-	companyModel, err := s.companyRepo.GetCompanyByExternalID(ctx, companySFID)
+	// Persisted row when it exists, otherwise a non-persisted virtual company backed by the platform organization (#2751)
+	companyModel, err := s.v1CompanyService.ResolveCompany(ctx, companySFID)
 	if err != nil {
-		// If we were unable to find the company/org in our local database, try to auto-create based
-		// on the existing SF record
-		if _, ok := err.(*utils.CompanyNotFound); ok {
-			log.WithFields(f).Debug("company not found in EasyCLA database - attempting to auto-create from platform organization service record")
-			newCompanyModel, createCompanyErr := s.autoCreateCompany(ctx, companySFID)
-			if createCompanyErr != nil {
-				log.WithFields(f).Warnf("problem creating company from platform organization SF record, error: %+v",
-					createCompanyErr)
-				return nil, createCompanyErr
-			}
-			if newCompanyModel == nil {
-				log.WithFields(f).Warnf("problem creating company from SF records - created model is nil")
-				return nil, &utils.CompanyNotFound{
-					Message:     "unable to auto-create company",
-					CompanySFID: companySFID,
-				}
-			}
-			// Success, fall through and continue processing
-			companyModel = newCompanyModel
-		}
 		return nil, err
 	}
 
@@ -947,43 +930,32 @@ func (s *service) GetCompanyProjectCLA(ctx context.Context, authUser *auth.User,
 		log.WithFields(f).Debug("locating companyModel by SF ID")
 		companies, companyErr := s.companyRepo.GetCompaniesByExternalID(ctx, companySFID, includeChildCompanies)
 		if companyErr != nil {
-			// If we were unable to find the companyModel/org in our local database, try to auto-create based
-			// on the existing SF record
-			if _, ok := companyErr.(*utils.CompanyNotFound); ok { // nolint
-				log.WithFields(f).WithError(companyErr).Debug("companyModel not found in EasyCLA database - attempting to auto-create from platform organization service record")
-				companyModel, createCompanyErr := s.autoCreateCompany(ctx, companySFID)
-				if createCompanyErr != nil {
-					log.WithFields(f).WithError(createCompanyErr).Warn("problem creating companyModel from platform organization SF record")
+			if _, ok := companyErr.(*utils.CompanyNotFound); ok {
+				// No row yet: serve the non-persisted virtual company backed by the platform organization (#2751)
+				log.WithFields(f).WithError(companyErr).Debug("companyModel not found in EasyCLA database - using the platform organization service record")
+				companyModel, resolveErr := s.v1CompanyService.ResolveCompany(ctx, companySFID)
+				if resolveErr != nil {
+					log.WithFields(f).WithError(resolveErr).Warn("problem resolving companyModel from platform organization SF record")
 					companiesChannel <- &CompaniesResult{
-						CompanyError: createCompanyErr,
+						CompanyError: resolveErr,
 						Companies:    nil,
 					}
-				} else if companyModel == nil {
-					log.WithFields(f).Warnf("problem creating companyModel from SF records - created model is nil")
-					companiesChannel <- &CompaniesResult{
-						CompanyError: &utils.CompanyNotFound{
-							Message:     "unable to auto-create companyModel",
-							CompanySFID: companySFID,
-						},
-						Companies: nil,
-					}
-				} else {
-					// Success - send the results
-					companiesChannel <- &CompaniesResult{
-						CompanyError: nil,
-						Companies:    []*v1Models.Company{companyModel},
-					}
+					return
 				}
+				companies = []*v1Models.Company{companyModel}
 			} else {
 				log.WithFields(f).WithError(companyErr).Warnf("problem fetching companyModel by SFID")
 				companiesChannel <- &CompaniesResult{
 					CompanyError: companyErr,
 					Companies:    nil,
 				}
+				return
 			}
 		}
 
-		if companyID != nil {
+		// The SFID itself is an admitted company reference (virtual company before the first CCLA):
+		// the list is already the parent row or the virtual entry, so no filtering is needed
+		if companyID != nil && *companyID != companySFID {
 			log.WithFields(f).Debugf("Filtering companyModel for ID: %s ", *companyID)
 			index, found := findCompany(companies, *companyID)
 			if found {
@@ -1122,6 +1094,17 @@ func (s *service) GetCompanyCLAGroupManagers(ctx context.Context, companyID, cla
 		"companyID":      companyID,
 		"claGroupID":     claGroupID,
 	}
+	if !utils.IsUUIDv4(companyID) {
+		// Salesforce ID reference: use the persisted row when it exists; a virtual company has no CCLA yet
+		companyModel, resolveErr := s.v1CompanyService.ResolveCompany(ctx, companyID)
+		if resolveErr != nil {
+			return nil, resolveErr
+		}
+		if companyModel.CompanyID == companyID {
+			return &models.CompanyClaManagers{}, nil
+		}
+		companyID = companyModel.CompanyID
+	}
 	signed, approved := true, true
 	pageSize := int64(10)
 	sigModel, err := s.signatureRepo.GetProjectCompanySignature(ctx, companyID, claGroupID, &signed, &approved, nil, &pageSize)
@@ -1219,7 +1202,10 @@ func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, proj
 	projectMapping, perr := s.projectClaGroupsRepo.GetClaGroupIDForProject(ctx, projectSFID)
 	if perr != nil {
 		log.WithFields(f).WithError(perr).Warnf("unable to get CLA group IDs for project SFID: %s", projectSFID)
-		return nil, err
+		if errors.Is(perr, projects_cla_groups.ErrProjectNotAssociatedWithClaGroup) {
+			return result, nil
+		}
+		return nil, perr
 	}
 	// get all projects for that cla group
 	allProjectMapping, err = s.projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, projectMapping.ClaGroupID)
@@ -1308,6 +1294,289 @@ func (s *service) getCLAGroupsUnderProjectOrFoundation(ctx context.Context, proj
 	log.WithFields(f).Debug("queries finished")
 
 	return result, nil
+}
+
+func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string, pageSize, offset *int64) (*models.CompanyClaGroups, error) {
+	f := logrus.Fields{
+		"functionName":   "v2.company.service.GetCompanyClaGroups",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"companySFID":    companySFID,
+	}
+	result := &models.CompanyClaGroups{
+		CompanySFID: companySFID,
+		List:        make([]models.CompanyClaGroup, 0),
+	}
+	companies, err := s.companyRepo.GetCompaniesByExternalID(ctx, companySFID, true)
+	if err != nil {
+		if _, ok := err.(*utils.CompanyNotFound); ok {
+			log.WithFields(f).Debug("company not found - returning empty list")
+			return result, nil
+		}
+		return nil, err
+	}
+	// One row per (signing entity × CLA group), built from the newest CCLA of each company record
+	// on that CLA group. The rows are collected first so that their per-row lookups can run
+	// concurrently below - an organization with dozens of CLA groups otherwise pays three
+	// sequential DynamoDB round trips per row.
+	rows := make([]companyClaGroupRow, 0)
+	claGroupIDs := make([]string, 0)
+	seenClaGroup := make(map[string]bool)
+	for _, comp := range companies {
+		sigs, sigErr := s.getCompanyCCLASignaturesWithACL(ctx, comp.CompanyID)
+		if sigErr != nil {
+			return nil, sigErr
+		}
+		newestSigs := make(map[string]*v1Models.Signature)
+		for _, sig := range sigs {
+			if cur, ok := newestSigs[sig.ProjectID]; !ok || newerSignature(sig, cur) {
+				newestSigs[sig.ProjectID] = sig
+			}
+		}
+		for claGroupID, sig := range newestSigs {
+			rows = append(rows, companyClaGroupRow{company: comp, claGroupID: claGroupID, signature: sig})
+			if !seenClaGroup[claGroupID] {
+				seenClaGroup[claGroupID] = true
+				claGroupIDs = append(claGroupIDs, claGroupID)
+			}
+		}
+	}
+	// The project mapping of a CLA group is shared by every signing entity that signed it, so it
+	// is loaded once per CLA group
+	claGroupProjects, mappingErr := s.claGroupProjectMappings(ctx, claGroupIDs)
+	if mappingErr != nil {
+		return nil, mappingErr
+	}
+	list := make([]models.CompanyClaGroup, len(rows))
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(companyClaGroupsConcurrency)
+	for i, row := range rows {
+		group.Go(func() error {
+			// The request was cancelled or a sibling lookup already failed: skip the remaining work.
+			// The cancellation is returned rather than swallowed so that the row cannot silently stay
+			// blank - errgroup keeps the first error it saw, so a real repository failure still wins.
+			if ctxErr := groupCtx.Err(); ctxErr != nil {
+				log.WithFields(f).WithError(ctxErr).Debug(skippedRowLookupsMessage)
+				return ctxErr
+			}
+			// The repositories get the request context rather than groupCtx: the first failure is
+			// reported as-is instead of turning the in-flight sibling lookups into context-canceled noise
+			built, rowErr := s.buildCompanyClaGroup(ctx, f, row, claGroupProjects[row.claGroupID])
+			if rowErr != nil {
+				return rowErr
+			}
+			list[i] = built
+			return nil
+		})
+	}
+	if waitErr := group.Wait(); waitErr != nil {
+		return nil, waitErr
+	}
+	result.List = append(result.List, list...)
+	sort.Slice(result.List, func(i, j int) bool {
+		if result.List[i].SigningEntityName != result.List[j].SigningEntityName {
+			return result.List[i].SigningEntityName < result.List[j].SigningEntityName
+		}
+		if result.List[i].ClaGroupName != result.List[j].ClaGroupName {
+			return result.List[i].ClaGroupName < result.List[j].ClaGroupName
+		}
+		if result.List[i].ClaGroupID != result.List[j].ClaGroupID {
+			return result.List[i].ClaGroupID < result.List[j].ClaGroupID
+		}
+		// two company records with the same signing entity name on the same CLA group: keep the
+		// order (and therefore the paging) stable
+		return result.List[i].SignatureID < result.List[j].SignatureID
+	})
+	result.TotalCount = int64(len(result.List))
+	start, end := utils.PageBounds(len(result.List), pageSize, offset)
+	result.List = result.List[start:end]
+	result.ResultCount = int64(len(result.List))
+	return result, nil
+}
+
+// companyClaGroupsConcurrency caps the per-row lookups GetCompanyClaGroups keeps in flight
+const companyClaGroupsConcurrency = 8
+
+// skippedRowLookupsMessage is logged for every organization CLA list row whose lookups were skipped
+// because the request was cancelled or a sibling row's lookup had already failed
+const skippedRowLookupsMessage = "skipping the CLA group row lookups - request cancelled or a sibling lookup failed"
+
+// companyClaGroupRow is one (signing entity × CLA group) row of the organization CLA list before
+// its lookups: the company record and its newest CCLA on the CLA group
+type companyClaGroupRow struct {
+	company    *v1Models.Company
+	signature  *v1Models.Signature
+	claGroupID string
+}
+
+// claGroupProjectMappings loads the project mappings of the given CLA groups concurrently, one
+// lookup per CLA group, keyed by CLA group id
+func (s *service) claGroupProjectMappings(ctx context.Context, claGroupIDs []string) (map[string][]*projects_cla_groups.ProjectClaGroup, error) {
+	mappings := make([][]*projects_cla_groups.ProjectClaGroup, len(claGroupIDs))
+	group, groupCtx := errgroup.WithContext(ctx)
+	group.SetLimit(companyClaGroupsConcurrency)
+	for i, claGroupID := range claGroupIDs {
+		group.Go(func() error {
+			// cancelled request or failed sibling: return the cancellation instead of leaving the
+			// mapping silently unresolved (errgroup keeps the first error, so a real failure wins)
+			if ctxErr := groupCtx.Err(); ctxErr != nil {
+				return ctxErr
+			}
+			pcgs, err := s.projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, claGroupID)
+			if err != nil {
+				return err
+			}
+			mappings[i] = pcgs
+			return nil
+		})
+	}
+	if err := group.Wait(); err != nil {
+		return nil, err
+	}
+	byClaGroup := make(map[string][]*projects_cla_groups.ProjectClaGroup, len(claGroupIDs))
+	for i, claGroupID := range claGroupIDs {
+		byClaGroup[claGroupID] = mappings[i]
+	}
+	return byClaGroup, nil
+}
+
+// buildCompanyClaGroup fills one organization CLA list row: the CCLA's stored signing date, the
+// CLA group's name/foundation/projects (from the mapping, or the CLA group record when the group
+// has no mapping) and the approved employee acknowledgment count
+func (s *service) buildCompanyClaGroup(ctx context.Context, f logrus.Fields, in companyClaGroupRow, pcgs []*projects_cla_groups.ProjectClaGroup) (models.CompanyClaGroup, error) {
+	comp, sig, claGroupID := in.company, in.signature, in.claGroupID
+	row := models.CompanyClaGroup{
+		CompanyID:         comp.CompanyID,
+		CompanySFID:       comp.CompanyExternalID,
+		CompanyName:       comp.CompanyName,
+		SigningEntityName: comp.SigningEntityName,
+		ClaGroupID:        claGroupID,
+		Projects:          make([]models.CompanyClaGroupProject, 0),
+		Signed:            sig.SignatureSigned,
+		SignatureID:       sig.SignatureID,
+		Sanctioned:        comp.IsSanctioned,
+		ClaManagers:       make([]models.CompanyClaGroupManager, 0),
+		AutoCreateECLA:    sig.AutoCreateECLA,
+	}
+	if row.SigningEntityName == "" {
+		row.SigningEntityName = comp.CompanyName
+	}
+	// The shared v1 signature converter substitutes the creation date for a missing signed_on
+	// (a corporate-console contract), so the stored value is read back for this lens: no
+	// date means no signedOn
+	signedOn, signedOnErr := s.storedSignedOn(ctx, sig.SignatureID)
+	if signedOnErr != nil {
+		return models.CompanyClaGroup{}, signedOnErr
+	}
+	row.SignedOn = signedOn
+	if comp.IsSanctioned && comp.SanctionedDate != "" {
+		row.SanctionedAt = utils.FormatTimeString(comp.SanctionedDate)
+	}
+	if sig.SignatoryName != "" {
+		row.SignedBy = sig.SignatoryName
+	}
+	if len(pcgs) > 0 {
+		row.ClaGroupName = pcgs[0].ClaGroupName
+		row.FoundationSFID = pcgs[0].FoundationSFID
+		row.FoundationName = pcgs[0].FoundationName
+		for _, pcg := range pcgs {
+			if pcg.ProjectSFID == pcg.FoundationSFID {
+				continue
+			}
+			row.Projects = append(row.Projects, models.CompanyClaGroupProject{
+				ProjectSFID: pcg.ProjectSFID,
+				ProjectName: pcg.ProjectName,
+			})
+		}
+		sort.Slice(row.Projects, func(i, j int) bool {
+			return row.Projects[i].ProjectName < row.Projects[j].ProjectName
+		})
+	} else {
+		claGroup, cgErr := s.projectRepo.GetCLAGroupByID(ctx, claGroupID, DontLoadRepoDetails)
+		if cgErr != nil {
+			var nf *utils.CLAGroupNotFound
+			if !errors.As(cgErr, &nf) && !errors.Is(cgErr, repository.ErrProjectDoesNotExist) {
+				return models.CompanyClaGroup{}, cgErr
+			}
+			log.WithFields(f).WithError(cgErr).Warnf("unable to load CLA group: %s", claGroupID)
+		} else {
+			row.ClaGroupName = claGroup.ProjectName
+			row.FoundationSFID = claGroup.FoundationSFID
+		}
+	}
+	for _, aclUser := range sig.SignatureACL {
+		row.ClaManagers = append(row.ClaManagers, models.CompanyClaGroupManager{
+			UserID:     aclUser.UserID,
+			LfUsername: aclUser.LfUsername,
+		})
+	}
+	sort.Slice(row.ClaManagers, func(i, j int) bool {
+		return row.ClaManagers[i].LfUsername < row.ClaManagers[j].LfUsername
+	})
+	row.ClaManagersCount = int64(len(row.ClaManagers))
+	row.NeedsClaManager = row.Signed && row.ClaManagersCount == 0
+	row.ApprovalCriteriaCount = approvalCriteriaCount(sig)
+	approvedContributors, eclaErr := s.signatureRepo.CountClaGroupCorporateContributors(ctx, claGroupID, &comp.CompanyID, true, nil)
+	if eclaErr != nil {
+		return models.CompanyClaGroup{}, eclaErr
+	}
+	row.ApprovedContributorsCount = approvedContributors
+	return row, nil
+}
+
+// storedSignedOn returns the CCLA's stored signing date, normalized, or "" when the record has none
+func (s *service) storedSignedOn(ctx context.Context, signatureID string) (string, error) {
+	item, err := s.signatureRepo.GetItemSignature(ctx, signatureID)
+	if err != nil {
+		return "", err
+	}
+	if item == nil || item.SignedOn == "" {
+		return "", nil
+	}
+	return utils.FormatTimeString(item.SignedOn), nil
+}
+
+func (s *service) getCompanyCCLASignaturesWithACL(ctx context.Context, companyID string) ([]*v1Models.Signature, error) {
+	var sigs []*v1Models.Signature
+	var lastScannedKey *string
+	for {
+		sigModels, err := s.signatureRepo.GetCompanySignatures(ctx, v1SignatureParams.GetCompanySignaturesParams{
+			CompanyID:     companyID,
+			CompanyName:   aws.String(""),
+			SignatureType: aws.String("ccla"),
+			NextKey:       lastScannedKey,
+		}, HugePageSize, signatures.LoadACLDetails)
+		if err != nil {
+			return nil, err
+		}
+		sigs = append(sigs, sigModels.Signatures...)
+		if sigModels.LastKeyScanned == "" {
+			break
+		}
+		lastScannedKey = aws.String(sigModels.LastKeyScanned)
+	}
+	return sigs, nil
+}
+
+// approvalCriteriaCount totals the approval rules on a CCLA across all six criteria lists.
+// Relies on the signature having been loaded with the full projection, which is the only
+// one carrying the approval-list columns.
+func approvalCriteriaCount(sig *v1Models.Signature) int64 {
+	return int64(len(sig.EmailApprovalList) +
+		len(sig.DomainApprovalList) +
+		len(sig.GithubUsernameApprovalList) +
+		len(sig.GithubOrgApprovalList) +
+		len(sig.GitlabUsernameApprovalList) +
+		len(sig.GitlabOrgApprovalList))
+}
+
+func newerSignature(a, b *v1Models.Signature) bool {
+	if a.SignedOn != b.SignedOn {
+		return a.SignedOn > b.SignedOn
+	}
+	if a.SignatureCreated != b.SignatureCreated {
+		return a.SignatureCreated > b.SignatureCreated
+	}
+	return a.SignatureID > b.SignatureID
 }
 
 func (s *service) getAllCCLASignatures(ctx context.Context, companyID string) ([]*v1Models.Signature, error) {
@@ -1531,6 +1800,7 @@ func fillCorporateContributorModel(wg *sync.WaitGroup, usersRepo users.UserRepos
 	var contributor models.CorporateContributor
 	var sigSignedTime = sig.SignatureCreated
 	contributor.GithubID = user.GithubUsername
+	contributor.GitlabID = user.GitlabUsername
 	contributor.LinuxFoundationID = user.LfUsername
 	contributor.SignatureApproved = sig.SignatureApproved
 	contributor.SignatureSigned = sig.SignatureSigned
@@ -1695,53 +1965,6 @@ func (s *service) getCompanyAndClaGroup(ctx context.Context, companyID, projectS
 	log.WithFields(f).Debug("cla groups query finished")
 
 	return companyResponse.companyModel, claGroupResponse.claGroupModel, nil
-}
-
-// autoCreateCompany helper function to create a new company record based on the SF ID and underlying record in SF
-func (s service) autoCreateCompany(ctx context.Context, companySFID string) (*v1Models.Company, error) {
-	f := logrus.Fields{
-		"functionName":   "v2.company.service.autoCreateCompany",
-		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-		"companySFID":    companySFID,
-	}
-	// Get a reference to the platform organization service client
-	orgClient := orgService.GetClient()
-	log.WithFields(f).Debug("locating Organization in SF")
-
-	// Lookup organization by ID in the Org Service
-	sfOrgModel, sfOrgErr := orgClient.GetOrganization(ctx, companySFID)
-	if sfOrgErr != nil {
-		log.WithFields(f).Warnf("unable to locate platform organization record by SF ID, error: %+v", sfOrgErr)
-		return nil, sfOrgErr
-	}
-
-	// If we were unable to lookup the company record in SF - we tried our best - return not exist error
-	if sfOrgModel == nil {
-		msg := "unable to locate platform organization record by SF ID - record not found"
-		log.WithFields(f).Warn(msg)
-		return nil, &utils.CompanyNotFound{
-			Message:     msg,
-			CompanySFID: companySFID,
-		}
-	}
-
-	log.WithFields(f).Debug("found platform organization record in SF")
-	// Auto-create based on the SF record information
-	companyModel, companyCreateErr := s.companyRepo.CreateCompany(ctx, &v1Models.Company{
-		CompanyExternalID: companySFID,
-		CompanyName:       sfOrgModel.Name,
-		IsSanctioned:      false,
-		Note:              "created on-demand by v4 service based on SF Organization Service record",
-	})
-
-	if companyCreateErr != nil || companyModel == nil {
-		log.WithFields(f).Warnf("unable to create EasyCLA company from platform SF organization record, error: %+v",
-			companyCreateErr)
-		return nil, companyCreateErr
-	}
-
-	log.WithFields(f).Debugf("successfully created EasyCLA company record: %+v", companyModel)
-	return companyModel, nil
 }
 
 func (s *service) GetCompanyLookup(ctx context.Context, orgName string, websiteName string) (*models.Lookup, error) {

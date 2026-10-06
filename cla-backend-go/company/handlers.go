@@ -23,7 +23,6 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/company"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/user"
-	orgService "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
 
 	"github.com/go-openapi/runtime/middleware"
 )
@@ -73,21 +72,10 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 	api.CompanyGetCompanyByExternalIDHandler = company.GetCompanyByExternalIDHandlerFunc(func(params company.GetCompanyByExternalIDParams) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
-		// Check for Salesforce org
-		orgClient := orgService.GetClient()
-		org, getErr := orgClient.GetOrganization(ctx, params.CompanySFID)
-
-		if getErr != nil {
-			msg := fmt.Sprintf("Failed to get salesforce org for ID: %s ", params.CompanySFID)
-			log.Warn(msg)
-			return company.NewGetCompanyByExternalIDBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code:    "400",
-				Message: msg,
-			})
-		}
-		companyModel, err := service.GetCompanyByExternalID(ctx, params.CompanySFID)
+		// Persisted row when it exists, otherwise a non-persisted virtual company backed by the Salesforce org (#2751)
+		companyModel, err := service.ResolveCompany(ctx, params.CompanySFID)
 		if err != nil {
-			msg := fmt.Sprintf("EasyCLA - 400 Bad Request - unable to get associated salesforce Organization: %s using SFID: %s, error: %v", org.Name, params.CompanySFID, err)
+			msg := fmt.Sprintf("EasyCLA - 400 Bad Request - unable to get associated salesforce Organization using SFID: %s, error: %v", params.CompanySFID, err)
 			log.Warnf("%s", msg)
 			return company.NewGetCompanyByExternalIDBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Code:    "400",

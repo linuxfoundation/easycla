@@ -53,14 +53,14 @@ properties:
   cclaEnabled:
     type: boolean
     x-omitempty: false
-    description: Whether the CLA Group offers a corporate CLA (employee acknowledgement)
+    description: Whether the CLA Group offers a corporate CLA (employee acknowledgment)
   cclaRequiresIcla:
     type: boolean
     x-omitempty: false
-    description: Whether an employee acknowledgement additionally requires an individual CLA
+    description: Whether an employee acknowledgment additionally requires an individual CLA
   signUrl:
     type: string
-    description: The Contributor Console URL to open - the ICLA/ECLA decision screen for this CLA Group and user, carrying the return URL
+    description: The Contributor Console URL to open - the ICLA / employee-acknowledgment decision screen for this CLA Group and user, carrying the return URL
   returnUrl:
     type: string
     description: The return URL recorded for this signing session, echoed back

@@ -100,3 +100,33 @@ func TestBuildSanctionUpdate(t *testing.T) {
 		})
 	}
 }
+
+func companyRow(id, name, entity, created string) map[string]types.AttributeValue {
+	return map[string]types.AttributeValue{
+		"company_id":          &types.AttributeValueMemberS{Value: id},
+		"company_name":        &types.AttributeValueMemberS{Value: name},
+		"signing_entity_name": &types.AttributeValueMemberS{Value: entity},
+		"date_created":        &types.AttributeValueMemberS{Value: created},
+	}
+}
+
+func TestPickParentCompany(t *testing.T) {
+	parent := companyRow("b", "Acme", "Acme", "2021-01-01T00:00:00Z")
+	bare := companyRow("c", "Acme", "", "2022-01-01T00:00:00Z")
+	entity := companyRow("a", "Acme", "Acme Labs", "2020-01-01T00:00:00Z")
+	entity2 := companyRow("d", "Acme", "Acme GmbH", "2020-06-01T00:00:00Z")
+
+	if got := PickParentCompany(nil); got != nil {
+		t.Fatalf("expected nil for no rows, got %v", got)
+	}
+	if got := attrString(PickParentCompany([]map[string]types.AttributeValue{entity, parent, bare}), "company_id"); got != "b" {
+		t.Fatalf("expected the oldest parent-like row b, got %s", got)
+	}
+	if got := attrString(PickParentCompany([]map[string]types.AttributeValue{entity2, entity}), "company_id"); got != "a" {
+		t.Fatalf("expected the oldest signing-entity row a when no parent exists, got %s", got)
+	}
+	tie := companyRow("a", "Acme", "", "2021-01-01T00:00:00Z")
+	if got := attrString(PickParentCompany([]map[string]types.AttributeValue{parent, tie}), "company_id"); got != "a" {
+		t.Fatalf("expected the smallest company_id on a date tie, got %s", got)
+	}
+}

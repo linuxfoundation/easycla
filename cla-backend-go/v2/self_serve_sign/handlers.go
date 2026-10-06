@@ -6,20 +6,28 @@ package self_serve_sign
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/go-openapi/runtime/middleware"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
 	selfServeSignOps "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/self_serve_sign"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/my_clas"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
+	v2Sign "github.com/linuxfoundation/easycla/cla-backend-go/v2/sign"
 	"github.com/sirupsen/logrus"
 )
 
 const missingUsernameMsg = "the authenticated principal carries no username - unable to determine who is signing"
+const unverifiedCallerMsg = "unable to verify the caller's bearer token"
 
-// Configure sets up the Self Serve signing API handlers
-func Configure(api *operations.EasyclaAPI, service Service) {
+// Configure sets up the Self Serve signing API handlers; callerVerifier is the same trusted-caller
+// gate as /v4/my-clas - see auth.TrustedCallerVerifier
+func Configure(api *operations.EasyclaAPI, service Service, callerVerifier my_clas.CallerVerifier) {
 	api.SelfServeSignPrepareSignHandler = selfServeSignOps.PrepareSignHandlerFunc(
 		func(params selfServeSignOps.PrepareSignParams, authUser *auth.User) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
@@ -32,13 +40,20 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 				"authUserEmail":  utils.StringValue(params.XEMAIL),
 			}
 
+			trustedCaller, err := my_clas.VerifyCaller(callerVerifier, params.HTTPRequest, f)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warn(unverifiedCallerMsg)
+				return selfServeSignOps.NewPrepareSignUnauthorized().WithXRequestID(reqID).WithPayload(utils.ErrorResponseUnauthorized(reqID, unverifiedCallerMsg))
+			}
+
 			currentUsername, currentEmail, admin := principal(authUser)
-			if !admin && currentUsername == "" {
+			trusted := trustedCaller != nil && trustedCaller.Trusted
+			if !admin && !trusted && currentUsername == "" {
 				log.WithFields(f).Warn(missingUsernameMsg)
 				return selfServeSignOps.NewPrepareSignUnauthorized().WithXRequestID(reqID).WithPayload(utils.ErrorResponseUnauthorized(reqID, missingUsernameMsg))
 			}
 
-			result, err := service.PrepareSign(ctx, currentUsername, currentEmail, admin, &params.Body)
+			result, err := service.PrepareSign(ctx, &my_clas.Caller{Username: currentUsername, Admin: admin, Trusted: trusted}, currentEmail, &params.Body)
 			if err != nil {
 				switch {
 				case errors.Is(err, ErrCLAGroupNotFound):
@@ -58,6 +73,71 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 
 			return selfServeSignOps.NewPrepareSignOK().WithXRequestID(reqID).WithPayload(result)
 		})
+
+	api.SelfServeSignSelfServeRequestCorporateSignatureHandler = selfServeSignOps.SelfServeRequestCorporateSignatureHandlerFunc(
+		func(params selfServeSignOps.SelfServeRequestCorporateSignatureParams, authUser *auth.User) middleware.Responder {
+			reqID := utils.GetRequestID(params.XREQUESTID)
+			ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTID, reqID) // nolint
+			utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+			f := logrus.Fields{
+				"functionName":   "v2.self_serve_sign.handlers.SelfServeRequestCorporateSignature",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+				"projectSFID":    utils.StringValue(params.Input.ProjectSfid),
+				"companySFID":    utils.StringValue(params.Input.CompanySfid),
+				"claGroupID":     params.Input.ClaGroupID,
+				"authUserName":   utils.StringValue(params.XUSERNAME),
+				"authUserEmail":  utils.StringValue(params.XEMAIL),
+			}
+
+			if !utils.IsUserAuthorizedForProjectOrganizationTree(ctx, authUser, utils.StringValue(params.Input.ProjectSfid), utils.StringValue(params.Input.CompanySfid), utils.DISALLOW_ADMIN_SCOPE) {
+				msg := fmt.Sprintf("user %s does not have access to Request Corporate Signature with Project|Organization scope tree of %s | %s - allow admin scope: false",
+					authUser.UserName, utils.StringValue(params.Input.ProjectSfid), utils.StringValue(params.Input.CompanySfid))
+				log.WithFields(f).Warn(msg)
+				return selfServeSignOps.NewSelfServeRequestCorporateSignatureForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+			}
+
+			result, err := service.RequestCorporateSignature(ctx, utils.StringValue(params.XUSERNAME), params.Authorization, &params.Input)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warn("unable to request the corporate signature")
+				return requestCorporateSignatureError(reqID, err)
+			}
+
+			return selfServeSignOps.NewSelfServeRequestCorporateSignatureOK().WithXRequestID(reqID).WithPayload(result)
+		})
+}
+
+// requestCorporateSignatureError maps the errors of the shared corporate signing service to the
+// same statuses as /v4/request-corporate-signature, plus the Self Serve input errors
+func requestCorporateSignatureError(reqID string, err error) middleware.Responder {
+	var sanctionedErr *utils.SanctionedCompanyError
+	if errors.As(err, &sanctionedErr) {
+		return utils.CompanySanctionedResponder(reqID, sanctionedErr)
+	}
+	switch {
+	case errors.Is(err, ErrAttestationRequired), errors.Is(err, ErrSignatoryRequired),
+		errors.Is(err, v2Sign.ErrCLAGroupRequired), errors.Is(err, v2Sign.ErrCLAGroupMismatch):
+		return selfServeSignOps.NewSelfServeRequestCorporateSignatureBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, err.Error()))
+	case errors.Is(err, ErrSigningEntityMismatch):
+		return selfServeSignOps.NewSelfServeRequestCorporateSignatureForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, err.Error()))
+	case strings.Contains(err.Error(), "does not exist"):
+		return selfServeSignOps.NewSelfServeRequestCorporateSignatureNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, err.Error()))
+	case strings.Contains(err.Error(), "internal server error"):
+		return selfServeSignOps.NewSelfServeRequestCorporateSignatureInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerError(reqID, err.Error()))
+	case strings.Contains(err.Error(), "requires further review for trade compliance"):
+		desc := "We're sorry, but this organization requires additional trade compliance review, so the Contributor License Agreement (CLA) cannot be completed at this time. If you believe this is an error, please contact EasyCLA Support via the chat widget."
+		return selfServeSignOps.NewSelfServeRequestCorporateSignatureForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, err.Error()+"\n"+desc))
+	case errors.Is(err, projects_cla_groups.ErrProjectNotAssociatedWithClaGroup), errors.Is(err, v2Sign.ErrCCLANotEnabled), errors.Is(err, v2Sign.ErrTemplateNotConfigured):
+		return selfServeSignOps.NewSelfServeRequestCorporateSignatureBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, err.Error()))
+	}
+	var scopesNotFound *organizations.ListOrgUsrAdminScopesNotFound
+	if errors.As(err, &scopesNotFound) {
+		return selfServeSignOps.NewSelfServeRequestCorporateSignatureNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, "user role scopes not found for cla-signatory role"))
+	}
+	var roleScopesConflict *organizations.CreateOrgUsrRoleScopesConflict
+	if errors.As(err, &roleScopesConflict) {
+		return selfServeSignOps.NewSelfServeRequestCorporateSignatureConflict().WithXRequestID(reqID).WithPayload(utils.ErrorResponseConflict(reqID, "user role scope conflict"))
+	}
+	return selfServeSignOps.NewSelfServeRequestCorporateSignatureBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, err.Error()))
 }
 
 func principal(authUser *auth.User) (string, string, bool) {

@@ -28,11 +28,13 @@ const (
 	testTrustedClientID   = "ss-confidential-client-id"
 	testUntrustedClientID = "some-other-client-id"
 	testKeyID             = "kid-1"
+	testAudience          = "https://api-gw.dev.platform.linuxfoundation.org/"
+	testOtherAudience     = "https://lfx-api.dev.v2.cluster.linuxfound.info/"
 )
 
 func testVerifier(t *testing.T, key *rsa.PrivateKey) (*TrustedCallerVerifier, *int) {
 	t.Helper()
-	verifier, err := NewTrustedCallerVerifier("linuxfoundation-dev.auth0.com", "RS256", []string{testTrustedClientID})
+	verifier, err := NewTrustedCallerVerifier("linuxfoundation-dev.auth0.com", "RS256", []string{testTrustedClientID}, testAudience)
 	require.NoError(t, err)
 
 	fetches := 0
@@ -59,6 +61,7 @@ func testClaims(clientID string) jwt.MapClaims {
 		"iss": "https://linuxfoundation-dev.auth0.com/",
 		"sub": clientID + "@clients",
 		"azp": clientID,
+		"aud": []interface{}{testAudience, "https://linuxfoundation-dev.auth0.com/userinfo"},
 		"exp": time.Now().Add(time.Hour).Unix(),
 		"iat": time.Now().Add(-time.Minute).Unix(),
 	}
@@ -75,25 +78,29 @@ func TestTrustedCallerVerifierEnabled(t *testing.T) {
 	var nilVerifier *TrustedCallerVerifier
 	assert.False(t, nilVerifier.Enabled())
 
-	disabled, err := NewTrustedCallerVerifier("", "", nil)
+	disabled, err := NewTrustedCallerVerifier("", "", nil, "")
 	require.NoError(t, err, "an unset allow-list must not fail startup, it only disables the trusted caller path")
 	assert.False(t, disabled.Enabled())
 
-	blank, err := NewTrustedCallerVerifier("", "", []string{" ", ""})
+	blank, err := NewTrustedCallerVerifier("", "", []string{" ", ""}, "")
 	require.NoError(t, err)
 	assert.False(t, blank.Enabled())
 
-	_, err = NewTrustedCallerVerifier("", "", []string{testTrustedClientID})
+	_, err = NewTrustedCallerVerifier("", "", []string{testTrustedClientID}, testAudience)
 	assert.Error(t, err, "a configured allow-list without an Auth0 domain must fail startup rather than trust blindly")
 
-	enabled, err := NewTrustedCallerVerifier("linuxfoundation-dev.auth0.com", "", []string{" " + testTrustedClientID + " "})
+	_, err = NewTrustedCallerVerifier("linuxfoundation-dev.auth0.com", "", []string{testTrustedClientID}, " ")
+	assert.Error(t, err, "a configured allow-list without an audience must fail startup rather than trust any audience")
+
+	enabled, err := NewTrustedCallerVerifier("linuxfoundation-dev.auth0.com", "", []string{" " + testTrustedClientID + " "}, " "+testAudience+"\n")
 	require.NoError(t, err)
 	assert.True(t, enabled.Enabled())
 	assert.Equal(t, defaultJWTAlgorithm, enabled.algorithm)
 	assert.Equal(t, "https://linuxfoundation-dev.auth0.com/.well-known/jwks.json", enabled.wellKnownURL)
 	assert.True(t, enabled.allowedClientIDs[testTrustedClientID], "a padded client ID must be trimmed, not stored verbatim")
+	assert.Equal(t, testAudience, enabled.audience, "a padded audience must be trimmed - the dev SSM value carries a leading space")
 
-	trailingSlash, err := NewTrustedCallerVerifier("linuxfoundation-dev.auth0.com/", "RS512", []string{testTrustedClientID})
+	trailingSlash, err := NewTrustedCallerVerifier("linuxfoundation-dev.auth0.com/", "RS512", []string{testTrustedClientID}, testAudience)
 	require.NoError(t, err)
 	assert.Equal(t, "https://linuxfoundation-dev.auth0.com/.well-known/jwks.json", trailingSlash.wellKnownURL)
 	assert.Equal(t, "RS512", trailingSlash.algorithm)
@@ -157,6 +164,78 @@ func TestVerifyNeverTrustsATokenWithoutAnAzpClaim(t *testing.T) {
 			assert.False(t, caller.Trusted)
 		})
 	}
+}
+
+// an allow-listed azp is trusted only together with the API gateway audience: SS's OIDC token
+// shares the azp but carries the LFX v2 API audience and is still shown to users
+func TestVerifyPinsTheAudience(t *testing.T) {
+	key := testKey(t)
+	verifier, _ := testVerifier(t, key)
+
+	withAudience := func(aud interface{}) jwt.MapClaims {
+		claims := testClaims(testTrustedClientID)
+		if aud == nil {
+			delete(claims, "aud")
+		} else {
+			claims["aud"] = aud
+		}
+		return claims
+	}
+
+	trusted := map[string]jwt.MapClaims{
+		"string":               withAudience(testAudience),
+		"array":                withAudience([]interface{}{"https://linuxfoundation-dev.auth0.com/userinfo", testAudience}),
+		"single-element array": withAudience([]interface{}{testAudience}),
+	}
+	for name, claims := range trusted {
+		t.Run("trusted/"+name, func(t *testing.T) {
+			caller, err := verifier.Verify("Bearer " + testToken(t, key, testKeyID, claims))
+			require.NoError(t, err)
+			assert.True(t, caller.Trusted)
+		})
+	}
+
+	untrusted := map[string]jwt.MapClaims{
+		"v2 api audience":        withAudience(testOtherAudience),
+		"v2 api audience array":  withAudience([]interface{}{testOtherAudience, "https://linuxfoundation-dev.auth0.com/userinfo"}),
+		"absent":                 withAudience(nil),
+		"empty string":           withAudience(""),
+		"empty array":            withAudience([]interface{}{}),
+		"non-string":             withAudience(42),
+		"without trailing slash": withAudience(strings.TrimSuffix(testAudience, "/")),
+		"different case":         withAudience(strings.ToUpper(testAudience)),
+		"prefix":                 withAudience(testAudience + "cla-service/"),
+		"leading space":          withAudience(" " + testAudience),
+		"trailing space":         withAudience(testAudience + " "),
+		"padded in array":        withAudience([]interface{}{" " + testAudience + " "}),
+	}
+	for name, claims := range untrusted {
+		t.Run("untrusted/"+name, func(t *testing.T) {
+			caller, err := verifier.Verify("Bearer " + testToken(t, key, testKeyID, claims))
+			require.NoError(t, err, "a wrong audience makes the caller untrusted, not denied")
+			assert.False(t, caller.Trusted)
+			assert.Equal(t, testTrustedClientID, caller.ClientID)
+		})
+	}
+}
+
+func TestNewTrustedCallerVerifierTrimsTheConfiguredAudience(t *testing.T) {
+	key := testKey(t)
+	verifier, err := NewTrustedCallerVerifier("linuxfoundation-dev.auth0.com", "RS256", []string{" " + testTrustedClientID + " "}, "  "+testAudience+"\n")
+	require.NoError(t, err)
+	verifier.fetchKeys = func() (map[string]*rsa.PublicKey, error) {
+		return map[string]*rsa.PublicKey{testKeyID: &key.PublicKey}, nil
+	}
+
+	caller, err := verifier.Verify("Bearer " + testToken(t, key, testKeyID, testClaims(testTrustedClientID)))
+	require.NoError(t, err)
+	assert.True(t, caller.Trusted, "SSM values are trimmed; the token claim must match exactly")
+
+	padded := testClaims(testTrustedClientID)
+	padded["aud"] = testAudience + " "
+	caller, err = verifier.Verify("Bearer " + testToken(t, key, testKeyID, padded))
+	require.NoError(t, err)
+	assert.False(t, caller.Trusted, "claims are never trimmed")
 }
 
 func TestVerifyRejectsInvalidTokens(t *testing.T) {
@@ -321,7 +400,7 @@ func TestVerifyRejectsMisconfiguredAlgorithms(t *testing.T) {
 	require.NoError(t, err)
 
 	for algorithm, rawToken := range map[string]string{"HS256": hmacToken, "none": noneToken} {
-		verifier, verifierErr := NewTrustedCallerVerifier("linuxfoundation-dev.auth0.com", algorithm, []string{testTrustedClientID})
+		verifier, verifierErr := NewTrustedCallerVerifier("linuxfoundation-dev.auth0.com", algorithm, []string{testTrustedClientID}, testAudience)
 		require.NoError(t, verifierErr)
 		verifier.fetchKeys = func() (map[string]*rsa.PublicKey, error) {
 			return map[string]*rsa.PublicKey{testKeyID: &key.PublicKey}, nil
@@ -454,7 +533,7 @@ func TestFetchJWKS(t *testing.T) {
 	}))
 	defer server.Close()
 
-	verifier, err := NewTrustedCallerVerifier("linuxfoundation-dev.auth0.com", "RS256", []string{testTrustedClientID})
+	verifier, err := NewTrustedCallerVerifier("linuxfoundation-dev.auth0.com", "RS256", []string{testTrustedClientID}, testAudience)
 	require.NoError(t, err)
 	verifier.wellKnownURL = server.URL
 

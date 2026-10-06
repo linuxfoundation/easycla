@@ -11,7 +11,7 @@ properties:
     description: Request ID (UUID) carried by the audit event
   signatureID:
     type: string
-    description: ECLA signature ID (UUID) the request refers to
+    description: Employee acknowledgment signature ID (UUID) the request refers to
   requestType:
     type: string
     enum: [removal, approval, contact]

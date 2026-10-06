@@ -4,7 +4,7 @@
 type: object
 x-nullable: false
 title: My CLA Manager
-description: A CLA manager from the CCLA signature ACL of an ECLA's company and CLA Group
+description: A CLA manager from the CCLA signature ACL of an employee acknowledgment's company and CLA Group
 properties:
   lfUsername:
     type: string

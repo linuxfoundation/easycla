@@ -129,6 +129,21 @@ func (mr *MockSignatureRepositoryMockRecorder) AddUsersDetails(ctx, signatureID,
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddUsersDetails", reflect.TypeOf((*MockSignatureRepository)(nil).AddUsersDetails), ctx, signatureID, userID)
 }
 
+// CountClaGroupCorporateContributors mocks base method.
+func (m *MockSignatureRepository) CountClaGroupCorporateContributors(ctx context.Context, claGroupID string, companyID *string, approvedOnly bool, searchTerm *string) (int64, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CountClaGroupCorporateContributors", ctx, claGroupID, companyID, approvedOnly, searchTerm)
+	ret0, _ := ret[0].(int64)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CountClaGroupCorporateContributors indicates an expected call of CountClaGroupCorporateContributors.
+func (mr *MockSignatureRepositoryMockRecorder) CountClaGroupCorporateContributors(ctx, claGroupID, companyID, approvedOnly, searchTerm interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CountClaGroupCorporateContributors", reflect.TypeOf((*MockSignatureRepository)(nil).CountClaGroupCorporateContributors), ctx, claGroupID, companyID, approvedOnly, searchTerm)
+}
+
 // CreateProjectCompanyEmployeeSignature mocks base method.
 func (m *MockSignatureRepository) CreateProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User) error {
 	m.ctrl.T.Helper()
@@ -396,6 +411,21 @@ func (mr *MockSignatureRepositoryMockRecorder) GetItemSignature(ctx, signatureID
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetItemSignature", reflect.TypeOf((*MockSignatureRepository)(nil).GetItemSignature), ctx, signatureID)
 }
 
+// GetItemSignatureConsistent mocks base method.
+func (m *MockSignatureRepository) GetItemSignatureConsistent(ctx context.Context, signatureID string) (*signatures0.ItemSignature, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetItemSignatureConsistent", ctx, signatureID)
+	ret0, _ := ret[0].(*signatures0.ItemSignature)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetItemSignatureConsistent indicates an expected call of GetItemSignatureConsistent.
+func (mr *MockSignatureRepositoryMockRecorder) GetItemSignatureConsistent(ctx, signatureID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetItemSignatureConsistent", reflect.TypeOf((*MockSignatureRepository)(nil).GetItemSignatureConsistent), ctx, signatureID)
+}
+
 // GetProjectCompanyEmployeeSignature mocks base method.
 func (m *MockSignatureRepository) GetProjectCompanyEmployeeSignature(ctx context.Context, companyModel *models.Company, claGroupModel *models.ClaGroup, employeeUserModel *models.User, wg *sync.WaitGroup, resultChannel chan<- *signatures0.EmployeeModel, errorChannel chan<- error) {
 	m.ctrl.T.Helper()
@@ -466,6 +496,21 @@ func (m *MockSignatureRepository) GetProjectSignatures(ctx context.Context, para
 func (mr *MockSignatureRepositoryMockRecorder) GetProjectSignatures(ctx, params interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProjectSignatures", reflect.TypeOf((*MockSignatureRepository)(nil).GetProjectSignatures), ctx, params)
+}
+
+// GetRemovalInvalidatedEmployeeSignatures mocks base method.
+func (m *MockSignatureRepository) GetRemovalInvalidatedEmployeeSignatures(ctx context.Context, companyID, claGroupID string) ([]*signatures0.ItemSignature, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRemovalInvalidatedEmployeeSignatures", ctx, companyID, claGroupID)
+	ret0, _ := ret[0].([]*signatures0.ItemSignature)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetRemovalInvalidatedEmployeeSignatures indicates an expected call of GetRemovalInvalidatedEmployeeSignatures.
+func (mr *MockSignatureRepositoryMockRecorder) GetRemovalInvalidatedEmployeeSignatures(ctx, companyID, claGroupID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRemovalInvalidatedEmployeeSignatures", reflect.TypeOf((*MockSignatureRepository)(nil).GetRemovalInvalidatedEmployeeSignatures), ctx, companyID, claGroupID)
 }
 
 // GetSignature mocks base method.
@@ -556,6 +601,20 @@ func (mr *MockSignatureRepositoryMockRecorder) ProjectSignatures(ctx, projectID 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ProjectSignatures", reflect.TypeOf((*MockSignatureRepository)(nil).ProjectSignatures), ctx, projectID)
 }
 
+// ReinvalidateProjectRecordWithMetadata mocks base method.
+func (m *MockSignatureRepository) ReinvalidateProjectRecordWithMetadata(ctx context.Context, existing *signatures0.ItemSignature, note string, metadata *signatures0.InvalidationMetadata) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReinvalidateProjectRecordWithMetadata", ctx, existing, note, metadata)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReinvalidateProjectRecordWithMetadata indicates an expected call of ReinvalidateProjectRecordWithMetadata.
+func (mr *MockSignatureRepositoryMockRecorder) ReinvalidateProjectRecordWithMetadata(ctx, existing, note, metadata interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReinvalidateProjectRecordWithMetadata", reflect.TypeOf((*MockSignatureRepository)(nil).ReinvalidateProjectRecordWithMetadata), ctx, existing, note, metadata)
+}
+
 // RemoveCLAManager mocks base method.
 func (m *MockSignatureRepository) RemoveCLAManager(ctx context.Context, signatureID, claManagerID string) (*models.Signature, error) {
 	m.ctrl.T.Helper()
@@ -569,6 +628,21 @@ func (m *MockSignatureRepository) RemoveCLAManager(ctx context.Context, signatur
 func (mr *MockSignatureRepositoryMockRecorder) RemoveCLAManager(ctx, signatureID, claManagerID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveCLAManager", reflect.TypeOf((*MockSignatureRepository)(nil).RemoveCLAManager), ctx, signatureID, claManagerID)
+}
+
+// RestoreRemovalInvalidatedEmployeeSignature mocks base method.
+func (m *MockSignatureRepository) RestoreRemovalInvalidatedEmployeeSignature(ctx context.Context, snapshot *signatures0.ItemSignature, note string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RestoreRemovalInvalidatedEmployeeSignature", ctx, snapshot, note)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// RestoreRemovalInvalidatedEmployeeSignature indicates an expected call of RestoreRemovalInvalidatedEmployeeSignature.
+func (mr *MockSignatureRepositoryMockRecorder) RestoreRemovalInvalidatedEmployeeSignature(ctx, snapshot, note interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RestoreRemovalInvalidatedEmployeeSignature", reflect.TypeOf((*MockSignatureRepository)(nil).RestoreRemovalInvalidatedEmployeeSignature), ctx, snapshot, note)
 }
 
 // SaveOrUpdateSignature mocks base method.
@@ -641,4 +715,18 @@ func (m *MockSignatureRepository) ValidateProjectRecord(ctx context.Context, sig
 func (mr *MockSignatureRepositoryMockRecorder) ValidateProjectRecord(ctx, signatureID, note interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateProjectRecord", reflect.TypeOf((*MockSignatureRepository)(nil).ValidateProjectRecord), ctx, signatureID, note)
+}
+
+// ValidateProjectRecordUnlessInvalidated mocks base method.
+func (m *MockSignatureRepository) ValidateProjectRecordUnlessInvalidated(ctx context.Context, signatureID, note string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValidateProjectRecordUnlessInvalidated", ctx, signatureID, note)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ValidateProjectRecordUnlessInvalidated indicates an expected call of ValidateProjectRecordUnlessInvalidated.
+func (mr *MockSignatureRepositoryMockRecorder) ValidateProjectRecordUnlessInvalidated(ctx, signatureID, note interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateProjectRecordUnlessInvalidated", reflect.TypeOf((*MockSignatureRepository)(nil).ValidateProjectRecordUnlessInvalidated), ctx, signatureID, note)
 }
