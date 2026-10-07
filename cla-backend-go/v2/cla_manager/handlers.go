@@ -63,7 +63,7 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 
 		log.WithFields(f).Debug("checking permissions...")
 		if !utils.IsUserAuthorizedForProjectOrganizationTree(ctx, authUser, params.ProjectSFID, v1CompanyModel.CompanyExternalID, utils.DISALLOW_ADMIN_SCOPE) {
-			msg := fmt.Sprintf("user %s does not have access to DeleteCLAManager with Project|Organization scope of %s | %s", authUser.UserName, params.ProjectSFID, params.CompanyID)
+			msg := fmt.Sprintf("user %s does not have access to CreateCLAManager with Project|Organization scope of %s | %s", authUser.UserName, params.ProjectSFID, v1CompanyModel.CompanyExternalID)
 			log.WithFields(f).Warn(msg)
 			return cla_manager.NewCreateCLAManagerForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
@@ -120,9 +120,9 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 
 		log.WithFields(f).Debug("checking permissions...")
 		if !utils.IsUserAuthorizedForProjectOrganizationTree(ctx, authUser, params.ProjectSFID, v1CompanyModel.CompanyExternalID, utils.DISALLOW_ADMIN_SCOPE) {
-			msg := fmt.Sprintf("user %s does not have access to DeleteCLAManager with Project|Organization scope of %s | %s", authUser.UserName, params.ProjectSFID, params.CompanyID)
+			msg := fmt.Sprintf("user %s does not have access to DeleteCLAManager with Project|Organization scope of %s | %s", authUser.UserName, params.ProjectSFID, v1CompanyModel.CompanyExternalID)
 			log.WithFields(f).Warn(msg)
-			return cla_manager.NewDeleteCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+			return cla_manager.NewDeleteCLAManagerForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
 		if sanctionedResp := utils.RejectIfCompanySanctioned(ctx, v1CompanyModel); sanctionedResp != nil {
