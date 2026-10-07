@@ -223,6 +223,9 @@ func (s *service) DenyCLAManagerRequest(ctx context.Context, authUser *auth.User
 
 	request, err := s.managerService.DenyRequest(companyModel.CompanyID, claGroupID, requestID)
 	if err != nil {
+		if _, revertErr := s.managerService.PendingRequest(companyModel.CompanyID, claGroupID, requestID); revertErr != nil {
+			log.WithFields(f).WithError(revertErr).Warnf("unable to revert request %s to pending after the status update failed: %v", requestID, err)
+		}
 		return nil, err
 	}
 

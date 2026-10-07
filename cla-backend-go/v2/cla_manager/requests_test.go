@@ -635,6 +635,32 @@ func TestDenyCLAManagerRequest(t *testing.T) {
 		assert.ErrorIs(t, err, errRequestNotFound)
 		assert.Empty(t, mgr.denyCalls)
 	})
+
+	t.Run("deny error reverts the request to pending so the denial can be retried", func(t *testing.T) {
+		for name, pendingErr := range map[string]error{"revert succeeds": nil, "revert fails": errors.New("revert failed")} {
+			mgr := &fakeManagerService{request: pendingRequest(), denyErr: errors.New("status update failed"), pendingErr: pendingErr}
+			sigs := &fakeSignatureService{signatures: ccalSignatures()}
+			ev := &fakeEventsService{}
+			emailSvc := &fakeEmailTemplateService{}
+			s := &service{
+				managerService:       mgr,
+				projectService:       &fakeProjectService{claGroup: &v1Models.ClaGroup{ProjectName: "My Project"}},
+				signatureService:     sigs,
+				eventService:         ev,
+				emailTemplateService: emailSvc,
+			}
+			sender := installEmailSender(t)
+			result, err := s.DenyCLAManagerRequest(context.Background(), authUser, companyModel, "cla-group-1", "req-1")
+			assert.Nil(t, result, name)
+			assert.EqualError(t, err, "status update failed", name)
+			assert.Equal(t, [][]string{{"company-1", "cla-group-1", "req-1"}}, mgr.denyCalls, name)
+			assert.Equal(t, [][]string{{"company-1", "cla-group-1", "req-1"}}, mgr.pendingCalls, name)
+			assert.Empty(t, sigs.addCalls, name)
+			assert.Empty(t, ev.logged, name)
+			assert.Empty(t, emailSvc.renderCalls, name)
+			assert.Empty(t, sender.sent, name)
+		}
+	})
 }
 
 func TestClaManagerRequestJSONContract(t *testing.T) {
