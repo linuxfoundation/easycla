@@ -117,10 +117,15 @@ func (s *service) ApproveCLAManagerRequest(ctx context.Context, authUser *auth.U
 	if !aclContainsUser(claManagers, request.UserID) {
 		_, aclErr := s.signatureService.AddCLAManager(ctx, sigModel.SignatureID, request.UserID)
 		if aclErr != nil {
-			if _, revertErr := s.managerService.PendingRequest(companyModel.CompanyID, claGroupID, requestID); revertErr != nil {
-				log.WithFields(f).WithError(revertErr).Warnf("unable to revert request %s to pending after the ACL update failed: %v", requestID, aclErr)
+			stored, readErr := s.signatureService.GetSignature(ctx, sigModel.SignatureID)
+			if readErr == nil && stored != nil && aclContainsUser(stored.SignatureACL, request.UserID) {
+				log.WithFields(f).WithError(aclErr).Warn("ACL update reported an error but the requester is in the signature ACL - keeping the approval")
+			} else {
+				if _, revertErr := s.managerService.PendingRequest(companyModel.CompanyID, claGroupID, requestID); revertErr != nil {
+					log.WithFields(f).WithError(revertErr).Warnf("unable to revert request %s to pending after the ACL update failed: %v", requestID, aclErr)
+				}
+				return nil, aclErr
 			}
-			return nil, aclErr
 		}
 	}
 

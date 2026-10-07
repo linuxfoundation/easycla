@@ -82,6 +82,14 @@ type fakeSignatureService struct {
 	err        error
 	addCalls   [][]string
 	addErr     error
+	stored     *v1Models.Signature
+	storedErr  error
+	getCalls   []string
+}
+
+func (f *fakeSignatureService) GetSignature(ctx context.Context, signatureID string) (*v1Models.Signature, error) {
+	f.getCalls = append(f.getCalls, signatureID)
+	return f.stored, f.storedErr
 }
 
 func (f *fakeSignatureService) GetProjectCompanySignatures(ctx context.Context, params sigAPI.GetProjectCompanySignaturesParams) (*v1Models.Signatures, error) {
@@ -339,6 +347,7 @@ func TestApproveCLAManagerRequest(t *testing.T) {
 		assert.Equal(t, [][]string{{"company-1", "cla-group-1", "req-1"}}, mgr.approveCalls)
 		assert.Equal(t, [][]string{{"sig-1", "user-9"}}, sigs.addCalls, "the requester is added to the CCLA signature ACL")
 		assert.Empty(t, mgr.pendingCalls)
+		assert.Empty(t, sigs.getCalls)
 
 		if assert.Len(t, ev.logged, 1) {
 			logged := ev.logged[0]
@@ -425,11 +434,44 @@ func TestApproveCLAManagerRequest(t *testing.T) {
 	})
 
 	t.Run("a failed ACL add reverts the request to pending so the approval can be retried", func(t *testing.T) {
+		for name, reconcile := range map[string]*fakeSignatureService{
+			"requester absent from the stored ACL": {stored: ccalSignatures().Signatures[0]},
+			"stored ACL cannot be read":            {storedErr: errors.New("read failed")},
+		} {
+			approvedRequest := pendingRequest()
+			approvedRequest.Status = approvedStatus
+			mgr := &fakeManagerService{request: pendingRequest(), approved: approvedRequest}
+			aclErr := errors.New("acl write failed")
+			sigSvc := &fakeSignatureService{signatures: ccalSignatures(), addErr: aclErr, stored: reconcile.stored, storedErr: reconcile.storedErr}
+			ev := &fakeEventsService{}
+			s := &service{
+				managerService:       mgr,
+				projectService:       &fakeProjectService{claGroup: &v1Models.ClaGroup{ProjectName: "My Project"}},
+				signatureService:     sigSvc,
+				eventService:         ev,
+				emailTemplateService: &fakeEmailTemplateService{},
+			}
+
+			sender := installEmailSender(t)
+			result, err := s.ApproveCLAManagerRequest(context.Background(), authUser, companyModel, "cla-group-1", "req-1")
+			assert.Nil(t, result, name)
+			assert.Equal(t, aclErr, err, name)
+			assert.Equal(t, [][]string{{"company-1", "cla-group-1", "req-1"}}, mgr.approveCalls, name)
+			assert.Equal(t, [][]string{{"sig-1", "user-9"}}, sigSvc.addCalls, name)
+			assert.Equal(t, []string{"sig-1"}, sigSvc.getCalls, name)
+			assert.Equal(t, [][]string{{"company-1", "cla-group-1", "req-1"}}, mgr.pendingCalls, name)
+			assert.Empty(t, ev.logged, name)
+			assert.Empty(t, sender.sent, name)
+		}
+	})
+
+	t.Run("an ACL write that committed but failed its read-back keeps the approval", func(t *testing.T) {
 		approvedRequest := pendingRequest()
 		approvedRequest.Status = approvedStatus
 		mgr := &fakeManagerService{request: pendingRequest(), approved: approvedRequest}
-		aclErr := errors.New("acl write failed")
-		sigSvc := &fakeSignatureService{signatures: ccalSignatures(), addErr: aclErr}
+		stored := ccalSignatures().Signatures[0]
+		stored.SignatureACL = append(stored.SignatureACL, v1Models.User{UserID: "uuid-9", LfUsername: "user-9", Username: "requester", LfEmail: strfmt.Email("requester@example.com")})
+		sigSvc := &fakeSignatureService{signatures: ccalSignatures(), addErr: errors.New("read-back failed"), stored: stored}
 		ev := &fakeEventsService{}
 		s := &service{
 			managerService:       mgr,
@@ -441,13 +483,17 @@ func TestApproveCLAManagerRequest(t *testing.T) {
 
 		sender := installEmailSender(t)
 		result, err := s.ApproveCLAManagerRequest(context.Background(), authUser, companyModel, "cla-group-1", "req-1")
-		assert.Nil(t, result)
-		assert.Equal(t, aclErr, err)
-		assert.Equal(t, [][]string{{"company-1", "cla-group-1", "req-1"}}, mgr.approveCalls)
+		assert.Nil(t, err)
+		if assert.NotNil(t, result) {
+			assert.Equal(t, "approved", result.Status)
+		}
 		assert.Equal(t, [][]string{{"sig-1", "user-9"}}, sigSvc.addCalls)
-		assert.Equal(t, [][]string{{"company-1", "cla-group-1", "req-1"}}, mgr.pendingCalls)
-		assert.Empty(t, ev.logged)
-		assert.Empty(t, sender.sent)
+		assert.Equal(t, []string{"sig-1"}, sigSvc.getCalls)
+		assert.Empty(t, mgr.pendingCalls)
+		if assert.Len(t, ev.logged, 1) {
+			assert.Equal(t, events.ClaManagerAccessRequestApproved, ev.logged[0].EventType)
+		}
+		assert.Len(t, sender.sent, 3, "two managers and the requester are notified as on the happy path")
 	})
 
 	t.Run("aclContainsUser matches hydrated and raw ACL entries by LF username", func(t *testing.T) {
