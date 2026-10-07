@@ -3309,6 +3309,8 @@ paths:
           $ref: '#/responses/forbidden-or-company-sanctioned'
         '404':
           $ref: '#/responses/not-found'
+        '409':
+          $ref: '#/responses/conflict'
         '500':
           $ref: '#/responses/internal-server-error'
       tags:
@@ -3346,6 +3348,8 @@ paths:
           $ref: '#/responses/forbidden-or-company-sanctioned'
         '404':
           $ref: '#/responses/not-found'
+        '409':
+          $ref: '#/responses/conflict'
         '500':
           $ref: '#/responses/internal-server-error'
       tags:

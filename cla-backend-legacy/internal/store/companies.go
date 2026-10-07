@@ -146,6 +146,14 @@ func PickParentCompany(items []map[string]types.AttributeValue) map[string]types
 
 func companyRowIsOlder(it, winner map[string]types.AttributeValue) bool {
 	c, w := attrString(it, "date_created"), attrString(winner, "date_created")
+	if ct, okC := parsePynamoDateTimeString(c); okC {
+		if wt, okW := parsePynamoDateTimeString(w); okW {
+			if !ct.Equal(wt) {
+				return ct.Before(wt)
+			}
+			return attrString(it, "company_id") < attrString(winner, "company_id")
+		}
+	}
 	if c != w {
 		return c < w
 	}

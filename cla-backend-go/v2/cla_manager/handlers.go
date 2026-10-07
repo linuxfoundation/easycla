@@ -584,6 +584,11 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 				log.WithFields(f).Warn(msg)
 				return cla_manager.NewApproveCLAManagerRequestNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, msg))
 			}
+			if errors.Is(err, ErrCLAManagerRequestAlreadyDecided) {
+				msg := fmt.Sprintf("CLA Manager request already decided for Company ID: %s, Project ID: %s, Request ID: %s", params.CompanyID, params.ProjectSFID, params.RequestID)
+				log.WithFields(f).Warn(msg)
+				return cla_manager.NewApproveCLAManagerRequestConflict().WithXRequestID(reqID).WithPayload(utils.ErrorResponseConflict(reqID, msg))
+			}
 			msg := fmt.Sprintf("unable to approve CLA Manager request for Company ID: %s, Project ID: %s, Request ID: %s", params.CompanyID, params.ProjectSFID, params.RequestID)
 			log.WithFields(f).WithError(err).Warn(msg)
 			return cla_manager.NewApproveCLAManagerRequestInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
@@ -639,6 +644,11 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 				msg := fmt.Sprintf("request not found for Company ID: %s, Project ID: %s, Request ID: %s", params.CompanyID, params.ProjectSFID, params.RequestID)
 				log.WithFields(f).Warn(msg)
 				return cla_manager.NewDenyCLAManagerRequestNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, msg))
+			}
+			if errors.Is(err, ErrCLAManagerRequestAlreadyDecided) {
+				msg := fmt.Sprintf("CLA Manager request already decided for Company ID: %s, Project ID: %s, Request ID: %s", params.CompanyID, params.ProjectSFID, params.RequestID)
+				log.WithFields(f).Warn(msg)
+				return cla_manager.NewDenyCLAManagerRequestConflict().WithXRequestID(reqID).WithPayload(utils.ErrorResponseConflict(reqID, msg))
 			}
 			msg := fmt.Sprintf("unable to deny CLA Manager request for Company ID: %s, Project ID: %s, Request ID: %s", params.CompanyID, params.ProjectSFID, params.RequestID)
 			log.WithFields(f).WithError(err).Warn(msg)
