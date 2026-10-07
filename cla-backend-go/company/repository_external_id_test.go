@@ -330,6 +330,18 @@ func TestEnsureCompanyForExternalID(t *testing.T) {
 		assert.Equal(t, 0, table.puts)
 	})
 
+	t.Run("a parent request with only signing-entity rows creates the parent", func(t *testing.T) {
+		repo, table := newCompanyRepo(t, &fakeCompaniesTable{items: map[string]map[string]interface{}{
+			"child": fakeCompanyItem("child", "Acme Inc", "Acme GmbH", sfid),
+		}})
+		comp, created, err := repo.EnsureCompanyForExternalID(context.Background(), sfid, "Acme Inc", "")
+		require.NoError(t, err)
+		assert.True(t, created)
+		assert.Equal(t, deterministicCompanyID(sfid, ""), comp.CompanyID)
+		assert.Equal(t, "Acme Inc", comp.SigningEntityName)
+		assert.Equal(t, 1, table.puts)
+	})
+
 	t.Run("existing named signing entity row is reused", func(t *testing.T) {
 		repo, table := newCompanyRepo(t, &fakeCompaniesTable{items: map[string]map[string]interface{}{
 			"parent": fakeCompanyItem("parent", "Acme Inc", "Acme Inc", sfid),

@@ -2069,3 +2069,80 @@ func TestUpdateApprovalListPendingOrganizationChangesDriveTheRemainingCoverage(t
 	assert.Contains(t, emailSender.recipients, "hank@corp.example")
 	assert.NotContains(t, emailSender.recipients, "gina@corp.example")
 }
+
+// a CLA group without enabled GitHub repositories has no organization members to re-check, so
+// removing an organization criterion from its CCLA must still succeed and drop the criterion
+func TestUpdateApprovalListGitHubOrgRemovalSucceedsWhenTheCLAGroupHasNoRepositories(t *testing.T) {
+	items := []map[string]interface{}{{
+		"signature_id":             fakeS("ccla-sig"),
+		"signature_project_id":     fakeS("cla-group-1"),
+		"signature_reference_id":   fakeS("company-1"),
+		"signature_reference_type": fakeS("company"),
+		"signature_reference_name": fakeS("Acme"),
+		"signature_type":           fakeS("ccla"),
+		"signature_approved":       fakeTrue(),
+		"signature_signed":         fakeTrue(),
+		"github_org_whitelist":     fakeStringList("removed-org"),
+		"signature_acl":            fakeStringList("manager-lf"),
+		"date_created":             fakeS("2023-01-01T00:00:00Z"),
+		"date_modified":            fakeS("2023-01-01T00:00:00Z"),
+	}, fakeEclaItem(1, "alice@corp.example")}
+
+	table := &fakeSignaturesTable{items: items, invalidated: map[string]int{}}
+	awsSession, closeServer := newApprovalRemovalSession(t, table)
+	defer closeServer()
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockUsers := mock_users.NewMockUserRepository(ctrl)
+	mockUsers.EXPECT().GetUser("user-001").
+		Return(&models.User{UserID: "user-001", GithubUsername: "alice", LfEmail: "alice@corp.example"}, nil).AnyTimes()
+	mockUsers.EXPECT().GetUserByUserName("manager-lf", true).
+		Return(&models.User{LfUsername: "manager-lf", LfEmail: "manager@example.com"}, nil).AnyTimes()
+	mockCompanyRepo := mock_company.NewMockIRepository(ctrl)
+	mockCompanyRepo.EXPECT().GetCompany(gomock.Any(), "company-1").
+		Return(&models.Company{CompanyID: "company-1", CompanyName: "Acme"}, nil).AnyTimes()
+	mockRepositories := mock.NewMockRepositoryInterface(ctrl)
+	mockRepositories.EXPECT().GitHubGetRepositoriesByCLAGroup(gomock.Any(), "cla-group-1", true).
+		Return(nil, &utils.GitHubRepositoryNotFound{Message: "no repositories found associated with CLA Group ID: cla-group-1 that is enabled"})
+	mockGitHubOrgs := githubOrgMock.NewMockRepositoryInterface(ctrl)
+	originalMembers := getOrganizationMembers
+	getOrganizationMembers = func(context.Context, string, int64) ([]string, error) {
+		return nil, errors.New("must not be called")
+	}
+	defer func() { getOrganizationMembers = originalMembers }()
+	stubListUserPublicOrgs(t, nil, errors.New("must not be called"))
+	mockEvents := eventsMock.NewMockService(ctrl)
+	approvalRepo := &fakeApprovalRepo{}
+
+	repo := repository{
+		stage:              "test",
+		dynamoDBClient:     dynamodb.New(awsSession),
+		companyRepo:        mockCompanyRepo,
+		usersRepo:          mockUsers,
+		eventsService:      mockEvents,
+		repositoriesRepo:   mockRepositories,
+		ghOrgRepo:          mockGitHubOrgs,
+		signatureTableName: "cla-test-signatures",
+		approvalRepo:       approvalRepo,
+	}
+
+	updated, err := repo.UpdateApprovalList(context.Background(),
+		&models.User{LfUsername: "manager-lf", LfEmail: "manager@example.com"},
+		&models.ClaGroup{ProjectID: "cla-group-1", ProjectName: "My Project", Version: "v2"},
+		"company-1",
+		&models.ApprovalList{RemoveGithubOrgApprovalList: []string{"removed-org"}},
+		&events.LogEventArgs{EventType: events.InvalidatedSignature})
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	assert.Empty(t, updated.GithubOrgApprovalList)
+
+	table.mu.Lock()
+	defer table.mu.Unlock()
+	assert.Empty(t, table.invalidated, "nobody can be a member of an organization the CLA group does not use")
+	require.Len(t, table.ccla, 1)
+	assert.Contains(t, table.ccla[0], "REMOVE")
+	require.Len(t, approvalRepo.added, 1)
+	assert.Equal(t, "removed-org", approvalRepo.added[0].ApprovalName)
+	assert.False(t, approvalRepo.added[0].Active)
+}

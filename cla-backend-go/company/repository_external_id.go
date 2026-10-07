@@ -93,7 +93,7 @@ func (repo repository) EnsureCompanyForExternalID(ctx context.Context, externalI
 			if _, notFound := err.(*utils.CompanyNotFound); !notFound {
 				return nil, false, err
 			}
-		} else if len(rows) > 0 {
+		} else if len(rows) > 0 && canonicalSigningEntity(rows[0].CompanyName, rows[0].SigningEntityName) == "" {
 			existing = rows[0]
 		}
 	} else {
