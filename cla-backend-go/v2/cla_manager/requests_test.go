@@ -303,13 +303,15 @@ func TestGetCLAManagerRequest(t *testing.T) {
 	}
 }
 
+const approvedStatus = "approved"
+
 func TestApproveCLAManagerRequest(t *testing.T) {
 	authUser := &auth.User{UserName: "manager-user", Email: "manager@example.com"}
 	companyModel := acmeCompany()
 
 	t.Run("approve flips status, updates the signature ACL and notifies managers and requester", func(t *testing.T) {
 		approvedRequest := pendingRequest()
-		approvedRequest.Status = "approved"
+		approvedRequest.Status = approvedStatus
 		mgr := &fakeManagerService{request: pendingRequest(), approved: approvedRequest}
 		sigs := &fakeSignatureService{signatures: ccalSignatures()}
 		ev := &fakeEventsService{}
@@ -390,6 +392,56 @@ func TestApproveCLAManagerRequest(t *testing.T) {
 		assert.Empty(t, mgr.approveCalls)
 	})
 
+	t.Run("re-approving a requester already in the ACL skips the ACL add instead of failing after the status flip", func(t *testing.T) {
+		approvedRequest := pendingRequest()
+		approvedRequest.Status = approvedStatus
+		mgr := &fakeManagerService{request: pendingRequest(), approved: approvedRequest}
+		sigs := ccalSignatures()
+		sigs.Signatures[0].SignatureACL = append(sigs.Signatures[0].SignatureACL, v1Models.User{UserID: "user-9", Username: "requester", LfEmail: strfmt.Email("requester@example.com")})
+		sigSvc := &fakeSignatureService{signatures: sigs, addErr: errors.New("manager already in signature ACL")}
+		s := &service{
+			managerService:       mgr,
+			projectService:       &fakeProjectService{claGroup: &v1Models.ClaGroup{ProjectName: "My Project"}},
+			signatureService:     sigSvc,
+			eventService:         &fakeEventsService{},
+			emailTemplateService: &fakeEmailTemplateService{},
+		}
+
+		installEmailSender(t)
+		result, err := s.ApproveCLAManagerRequest(context.Background(), authUser, companyModel, "cla-group-1", "req-1")
+		assert.Nil(t, err)
+		if assert.NotNil(t, result) {
+			assert.Equal(t, "approved", result.Status)
+		}
+		assert.Equal(t, [][]string{{"company-1", "cla-group-1", "req-1"}}, mgr.approveCalls)
+		assert.Empty(t, sigSvc.addCalls)
+	})
+
+	t.Run("approving an already decided request is a conflict and writes nothing", func(t *testing.T) {
+		for _, status := range []string{approvedStatus, "denied"} {
+			decided := pendingRequest()
+			decided.Status = status
+			mgr := &fakeManagerService{request: decided}
+			sigs := &fakeSignatureService{signatures: ccalSignatures()}
+			emailSvc := &fakeEmailTemplateService{}
+			s := &service{
+				managerService:       mgr,
+				projectService:       &fakeProjectService{claGroup: &v1Models.ClaGroup{ProjectName: "My Project"}},
+				signatureService:     sigs,
+				eventService:         &fakeEventsService{},
+				emailTemplateService: emailSvc,
+			}
+			sender := installEmailSender(t)
+			result, err := s.ApproveCLAManagerRequest(context.Background(), authUser, companyModel, "cla-group-1", "req-1")
+			assert.Nil(t, result, status)
+			assert.ErrorIs(t, err, ErrCLAManagerRequestAlreadyDecided, status)
+			assert.Empty(t, mgr.approveCalls, status)
+			assert.Empty(t, sigs.addCalls, status)
+			assert.Empty(t, emailSvc.renderCalls, status)
+			assert.Empty(t, sender.sent, status)
+		}
+	})
+
 	t.Run("approve error skips the ACL update", func(t *testing.T) {
 		mgr := &fakeManagerService{request: pendingRequest(), approveErr: errors.New("status update failed")}
 		sigs := &fakeSignatureService{signatures: ccalSignatures()}
@@ -450,6 +502,31 @@ func TestDenyCLAManagerRequest(t *testing.T) {
 			assert.Equal(t, []string{"requester@example.com"}, sender.sent[2].recipients)
 			assert.Contains(t, sender.sent[0].subject, "CLA Manager Access Denied Notice for My Project")
 			assert.Contains(t, sender.sent[2].subject, "New CLA Manager Access Denied for My Project")
+		}
+	})
+
+	t.Run("denying an already decided request is a conflict and writes nothing", func(t *testing.T) {
+		for _, status := range []string{approvedStatus, "denied"} {
+			decided := pendingRequest()
+			decided.Status = status
+			mgr := &fakeManagerService{request: decided}
+			sigs := &fakeSignatureService{signatures: ccalSignatures()}
+			emailSvc := &fakeEmailTemplateService{}
+			s := &service{
+				managerService:       mgr,
+				projectService:       &fakeProjectService{claGroup: &v1Models.ClaGroup{ProjectName: "My Project"}},
+				signatureService:     sigs,
+				eventService:         &fakeEventsService{},
+				emailTemplateService: emailSvc,
+			}
+			sender := installEmailSender(t)
+			result, err := s.DenyCLAManagerRequest(context.Background(), authUser, companyModel, "cla-group-1", "req-1")
+			assert.Nil(t, result, status)
+			assert.ErrorIs(t, err, ErrCLAManagerRequestAlreadyDecided, status)
+			assert.Empty(t, mgr.denyCalls, status)
+			assert.Empty(t, sigs.addCalls, status)
+			assert.Empty(t, emailSvc.renderCalls, status)
+			assert.Empty(t, sender.sent, status)
 		}
 	})
 

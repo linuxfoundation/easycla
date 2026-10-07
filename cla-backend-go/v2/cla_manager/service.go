@@ -66,7 +66,11 @@ var (
 	ErrClaGroupBadRequest = errors.New("cla group bad request")
 
 	errRequestNotFound = errors.New("cla manager request not found")
+	// ErrCLAManagerRequestAlreadyDecided when the request is no longer pending
+	ErrCLAManagerRequestAlreadyDecided = errors.New("cla manager request already decided")
 )
+
+const pendingRequestStatus = "pending"
 
 const (
 	// used for filtering when fetching contributor email

@@ -206,7 +206,9 @@ the CCLA signature ACL and emails the CLA managers + requester; deny flips it to
 and emails without touching the ACL. Responses reuse the id-complete
 `cla-manager-request` shape (`requestID`, `companyID`/`companyExternalID`,
 `projectID`/`projectExternalID`, `userID`/`userExternalID`, names, emails, `status`,
-`created`/`updated`). A request belonging to another company or CLA group returns 404.
+`created`/`updated`). A request belonging to another company or CLA group returns 404. Only
+`pending` requests can be decided: `approve`/`deny` on an already approved or denied request
+returns 409 (`conflict`) and writes nothing.
 
 `PUT /v4/cla-group/{claGroupID}/ecla/{signatureID}/invalidate` invalidates one employee
 acknowledgment, mirroring the ICLA invalidate internals: sets

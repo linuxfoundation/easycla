@@ -129,4 +129,12 @@ func TestPickParentCompany(t *testing.T) {
 	if got := attrString(PickParentCompany([]map[string]types.AttributeValue{parent, tie}), "company_id"); got != "a" {
 		t.Fatalf("expected the smallest company_id on a date tie, got %s", got)
 	}
+	pynamo := companyRow("e", "Acme", "", "2021-01-01T00:00:00.100000+0000")
+	if got := attrString(PickParentCompany([]map[string]types.AttributeValue{pynamo, parent}), "company_id"); got != "b" {
+		t.Fatalf("expected the older RFC3339 row b over the later pynamo-formatted row, got %s", got)
+	}
+	sameInstant := companyRow("f", "Acme", "", "2021-01-01T00:00:00.000000+0000")
+	if got := attrString(PickParentCompany([]map[string]types.AttributeValue{sameInstant, parent}), "company_id"); got != "b" {
+		t.Fatalf("expected the smallest company_id when differently formatted dates are the same instant, got %s", got)
+	}
 }

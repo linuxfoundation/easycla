@@ -79,6 +79,9 @@ func (s *service) ApproveCLAManagerRequest(ctx context.Context, authUser *auth.U
 	if existingRequest == nil || existingRequest.CompanyID != companyModel.CompanyID || existingRequest.ProjectID != claGroupID {
 		return nil, errRequestNotFound
 	}
+	if existingRequest.Status != pendingRequestStatus {
+		return nil, ErrCLAManagerRequestAlreadyDecided
+	}
 
 	claGroupModel, err := s.projectService.GetCLAGroupByID(ctx, claGroupID)
 	if err != nil {
@@ -111,9 +114,11 @@ func (s *service) ApproveCLAManagerRequest(ctx context.Context, authUser *auth.U
 		return nil, err
 	}
 
-	_, aclErr := s.signatureService.AddCLAManager(ctx, sigModel.SignatureID, request.UserID)
-	if aclErr != nil {
-		return nil, aclErr
+	if !aclContainsUser(claManagers, request.UserID) {
+		_, aclErr := s.signatureService.AddCLAManager(ctx, sigModel.SignatureID, request.UserID)
+		if aclErr != nil {
+			return nil, aclErr
+		}
 	}
 
 	s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
@@ -174,6 +179,9 @@ func (s *service) DenyCLAManagerRequest(ctx context.Context, authUser *auth.User
 	}
 	if existingRequest == nil || existingRequest.CompanyID != companyModel.CompanyID || existingRequest.ProjectID != claGroupID {
 		return nil, errRequestNotFound
+	}
+	if existingRequest.Status != pendingRequestStatus {
+		return nil, ErrCLAManagerRequestAlreadyDecided
 	}
 
 	claGroupModel, err := s.projectService.GetCLAGroupByID(ctx, claGroupID)
@@ -354,4 +362,13 @@ func sendRequestDeniedEmailToRequester(emailSvc emails.EmailTemplateService, ema
 	} else {
 		log.Debugf("sent email with subject: %s to recipients: %+v", subject, recipients)
 	}
+}
+
+func aclContainsUser(acl []v1Models.User, userID string) bool {
+	for _, manager := range acl {
+		if manager.UserID == userID {
+			return true
+		}
+	}
+	return false
 }
