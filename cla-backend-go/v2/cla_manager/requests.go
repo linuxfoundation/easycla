@@ -117,6 +117,9 @@ func (s *service) ApproveCLAManagerRequest(ctx context.Context, authUser *auth.U
 	if !aclContainsUser(claManagers, request.UserID) {
 		_, aclErr := s.signatureService.AddCLAManager(ctx, sigModel.SignatureID, request.UserID)
 		if aclErr != nil {
+			if _, revertErr := s.managerService.PendingRequest(companyModel.CompanyID, claGroupID, requestID); revertErr != nil {
+				log.WithFields(f).WithError(revertErr).Warnf("unable to revert request %s to pending after the ACL update failed: %v", requestID, aclErr)
+			}
 			return nil, aclErr
 		}
 	}
@@ -366,7 +369,7 @@ func sendRequestDeniedEmailToRequester(emailSvc emails.EmailTemplateService, ema
 
 func aclContainsUser(acl []v1Models.User, userID string) bool {
 	for _, manager := range acl {
-		if manager.UserID == userID {
+		if manager.UserID == userID || manager.LfUsername == userID {
 			return true
 		}
 	}

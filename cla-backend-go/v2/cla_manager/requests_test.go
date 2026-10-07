@@ -38,6 +38,7 @@ type fakeManagerService struct {
 	getCalls     []string
 	approveCalls [][]string
 	denyCalls    [][]string
+	pendingCalls [][]string
 }
 
 func (f *fakeManagerService) GetRequests(companyID, claGroupID string) (*v1Models.ClaManagerRequestList, error) {
@@ -58,6 +59,11 @@ func (f *fakeManagerService) ApproveRequest(companyID, claGroupID, requestID str
 func (f *fakeManagerService) DenyRequest(companyID, claGroupID, requestID string) (*v1Models.ClaManagerRequest, error) {
 	f.denyCalls = append(f.denyCalls, []string{companyID, claGroupID, requestID})
 	return f.denied, f.denyErr
+}
+
+func (f *fakeManagerService) PendingRequest(companyID, claGroupID, requestID string) (*v1Models.ClaManagerRequest, error) {
+	f.pendingCalls = append(f.pendingCalls, []string{companyID, claGroupID, requestID})
+	return f.request, nil
 }
 
 type fakeProjectService struct {
@@ -332,6 +338,7 @@ func TestApproveCLAManagerRequest(t *testing.T) {
 		assert.Equal(t, "comp-sfid", result.CompanyExternalID, "enriched from the company model - the v1 read projection drops it")
 		assert.Equal(t, [][]string{{"company-1", "cla-group-1", "req-1"}}, mgr.approveCalls)
 		assert.Equal(t, [][]string{{"sig-1", "user-9"}}, sigs.addCalls, "the requester is added to the CCLA signature ACL")
+		assert.Empty(t, mgr.pendingCalls)
 
 		if assert.Len(t, ev.logged, 1) {
 			logged := ev.logged[0]
@@ -397,7 +404,7 @@ func TestApproveCLAManagerRequest(t *testing.T) {
 		approvedRequest.Status = approvedStatus
 		mgr := &fakeManagerService{request: pendingRequest(), approved: approvedRequest}
 		sigs := ccalSignatures()
-		sigs.Signatures[0].SignatureACL = append(sigs.Signatures[0].SignatureACL, v1Models.User{UserID: "user-9", Username: "requester", LfEmail: strfmt.Email("requester@example.com")})
+		sigs.Signatures[0].SignatureACL = append(sigs.Signatures[0].SignatureACL, v1Models.User{UserID: "uuid-9", LfUsername: "user-9", Username: "requester", LfEmail: strfmt.Email("requester@example.com")})
 		sigSvc := &fakeSignatureService{signatures: sigs, addErr: errors.New("manager already in signature ACL")}
 		s := &service{
 			managerService:       mgr,
@@ -415,6 +422,39 @@ func TestApproveCLAManagerRequest(t *testing.T) {
 		}
 		assert.Equal(t, [][]string{{"company-1", "cla-group-1", "req-1"}}, mgr.approveCalls)
 		assert.Empty(t, sigSvc.addCalls)
+	})
+
+	t.Run("a failed ACL add reverts the request to pending so the approval can be retried", func(t *testing.T) {
+		approvedRequest := pendingRequest()
+		approvedRequest.Status = approvedStatus
+		mgr := &fakeManagerService{request: pendingRequest(), approved: approvedRequest}
+		aclErr := errors.New("acl write failed")
+		sigSvc := &fakeSignatureService{signatures: ccalSignatures(), addErr: aclErr}
+		ev := &fakeEventsService{}
+		s := &service{
+			managerService:       mgr,
+			projectService:       &fakeProjectService{claGroup: &v1Models.ClaGroup{ProjectName: "My Project"}},
+			signatureService:     sigSvc,
+			eventService:         ev,
+			emailTemplateService: &fakeEmailTemplateService{},
+		}
+
+		sender := installEmailSender(t)
+		result, err := s.ApproveCLAManagerRequest(context.Background(), authUser, companyModel, "cla-group-1", "req-1")
+		assert.Nil(t, result)
+		assert.Equal(t, aclErr, err)
+		assert.Equal(t, [][]string{{"company-1", "cla-group-1", "req-1"}}, mgr.approveCalls)
+		assert.Equal(t, [][]string{{"sig-1", "user-9"}}, sigSvc.addCalls)
+		assert.Equal(t, [][]string{{"company-1", "cla-group-1", "req-1"}}, mgr.pendingCalls)
+		assert.Empty(t, ev.logged)
+		assert.Empty(t, sender.sent)
+	})
+
+	t.Run("aclContainsUser matches hydrated and raw ACL entries by LF username", func(t *testing.T) {
+		assert.False(t, aclContainsUser([]v1Models.User{{UserID: "uuid-9"}}, "user-9"))
+		assert.True(t, aclContainsUser([]v1Models.User{{UserID: "uuid-9", LfUsername: "user-9"}}, "user-9"))
+		assert.True(t, aclContainsUser([]v1Models.User{{LfUsername: "user-9"}}, "user-9"))
+		assert.False(t, aclContainsUser([]v1Models.User{{UserID: "uuid-1", LfUsername: "other"}}, "user-9"))
 	})
 
 	t.Run("approving an already decided request is a conflict and writes nothing", func(t *testing.T) {
