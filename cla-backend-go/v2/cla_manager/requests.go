@@ -111,6 +111,9 @@ func (s *service) ApproveCLAManagerRequest(ctx context.Context, authUser *auth.U
 
 	request, err := s.managerService.ApproveRequest(companyModel.CompanyID, claGroupID, requestID)
 	if err != nil {
+		if _, revertErr := s.managerService.PendingRequest(companyModel.CompanyID, claGroupID, requestID); revertErr != nil {
+			log.WithFields(f).WithError(revertErr).Warnf("unable to revert request %s to pending after the status update failed: %v", requestID, err)
+		}
 		return nil, err
 	}
 

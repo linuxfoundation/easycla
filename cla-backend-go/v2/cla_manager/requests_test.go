@@ -39,6 +39,7 @@ type fakeManagerService struct {
 	approveCalls [][]string
 	denyCalls    [][]string
 	pendingCalls [][]string
+	pendingErr   error
 }
 
 func (f *fakeManagerService) GetRequests(companyID, claGroupID string) (*v1Models.ClaManagerRequestList, error) {
@@ -63,7 +64,7 @@ func (f *fakeManagerService) DenyRequest(companyID, claGroupID, requestID string
 
 func (f *fakeManagerService) PendingRequest(companyID, claGroupID, requestID string) (*v1Models.ClaManagerRequest, error) {
 	f.pendingCalls = append(f.pendingCalls, []string{companyID, claGroupID, requestID})
-	return f.request, nil
+	return f.request, f.pendingErr
 }
 
 type fakeProjectService struct {
@@ -528,19 +529,28 @@ func TestApproveCLAManagerRequest(t *testing.T) {
 		}
 	})
 
-	t.Run("approve error skips the ACL update", func(t *testing.T) {
-		mgr := &fakeManagerService{request: pendingRequest(), approveErr: errors.New("status update failed")}
-		sigs := &fakeSignatureService{signatures: ccalSignatures()}
-		s := &service{
-			managerService:   mgr,
-			projectService:   &fakeProjectService{claGroup: &v1Models.ClaGroup{ProjectName: "My Project"}},
-			signatureService: sigs,
-		}
+	t.Run("approve error skips the ACL update and reverts the request to pending", func(t *testing.T) {
+		for name, pendingErr := range map[string]error{"revert succeeds": nil, "revert fails": errors.New("revert failed")} {
+			mgr := &fakeManagerService{request: pendingRequest(), approveErr: errors.New("status update failed"), pendingErr: pendingErr}
+			sigs := &fakeSignatureService{signatures: ccalSignatures()}
+			ev := &fakeEventsService{}
+			emailSvc := &fakeEmailTemplateService{}
+			s := &service{
+				managerService:       mgr,
+				projectService:       &fakeProjectService{claGroup: &v1Models.ClaGroup{ProjectName: "My Project"}},
+				signatureService:     sigs,
+				eventService:         ev,
+				emailTemplateService: emailSvc,
+			}
 
-		result, err := s.ApproveCLAManagerRequest(context.Background(), authUser, companyModel, "cla-group-1", "req-1")
-		assert.Nil(t, result)
-		assert.EqualError(t, err, "status update failed")
-		assert.Empty(t, sigs.addCalls)
+			result, err := s.ApproveCLAManagerRequest(context.Background(), authUser, companyModel, "cla-group-1", "req-1")
+			assert.Nil(t, result, name)
+			assert.EqualError(t, err, "status update failed", name)
+			assert.Empty(t, sigs.addCalls, name)
+			assert.Equal(t, [][]string{{"company-1", "cla-group-1", "req-1"}}, mgr.pendingCalls, name)
+			assert.Empty(t, ev.logged, name)
+			assert.Empty(t, emailSvc.renderCalls, name)
+		}
 	})
 }
 
