@@ -193,7 +193,7 @@ d=json.load(sys.stdin)
 for r in d.get(user,[]):
     if r['role_name']!=role: continue
     for s in r.get('scopes',[]):
-        if objid is None or s.get('object_id')==objid:
+        if objid in (None, '*') or s.get('object_id')==objid:
             print(r['role_id'],s['grant_id'],s.get('object_type_name',''),s.get('object_id',''))" "$@"
 }
 

@@ -112,16 +112,47 @@ func (h *rowlessHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 	return response, nil
 }
 
+// rowlessTransportSwitch is installed into the http globals once per package: swapping them per test raced with the
+// refresh goroutine that token.Init leaves behind, so tests only switch the pointer under a lock.
+type rowlessTransportSwitch struct {
+	mu      sync.Mutex
+	current http.RoundTripper
+}
+
+func (s *rowlessTransportSwitch) set(rt http.RoundTripper) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.current = rt
+}
+
+func (s *rowlessTransportSwitch) RoundTrip(r *http.Request) (*http.Response, error) {
+	s.mu.Lock()
+	rt := s.current
+	s.mu.Unlock()
+	if rt == nil {
+		return nil, fmt.Errorf("no rowless transport installed: %s %s", r.Method, r.URL)
+	}
+	return rt.RoundTrip(r)
+}
+
+var (
+	rowlessSwitch     = &rowlessTransportSwitch{}
+	rowlessSwitchOnce sync.Once
+	rowlessTokenOnce  sync.Once
+)
+
 func setupRowlessHTTP(t *testing.T, sssStatus string) *rowlessHTTP {
 	t.Helper()
 	transport := &rowlessHTTP{t: t, orgs: map[string]string{rowlessSFID: rowlessOrgJSON}, sssStatus: sssStatus}
-	oldTransport, oldClient := http.DefaultTransport, http.DefaultClient
-	http.DefaultTransport = transport
-	http.DefaultClient = &http.Client{Transport: transport}
-	t.Cleanup(func() {
-		http.DefaultTransport, http.DefaultClient = oldTransport, oldClient
+	rowlessSwitchOnce.Do(func() {
+		http.DefaultTransport = rowlessSwitch
+		http.DefaultClient = &http.Client{Transport: rowlessSwitch}
 	})
-	token.Init("test-client", "test-secret", "https://"+rowlessAuthHost+oauthEndpoint, "test-audience")
+	rowlessSwitch.set(transport)
+	t.Cleanup(func() { rowlessSwitch.set(nil) })
+	rowlessTokenOnce.Do(func() {
+		token.Init("test-client", "test-secret", "https://"+rowlessAuthHost+oauthEndpoint, "test-audience")
+	})
 	deadline := time.Now().Add(5 * time.Second)
 	for {
 		if _, err := token.GetToken(); err == nil {
@@ -673,6 +704,87 @@ func TestRequestCorporateSignatureFirstCCLAEndToEnd(t *testing.T) {
 
 		require.ErrorIs(t, err, ErrCCLANotEnabled)
 		assert.Nil(t, out)
+		assert.Zero(t, fx.transport.envelopes)
+	})
+	withSignatorySeams := func(t *testing.T, created bool) (granted, removed *[]string) {
+		granted, removed = &[]string{}, &[]string{}
+		originalPrepare, originalRemove := prepareUserForSigningFn, removeSignatoryRoleFn
+		t.Cleanup(func() { prepareUserForSigningFn, removeSignatoryRoleFn = originalPrepare, originalRemove })
+		prepareUserForSigningFn = func(_ context.Context, email, _, _, _ string) (bool, error) {
+			*granted = append(*granted, email)
+			return created, nil
+		}
+		removeSignatoryRoleFn = func(_ context.Context, email, companySFID, projectSFID string) error {
+			*removed = append(*removed, email+"|"+companySFID+"|"+projectSFID)
+			return nil
+		}
+		return granted, removed
+	}
+	expectAlreadySigned := func(fx fixtures) {
+		fx.companyRepo.EXPECT().GetCompanyByExternalID(gomock.Any(), rowlessSFID).Return(persisted(), nil)
+		fx.signatureService.EXPECT().GetCorporateSignatures(gomock.Any(), rowlessProjectID, rowlessCompanyID, gomock.Any(), nil).
+			Return([]*v1Models.Signature{{SignatureSigned: true, SignatureApproved: true}}, nil)
+	}
+	t.Run("a direct request that fails after granting cla-signatory rolls the grant back", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		fx := newFixtures(t, ctrl, rowlessCLAGroup())
+		granted, removed := withSignatorySeams(t, true)
+		expectAlreadySigned(fx)
+		out, err := fx.svc.RequestCorporateSignature(context.Background(), rowlessLFUsername, "******", signingInput())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "corporate valid signature exists")
+		assert.Nil(t, out)
+		assert.Equal(t, []string{rowlessUserEmail}, *granted)
+		assert.Equal(t, []string{rowlessUserEmail + "|" + rowlessSFID + "|" + rowlessProjectSFID}, *removed, "the grant made for this request must be removed")
+		assert.Zero(t, fx.transport.envelopes)
+	})
+	t.Run("a direct request that fails without creating a grant removes nothing", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		fx := newFixtures(t, ctrl, rowlessCLAGroup())
+		granted, removed := withSignatorySeams(t, false)
+		expectAlreadySigned(fx)
+		out, err := fx.svc.RequestCorporateSignature(context.Background(), rowlessLFUsername, "******", signingInput())
+		require.Error(t, err)
+		assert.Nil(t, out)
+		assert.Equal(t, []string{rowlessUserEmail}, *granted)
+		assert.Empty(t, *removed, "a pre-existing grant must be left alone")
+		assert.Zero(t, fx.transport.envelopes)
+	})
+	const authorityEmail = "authority@acme.invalid"
+	emailInput := func() *models.CorporateSignatureInput {
+		input := signingInput()
+		input.SendAsEmail = true
+		input.AuthorityName = "Signing Authority"
+		input.AuthorityEmail = strfmt.Email(authorityEmail)
+		return input
+	}
+	t.Run("an email request that fails after granting cla-signatory rolls the authority grant back", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		fx := newFixtures(t, ctrl, rowlessCLAGroup())
+		granted, removed := withSignatorySeams(t, true)
+		expectAlreadySigned(fx)
+		out, err := fx.svc.RequestCorporateSignature(context.Background(), rowlessLFUsername, "******", emailInput())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "corporate valid signature exists")
+		assert.Nil(t, out)
+		assert.Equal(t, []string{authorityEmail}, *granted)
+		assert.Equal(t, []string{authorityEmail + "|" + rowlessSFID + "|" + rowlessProjectSFID}, *removed, "the authority grant made for this request must be removed")
+		assert.Zero(t, fx.transport.envelopes)
+	})
+	t.Run("an email request that fails without creating a grant removes nothing", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		fx := newFixtures(t, ctrl, rowlessCLAGroup())
+		granted, removed := withSignatorySeams(t, false)
+		expectAlreadySigned(fx)
+		out, err := fx.svc.RequestCorporateSignature(context.Background(), rowlessLFUsername, "******", emailInput())
+		require.Error(t, err)
+		assert.Nil(t, out)
+		assert.Equal(t, []string{authorityEmail}, *granted)
+		assert.Empty(t, *removed, "a pre-existing authority grant must be left alone")
 		assert.Zero(t, fx.transport.envelopes)
 	})
 }
