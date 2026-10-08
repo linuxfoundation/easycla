@@ -145,17 +145,28 @@ func eclaSigCsvLine(sig *v1Models.CorporateContributor) string {
 // GetClaGroupCorporateContributorsCsv returns the CLA Group corporate contributors as a CSV
 func (s *Service) GetClaGroupCorporateContributorsCsv(ctx context.Context, claGroupID string, companyID string) ([]byte, error) {
 	var b bytes.Buffer
-	result, err := s.v1SignatureService.GetClaGroupCorporateContributors(ctx, claGroupID, &companyID, nil, nil, nil)
-	if err != nil {
-		return nil, err
+	var contributors []*v1Models.CorporateContributor
+	var nextKey *string
+	// one page per export: the v1 lookup recounts the whole CLA group on every call
+	batchSize := HugePageSize
+	for {
+		result, err := s.v1SignatureService.GetClaGroupCorporateContributors(ctx, claGroupID, &companyID, &batchSize, nextKey, nil)
+		if err != nil {
+			return nil, err
+		}
+		contributors = append(contributors, result.List...)
+		if result.NextKey == "" || (nextKey != nil && result.NextKey == *nextKey) {
+			break
+		}
+		nextKey = &result.NextKey
 	}
 
-	if len(result.List) == 0 {
+	if len(contributors) == 0 {
 		return nil, errors.New("not Found")
 	}
 
 	b.WriteString(`GitHub ID,LF_ID,Name,Email,Date Signed`)
-	for _, sig := range result.List {
+	for _, sig := range contributors {
 		b.WriteString(eclaSigCsvLine(sig))
 	}
 	return b.Bytes(), nil
