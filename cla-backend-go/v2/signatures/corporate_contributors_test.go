@@ -149,7 +149,7 @@ func TestService_GetClaGroupCorporateContributorsCsvPagesThroughAllRows(t *testi
 			DoAndReturn(func(_ context.Context, _ string, _ *string, pageSize *int64, nextKey *string, _ *string) (*v1Models.CorporateContributorList, error) {
 				require.NotNil(t, nextKey)
 				assert.Equal(t, "page-2", *nextKey, "the second page must continue from the returned key")
-				assert.Greater(t, *pageSize, int64(10), "the export must not use the default page size")
+				assert.Equal(t, HugePageSize, *pageSize, "the export must request the full-list page size")
 				return second, nil
 			}),
 	)
