@@ -27,6 +27,7 @@ func TestRollbackSignatoryGrants(t *testing.T) {
 		{name: "direct flow removes the caller grant it created", directGranted: true, want: []removal{{"caller@example.com", "comp-sfid", "proj-sfid"}}},
 		{name: "direct flow leaves a pre-existing caller grant alone", directGranted: false, want: nil},
 		{name: "caller who is also the authority is removed once", authorityEmail: "Caller@example.com", authorityGranted: true, directGranted: true, want: []removal{{"Caller@example.com", "comp-sfid", "proj-sfid"}}},
+		{name: "direct grant is removed even when a matching authority email was not granted", authorityEmail: "Caller@example.com", authorityGranted: false, directGranted: true, want: []removal{{"caller@example.com", "comp-sfid", "proj-sfid"}}},
 		{name: "removal errors are logged and do not stop the rollback", authorityEmail: "signatory@example.com", authorityGranted: true, directGranted: true, removeErr: errors.New("acs down"),
 			want: []removal{{"signatory@example.com", "comp-sfid", "proj-sfid"}, {"caller@example.com", "comp-sfid", "proj-sfid"}}},
 	}

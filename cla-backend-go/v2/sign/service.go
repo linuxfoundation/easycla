@@ -3127,7 +3127,7 @@ func rollbackSignatoryGrants(ctx context.Context, f logrus.Fields, authorityEmai
 			log.WithFields(f).WithError(removeErr).Warnf("failed to remove signatory role. companySFID :%s, email :%s error: %+v", companySFID, authorityEmail, removeErr)
 		}
 	}
-	if directSignatoryGranted && currentUserEmail != "" && !strings.EqualFold(currentUserEmail, authorityEmail) {
+	if directSignatoryGranted && currentUserEmail != "" && (!authoritySignatoryGranted || !strings.EqualFold(currentUserEmail, authorityEmail)) {
 		if removeErr := removeSignatoryRoleFn(ctx, currentUserEmail, companySFID, projectSFID); removeErr != nil {
 			log.WithFields(f).WithError(removeErr).Warnf("failed to remove the signatory role granted for this request. companySFID :%s, email :%s error: %+v", companySFID, currentUserEmail, removeErr)
 		}
