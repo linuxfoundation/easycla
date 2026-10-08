@@ -423,11 +423,11 @@ func (s *service) requestCorporateSignatureWithExpectedCLAGroup(ctx context.Cont
 	}
 
 	// Email flow
-	var directSignatoryGranted bool
+	var authoritySignatoryGranted, directSignatoryGranted bool
 	if input.SendAsEmail {
 		log.WithFields(f).Debugf("Sending request as an email to: %s...", input.AuthorityEmail.String())
 		// this would be used only in case of cla-signatory
-		_, err = prepareUserForSigningFn(ctx, input.AuthorityEmail.String(), utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid), input.SigningEntityName)
+		authoritySignatoryGranted, err = prepareUserForSigningFn(ctx, input.AuthorityEmail.String(), utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid), input.SigningEntityName)
 		if err != nil {
 			// Ignore conflict - role has already been assigned
 			if _, ok := err.(*organizations.CreateOrgUsrRoleScopesConflict); !ok {
@@ -459,7 +459,7 @@ func (s *service) requestCorporateSignatureWithExpectedCLAGroup(ctx context.Cont
 	}, comp, proj, lfUsername, currentUserEmail)
 
 	if err != nil {
-		rollbackSignatoryGrants(ctx, f, input.AuthorityEmail.String(), currentUserEmail, utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid), directSignatoryGranted)
+		rollbackSignatoryGrants(ctx, f, input.AuthorityEmail.String(), currentUserEmail, utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid), authoritySignatoryGranted, directSignatoryGranted)
 		log.WithFields(f).WithError(err).Warnf("unable to request corporate signature")
 		return nil, err
 	}
@@ -3115,10 +3115,14 @@ var (
 	removeSignatoryRoleFn   = removeSignatoryRole
 )
 
-// rollbackSignatoryGrants removes the cla-signatory grants made for a corporate signature request that failed:
-// always for the email-flow authority, and for the caller only when this request created the grant
-func rollbackSignatoryGrants(ctx context.Context, f logrus.Fields, authorityEmail, currentUserEmail, companySFID, projectSFID string, directSignatoryGranted bool) {
-	if authorityEmail != "" {
+// signatoryRollbackTimeout bounds the grant cleanup, which must outlive a canceled request context
+const signatoryRollbackTimeout = 30 * time.Second
+
+// rollbackSignatoryGrants removes the cla-signatory grants that this failed corporate signature request created
+func rollbackSignatoryGrants(ctx context.Context, f logrus.Fields, authorityEmail, currentUserEmail, companySFID, projectSFID string, authoritySignatoryGranted, directSignatoryGranted bool) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), signatoryRollbackTimeout)
+	defer cancel()
+	if authorityEmail != "" && authoritySignatoryGranted {
 		if removeErr := removeSignatoryRoleFn(ctx, authorityEmail, companySFID, projectSFID); removeErr != nil {
 			log.WithFields(f).WithError(removeErr).Warnf("failed to remove signatory role. companySFID :%s, email :%s error: %+v", companySFID, authorityEmail, removeErr)
 		}

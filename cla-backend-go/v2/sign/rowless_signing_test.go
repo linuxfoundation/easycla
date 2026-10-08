@@ -752,6 +752,41 @@ func TestRequestCorporateSignatureFirstCCLAEndToEnd(t *testing.T) {
 		assert.Empty(t, *removed, "a pre-existing grant must be left alone")
 		assert.Zero(t, fx.transport.envelopes)
 	})
+	const authorityEmail = "authority@acme.invalid"
+	emailInput := func() *models.CorporateSignatureInput {
+		input := signingInput()
+		input.SendAsEmail = true
+		input.AuthorityName = "Signing Authority"
+		input.AuthorityEmail = strfmt.Email(authorityEmail)
+		return input
+	}
+	t.Run("an email request that fails after granting cla-signatory rolls the authority grant back", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		fx := newFixtures(t, ctrl, rowlessCLAGroup())
+		granted, removed := withSignatorySeams(t, true)
+		expectAlreadySigned(fx)
+		out, err := fx.svc.RequestCorporateSignature(context.Background(), rowlessLFUsername, "******", emailInput())
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "corporate valid signature exists")
+		assert.Nil(t, out)
+		assert.Equal(t, []string{authorityEmail}, *granted)
+		assert.Equal(t, []string{authorityEmail + "|" + rowlessSFID + "|" + rowlessProjectSFID}, *removed, "the authority grant made for this request must be removed")
+		assert.Zero(t, fx.transport.envelopes)
+	})
+	t.Run("an email request that fails without creating a grant removes nothing", func(t *testing.T) {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		fx := newFixtures(t, ctrl, rowlessCLAGroup())
+		granted, removed := withSignatorySeams(t, false)
+		expectAlreadySigned(fx)
+		out, err := fx.svc.RequestCorporateSignature(context.Background(), rowlessLFUsername, "******", emailInput())
+		require.Error(t, err)
+		assert.Nil(t, out)
+		assert.Equal(t, []string{authorityEmail}, *granted)
+		assert.Empty(t, *removed, "a pre-existing authority grant must be left alone")
+		assert.Zero(t, fx.transport.envelopes)
+	})
 }
 
 func TestCompanyReferencePatternAcceptsRowsAndOrganizations(t *testing.T) {
