@@ -182,3 +182,40 @@ func TestEclaAutoCreateSanctionsGate(t *testing.T) {
 		}
 	}
 }
+
+func TestEclaAutoCreateWithoutSignedCCLAReturnsNotFound(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	// no signed+approved CCLA for the company on this CLA group: the lookup answers (nil, nil)
+	mockV1SignatureService := mock_v1_signatures.NewMockSignatureService(ctrl)
+	mockV1SignatureService.EXPECT().GetCorporateSignature(gomock.Any(), "cla-group-1", "company-1", gomock.Any(), gomock.Any()).Return(nil, nil)
+
+	// strict mocks: the handler must answer before loading the company or the CLA group
+	mockCompanyService := mock_company.NewMockIService(ctrl)
+	mockProjectService := mock_project.NewMockService(ctrl)
+	mockEvents := eventsMock.NewMockService(ctrl)
+
+	v2Service := &fakeEclaAutoCreateService{}
+	api := operations.NewEasyclaAPI(nil)
+	Configure(api, mockProjectService, nil, mockCompanyService, mockV1SignatureService, nil, mockEvents, v2Service, nil)
+	require.NotNil(t, api.SignaturesEclaAutoCreateHandler)
+
+	username, email, reqID := "nocla-manager", "nocla-manager@example.com", testReqID
+	authUser := &auth.User{UserName: "nocla-manager", Email: "nocla-manager@example.com", ACL: auth.ACL{Allowed: true}}
+	recorder := httptest.NewRecorder()
+	api.SignaturesEclaAutoCreateHandler.Handle(sigOps.EclaAutoCreateParams{
+		HTTPRequest: httptest.NewRequest(http.MethodPut, "/v4/signatures/cla-group-1/company-1/ecla-auto-create", nil),
+		XUSERNAME:   &username, XEMAIL: &email, XREQUESTID: &reqID,
+		ClaGroupID: "cla-group-1", CompanyID: "company-1",
+		Body: &models.EclaAutoCreate{AutoCreateEcla: false},
+	}, authUser).WriteResponse(recorder, runtime.JSONProducer())
+
+	assert.Equal(t, http.StatusNotFound, recorder.Code, recorder.Body.String())
+	assert.Equal(t, 0, v2Service.calls, "a missing CCLA must never reach the service")
+	var body models.ErrorResponse
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &body))
+	assert.Equal(t, "404", body.Code)
+	assert.Contains(t, body.Message, "company-1")
+	assert.Contains(t, body.Message, "cla-group-1")
+}

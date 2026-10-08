@@ -1477,6 +1477,12 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 			return signatures.NewEclaAutoCreateBadRequest().WithXRequestID(reqID).WithPayload(
 				utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 		}
+		if cclaSignature == nil {
+			msg := fmt.Sprintf("no signed and approved CCLA for company ID %s and CLA group ID %s", eacp.CompanyID, eacp.ClaGroupID)
+			log.WithFields(f).Warn(msg)
+			return signatures.NewEclaAutoCreateNotFound().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseNotFound(reqID, msg))
+		}
 
 		companyRecord, err := companyService.GetCompany(ctx, eacp.CompanyID)
 		if err != nil {
