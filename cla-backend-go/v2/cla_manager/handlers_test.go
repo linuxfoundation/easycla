@@ -274,3 +274,41 @@ func TestCreateCLAManagerDesigneeHandlerResolvesTheCompany(t *testing.T) {
 		})
 	}
 }
+
+func TestClaManagerCreateDeleteHandlersRejectUnauthorizedUsers(t *testing.T) {
+	t.Setenv("DISABLE_LOCAL_PERMISSION_CHECKS", "false")
+
+	users := []struct {
+		name     string
+		authUser *auth.User
+	}{
+		{name: "staff admin", authUser: &auth.User{UserName: "admin-user", Email: "admin@example.com", ACL: auth.ACL{Admin: true, Allowed: true}}},
+		{name: "unrelated company scope", authUser: &auth.User{UserName: "other-user", Email: "other@example.com", ACL: auth.ACL{Allowed: true, Scopes: []auth.Scope{{Type: auth.ProjectOrganization, ID: "proj-sfid|other-comp-sfid"}}}}},
+	}
+	ops := []struct {
+		op        string
+		operation string
+	}{
+		{op: opCreateManager, operation: "CreateCLAManager"},
+		{op: opDeleteManager, operation: "DeleteCLAManager"},
+	}
+
+	for _, o := range ops {
+		for _, u := range users {
+			t.Run(o.op+" "+u.name, func(t *testing.T) {
+				api := operations.NewEasyclaAPI(nil)
+				service := &fakeWriteOpsService{}
+				companyService := &fakeV1CompanyService{company: &v1Models.Company{CompanyID: "company-1", CompanyName: "Acme", CompanyExternalID: "comp-sfid"}}
+				pcgRepo := &fakePCGRepoWithProjects{fakeProjectClaGroupRepo{cginfo: &projects_cla_groups.ProjectClaGroup{ClaGroupID: "cla-group-1"}}}
+				Configure(api, service, companyService, "", "", pcgRepo, &fakeEasyCLAUserRepo{})
+
+				status, body, _ := callWriteOp(t, api, o.op, u.authUser)
+
+				assert.Equal(t, http.StatusForbidden, status, body)
+				assert.Equal(t, 0, service.calls)
+				assert.Contains(t, body, "access to "+o.operation+" ", "the message must name the operation that was refused")
+				assert.Contains(t, body, "comp-sfid", "the message must name the organization the scope check used")
+			})
+		}
+	}
+}
