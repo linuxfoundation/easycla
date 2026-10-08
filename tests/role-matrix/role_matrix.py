@@ -40,7 +40,7 @@ ENDPOINTS = [
     ("ccla.signed-document", "GET", "signatures/{ccla_sig}/signed-document", None,
      dict(manager="ok", orgadmin="rec", member=403, outsider=403, anon=401), ("ccla_sig",)),
     ("corp.contributors", "GET", "cla-group/{grp}/corporate-contributors?companyID={co}&pageSize=1", None,
-     dict(manager="ok", orgadmin="rec", member=403, outsider=403, anon=401), ()),
+     dict(manager="rec", orgadmin="rec", member=403, outsider=403, anon=401), ()),  # project roles only: a pure manager gets 403
     ("org.contributors", "GET", "company/external/{sfid}/cla-group/{grp}/corporate-contributors?pageSize=1", None,
      dict(manager="ok", orgadmin="rec", member=403, outsider=403, anon=401), ()),  # path the Org Lens uses
     ("template.preview", "GET", "template/{grp}/preview?claType=ccla", None,  # public route by design
@@ -53,7 +53,7 @@ ENDPOINTS = [
     ("approval-list.put", "PUT", "signatures/project/{proj}/company/{co}/clagroup/{grp}/approval-list", {},
      dict(manager="not403", orgadmin=403, member=403, outsider=403, anon=401), ()),
     ("ecla-auto-create.put", "PUT", "signatures/company/{co}/clagroup/{grp}/ecla-auto-create", "AUTO_ECLA_CURRENT",
-     dict(manager="ok", orgadmin=403, member=403, outsider=403, anon=401), ("auto_ecla",)),
+     dict(manager="ok", orgadmin=403, member=403, outsider=403, anon=401), ("auto_ecla", "dev")),  # still a write
     ("cla-manager.post", "POST", "company/{co}/project/{proj}/cla-manager",
      {"firstName": "Role", "lastName": "Matrix", "userEmail": SENTINEL_EMAIL},
      dict(manager="not403", orgadmin=403, member=403, outsider=403, anon=401), ()),
@@ -225,12 +225,16 @@ def main():
     os.environ.setdefault("APP_URL", "https://api-gw.dev.platform.linuxfoundation.org/")
     os.environ.setdefault("AUTH0_TOKEN_API", "https://linuxfoundation-dev.auth0.com/oauth/token")
     base = os.environ["APP_URL"].rstrip("/") + "/cla-service/v4/"
+    is_dev = ".dev." in base
+    if args.mutate and not is_dev:
+        raise SystemExit("--mutate is dev only")
     fx = {
         "co": os.environ.get("RM_COMPANY_ID", "f7c7ac9c-4dbf-4104-ab3f-6b38a26d82dc"),           # Infosys Limited (dev)
         "sfid": os.environ.get("RM_COMPANY_SFID", "0014100000Te0G7AAJ"),
         "proj": os.environ.get("RM_PROJECT_SFID", "a09P000000DsCE5IAN"),                       # SUN (dev)
         "grp": os.environ.get("RM_CLA_GROUP_ID", "01af041c-fa69-4052-a23c-fb8c1d3bef24"),
         "non_manager_lfid": os.environ.get("RM_NON_MANAGER_LFID", "role-matrix-no-such-lfid"),
+        "dev": True if is_dev else None,
     }
     personas = load_personas()
     fx.update(discover(base, personas, fx))

@@ -58,7 +58,7 @@ new endpoint can also mean "route not deployed". A `manager` persona disambiguat
 | Endpoint | Probe | Why it is safe |
 | --- | --- | --- |
 | approval-list PUT | empty body `{}` | allowed callers get 400 "missing approval list items" |
-| ecla-auto-create PUT | current flag value | no change |
+| ecla-auto-create PUT | current flag value | no change, but still a write: dev only |
 | cla-manager POST | unknown email | denied callers get 403; allowed callers fail at user lookup |
 | cla-manager DELETE | LFID that is not a manager | denied callers get 403; allowed callers get 4xx |
 | cla-manager-designee POST | unknown email | fixture CCLA is signed, service refuses before any change; open to any logged-in user by design |
@@ -76,5 +76,6 @@ Defaults match `tests/functional/cypress/appConfig/config.dev.ts`. Override with
 its ACL, the auto-ECLA flag and an ECLA signature id are discovered at run time; the ECLA id
 needs a persona that can read the ECLA list (a manager).
 
-For prod, point `APP_URL`/`AUTH0_TOKEN_API`/`AUTH0_CLIENT_ID` at prod, set the fixtures to a
-company you are a CLA manager of, and never pass `--mutate`.
+For prod, put `APP_URL`/`AUTH0_TOKEN_API`/`AUTH0_CLIENT_ID` and the fixtures (a company you are
+a CLA manager of) in a separate file and pass `--env prod.env`, so the dev `.env` personas are
+not loaded. `--mutate` refuses any target that is not dev.
