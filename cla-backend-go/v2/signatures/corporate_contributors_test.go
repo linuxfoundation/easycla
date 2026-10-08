@@ -54,7 +54,7 @@ func TestService_GetClaGroupCorporateContributorsCsv(t *testing.T) {
 	ctx := context.Background()
 
 	mockSignatureService := mock_v1_signatures.NewMockSignatureService(ctrl)
-	mockSignatureService.EXPECT().GetClaGroupCorporateContributors(ctx, "cla-group-1", gomock.Any(), nil, nil, nil).
+	mockSignatureService.EXPECT().GetClaGroupCorporateContributors(ctx, "cla-group-1", gomock.Any(), gomock.Any(), nil, nil).
 		Return(corporateContributorsFixture(), nil)
 
 	service := NewService(awsSession, "", nil, nil, mockSignatureService, nil, nil, nil, nil)
@@ -81,7 +81,7 @@ func TestService_GetClaGroupCorporateContributorsCsvEmpty(t *testing.T) {
 	ctx := context.Background()
 
 	mockSignatureService := mock_v1_signatures.NewMockSignatureService(ctrl)
-	mockSignatureService.EXPECT().GetClaGroupCorporateContributors(ctx, "cla-group-1", gomock.Any(), nil, nil, nil).
+	mockSignatureService.EXPECT().GetClaGroupCorporateContributors(ctx, "cla-group-1", gomock.Any(), gomock.Any(), nil, nil).
 		Return(&v1Models.CorporateContributorList{}, nil)
 
 	service := NewService(awsSession, "", nil, nil, mockSignatureService, nil, nil, nil, nil)
@@ -127,4 +127,36 @@ func TestService_GetClaGroupCorporateContributors(t *testing.T) {
 	assert.Equal(t, "sig-2", result.List[1].SignatureID)
 	assert.Empty(t, result.List[1].LinuxFoundationID, "a contributor without an LF login must not be dropped")
 	assert.Equal(t, "bob@example.com", result.List[1].Email)
+}
+
+func TestService_GetClaGroupCorporateContributorsCsvPagesThroughAllRows(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	awsSession, err := ini.GetAWSSession()
+	if err != nil {
+		assert.Fail(t, "unable to create AWS session")
+	}
+	ctx := context.Background()
+	first := corporateContributorsFixture()
+	first.NextKey = "page-2"
+	second := &v1Models.CorporateContributorList{List: []*v1Models.CorporateContributor{
+		{SignatureID: "sig-3", GithubID: "gh-carol", LinuxFoundationID: "carol-lfid", Name: "Carol Lee", Email: "carol@example.com", Timestamp: "2024-01-02T03:04:05Z"},
+	}}
+	mockSignatureService := mock_v1_signatures.NewMockSignatureService(ctrl)
+	gomock.InOrder(
+		mockSignatureService.EXPECT().GetClaGroupCorporateContributors(ctx, "cla-group-1", gomock.Any(), gomock.Not(gomock.Nil()), nil, nil).Return(first, nil),
+		mockSignatureService.EXPECT().GetClaGroupCorporateContributors(ctx, "cla-group-1", gomock.Any(), gomock.Not(gomock.Nil()), gomock.AssignableToTypeOf(new(string)), nil).
+			DoAndReturn(func(_ context.Context, _ string, _ *string, pageSize *int64, nextKey *string, _ *string) (*v1Models.CorporateContributorList, error) {
+				require.NotNil(t, nextKey)
+				assert.Equal(t, "page-2", *nextKey, "the second page must continue from the returned key")
+				assert.Equal(t, HugePageSize, *pageSize, "the export must request the full-list page size")
+				return second, nil
+			}),
+	)
+	service := NewService(awsSession, "", nil, nil, mockSignatureService, nil, nil, nil, nil)
+	csv, err := service.GetClaGroupCorporateContributorsCsv(ctx, "cla-group-1", "company-1")
+	require.NoError(t, err)
+	lines := strings.Split(string(csv), "\n")
+	require.Len(t, lines, 4, "all rows from every page must be exported")
+	assert.Equal(t, `gh-carol,carol-lfid,Carol Lee,carol@example.com,"Jan 2,2024"`, lines[3])
 }

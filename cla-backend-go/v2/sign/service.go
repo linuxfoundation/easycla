@@ -423,10 +423,11 @@ func (s *service) requestCorporateSignatureWithExpectedCLAGroup(ctx context.Cont
 	}
 
 	// Email flow
+	var authoritySignatoryGranted, directSignatoryGranted bool
 	if input.SendAsEmail {
 		log.WithFields(f).Debugf("Sending request as an email to: %s...", input.AuthorityEmail.String())
 		// this would be used only in case of cla-signatory
-		err = prepareUserForSigning(ctx, input.AuthorityEmail.String(), utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid), input.SigningEntityName)
+		authoritySignatoryGranted, err = prepareUserForSigningFn(ctx, input.AuthorityEmail.String(), utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid), input.SigningEntityName)
 		if err != nil {
 			// Ignore conflict - role has already been assigned
 			if _, ok := err.(*organizations.CreateOrgUsrRoleScopesConflict); !ok {
@@ -436,7 +437,7 @@ func (s *service) requestCorporateSignatureWithExpectedCLAGroup(ctx context.Cont
 	} else {
 		// Direct to DocuSign flow...
 
-		err = prepareUserForSigning(ctx, currentUserEmail, utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid), input.SigningEntityName)
+		directSignatoryGranted, err = prepareUserForSigningFn(ctx, currentUserEmail, utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid), input.SigningEntityName)
 		if err != nil {
 			// Ignore conflict - role has already been assigned
 			if _, ok := err.(*organizations.CreateOrgUsrRoleScopesConflict); !ok {
@@ -458,13 +459,7 @@ func (s *service) requestCorporateSignatureWithExpectedCLAGroup(ctx context.Cont
 	}, comp, proj, lfUsername, currentUserEmail)
 
 	if err != nil {
-		if input.AuthorityEmail.String() != "" {
-			// remove role
-			removeErr := removeSignatoryRole(ctx, input.AuthorityEmail.String(), utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid))
-			if removeErr != nil {
-				log.WithFields(f).WithError(removeErr).Warnf("failed to remove signatory role. companySFID :%s, email :%s error: %+v", *input.CompanySfid, input.AuthorityEmail.String(), removeErr)
-			}
-		}
+		rollbackSignatoryGrants(ctx, f, input.AuthorityEmail.String(), currentUserEmail, utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid), authoritySignatoryGranted, directSignatoryGranted)
 		log.WithFields(f).WithError(err).Warnf("unable to request corporate signature")
 		return nil, err
 	}
@@ -3114,6 +3109,31 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 	}, nil
 }
 
+// test seams for the ACS-backed helpers below
+var (
+	prepareUserForSigningFn = prepareUserForSigning
+	removeSignatoryRoleFn   = removeSignatoryRole
+)
+
+// signatoryRollbackTimeout bounds the grant cleanup, which must outlive a canceled request context
+const signatoryRollbackTimeout = 30 * time.Second
+
+// rollbackSignatoryGrants removes the cla-signatory grants that this failed corporate signature request created
+func rollbackSignatoryGrants(ctx context.Context, f logrus.Fields, authorityEmail, currentUserEmail, companySFID, projectSFID string, authoritySignatoryGranted, directSignatoryGranted bool) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), signatoryRollbackTimeout)
+	defer cancel()
+	if authorityEmail != "" && authoritySignatoryGranted {
+		if removeErr := removeSignatoryRoleFn(ctx, authorityEmail, companySFID, projectSFID); removeErr != nil {
+			log.WithFields(f).WithError(removeErr).Warnf("failed to remove signatory role. companySFID :%s, email :%s error: %+v", companySFID, authorityEmail, removeErr)
+		}
+	}
+	if directSignatoryGranted && currentUserEmail != "" && (!authoritySignatoryGranted || !strings.EqualFold(currentUserEmail, authorityEmail)) {
+		if removeErr := removeSignatoryRoleFn(ctx, currentUserEmail, companySFID, projectSFID); removeErr != nil {
+			log.WithFields(f).WithError(removeErr).Warnf("failed to remove the signatory role granted for this request. companySFID :%s, email :%s error: %+v", companySFID, currentUserEmail, removeErr)
+		}
+	}
+}
+
 func removeSignatoryRole(ctx context.Context, userEmail string, companySFID string, projectSFID string) error {
 	f := logrus.Fields{"functionName": "removeSignatoryRole", "user_email": userEmail, "company_sfid": companySFID, "project_sfid": projectSFID}
 	log.WithFields(f).Debug("removing role for user")
@@ -3157,7 +3177,8 @@ func removeSignatoryRole(ctx context.Context, userEmail string, companySFID stri
 
 }
 
-func prepareUserForSigning(ctx context.Context, userEmail string, companySFID, projectSFID, signedEntityName string) error {
+// prepareUserForSigning assigns the cla-signatory role; created is true only when this call made the grant
+func prepareUserForSigning(ctx context.Context, userEmail string, companySFID, projectSFID, signedEntityName string) (created bool, err error) {
 	f := logrus.Fields{
 		"functionName":     "sign.prepareUserForSigning",
 		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
@@ -3175,7 +3196,7 @@ func prepareUserForSigning(ctx context.Context, userEmail string, companySFID, p
 	user, err := usc.SearchUsersByEmail(userEmail)
 	if err != nil {
 		log.WithFields(f).WithError(err).Debugf("User with email: %s does not have an LF login", userEmail)
-		return nil
+		return false, nil
 	}
 
 	ac := acsService.GetClient()
@@ -3183,7 +3204,7 @@ func prepareUserForSigning(ctx context.Context, userEmail string, companySFID, p
 	roleID, err := ac.GetRoleID(role)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("getting role_id for %s failed: %v", role, err.Error())
-		return err
+		return false, err
 	}
 	log.WithFields(f).Debugf("fetched role %s, role_id %s", role, roleID)
 	// assign user role of cla signatory for this project
@@ -3204,9 +3225,10 @@ func prepareUserForSigning(ctx context.Context, userEmail string, companySFID, p
 		} else {
 			log.WithFields(f).WithError(err).Warnf("assigning user role of %s failed: %v", role, err)
 		}
+		return false, nil
 	}
 
-	return nil
+	return true, nil
 }
 
 func claSignatoryEmailContent(params ClaSignatoryEmailParams) (string, string) {
