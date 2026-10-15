@@ -1,0 +1,14 @@
+{
+  "name": "easycla-e2e-suite",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Manual EasyCLA / LFX Self Serve E2E suite (headless browser part). Run through tests/e2e/run.sh.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "playwright": "^1.63.0"
+  }
+}
