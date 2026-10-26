@@ -35,6 +35,17 @@ the whole M3→M5 bridge period.
 - **ACS stays**: the v4 APIs keep ACS as their authority and ACS is kept in sync with FGA
   for the lens (Michal); a pure-FGA EasyCLA waits for the backend rewrite and the move to
   Kubernetes. The division of labor above stands.
+- **The publisher (2026-10-26, platform rule)**: tuples on `b2b_org` are written only by
+  member-service, from its own data; `exclude_relations` is never the mechanism for two
+  services sharing an object (Searcy and Evans, 2026-09-22,
+  [rule](https://github.com/linuxfoundation/lfx-mentorship/pull/157#discussion_r4074837900), the same case
+  for a mentorship role on `project`). So member-service stores the `cla_admin` list per
+  organization and emits it in its own `update_access`; EasyCLA feeds it through a
+  member-service endpoint via the gateway (manager add and remove, one backfill) and never
+  publishes to fga-sync. §3, §4.1 and §7 are updated to this; Ahmed's six-step plan for
+  [lfx-self-serve#3793](https://github.com/linuxfoundation/lfx-self-serve/issues/3793)
+  was corrected the same way
+  ([Slack](https://linuxfoundation.slack.com/archives/C04DWU3FVMW/p1793051391729209?thread_ts=1791003155.842249&cid=C04DWU3FVMW)).
 - **Conglomerates**: whether a CLA manager sees or manages the CCLAs of related companies
   is undecided (Dano). Until then the relation is scoped to the manager's own company,
   which `cla_admin: [user]` already is — it must not be folded into the cascading
@@ -96,6 +107,12 @@ directions ("never grant org-wide read to CLA managers", spec 044 Q4).
   see §5 item 2 for why `signature_approved` is excluded) → one `b2b_org:<org>#cla_admin`
   tuple per user × org (deduped across the org's CLA groups). Remove the tuple when the
   user leaves the last such `signature_acl` of that org.
+- **Publisher**: member-service, the owner of `b2b_org` tuples (*Decided since*, above).
+  It keeps the `cla_admin` list on its organization record and emits it in every
+  `update_access` it already publishes, like `global_org_admin`; EasyCLA sends adds and
+  removes to a member-service endpoint through the gateway, the path the import already
+  uses, and runs the backfill through the same endpoint. EasyCLA never publishes to
+  fga-sync.
 - **Cross-check**: the read-only ACS drift report (spec 044 item 22) compares ACS
   `cla-manager` roles against the tuples; run it periodically, not once — ACS keeps being
   written by v4 for as long as the bridge exists.
@@ -131,10 +148,10 @@ become B2B Salesforce accounts" decision
 overstated it: what the single relation avoids is new *CLA object types*, not the org
 record itself. Treat the B2B org record as a **precondition** of this model.
 
-### 4.1 Blocking constraint: `b2b_org` tuples are reaped by member-service
+### 4.1 Constraint: `b2b_org` tuples are reaped by member-service, so it owns the relation
 
-**A `cla_admin` relation placed on `b2b_org` would be silently deleted**, and this must
-be resolved before Variant B can be chosen. Verified in code:
+**A `cla_admin` tuple written by any service other than member-service would be silently
+deleted.** Verified in code:
 
 - member-service publishes an `update_access` FGA message on every `b2b_org` create and
   update, from three paths — the writer orchestrator, the CDC (Salesforce change feed)
@@ -150,13 +167,17 @@ be resolved before Variant B can be chosen. Verified in code:
   `writer`, `auditor`.
 
 The failure mode is silent: managers lose lens access on the next unrelated org update,
-with no error surfaced anywhere. Making Variant B safe therefore requires a
-**member-service change** (add `cla_admin` to `ExcludeRelations` on every publish path),
-a **deploy-order constraint** (that change ships before any tuple backfill), and a
-**regression test** that an org update preserves CLA tuples. If member-service will not
-own that, the manager grant belongs on a CLA-owned object instead — as §5 notes, a single
-CLA-owned type in M3 avoids the reaping problem but reopens the "no CLA types before M5"
-decision the same way Variant A does.
+with no error surfaced anywhere. The platform rule resolves it by ownership, not by
+exclusion: `exclude_relations` is for one service's own several write paths and is never
+the mechanism for two services sharing an object, and a new role another product needs
+on an object is added to the owning service (Searcy and Evans, 2026-09-22,
+[rule](https://github.com/linuxfoundation/lfx-mentorship/pull/157#discussion_r4074837900)). So
+member-service stores the `cla_admin` list on its organization record, emits it from
+every publish path (writer, CDC consumer, org-settings writer, reindex, backfill) as it
+does `global_org_admin`, exposes the endpoint EasyCLA calls (§3), and documents the
+relation in its `docs/fga-contract.md`. That change ships before the EasyCLA backfill;
+no `ExcludeRelations` entry and no CLA-owned object are needed. (Until 2026-10-26 this
+section proposed the exclusion route; superseded.)
 
 ### 4.2 Second blocking constraint: the tuple alone does not reach the consumer
 
@@ -420,11 +441,12 @@ What the architect is asked to confirm, on this PR:
 1. **The relation and its publisher.** `cla_admin` on `b2b_org`, keyed on the B2B SFID —
    the import rewrites `company_external_id` and moves the ACS scopes to that ID, so the
    lens, ACS and v4 carry one ID and the earlier bridge ID-translation question is
-   superseded. Who publishes the tuple from `signature_acl` (an EasyCLA consumer of the
-   signatures table, or the future CLA service) and how the backfill runs.
-2. **§4.1 owner.** member-service adds `cla_admin` to `ExcludeRelations` on every
-   `b2b_org` publish path, ships before the backfill, with a regression test. Still open:
-   no `cla_admin` in member-service as of 2026-10-21.
+   superseded. The publisher is member-service (§3, per the platform rule); EasyCLA is
+   the caller, from `signature_acl`, on manager add and remove and once for the backfill.
+2. **§4.1 owner.** member-service stores `cla_admin` per organization, exposes the
+   endpoint EasyCLA calls, emits the relation on every `b2b_org` publish path, documents
+   it in its `docs/fga-contract.md`, and ships before the backfill, with a regression
+   test. Still open: no `cla_admin` in member-service as of 2026-10-26.
 3. **§4.2 consumer work** in `lfx-self-serve`: selector materialization and a CLA-route
    gate on `cla_admin`. Today the CLA route admits managers through a fallback on their
    ACS `cla-manager` scopes (M3); what happens to that fallback once the tuple is the
