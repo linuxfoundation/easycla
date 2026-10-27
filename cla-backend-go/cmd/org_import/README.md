@@ -166,7 +166,8 @@ stage=dev mode=dry-run eligible=4 registered=0 rewritten=0 pending=1 manual=1 fa
 - `pending` — rewrite candidates without a resolved new id (no mapping row, or a `register` POST answered 404 = dead account) and register
   candidates that are `unregistered`/`crm_unverified`. Rewrite ones appear in `to_salesforce.csv`.
 - `skipped` — eligible groups excluded by `--routes`, `--tranche`, or already `done` in `--state`.
-- Summary line: `eligible` = groups after `--ids`; `registered`/`rewritten` = groups completed in apply mode; `manual`; `failed` = groups with an
+- Summary line: `eligible` = groups after `--ids`; `registered`/`rewritten` = groups completed in apply mode; `not_eligible` = register candidates
+  member-service refused with 422 (neither a company Account nor a member; excluded, nothing to do); `manual`; `failed` = groups with an
   error — the run exits 1 in dry-run and apply mode alike (a dry run with `live=error` is not a clean dry run).
 
 Runtime: ~10 s on dev, ~7 min on prod (one liveness GET per group).
@@ -183,7 +184,8 @@ Manual reasons: `empty_external_id`, `invalid_id_shape`, `mapping_ambiguous`, `m
 (ids landing on one Account use both forms — normalize the mapping/rows first; a decision does not lift it),
 `target_collision` (several old ids → one Account, or the Account already has EasyCLA rows, and no decision covers it — §4.1), `distinct_conflict`
 (a `distinct` decision spans two ids resolved to the same Account), `missing_website` / `shared_domain` (Apex path only, §4.2),
-`apex_match_needs_approval`, `apex_error`; pending reasons: `no_mapping`, `dead_account`, `crm_unverified` (no member-service for the stage), `unregistered` (GET answered 403; `--register-unregistered` registers it).
+`apex_match_needs_approval`, `apex_error`, `not_eligible` (the register POST answered 422: the Account is neither a company Account nor holds a membership — excluded, nothing to do);
+pending reasons: `no_mapping`, `dead_account`, `crm_unverified` (no member-service for the stage), `unregistered` (GET answered 403; `--register-unregistered` registers it).
 With `--use-apex` a dry-run `created` has no Account id yet (`new_id=<apex-at-apply>`): the id is assigned by the real call at apply and a
 different answer at apply time (`changed between dry run`) fails the group before any write; a failed resolution is never replayed as approved.
 
@@ -330,6 +332,7 @@ GitHub Actions `.github/workflows/org-import-sweep.yml`:
 | planning | `mapping line N: …` | fix the CSV |
 | planning | `state: unfinished group … has no valid new_id` | hand-edit the state file only if you know why; otherwise stop |
 | register | `account … does not exist in Salesforce (rewrite candidate)` | POST 404: the id is dead; group is now `pending`/`dead_account` → mapping |
+| register | `not eligible …: …` | POST 422: the Account is neither a company Account nor holds a membership; group is `manual`/`not_eligible`, excluded — nothing to do |
 | register | `member-service is not configured` | SSM params missing for this stage |
 | wait | `org-service does not serve … yet` | new Salesforce account not propagated within `--wait-max`; re-run later (state replays the group) |
 | wait | `org-service serves target … as "…"` | org-service returns the account under another id than the mapping/decisions; nothing written; fix the input to the id org-service returns and re-run |

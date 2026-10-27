@@ -62,6 +62,7 @@ const (
 	ReasonDistinctConflict  = "distinct_conflict"
 	ReasonCRMUnverified     = "crm_unverified"
 	ReasonUnregistered      = "unregistered"
+	ReasonNotEligible       = "not_eligible"
 	ReasonSFIDAliasForms    = "sfid_alias_forms"
 	ReasonTargetFormsDiffer = "target_forms_differ"
 
@@ -223,20 +224,22 @@ type Group struct {
 
 // Summary is the one-line run result.
 type Summary struct {
-	Stage      string
-	Mode       string
-	Eligible   int
-	Registered int
-	Rewritten  int
-	Pending    int
-	Manual     int
-	Failed     int
+	Stage       string
+	Mode        string
+	Eligible    int
+	Registered  int
+	Rewritten   int
+	Pending     int
+	NotEligible int
+	Manual      int
+	Failed      int
 }
 
 func (s Summary) String() string {
 	return "stage=" + s.Stage + " mode=" + s.Mode +
 		" eligible=" + strconv.Itoa(s.Eligible) + " registered=" + strconv.Itoa(s.Registered) +
-		" rewritten=" + strconv.Itoa(s.Rewritten) + " pending=" + strconv.Itoa(s.Pending) + " manual=" + strconv.Itoa(s.Manual) + " failed=" + strconv.Itoa(s.Failed)
+		" rewritten=" + strconv.Itoa(s.Rewritten) + " pending=" + strconv.Itoa(s.Pending) + " not_eligible=" + strconv.Itoa(s.NotEligible) +
+		" manual=" + strconv.Itoa(s.Manual) + " failed=" + strconv.Itoa(s.Failed)
 }
 
 // Pending is a rewrite candidate without a resolved new id (mapping row missing or account found
