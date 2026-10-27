@@ -210,12 +210,18 @@ func TestRegisterB2BOrgErrors(t *testing.T) {
 	assert.ErrorIs(t, err, ErrInvalidSFID)
 	assert.Contains(t, err.Error(), "invalid Account SFID")
 
+	fake.status, fake.response = http.StatusUnprocessableEntity, map[string]string{"message": "account is not eligible"}
+	_, err = client.RegisterB2BOrg(context.Background(), "0014100000Te0G7AAJ")
+	assert.ErrorIs(t, err, ErrNotEligible)
+	assert.Contains(t, err.Error(), "account is not eligible")
+
 	fake.status, fake.response = http.StatusForbidden, map[string]string{"message": "forbidden"}
 	_, err = client.RegisterB2BOrg(context.Background(), "0014100000Te0G7AAJ")
 	var authErr *AuthError
 	require.ErrorAs(t, err, &authErr)
 	assert.Equal(t, http.StatusForbidden, authErr.Status)
 	assert.False(t, authErr.Token, "a member-service 403 is not a token failure")
+	assert.Equal(t, 1, fake.tokenCalls, "the cached token is reused after a 422")
 	tokenCalls := fake.tokenCalls
 
 	fake.status, fake.response = http.StatusUnauthorized, map[string]string{"message": "expired"}
