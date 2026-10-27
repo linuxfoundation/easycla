@@ -25,6 +25,9 @@ var ErrOrgNotFound = errors.New("member-service: organization not found")
 // ErrInvalidSFID is returned when member-service rejects the SFID (400).
 var ErrInvalidSFID = errors.New("member-service: invalid organization sfid")
 
+// ErrNotEligible is returned when member-service refuses the account as a b2b org (422).
+var ErrNotEligible = errors.New("member-service: account not eligible for a b2b org")
+
 // ErrNotConfigured is returned when the client has no base URL or audience.
 var ErrNotConfigured = errors.New("member-service: client not configured")
 
@@ -217,6 +220,8 @@ func (c *Client) do(req *http.Request, tok, operation string) (*B2BOrg, error) {
 		return nil, ErrOrgNotFound
 	case resp.StatusCode == http.StatusBadRequest:
 		return nil, fmt.Errorf("%w: %s", ErrInvalidSFID, responseMessage(body, resp.Status))
+	case resp.StatusCode == http.StatusUnprocessableEntity:
+		return nil, fmt.Errorf("%w: %s", ErrNotEligible, responseMessage(body, resp.Status))
 	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
 		if resp.StatusCode == http.StatusUnauthorized {
 			c.forgetToken(tok)

@@ -36,6 +36,7 @@ var suggestions = map[string]string{
 	"shared_domain":             "Website domain is shared (github.com, nowebsite.com, mail provider): never matched automatically — add a mapping row after sales ops name the Account.",
 	"apex_error":                "Apex call failed: re-run; if it persists check cla-salesforce-apex-* and the endpoint.",
 	ReasonUnregistered:          "Account exists in Salesforce but has no b2b_org yet (GET /b2b_orgs answered 403): re-run with --register-unregistered to POST /b2b_orgs for it, or wait for the member-service access tuple.",
+	ReasonNotEligible:           "Account exists but is neither a company Account nor holds a membership (member-service answered 422 to POST /b2b_orgs): excluded from the import, nothing to do.",
 	ReasonCRMUnverified:         "Account liveness cannot be verified without member-service: set SSM cla-member-service-base-url-<stage> / cla-member-service-auth0-audience-<stage> and the Auth0 client grant + Heimdall roles (README §2), then re-run.",
 }
 

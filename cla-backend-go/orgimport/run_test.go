@@ -149,6 +149,7 @@ type fakePlatform struct {
 	noMembers   bool
 	listHook    func(orgID string)
 	forbidden   map[string]int // remaining 403 answers per id; -1 = always
+	notEligible map[string]bool
 	grantsErr   map[string]error
 	tokenDenied bool
 	lookups     map[string]*Org
@@ -240,6 +241,9 @@ func (p *fakePlatform) RegisterB2BOrg(_ context.Context, sfid string) (*member_s
 	p.calls = append(p.calls, "register:"+sfid)
 	if !p.sfAccounts[sfid] {
 		return nil, member_service.ErrOrgNotFound
+	}
+	if p.notEligible[sfid] {
+		return nil, fmt.Errorf("%w: %s", member_service.ErrNotEligible, "account is not eligible")
 	}
 	p.registered = append(p.registered, sfid)
 	return &member_service.B2BOrg{UID: sfid, Name: "acct " + sfid}, nil
