@@ -214,6 +214,81 @@ func TestRegisterUnregisteredRetriesTheReadBack(t *testing.T) {
 	assert.Contains(t, fx.out.String(), "WARNING: b2b_org "+unregSFID+" not yet visible after 5 checks")
 }
 
+// A 422 on POST /b2b_orgs (the Account is neither a company Account nor a member) excludes the group
+// as not_eligible: nothing is registered, re-read or written for it and the run stays green.
+func TestRegisterUnregisteredNotEligible(t *testing.T) {
+	fx := newFixture()
+	fx.company("c-live", "Live Corp", "", liveSFID, "cg-1")
+	fx.company("c-unreg", "Fresh Corp", "", unregSFID, "cg-1")
+	fx.platform.sfAccounts[liveSFID] = true
+	fx.platform.sfAccounts[unregSFID] = true
+	fx.platform.forbidden = map[string]int{unregSFID: -1}
+	fx.platform.notEligible = map[string]bool{unregSFID: true}
+	dir := t.TempDir()
+	opts := Options{Stage: "dev", Apply: true, RegisterUnregistered: true, OutDir: dir}
+
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	require.Len(t, plan.Register, 2)
+	before := len(fx.platform.calls)
+
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+	require.NoError(t, err)
+	assert.Equal(t, Summary{Stage: "dev", Mode: "apply", Eligible: 2, Registered: 1, NotEligible: 1}, sum)
+	assert.Contains(t, sum.String(), " not_eligible=1 ")
+	assert.Equal(t, []string{liveSFID}, fx.platform.registered)
+	assert.ElementsMatch(t, []string{"register:" + liveSFID, "register:" + unregSFID}, fx.platform.calls[before:], "no read-back or any other call after the 422")
+	assert.Empty(t, fx.sleeps)
+	assert.Empty(t, fx.companies.updates)
+	assert.Contains(t, fx.out.String(), "not eligible "+unregSFID+": ")
+	assert.NotContains(t, fx.out.String(), "FAILED")
+
+	g := groupByKey(plan.Groups, unregSFID)
+	require.NotNil(t, g)
+	assert.Equal(t, RouteManual, g.Route)
+	assert.Equal(t, "not_eligible", g.ManualReason)
+	assert.Equal(t, "unregistered", g.Live)
+	assert.NoError(t, g.Err)
+	assert.False(t, g.Pending())
+
+	actions := plan.ManualActions()
+	require.Len(t, actions, 1)
+	assert.Equal(t, unregSFID, actions[0].Group.Key)
+	assert.Equal(t, "not_eligible", actions[0].Reason)
+	assert.Contains(t, actions[0].Suggested, "nothing to do")
+
+	assert.Equal(t, map[string]string{"route": "manual", "manual_reason": "not_eligible", "live": "unregistered"},
+		csvCells(t, filepath.Join(dir, "plan.csv"), "key", unregSFID, "route", "manual_reason", "live"))
+	assert.Equal(t, map[string]string{"route": "manual", "reason": "not_eligible"},
+		csvCells(t, filepath.Join(dir, "manual_actions.csv"), "key", unregSFID, "route", "reason"))
+	for _, row := range readCSV(t, filepath.Join(dir, "to_salesforce.csv"))[1:] {
+		assert.NotEqual(t, unregSFID, row[0], "a not_eligible Account is not a Salesforce hand-off")
+	}
+}
+
+// csvCells returns the named columns of the row whose keyColumn equals key.
+func csvCells(t *testing.T, path, keyColumn, key string, columns ...string) map[string]string {
+	t.Helper()
+	rows := readCSV(t, path)
+	require.NotEmpty(t, rows)
+	index := map[string]int{}
+	for i, name := range rows[0] {
+		index[name] = i
+	}
+	for _, row := range rows[1:] {
+		if row[index[keyColumn]] != key {
+			continue
+		}
+		out := map[string]string{}
+		for _, c := range columns {
+			out[c] = row[index[c]]
+		}
+		return out
+	}
+	t.Fatalf("%s: no row with %s=%s", path, keyColumn, key)
+	return nil
+}
+
 // A 403 from the Auth0 token endpoint is a credentials problem, never "unregistered".
 func TestTokenForbiddenIsALivenessError(t *testing.T) {
 	fx := newFixture()

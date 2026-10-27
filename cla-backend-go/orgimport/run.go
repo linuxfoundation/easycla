@@ -551,6 +551,10 @@ func Execute(ctx context.Context, deps Deps, opts Options, plan *Plan) (Summary,
 			fmt.Fprintf(deps.Out, "FAILED register %s: %v\n", g.OldID, err)
 			continue
 		}
+		if g.ManualReason == ReasonNotEligible {
+			sum.NotEligible++
+			continue
+		}
 		sum.Registered++
 	}
 	if len(plan.Rewrite) > 0 {
@@ -629,6 +633,11 @@ func (r *runner) register(ctx context.Context, g *Group) error {
 	if errors.Is(err, member_service.ErrOrgNotFound) {
 		g.Live, g.Route, g.ManualReason = LiveDead, RouteRewrite, ReasonDeadAccount
 		return fmt.Errorf("account %s does not exist in Salesforce (rewrite candidate)", g.OldID)
+	}
+	if errors.Is(err, member_service.ErrNotEligible) {
+		g.Route, g.ManualReason = RouteManual, ReasonNotEligible
+		fmt.Fprintf(r.deps.Out, "not eligible %s: %v\n", g.OldID, err)
+		return nil
 	}
 	if err != nil {
 		return err
