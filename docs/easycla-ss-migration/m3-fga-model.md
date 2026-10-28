@@ -3,7 +3,7 @@ SPDX-License-Identifier: CC-BY-4.0 -->
 
 # M3 FGA model — one org-level relation, UI-only
 
-**Status**: product decision 2026-10-21 (*Decided since*, below); the model shape awaits architect review on this PR. §1–§6 are the original proposal, unchanged except where marked
+**Status**: product decision 2026-10-21 (*Decided since*, below); the model is on [lfx-v2-helm#191](https://github.com/linuxfoundation/lfx-v2-helm/pull/191) (Ahmed, 2026-10-27; approved by Michal and Lukasz, code-owner review by Eric pending) and the member-service contract is agreed on [lfx-self-serve#4362](https://github.com/linuxfoundation/lfx-self-serve/issues/4362) (2026-10-27/28, §3). §1–§6 are the original proposal, unchanged except where marked
 **Owner**: Michal (engineering)
 **Related**: [m3-org-visibility.md](m3-org-visibility.md) §4.2 (the four-type variant this simplifies) · [role-mapping-feasibility.md](role-mapping-feasibility.md) · plan: [m3-b2b-org-import.md](https://github.com/linuxfoundation/easycla/pull/5223) §6 items 14–16 · ticket: [lfx-self-serve#3793](https://github.com/linuxfoundation/lfx-self-serve/issues/3793)
 
@@ -77,6 +77,7 @@ type b2b_org
   relations
     ...existing (writer, auditor, ...)
     define cla_admin: [user]
+    define viewer: auditor or cla_admin
 ```
 
 The relation is named **`cla_admin`** throughout this document and that is the name
@@ -84,13 +85,24 @@ proposed for the ADR. `cla_manager` was the alternative but is rejected: it coll
 with the existing ACS `cla-manager` role, and the two are deliberately not the same
 thing — the tuple is projected from `signature_acl`, not from the ACS role (§3).
 
+**`viewer` (added 2026-10-27, [lfx-v2-helm#191](https://github.com/linuxfoundation/lfx-v2-helm/pull/191) commit `6405b2f`).** Prabodh's
+review found that every `b2b_org` index document and `GET /b2b_orgs/{uid}` are gated on
+`auditor`, so a manager holding only `cla_admin` could not read the organization record
+the lens page is built from. Ahmed added `viewer: auditor or cla_admin`, the read
+relation the other types use: no direct grant and no hierarchy traversal of its own, so
+it follows `auditor`'s reach and adds the manager's own organization only. The
+organization document and `GET /b2b_orgs/{uid}` move to `viewer`; the settings document
+(admin list, emails), memberships, key contacts, workspaces and access settings stay on
+`auditor`. Eric is asked to confirm the name (§7 item 6).
+
 | Question | Answered by | How |
 |---|---|---|
 | Does org X appear in the user's selector? | FGA | user holds any org relation, `cla_admin` now included |
 | Does the EasyCLA tab render for org X? | FGA | `cla_admin` (or an org read relation) |
 | Which CCLAs are listed, which actions work? | ACS via the v4 bridge | unchanged — gateway warden check + `X-ACL` scopes, per request |
 
-`cla_admin` grants **nothing else**: no org read, no People/membership access. A user
+`cla_admin` grants **nothing else** beyond the organization record (name, SFID, profile
+fields, through `viewer`): no People/membership access. A user
 holding only `cla_admin` gets the CLA-only view — the org appears in their selector and
 the EasyCLA tab renders; every other section (People, memberships, key contacts,
 meetings) is hidden or empty, because query-service fails closed without a `b2b_org`
@@ -113,6 +125,26 @@ directions ("never grant org-wide read to CLA managers", spec 044 Q4).
   removes to a member-service endpoint through the gateway, the path the import already
   uses, and runs the backfill through the same endpoint. EasyCLA never publishes to
   fga-sync.
+- **Endpoint** (agreed 2026-10-27/28 on [lfx-self-serve#4362](https://github.com/linuxfoundation/lfx-self-serve/issues/4362)):
+  `PUT /b2b_orgs/{uid}/settings/cla_admins` through the gateway, the full manager list
+  per organization — LF usernames, email optional for CLA managers, no invites.
+  member-service keeps the list on the organization settings, emits `cla_admin` in its
+  `update_access`, and leaves it untouched on every other publish path. Only a dedicated
+  EasyCLA caller team may call the route: one `team:` tuple per environment through the
+  fga-sync [bootstrap script](https://github.com/linuxfoundation/lfx-v2-fga-sync/blob/main/scripts/bootstrap/member-tiers-callers/README.md) (staging has its own client); the EasyCLA
+  dynamo-events Lambda and the org-import tool share the platform Auth0 client per stage.
+  EasyCLA skips a company whose organization is not registered (404) and retries a
+  version conflict (409); the backfill runs once, in batches, and again after each
+  import tranche.
+- **Roster and discovery**: in `members[]` a person holding several roles is listed once,
+  writer before auditor before CLA manager, while every tuple is still written, so an
+  auditor who is also a manager keeps both. Self Serve finds a manager's organizations
+  with `filter_grants=direct` on `b2b_org` and checks `cla_admin` on each result; no
+  per-user tag on the document.
+- **Status**: member-service [lfx-self-serve#4362](https://github.com/linuxfoundation/lfx-self-serve/issues/4362) (Prabodh, started
+  2026-10-28); EasyCLA [lfx-self-serve#4435](https://github.com/linuxfoundation/lfx-self-serve/issues/4435) ([easycla#5277](https://github.com/linuxfoundation/easycla/pull/5277), Lukasz, in
+  review, default off); Self Serve [lfx-self-serve#4416](https://github.com/linuxfoundation/lfx-self-serve/pull/4416) (Ahmed, draft) and the
+  bridge removal [lfx-self-serve#4436](https://github.com/linuxfoundation/lfx-self-serve/issues/4436).
 - **Cross-check**: the read-only ACS drift report (spec 044 item 22) compares ACS
   `cla-manager` roles against the tuples; run it periodically, not once — ACS keeps being
   written by v4 for as long as the bridge exists.
@@ -207,6 +239,12 @@ This does not sink Variant B, but it does change the comparison in §7: the "one
 versus four types" framing understates Variant B's cost, because the consumer-side work
 is real and lands in a third repo. It must be weighed against Variant A with these items
 included on Variant B's side of the ledger.
+
+*Update 2026-10-27/28*: the three changes are now [lfx-v2-helm#191](https://github.com/linuxfoundation/lfx-v2-helm/pull/191) (the relation
+plus `viewer`, so the org document and `GET /b2b_orgs/{uid}` admit a manager),
+[lfx-self-serve#4416](https://github.com/linuxfoundation/lfx-self-serve/pull/4416) (selector discovery through `filter_grants=direct` and the
+CLA-route gate on `cla_admin`, the ACS bridge kept as fallback) and
+[lfx-self-serve#4436](https://github.com/linuxfoundation/lfx-self-serve/issues/4436) (bridge removal).
 
 ## 5. Explicitly out of scope for this model
 
@@ -446,11 +484,13 @@ What the architect is asked to confirm, on this PR:
 2. **§4.1 owner.** member-service stores `cla_admin` per organization, exposes the
    endpoint EasyCLA calls, emits the relation on every `b2b_org` publish path, documents
    it in its `docs/fga-contract.md`, and ships before the backfill, with a regression
-   test. Still open: no `cla_admin` in member-service as of 2026-10-26.
+   test. In progress: [lfx-self-serve#4362](https://github.com/linuxfoundation/lfx-self-serve/issues/4362) (Prabodh, started 2026-10-28; the
+   contract is in §3).
 3. **§4.2 consumer work** in `lfx-self-serve`: selector materialization and a CLA-route
    gate on `cla_admin`. Today the CLA route admits managers through a fallback on their
    ACS `cla-manager` scopes (M3); what happens to that fallback once the tuple is the
-   gate is item 5.
+   gate is item 5. Draft: [lfx-self-serve#4416](https://github.com/linuxfoundation/lfx-self-serve/pull/4416) (Ahmed); the fallback's removal:
+   [lfx-self-serve#4436](https://github.com/linuxfoundation/lfx-self-serve/issues/4436).
 4. **Designees.** §5 grants no tuple before a signed CCLA, so a designee cannot enter the
    lens until the CCLA is signed; the manager emails that link into the lens
    ([lfx-self-serve#3796](https://github.com/linuxfoundation/lfx-self-serve/issues/3796))
@@ -458,3 +498,6 @@ What the architect is asked to confirm, on this PR:
 5. **The FGA-vs-ACS disagreement rule**, before cutover: what the user sees when FGA
    admits them to the lens and ACS refuses the API call, and how the drift is reported
    (open item 6 in [m3-org-visibility.md](m3-org-visibility.md) §5).
+6. **The `viewer` name.** `viewer: auditor or cla_admin` on `b2b_org` (§2,
+   [lfx-v2-helm#191](https://github.com/linuxfoundation/lfx-v2-helm/pull/191)): Ahmed asked on 2026-10-27 whether the name works; a
+   different name changes nothing else in this document.
