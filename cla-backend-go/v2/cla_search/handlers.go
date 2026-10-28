@@ -5,6 +5,7 @@ package cla_search
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -67,5 +68,42 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 			}
 
 			return claSearchOps.NewSearchClaGroupsOK().WithXRequestID(reqID).WithPayload(result)
+		})
+
+	api.ClaSearchGetClaGroupHandler = claSearchOps.GetClaGroupHandlerFunc(
+		func(params claSearchOps.GetClaGroupParams, authUser *auth.User) middleware.Responder {
+			reqID := utils.GetRequestID(params.XREQUESTID)
+			ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTID, reqID) // nolint
+			if authUser != nil {
+				utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+			}
+			f := logrus.Fields{
+				"functionName":   "v2.cla_search.handlers.GetClaGroup",
+				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+				"authUserName":   utils.StringValue(params.XUSERNAME),
+				"claGroupID":     params.ClaGroupID,
+			}
+
+			if !authorized(authUser) {
+				log.WithFields(f).Warn(missingUsernameMsg)
+				return claSearchOps.NewGetClaGroupUnauthorized().WithXRequestID(reqID).WithPayload(utils.ErrorResponseUnauthorized(reqID, missingUsernameMsg))
+			}
+
+			lookupCtx, cancel := context.WithTimeout(ctx, searchTimeout)
+			defer cancel()
+
+			result, err := service.Get(lookupCtx, params.ClaGroupID)
+			if errors.Is(err, ErrNotFound) {
+				msg := "cla group not found"
+				log.WithFields(f).Warn(msg)
+				return claSearchOps.NewGetClaGroupNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, msg))
+			}
+			if err != nil {
+				msg := "unable to read the CLA Group"
+				log.WithFields(f).WithError(err).Warn(msg)
+				return claSearchOps.NewGetClaGroupInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
+			}
+
+			return claSearchOps.NewGetClaGroupOK().WithXRequestID(reqID).WithPayload(result)
 		})
 }

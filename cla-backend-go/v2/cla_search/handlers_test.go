@@ -30,6 +30,10 @@ func (s *stubService) Search(_ context.Context, searchTerm string, _ int64) (*mo
 	return s.list, s.err
 }
 
+func (s *stubService) Get(context.Context, string) (*models.ClaSearchResult, error) {
+	return nil, s.err
+}
+
 func invoke(t *testing.T, svc Service, authUser *auth.User, searchTerm string) *httptest.ResponseRecorder {
 	t.Helper()
 	api := &operations.EasyclaAPI{}
@@ -70,6 +74,24 @@ func TestHandlerBadRequestOnWhitespaceOnlyTerm(t *testing.T) {
 func TestHandlerInternalServerErrorOnServiceFailure(t *testing.T) {
 	svc := &stubService{err: errors.New("boom")}
 	assert.Equal(t, http.StatusInternalServerError, invoke(t, svc, &auth.User{UserName: "jdoe"}, "kubernetes").Code)
+}
+
+func TestGetHandlerNotFoundAndUnauthorized(t *testing.T) {
+	api := &operations.EasyclaAPI{}
+	Configure(api, &stubService{err: ErrNotFound})
+	require.NotNil(t, api.ClaSearchGetClaGroupHandler)
+
+	params := claSearchOps.GetClaGroupParams{
+		HTTPRequest: httptest.NewRequest(http.MethodGet, "/v4/cla-group/11111111-1111-4111-8111-111111111111", nil),
+		ClaGroupID:  "11111111-1111-4111-8111-111111111111",
+	}
+	unauthorized := httptest.NewRecorder()
+	api.ClaSearchGetClaGroupHandler.Handle(params, nil).WriteResponse(unauthorized, runtime.JSONProducer())
+	assert.Equal(t, http.StatusUnauthorized, unauthorized.Code)
+
+	missing := httptest.NewRecorder()
+	api.ClaSearchGetClaGroupHandler.Handle(params, &auth.User{UserName: "jdoe"}).WriteResponse(missing, runtime.JSONProducer())
+	assert.Equal(t, http.StatusNotFound, missing.Code)
 }
 
 func TestHandlerSuccess(t *testing.T) {

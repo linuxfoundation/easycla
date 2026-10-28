@@ -5,6 +5,7 @@ package cla_search
 
 import (
 	"context"
+	"errors"
 	"net/url"
 	"sort"
 	"strings"
@@ -13,6 +14,9 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"golang.org/x/sync/errgroup"
 )
+
+// ErrNotFound is returned when the catalogue has neither a CLA Group row nor a project mapping for the id.
+var ErrNotFound = errors.New("cla group not found")
 
 const (
 	sourceGitHub = "github"
@@ -50,6 +54,10 @@ var forgeHosts = map[string]string{
 // Service interface defines the CLA Group search service
 type Service interface {
 	Search(ctx context.Context, searchTerm string, limit int64) (*models.ClaSearchList, error)
+	// Get returns one catalogue row by CLA Group id. The project it names is chosen by the same
+	// rule Search uses, so a direct link and a search hit cannot disagree about which project a
+	// corporate signature would be requested against.
+	Get(ctx context.Context, claGroupID string) (*models.ClaSearchResult, error)
 }
 
 type service struct {
@@ -113,6 +121,38 @@ func (s *service) Search(ctx context.Context, searchTerm string, limit int64) (*
 	}
 
 	return buildList(searchTerm, limit, m.matches, src, indexOrgs(src.orgs, sfidToClaGroups)), nil
+}
+
+// Get returns the catalogue row for one CLA Group id, using the same cached reference data and
+// the same project selection as Search.
+func (s *service) Get(ctx context.Context, claGroupID string) (*models.ClaSearchResult, error) {
+	id := strings.TrimSpace(claGroupID)
+	if id == "" {
+		return nil, ErrNotFound
+	}
+	src, err := s.loadSources(ctx)
+	if err != nil {
+		return nil, err
+	}
+	var group *ClaGroupRow
+	for _, row := range src.claGroups {
+		if row != nil && row.ClaGroupID == id {
+			group = row
+			break
+		}
+	}
+	var mappings []*ProjectMappingRow
+	for _, mapping := range src.mappings {
+		if mapping != nil && mapping.ClaGroupID == id {
+			mappings = append(mappings, mapping)
+		}
+	}
+	if group == nil && len(mappings) == 0 {
+		return nil, ErrNotFound
+	}
+	orgs := indexOrgs(src.orgs, indexProjectSFIDs(src.mappings))[id]
+	result := buildResult(id, &match{types: map[string]bool{}}, group, mappings, orgs)
+	return &result, nil
 }
 
 // loadSources loads the reference data of every search source in parallel
@@ -481,10 +521,18 @@ func buildResult(claGroupID string, m *match, claGroup *ClaGroupRow, mappings []
 		result.CclaEnabled = enabledOrDefault(claGroup.CclaEnabled)
 	}
 
-	// A foundation-level CLA Group is marked by a mapping whose ProjectSFID equals its
-	// FoundationSFID (the projects_cla_groups convention) and resolves to its foundation; a single
-	// project-level mapping resolves to that project. Several project-level mappings with no
-	// foundation marker are left unresolved rather than picking an arbitrary one.
+	applySignableProject(&result, mappings)
+	return result
+}
+
+// applySignableProject chooses the project a corporate signature is requested against.
+//
+// A foundation-level CLA Group is marked by a mapping whose ProjectSFID equals its FoundationSFID
+// (the projects_cla_groups convention) and resolves to its foundation; a single project-level
+// mapping resolves to that project. Several project-level mappings with no foundation marker are
+// left unresolved rather than picking an arbitrary one. Search and Get both call this, so a
+// direct link and a search hit cannot disagree.
+func applySignableProject(result *models.ClaSearchResult, mappings []*ProjectMappingRow) {
 	for _, mapping := range mappings {
 		if result.ClaGroupName == "" {
 			result.ClaGroupName = mapping.ClaGroupName
@@ -494,13 +542,12 @@ func buildResult(claGroupID string, m *match, claGroup *ClaGroupRow, mappings []
 		}
 		if mapping.FoundationSFID != "" && mapping.FoundationSFID == mapping.ProjectSFID {
 			result.ProjectSFID, result.ProjectName = mapping.FoundationSFID, mapping.FoundationName
-			return result
+			return
 		}
 	}
 	if len(mappings) == 1 {
 		result.ProjectSFID, result.ProjectName = mappings[0].ProjectSFID, mappings[0].ProjectName
 	}
-	return result
 }
 
 // coveredProjects lists every project mapped to the CLA Group, including the foundation marker
