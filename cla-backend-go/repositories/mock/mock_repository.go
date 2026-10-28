@@ -22,11 +22,6 @@ type MockRepositoryInterface struct {
 	recorder *MockRepositoryInterfaceMockRecorder
 }
 
-// GitHubDisableRepositoriesOfOrganizationParent implements repositories.RepositoryInterface.
-func (*MockRepositoryInterface) GitHubDisableRepositoriesOfOrganizationParent(ctx context.Context, parentProjectSFID string, githubOrgName string) error {
-	panic("unimplemented")
-}
-
 // MockRepositoryInterfaceMockRecorder is the mock recorder for MockRepositoryInterface.
 type MockRepositoryInterfaceMockRecorder struct {
 	mock *MockRepositoryInterface
@@ -87,6 +82,20 @@ func (mr *MockRepositoryInterfaceMockRecorder) GitHubDisableRepositoriesOfOrgani
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GitHubDisableRepositoriesOfOrganization", reflect.TypeOf((*MockRepositoryInterface)(nil).GitHubDisableRepositoriesOfOrganization), ctx, externalProjectID, githubOrgName)
 }
 
+// GitHubDisableRepositoriesOfOrganizationParent mocks base method.
+func (m *MockRepositoryInterface) GitHubDisableRepositoriesOfOrganizationParent(ctx context.Context, parentProjectSFID, githubOrgName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GitHubDisableRepositoriesOfOrganizationParent", ctx, parentProjectSFID, githubOrgName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// GitHubDisableRepositoriesOfOrganizationParent indicates an expected call of GitHubDisableRepositoriesOfOrganizationParent.
+func (mr *MockRepositoryInterfaceMockRecorder) GitHubDisableRepositoriesOfOrganizationParent(ctx, parentProjectSFID, githubOrgName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GitHubDisableRepositoriesOfOrganizationParent", reflect.TypeOf((*MockRepositoryInterface)(nil).GitHubDisableRepositoriesOfOrganizationParent), ctx, parentProjectSFID, githubOrgName)
+}
+
 // GitHubDisableRepository mocks base method.
 func (m *MockRepositoryInterface) GitHubDisableRepository(ctx context.Context, repositoryID string) error {
 	m.ctrl.T.Helper()
@@ -99,6 +108,20 @@ func (m *MockRepositoryInterface) GitHubDisableRepository(ctx context.Context, r
 func (mr *MockRepositoryInterfaceMockRecorder) GitHubDisableRepository(ctx, repositoryID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GitHubDisableRepository", reflect.TypeOf((*MockRepositoryInterface)(nil).GitHubDisableRepository), ctx, repositoryID)
+}
+
+// GitHubDisableRepositoryForProject mocks base method.
+func (m *MockRepositoryInterface) GitHubDisableRepositoryForProject(ctx context.Context, repositoryID, projectSFID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GitHubDisableRepositoryForProject", ctx, repositoryID, projectSFID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// GitHubDisableRepositoryForProject indicates an expected call of GitHubDisableRepositoryForProject.
+func (mr *MockRepositoryInterfaceMockRecorder) GitHubDisableRepositoryForProject(ctx, repositoryID, projectSFID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GitHubDisableRepositoryForProject", reflect.TypeOf((*MockRepositoryInterface)(nil).GitHubDisableRepositoryForProject), ctx, repositoryID, projectSFID)
 }
 
 // GitHubEnableRepository mocks base method.

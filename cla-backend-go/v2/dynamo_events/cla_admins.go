@@ -21,9 +21,11 @@ import (
 )
 
 // claAdminsPublisher publishes one organization's CLA-manager roster to member-service; signatureIDs name
-// the rows this event changed, which are read from the base table even when the index lags.
+// the rows this event changed, which are registered and read from the base table even when the index lags.
+// AccountOf resolves a company's current account id from its base row.
 type claAdminsPublisher interface {
 	Publish(ctx context.Context, sfid string, signatureIDs ...string) (*cla_admins.Result, error)
+	AccountOf(ctx context.Context, companyID string) (string, bool, error)
 }
 
 // claAdminsAlerts reports a roster that could not be published (utils.EmailSender satisfies it).
@@ -104,25 +106,29 @@ func (s *service) publishCLAAdmins(ctx context.Context, f logrus.Fields, target 
 	for k, v := range f {
 		tf[k] = v
 	}
-	companyModel, err := s.companyRepo.GetCompany(ctx, target.companyID)
+	account, found, err := s.claAdmins.AccountOf(ctx, target.companyID)
+	if err == nil && !found {
+		// a deleted company leaves whatever was published behind; report it like the old lookup did
+		err = &utils.CompanyNotFound{Message: "no company matching company record", CompanyID: target.companyID}
+	}
 	if err != nil {
-		log.WithFields(tf).WithError(err).Warn("unable to load the company of the corporate CLA - roster not published")
+		log.WithFields(tf).WithError(err).Warn("unable to read the company of the corporate CLA - roster not published")
 		s.alertCLAAdmins(tf, target, "", err)
 		return err
 	}
-	if companyModel == nil || companyModel.CompanyExternalID == "" {
+	if account == "" {
 		log.WithFields(tf).Debug("company has no Salesforce account id - no roster to publish")
 		return nil
 	}
-	tf["sfid"] = companyModel.CompanyExternalID
-	res, err := s.claAdmins.Publish(ctx, companyModel.CompanyExternalID, target.signatureID)
+	tf["sfid"] = account
+	res, err := s.claAdmins.Publish(ctx, account, target.signatureID)
 	if errors.Is(err, member_service.ErrInvalidSFID) {
 		log.WithFields(tf).Debug("company id is not a Salesforce account id - no roster to publish")
 		return nil
 	}
 	if err != nil {
 		log.WithFields(tf).WithError(err).Warn("publishing the CLA-manager roster failed")
-		s.alertCLAAdmins(tf, target, companyModel.CompanyExternalID, err)
+		s.alertCLAAdmins(tf, target, account, err)
 		return err
 	}
 	if res.Skipped {

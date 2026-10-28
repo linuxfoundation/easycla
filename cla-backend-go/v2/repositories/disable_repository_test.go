@@ -25,7 +25,7 @@ func TestGitHubDisableProjectRepositoryChecksTheProjectBinding(t *testing.T) {
 		defer ctrl.Finish()
 		v1 := mock.NewMockRepositoryInterface(ctrl)
 		v1.EXPECT().GitHubGetRepository(gomock.Any(), "repo-1").Return(&v1Models.GithubRepository{RepositoryID: "repo-1", RepositoryName: "org/repo", RepositoryProjectSfid: "project-a"}, nil)
-		v1.EXPECT().GitHubDisableRepository(gomock.Any(), "repo-1").Return(nil)
+		v1.EXPECT().GitHubDisableRepositoryForProject(gomock.Any(), "repo-1", "project-a").Return(nil)
 		ghRepo, err := (&Service{gitV1Repository: v1}).GitHubDisableProjectRepository(context.Background(), "project-a", "repo-1")
 		require.NoError(t, err)
 		assert.Equal(t, "org/repo", ghRepo.RepositoryName)
@@ -70,7 +70,7 @@ func TestGitHubDisableProjectRepositoryPinsTheBindingCases(t *testing.T) {
 			v1 := mock.NewMockRepositoryInterface(ctrl)
 			v1.EXPECT().GitHubGetRepository(gomock.Any(), "repo-1").Return(tc.record, nil)
 			if tc.disabled {
-				v1.EXPECT().GitHubDisableRepository(gomock.Any(), "repo-1").Return(nil)
+				v1.EXPECT().GitHubDisableRepositoryForProject(gomock.Any(), "repo-1", "project-a").Return(nil)
 			}
 			ghRepo, err := (&Service{gitV1Repository: v1}).GitHubDisableProjectRepository(context.Background(), "project-a", "repo-1")
 			if tc.disabled {
@@ -88,8 +88,22 @@ func TestGitHubDisableProjectRepositoryPinsTheBindingCases(t *testing.T) {
 		defer ctrl.Finish()
 		v1 := mock.NewMockRepositoryInterface(ctrl)
 		v1.EXPECT().GitHubGetRepository(gomock.Any(), "repo-1").Return(&v1Models.GithubRepository{RepositoryID: "repo-1", RepositoryProjectSfid: "project-a"}, nil)
-		v1.EXPECT().GitHubDisableRepository(gomock.Any(), "repo-1").Return(errors.New("dynamo down"))
+		v1.EXPECT().GitHubDisableRepositoryForProject(gomock.Any(), "repo-1", "project-a").Return(errors.New("dynamo down"))
 		_, err := (&Service{gitV1Repository: v1}).GitHubDisableProjectRepository(context.Background(), "project-a", "repo-1")
 		assert.EqualError(t, err, "dynamo down")
 	})
+}
+
+// the write itself re-checks the binding: a record rebound to another project between the check and the
+// write is reported as not found and stays untouched (the v1 primitive carries the DynamoDB condition)
+func TestGitHubDisableProjectRepositoryHonoursTheWriteCondition(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	v1 := mock.NewMockRepositoryInterface(ctrl)
+	v1.EXPECT().GitHubGetRepository(gomock.Any(), "repo-1").Return(&v1Models.GithubRepository{RepositoryID: "repo-1", RepositoryProjectSfid: "project-a"}, nil)
+	v1.EXPECT().GitHubDisableRepositoryForProject(gomock.Any(), "repo-1", "project-a").Return(&utils.GitHubRepositoryNotFound{Message: "repository repo-1 is not bound to project project-a"})
+	ghRepo, err := (&Service{gitV1Repository: v1}).GitHubDisableProjectRepository(context.Background(), "project-a", "repo-1")
+	var notFound *utils.GitHubRepositoryNotFound
+	require.True(t, errors.As(err, &notFound), "expected not found, got %v", err)
+	assert.Nil(t, ghRepo)
 }

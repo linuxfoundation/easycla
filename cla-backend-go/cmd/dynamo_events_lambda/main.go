@@ -166,10 +166,12 @@ func init() {
 				log.Warn("CLA-manager publisher: no alert transport or recipients configured - publish failures are only logged")
 			}
 			options = append(options, dynamo_events.WithCLAAdmins(cla_admins.Service{
-				Companies: companyRepo,
-				CCLAs:     cla_admins.DynamoCCLAs{DB: dynamodb.New(awsSession), Table: fmt.Sprintf("cla-%s-signatures", stage)},
-				Users:     usersRepo,
-				Members:   members,
+				Companies:   companyRepo,
+				CompanyRows: cla_admins.DynamoCompanies{DB: dynamodb.New(awsSession), Table: fmt.Sprintf("cla-%s-companies", stage)},
+				CCLAs:       cla_admins.DynamoCCLAs{DB: dynamodb.New(awsSession), Table: fmt.Sprintf("cla-%s-signatures", stage)},
+				Pending:     cla_admins.DynamoPendingIDs{DB: dynamodb.New(awsSession), Table: fmt.Sprintf("cla-%s-store", stage)},
+				Users:       usersRepo,
+				Members:     members,
 			}, alerts, recipients))
 		}
 	}

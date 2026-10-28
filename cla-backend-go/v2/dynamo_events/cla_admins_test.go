@@ -9,12 +9,9 @@ import (
 	"testing"
 
 	"github.com/aws/aws-lambda-go/events"
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	mock_company "github.com/linuxfoundation/easycla/cla-backend-go/company/mocks"
-	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/cla_admins"
 	member_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
 )
@@ -30,9 +27,19 @@ type rosterCall struct {
 }
 
 type fakeRosterPublisher struct {
-	calls []rosterCall
-	res   *cla_admins.Result
-	err   error
+	accounts   map[string]string
+	accountErr error
+	calls      []rosterCall
+	res        *cla_admins.Result
+	err        error
+}
+
+func (f *fakeRosterPublisher) AccountOf(_ context.Context, companyID string) (string, bool, error) {
+	if f.accountErr != nil {
+		return "", false, f.accountErr
+	}
+	account, found := f.accounts[companyID]
+	return account, found, nil
 }
 
 func (f *fakeRosterPublisher) Publish(_ context.Context, sfid string, ids ...string) (*cla_admins.Result, error) {
@@ -100,16 +107,14 @@ func remove(oldImage map[string]events.DynamoDBAttributeValue) events.DynamoDBEv
 }
 
 func TestCLAAdminsEvent(t *testing.T) {
-	companyA := &models.Company{CompanyID: "company-1", CompanyExternalID: accountA}
-	companyB := &models.Company{CompanyID: "company-2", CompanyExternalID: accountB}
+	known := map[string]string{"company-1": accountA, "company-2": accountB}
 	published := &cla_admins.Result{Roster: &cla_admins.Roster{SFID: accountA, Admins: []member_service.CLAAdmin{{Username: "amy"}}}}
-	ok := func() *fakeRosterPublisher { return &fakeRosterPublisher{res: published} }
+	ok := func() *fakeRosterPublisher { return &fakeRosterPublisher{accounts: known, res: published} }
 	ops := []string{"ops@example.com", "maintainers@example.com"}
+	one := []string{"sig-ccla"}
 	tests := []struct {
 		name       string
 		event      events.DynamoDBEventRecord
-		companies  map[string]*models.Company
-		companyErr error
 		publish    *fakeRosterPublisher
 		alerts     *fakeAlerts
 		recipients []string
@@ -117,57 +122,43 @@ func TestCLAAdminsEvent(t *testing.T) {
 		wantErr    string
 		wantAlert  bool
 	}{
-		{name: "manager added", event: modify(cclaImage(true, "amy"), cclaImage(true, "amy", "bob")), companies: map[string]*models.Company{"company-1": companyA}, publish: ok(),
-			wantCalls: []rosterCall{{sfid: accountA, ids: []string{"sig-ccla"}}}},
-		{name: "signed flag cleared", event: modify(cclaImage(true, "amy"), cclaImage(false, "amy")), companies: map[string]*models.Company{"company-1": companyA}, publish: ok(),
-			wantCalls: []rosterCall{{sfid: accountA, ids: []string{"sig-ccla"}}}},
-		{name: "signed flag set", event: modify(cclaImage(false, "amy"), cclaImage(true, "amy")), companies: map[string]*models.Company{"company-1": companyA}, publish: ok(),
-			wantCalls: []rosterCall{{sfid: accountA, ids: []string{"sig-ccla"}}}},
+		{name: "manager added", event: modify(cclaImage(true, "amy"), cclaImage(true, "amy", "bob")), publish: ok(), wantCalls: []rosterCall{{sfid: accountA, ids: one}}},
+		{name: "signed flag cleared", event: modify(cclaImage(true, "amy"), cclaImage(false, "amy")), publish: ok(), wantCalls: []rosterCall{{sfid: accountA, ids: one}}},
+		{name: "signed flag set", event: modify(cclaImage(false, "amy"), cclaImage(true, "amy")), publish: ok(), wantCalls: []rosterCall{{sfid: accountA, ids: one}}},
 		{name: "same managers in another order", event: modify(cclaImage(true, "amy", "bob"), cclaImage(true, "bob", "amy")), publish: ok()},
 		{name: "metadata-only change", event: modify(cclaImage(true, "amy"), withNote(cclaImage(true, "amy"))), publish: ok()},
-		{name: "signed ccla inserted", event: insert(cclaImage(true, "amy")), companies: map[string]*models.Company{"company-1": companyA}, publish: ok(),
-			wantCalls: []rosterCall{{sfid: accountA, ids: []string{"sig-ccla"}}}},
+		{name: "signed ccla inserted", event: insert(cclaImage(true, "amy")), publish: ok(), wantCalls: []rosterCall{{sfid: accountA, ids: one}}},
 		{name: "unsigned ccla inserted", event: insert(cclaImage(false, "amy")), publish: ok()},
-		{name: "signed ccla removed", event: remove(cclaImage(true, "amy")), companies: map[string]*models.Company{"company-1": companyA}, publish: ok(),
-			wantCalls: []rosterCall{{sfid: accountA, ids: []string{"sig-ccla"}}}},
+		{name: "signed ccla removed", event: remove(cclaImage(true, "amy")), publish: ok(), wantCalls: []rosterCall{{sfid: accountA, ids: one}}},
 		{name: "unsigned ccla removed", event: remove(cclaImage(false, "amy")), publish: ok()},
-		{name: "row moved to another company", event: modify(cclaImage(true, "amy"), cclaImageFor("company-2", true, "amy")), companies: map[string]*models.Company{"company-1": companyA, "company-2": companyB}, publish: ok(),
-			wantCalls: []rosterCall{{sfid: accountA, ids: []string{"sig-ccla"}}, {sfid: accountB, ids: []string{"sig-ccla"}}}},
-		{name: "row stops being a corporate cla", event: modify(cclaImage(true, "amy"), iclaImage()), companies: map[string]*models.Company{"company-1": companyA}, publish: ok(),
-			wantCalls: []rosterCall{{sfid: accountA, ids: []string{"sig-ccla"}}}},
-		{name: "company without account id", event: modify(cclaImage(true), cclaImage(true, "amy")), companies: map[string]*models.Company{"company-1": {CompanyID: "company-1"}}, publish: ok()},
-		{name: "legacy org-service id", event: modify(cclaImage(true), cclaImage(true, "amy")), companies: map[string]*models.Company{"company-1": {CompanyID: "company-1", CompanyExternalID: "lfSclQhURLCCrv7EZj"}},
-			publish: &fakeRosterPublisher{err: member_service.ErrInvalidSFID}, alerts: &fakeAlerts{}, recipients: ops,
-			wantCalls: []rosterCall{{sfid: "lfSclQhURLCCrv7EZj", ids: []string{"sig-ccla"}}}},
-		{name: "not a b2b_org yet", event: modify(cclaImage(true), cclaImage(true, "amy")), companies: map[string]*models.Company{"company-1": companyA},
-			publish: &fakeRosterPublisher{res: &cla_admins.Result{Roster: published.Roster, Skipped: true}}, alerts: &fakeAlerts{}, recipients: ops,
-			wantCalls: []rosterCall{{sfid: accountA, ids: []string{"sig-ccla"}}}},
-		{name: "member-service failure is returned and reported", event: modify(cclaImage(true), cclaImage(true, "amy")), companies: map[string]*models.Company{"company-1": companyA},
-			publish: &fakeRosterPublisher{err: errors.New("boom")}, alerts: &fakeAlerts{}, recipients: ops,
-			wantCalls: []rosterCall{{sfid: accountA, ids: []string{"sig-ccla"}}}, wantErr: "boom", wantAlert: true},
-		{name: "member-service failure without recipients is only logged", event: modify(cclaImage(true), cclaImage(true, "amy")), companies: map[string]*models.Company{"company-1": companyA},
-			publish: &fakeRosterPublisher{err: errors.New("boom")}, alerts: &fakeAlerts{},
-			wantCalls: []rosterCall{{sfid: accountA, ids: []string{"sig-ccla"}}}, wantErr: "boom"},
-		{name: "a failed alert does not hide the publish failure", event: modify(cclaImage(true), cclaImage(true, "amy")), companies: map[string]*models.Company{"company-1": companyA},
-			publish: &fakeRosterPublisher{err: errors.New("boom")}, alerts: &fakeAlerts{err: errors.New("sns down")}, recipients: ops,
-			wantCalls: []rosterCall{{sfid: accountA, ids: []string{"sig-ccla"}}}, wantErr: "boom", wantAlert: true},
-		{name: "company lookup failure is returned and reported", event: modify(cclaImage(true), cclaImage(true, "amy")), companyErr: errors.New("dynamo down"),
-			publish: ok(), alerts: &fakeAlerts{}, recipients: ops, wantErr: "dynamo down", wantAlert: true},
+		{name: "row moved to another company", event: modify(cclaImage(true, "amy"), cclaImageFor("company-2", true, "amy")), publish: ok(),
+			wantCalls: []rosterCall{{sfid: accountA, ids: one}, {sfid: accountB, ids: one}}},
+		{name: "row stops being a corporate cla", event: modify(cclaImage(true, "amy"), iclaImage()), publish: ok(), wantCalls: []rosterCall{{sfid: accountA, ids: one}}},
+		{name: "company without account id", event: modify(cclaImage(true), cclaImage(true, "amy")), publish: &fakeRosterPublisher{accounts: map[string]string{"company-1": ""}, res: published}},
+		{name: "company row gone is reported, not skipped", event: modify(cclaImage(true), cclaImage(true, "amy")),
+			publish: &fakeRosterPublisher{accounts: map[string]string{}, res: published}, alerts: &fakeAlerts{}, recipients: ops,
+			wantErr: "no company matching company record", wantAlert: true},
+		{name: "legacy org-service id", event: modify(cclaImage(true), cclaImage(true, "amy")),
+			publish: &fakeRosterPublisher{accounts: map[string]string{"company-1": "lfSclQhURLCCrv7EZj"}, err: member_service.ErrInvalidSFID}, alerts: &fakeAlerts{}, recipients: ops,
+			wantCalls: []rosterCall{{sfid: "lfSclQhURLCCrv7EZj", ids: one}}},
+		{name: "not a b2b_org yet", event: modify(cclaImage(true), cclaImage(true, "amy")),
+			publish: &fakeRosterPublisher{accounts: known, res: &cla_admins.Result{Roster: published.Roster, Skipped: true}}, alerts: &fakeAlerts{}, recipients: ops,
+			wantCalls: []rosterCall{{sfid: accountA, ids: one}}},
+		{name: "member-service failure is returned and reported", event: modify(cclaImage(true), cclaImage(true, "amy")),
+			publish: &fakeRosterPublisher{accounts: known, err: errors.New("boom")}, alerts: &fakeAlerts{}, recipients: ops,
+			wantCalls: []rosterCall{{sfid: accountA, ids: one}}, wantErr: "boom", wantAlert: true},
+		{name: "member-service failure without recipients is only logged", event: modify(cclaImage(true), cclaImage(true, "amy")),
+			publish: &fakeRosterPublisher{accounts: known, err: errors.New("boom")}, alerts: &fakeAlerts{},
+			wantCalls: []rosterCall{{sfid: accountA, ids: one}}, wantErr: "boom"},
+		{name: "a failed alert does not hide the publish failure", event: modify(cclaImage(true), cclaImage(true, "amy")),
+			publish: &fakeRosterPublisher{accounts: known, err: errors.New("boom")}, alerts: &fakeAlerts{err: errors.New("sns down")}, recipients: ops,
+			wantCalls: []rosterCall{{sfid: accountA, ids: one}}, wantErr: "boom", wantAlert: true},
+		{name: "company read failure is returned and reported", event: modify(cclaImage(true), cclaImage(true, "amy")),
+			publish: &fakeRosterPublisher{accountErr: errors.New("dynamo down")}, alerts: &fakeAlerts{}, recipients: ops, wantErr: "dynamo down", wantAlert: true},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			ctrl := gomock.NewController(t)
-			defer ctrl.Finish()
-			companyRepo := mock_company.NewMockIRepository(ctrl)
-			companyRepo.EXPECT().GetCompany(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, id string) (*models.Company, error) {
-				if tc.companyErr != nil {
-					return nil, tc.companyErr
-				}
-				c, found := tc.companies[id]
-				require.Truef(t, found, "unexpected company lookup: %s", id)
-				return c, nil
-			}).AnyTimes()
-			s := &service{companyRepo: companyRepo, claAdmins: tc.publish, claAdminsRecipients: tc.recipients}
+			s := &service{claAdmins: tc.publish, claAdminsRecipients: tc.recipients}
 			if tc.alerts != nil {
 				s.claAdminsAlerts = tc.alerts
 			}

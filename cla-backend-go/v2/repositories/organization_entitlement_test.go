@@ -23,7 +23,12 @@ func TestOrganizationEntitled(t *testing.T) {
 		{ProjectSFID: "project-c", FoundationSFID: "foundation-x"},
 	}
 	org := func(projectSFID, parentSFID string) *v1Models.GithubOrganizations {
-		return &v1Models.GithubOrganizations{List: []*v1Models.GithubOrganization{{OrganizationName: "org", ProjectSFID: projectSFID, OrganizationSfid: parentSFID}}}
+		return &v1Models.GithubOrganizations{List: []*v1Models.GithubOrganization{{OrganizationName: "org", ProjectSFID: projectSFID, OrganizationSfid: parentSFID, Enabled: true}}}
+	}
+	disabled := func(projectSFID, parentSFID string) *v1Models.GithubOrganizations {
+		o := org(projectSFID, parentSFID)
+		o.List[0].Enabled = false
+		return o
 	}
 	cases := []struct {
 		name     string
@@ -40,6 +45,8 @@ func TestOrganizationEntitled(t *testing.T) {
 		{name: "another project's organization", org: org("project-b", ""), project: "project-a", mappings: mappings, want: false},
 		{name: "another foundation's organization", org: org("project-b", "foundation-y"), project: "project-a", mappings: mappings, want: false},
 		{name: "foundation of a mapping the project is not part of", org: org("", "foundation-y"), project: "project-a", mappings: []*projects_cla_groups.ProjectClaGroup{{ProjectSFID: "project-z", FoundationSFID: "foundation-y"}}, want: false},
+		{name: "removed organization of the project", org: disabled("project-a", ""), project: "project-a", mappings: mappings, want: false},
+		{name: "removed organization of the foundation", org: disabled("", "foundation-x"), project: "project-a", mappings: mappings, want: false},
 		{name: "unknown organization", org: &v1Models.GithubOrganizations{}, project: "project-a", mappings: mappings, want: false},
 		{name: "nil", project: "project-a", mappings: mappings, want: false},
 	}

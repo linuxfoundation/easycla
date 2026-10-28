@@ -490,7 +490,7 @@ func (s *Service) RefreshGitLabOrganizationAuth(ctx context.Context, gitLabOrg *
 
 		log.WithFields(f).Debugf("encrypted oauthResponse: %d bytes", len(gitLabAuthResponse))
 
-		err = s.repo.UpdateGitLabOrganizationAuth(ctx, gitLabOrg.OrganizationID, int(gitLabOrg.ExternalGroupID), authExpiryTime, gitLabAuthResponse, gitLabOrg.OrganizationName, gitLabOrg.OrganizationFullPath, gitLabOrg.OrganizationURL)
+		err = s.repo.UpdateGitLabOrganizationAuth(ctx, gitLabOrg.OrganizationID, gitLabOrg.ExternalGroupID, authExpiryTime, gitLabAuthResponse, gitLabOrg.OrganizationName, gitLabOrg.OrganizationFullPath, gitLabOrg.OrganizationURL)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn("problem updating gitlab organization auth")
 			return nil, err
@@ -839,12 +839,19 @@ func (s *Service) InitiateSignRequest(ctx context.Context, req *http.Request, gi
 
 	params := "redirect=" + url.QueryEscape(originURL)
 	consoleURL := fmt.Sprintf("https://%s/#/cla/project/%s/user/%s?%s", contributorBaseURL, gitlabRepo.RepositoryClaGroupID, claUser.UserID, params)
-	_, err = http.Get(consoleURL)
-
+	consoleReq, err := http.NewRequestWithContext(ctx, http.MethodGet, consoleURL, nil)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to build the console request for : %s", consoleURL)
+		return nil, err
+	}
+	consoleResp, err := http.DefaultClient.Do(consoleReq)
 	if err != nil {
 		msg := fmt.Sprintf("unable to redirect to : %s , error: %+v ", consoleURL, err)
 		log.WithFields(f).Warn(msg)
 		return nil, err
+	}
+	if closeErr := consoleResp.Body.Close(); closeErr != nil {
+		log.WithFields(f).WithError(closeErr).Debug("unable to close the console response body")
 	}
 	var signatureID string
 	icla, signErr := s.signatureRepo.GetIndividualSignature(ctx, gitlabRepo.RepositoryClaGroupID, claUser.UserID, aws.Bool(false), aws.Bool(true))
@@ -875,9 +882,9 @@ func (s *Service) InitiateSignRequest(ctx context.Context, req *http.Request, gi
 			return &consoleURL, nil
 		}
 
-		corporateSignature, err := s.signatureRepo.GetCorporateSignature(ctx, gitlabRepo.RepositoryClaGroupID, companyID, aws.Bool(false), aws.Bool(true))
-		if err != nil {
-			msg := fmt.Sprintf("can't load company signature record for company: %s for user : %s (%s), error : %v", companyID, claUser.Username, claUser.UserID, err)
+		corporateSignature, sigErr := s.signatureRepo.GetCorporateSignature(ctx, gitlabRepo.RepositoryClaGroupID, companyID, aws.Bool(false), aws.Bool(true))
+		if sigErr != nil {
+			msg := fmt.Sprintf("can't load company signature record for company: %s for user : %s (%s), error : %v", companyID, claUser.Username, claUser.UserID, sigErr)
 			log.WithFields(f).Errorf("%s", msg)
 			return &consoleURL, nil
 		}

@@ -31,7 +31,12 @@ const (
 
 var baseTime = time.Date(2026, 10, 28, 7, 0, 0, 0, time.UTC)
 
-type fakeCompanies struct{ rows map[string][]*models.Company }
+type fakeCompanies struct {
+	rows        map[string][]*models.Company
+	accounts    map[string]string
+	accountsErr error
+	log         *[]string
+}
 
 func (f fakeCompanies) GetCompaniesByExternalID(_ context.Context, sfid string, _ bool) ([]*models.Company, error) {
 	rows, ok := f.rows[sfid]
@@ -39,6 +44,22 @@ func (f fakeCompanies) GetCompaniesByExternalID(_ context.Context, sfid string, 
 		return nil, &utils.CompanyNotFound{CompanySFID: sfid}
 	}
 	return rows, nil
+}
+
+func (f fakeCompanies) GetCompanyAccounts(_ context.Context, ids []string) (map[string]string, error) {
+	if f.log != nil {
+		*f.log = append(*f.log, "companies "+strings.Join(ids, ","))
+	}
+	if f.accountsErr != nil {
+		return nil, f.accountsErr
+	}
+	out := map[string]string{}
+	for _, id := range ids {
+		if v, ok := f.accounts[id]; ok {
+			out[id] = v
+		}
+	}
+	return out, nil
 }
 
 // fakeCCLAs: index = company -> ids (eventually consistent, may be stale), base = id -> row as the table holds
@@ -127,39 +148,94 @@ func (c *clock) Now() time.Time {
 	return t
 }
 
+// fakePending is the durable catalog; one instance can be shared by several publisher instances
+type fakePending struct {
+	sets    map[string]map[string]bool
+	addErr  error
+	listErr error
+	log     *[]string
+}
+
+func newFakePending() *fakePending { return &fakePending{sets: map[string]map[string]bool{}} }
+
+func (f *fakePending) Add(_ context.Context, sfid string, ids ...string) error {
+	if f.log != nil {
+		*f.log = append(*f.log, "register "+strings.Join(ids, ","))
+	}
+	if f.addErr != nil {
+		return f.addErr
+	}
+	if f.sets[sfid] == nil {
+		f.sets[sfid] = map[string]bool{}
+	}
+	for _, id := range ids {
+		f.sets[sfid][id] = true
+	}
+	return nil
+}
+
+func (f *fakePending) List(_ context.Context, sfid string) ([]string, error) {
+	if f.log != nil {
+		*f.log = append(*f.log, "catalog")
+	}
+	if f.listErr != nil {
+		return nil, f.listErr
+	}
+	return sortedKeys(f.sets[sfid]), nil
+}
+
 type harness struct {
-	svc   Service
-	cclas *fakeCCLAs
-	pub   *fakePublisher
-	log   []string
+	svc     Service
+	cclas   *fakeCCLAs
+	pub     *fakePublisher
+	pending *fakePending
+	log     []string
 }
 
 func baseRows() map[string]CCLA {
 	return map[string]CCLA{
-		"s1": {SignatureID: "s1", CompanyID: "c-entity-1", Signed: true, ACL: []string{"zoe", " amy "}},
-		"s2": {SignatureID: "s2", CompanyID: "c-entity-1", Signed: false, ACL: []string{"unsigned-manager"}},
-		"s3": {SignatureID: "s3", CompanyID: "c-entity-2", Signed: true, ACL: []string{"amy", "bob", ""}},
-		"s7": {SignatureID: "s7", CompanyID: "c-other", Signed: true, ACL: []string{"mallory"}},
-		"s9": {SignatureID: "s9", CompanyID: "c-entity-2", Signed: true, ACL: []string{"zed"}},
+		"s1":  {SignatureID: "s1", CompanyID: "c-entity-1", Signed: true, ACL: []string{"zoe", " amy "}},
+		"s2":  {SignatureID: "s2", CompanyID: "c-entity-1", Signed: false, ACL: []string{"unsigned-manager"}},
+		"s3":  {SignatureID: "s3", CompanyID: "c-entity-2", Signed: true, ACL: []string{"amy", "bob", ""}},
+		"s7":  {SignatureID: "s7", CompanyID: "c-other", Signed: true, ACL: []string{"mallory"}},
+		"s9":  {SignatureID: "s9", CompanyID: "c-entity-2", Signed: true, ACL: []string{"zed"}},
+		"s11": {SignatureID: "s11", CompanyID: "c-entity-3", Signed: true, ACL: []string{"neo"}},
 	}
 }
 
 func newHarness(pub *fakePublisher) *harness {
-	h := &harness{pub: pub}
+	return newHarnessWith(pub, nil, baseTime)
+}
+
+// newHarnessWith builds a publisher around a shared catalog (nil = its own) and its own clock start
+func newHarnessWith(pub *fakePublisher, shared *fakePending, start time.Time) *harness {
+	h := &harness{pub: pub, pending: shared}
+	if h.pending == nil {
+		h.pending = newFakePending()
+		h.pending.log = &h.log
+	}
 	h.cclas = &fakeCCLAs{index: map[string][]string{"c-entity-1": {"s1", "s2"}, "c-entity-2": {"s3"}}, base: baseRows(), log: &h.log}
 	pub.log = &h.log
+	companies := fakeCompanies{rows: map[string][]*models.Company{
+		sfid18: {{CompanyID: "c-entity-2", CompanyExternalID: sfid18}},
+		sfid15: {{CompanyID: "c-entity-1", CompanyExternalID: sfid15}, {CompanyID: "c-entity-2", CompanyExternalID: sfid18}},
+	}, accounts: map[string]string{
+		"c-entity-1": sfid15,
+		"c-entity-2": sfid18,
+		"c-entity-3": sfid15,
+		"c-other":    "0014100000Te0G8AAJ",
+	}, log: &h.log}
 	h.svc = Service{
-		Companies: fakeCompanies{rows: map[string][]*models.Company{
-			sfid18: {{CompanyID: "c-entity-2", CompanyExternalID: sfid18}},
-			sfid15: {{CompanyID: "c-entity-1", CompanyExternalID: sfid15}, {CompanyID: "c-entity-2", CompanyExternalID: sfid18}},
-		}},
-		CCLAs: h.cclas,
+		Companies:   companies,
+		CompanyRows: companies,
+		CCLAs:       h.cclas,
+		Pending:     h.pending,
 		Users: fakeUsers{byName: map[string]*models.User{
 			"amy": {LfUsername: "amy", LfEmail: strfmt.Email("amy@example.com"), Username: "Amy Adams"},
 			"bob": {LfUsername: "bob"},
 		}},
 		Members: pub,
-		Now:     (&clock{next: baseTime, log: &h.log}).Now,
+		Now:     (&clock{next: start, log: &h.log}).Now,
 	}
 	return h
 }
@@ -186,7 +262,7 @@ func TestRosterUnionsEveryRowSharingTheAccount(t *testing.T) {
 		{Username: "zoe"},
 	}, roster.Admins, "unsigned CCLA managers are left out, duplicates collapse, unknown users keep the username only")
 	assert.Equal(t, []string{"amy", "bob", "zoe"}, roster.Usernames())
-	assert.Equal(t, []string{"list c-entity-1", "list c-entity-2", "read s1,s2,s3"}, h.log, "ids come from the index, state from one base read")
+	assert.Equal(t, []string{"catalog", "list c-entity-1", "list c-entity-2", "read s1,s2,s3", "companies c-entity-1,c-entity-2"}, h.log, "ids come from the catalog and the index, state and company bindings from base reads")
 }
 
 func TestRosterEdgeCases(t *testing.T) {
@@ -219,7 +295,7 @@ func TestRosterReadsTheBaseTable(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, []string{"amy", "bob", "zed", "zoe"}, roster.Usernames())
 		assert.Equal(t, 3, roster.SignedCCLAs)
-		assert.Equal(t, "read s1,s2,s3,s9", h.log[len(h.log)-1])
+		assert.Contains(t, h.log, "read s1,s2,s3,s9")
 	})
 	t.Run("a deleted row named by an old event is left out", func(t *testing.T) {
 		h := newHarness(&fakePublisher{})
@@ -232,6 +308,36 @@ func TestRosterReadsTheBaseTable(t *testing.T) {
 		roster, err := h.svc.Roster(context.Background(), sfid18, "s7")
 		require.NoError(t, err)
 		assert.Equal(t, []string{"amy", "bob", "zoe"}, roster.Usernames())
+		assert.Contains(t, h.log, "companies c-entity-1,c-entity-2,c-other", "every referenced company is verified from its base row")
+		assert.Equal(t, []string{"c-entity-1", "c-entity-2"}, roster.CompanyIDs)
+	})
+	t.Run("a stale listing of a re-keyed company does not keep its managers", func(t *testing.T) {
+		h := newHarness(&fakePublisher{})
+		companies, ok := h.svc.Companies.(fakeCompanies)
+		require.True(t, ok)
+		companies.accounts = map[string]string{"c-entity-1": sfid15, "c-entity-2": "0014100000Te0G8AAJ"}
+		h.svc.Companies, h.svc.CompanyRows = companies, companies
+		roster, err := h.svc.Roster(context.Background(), sfid18)
+		require.NoError(t, err)
+		assert.Equal(t, []string{"amy", "zoe"}, roster.Usernames(), "the index still lists c-entity-2 under this account, its base row says otherwise")
+		assert.Equal(t, []string{"c-entity-1"}, roster.CompanyIDs)
+	})
+	t.Run("a row of a company the company index does not list yet counts when its base row carries this account", func(t *testing.T) {
+		h := newHarness(&fakePublisher{})
+		roster, err := h.svc.Roster(context.Background(), sfid18, "s11")
+		require.NoError(t, err)
+		assert.Equal(t, []string{"amy", "bob", "neo", "zoe"}, roster.Usernames())
+		assert.Equal(t, []string{"c-entity-1", "c-entity-2", "c-entity-3"}, roster.CompanyIDs)
+		assert.Equal(t, 3, roster.SignedCCLAs)
+	})
+	t.Run("a company read failure fails the roster instead of dropping managers", func(t *testing.T) {
+		h := newHarness(&fakePublisher{})
+		companies, ok := h.svc.Companies.(fakeCompanies)
+		require.True(t, ok)
+		companies.accountsErr = errors.New("dynamo down")
+		h.svc.Companies, h.svc.CompanyRows = companies, companies
+		_, err := h.svc.Roster(context.Background(), sfid18, "s11")
+		assert.ErrorContains(t, err, "dynamo down")
 	})
 	t.Run("a row that is unsigned now is left out", func(t *testing.T) {
 		h := newHarness(&fakePublisher{})
@@ -264,7 +370,7 @@ func TestPublish(t *testing.T) {
 		assert.Equal(t, sfid18, pub.calls[0].uid)
 		assert.Equal(t, []string{"amy", "bob", "zoe"}, res.Roster.Usernames())
 		assert.Equal(t, baseTime, pub.calls[0].at)
-		assert.Equal(t, []string{"now", "list c-entity-1", "list c-entity-2", "read s1,s2,s3", "put"}, h.log, "the stamp is taken before any read")
+		assert.Equal(t, []string{"now", "catalog", "list c-entity-1", "list c-entity-2", "read s1,s2,s3", "companies c-entity-1,c-entity-2", "put"}, h.log, "the stamp is taken before any read")
 	})
 	t.Run("no b2b_org yet is skipped", func(t *testing.T) {
 		pub := &fakePublisher{errs: []error{member_service.ErrOrgNotFound}}
@@ -279,7 +385,7 @@ func TestPublish(t *testing.T) {
 		later := baseRows()
 		later["s3"] = CCLA{SignatureID: "s3", CompanyID: "c-entity-2", Signed: true, ACL: []string{"amy"}}
 		h.cclas.laterBase = later
-		h.cclas.switchAfter = 1
+		h.cclas.switchAfter = 2 // the first attempt reads the registered row, then every row
 		res, err := h.svc.Publish(context.Background(), sfid18, "s3")
 		require.NoError(t, err)
 		assert.True(t, res.Retried)
@@ -289,7 +395,7 @@ func TestPublish(t *testing.T) {
 		assert.Equal(t, baseTime, pub.calls[0].at)
 		assert.Equal(t, baseTime.Add(time.Second), pub.calls[1].at)
 		assert.Equal(t, []string{"amy", "zoe"}, res.Roster.Usernames())
-		assert.Equal(t, []string{"now", "list c-entity-1", "list c-entity-2", "read s1,s2,s3", "put", "now", "list c-entity-1", "list c-entity-2", "read s1,s2,s3", "put"}, h.log)
+		assert.Equal(t, []string{"register s3", "now", "catalog", "read s3", "list c-entity-1", "list c-entity-2", "read s1,s2,s3", "companies c-entity-1,c-entity-2", "put", "now", "catalog", "read s3", "list c-entity-1", "list c-entity-2", "read s1,s2,s3", "companies c-entity-1,c-entity-2", "put"}, h.log, "registration precedes the first clock read; every attempt re-reads the catalog and the base rows")
 	})
 	t.Run("a conflict after the triggering row was deleted drops it", func(t *testing.T) {
 		pub := &fakePublisher{errs: []error{member_service.ErrConflict, nil}}
@@ -297,7 +403,7 @@ func TestPublish(t *testing.T) {
 		later := baseRows()
 		delete(later, "s3")
 		h.cclas.laterBase = later
-		h.cclas.switchAfter = 1
+		h.cclas.switchAfter = 2
 		res, err := h.svc.Publish(context.Background(), sfid18, "s3")
 		require.NoError(t, err)
 		require.Len(t, pub.calls, 2)
@@ -336,6 +442,27 @@ type fakeDB struct {
 	batches     []*dynamodb.BatchGetItemOutput
 	batchInputs []*dynamodb.BatchGetItemInput
 	onBatch     func()
+	updates     []*dynamodb.UpdateItemInput
+	updateErr   error
+	gets        []*dynamodb.GetItemInput
+	getOut      *dynamodb.GetItemOutput
+	getErr      error
+}
+
+func (f *fakeDB) UpdateItemWithContext(_ aws.Context, in *dynamodb.UpdateItemInput, _ ...request.Option) (*dynamodb.UpdateItemOutput, error) {
+	f.updates = append(f.updates, in)
+	if f.updateErr != nil {
+		return nil, f.updateErr
+	}
+	return &dynamodb.UpdateItemOutput{}, nil
+}
+
+func (f *fakeDB) GetItemWithContext(_ aws.Context, in *dynamodb.GetItemInput, _ ...request.Option) (*dynamodb.GetItemOutput, error) {
+	f.gets = append(f.gets, in)
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
+	return f.getOut, nil
 }
 
 func fastBackoff(t *testing.T) {
@@ -482,4 +609,157 @@ func TestDynamoCCLAsBoundsUnprocessedKeyRetries(t *testing.T) {
 		assert.Nil(t, rows)
 		assert.Len(t, db.batchInputs, 1, "no reissue after cancellation")
 	})
+}
+
+func TestDynamoCompaniesReadsAccountsConsistently(t *testing.T) {
+	fastBackoff(t)
+	const table = "cla-dev-companies"
+	db := &fakeDB{batches: []*dynamodb.BatchGetItemOutput{{Responses: map[string][]map[string]*dynamodb.AttributeValue{table: {
+		{"company_id": {S: aws.String("c-1")}, "company_external_id": {S: aws.String(sfid18)}},
+		{"company_id": {S: aws.String("c-2")}},
+	}}}}}
+	accounts, err := DynamoCompanies{DB: db, Table: table}.GetCompanyAccounts(context.Background(), []string{"c-1", "c-2", "c-3"})
+	require.NoError(t, err)
+	assert.Equal(t, map[string]string{"c-1": sfid18, "c-2": ""}, accounts, "a row without an account id and a missing row never match an account")
+	require.Len(t, db.batchInputs, 1)
+	in := db.batchInputs[0].RequestItems[table]
+	assert.True(t, aws.BoolValue(in.ConsistentRead))
+	assert.Equal(t, "company_id, company_external_id", aws.StringValue(in.ProjectionExpression))
+	assert.Len(t, in.Keys, 3)
+}
+
+func TestPublishRegistersTheChangedRowsBeforeTheClock(t *testing.T) {
+	pub := &fakePublisher{}
+	h := newHarness(pub)
+	_, err := h.svc.Publish(context.Background(), sfid18, "s3", " ", "s3")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"register s3", "now", "catalog"}, h.log[:3], "the id is in the durable catalog before the stamp is taken")
+	assert.Equal(t, map[string]bool{"s3": true}, h.pending.sets[sfid18])
+}
+
+// two publishers (separate instances, separate clocks) sharing the durable catalog, empty indexes, two new
+// CCLAs of distinct companies of one Account: the later replacement carries both managers
+func TestConcurrentNewCCLAsSharingTheCatalog(t *testing.T) {
+	shared := newFakePending()
+	emptyIndexes := func(h *harness) {
+		companies, ok := h.svc.Companies.(fakeCompanies)
+		require.True(t, ok)
+		companies.rows = map[string][]*models.Company{}
+		h.svc.Companies, h.svc.CompanyRows = companies, companies
+		h.cclas.index = map[string][]string{}
+		h.cclas.base = map[string]CCLA{
+			"sA": {SignatureID: "sA", CompanyID: "c-entity-1", Signed: true, ACL: []string{"amy"}},
+			"sB": {SignatureID: "sB", CompanyID: "c-entity-2", Signed: true, ACL: []string{"bob"}},
+		}
+	}
+	pubA, pubB := &fakePublisher{}, &fakePublisher{}
+	a := newHarnessWith(pubA, shared, baseTime)
+	b := newHarnessWith(pubB, shared, baseTime.Add(time.Second))
+	emptyIndexes(a)
+	emptyIndexes(b)
+
+	resA, err := a.svc.Publish(context.Background(), sfid18, "sA")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"amy"}, resA.Roster.Usernames())
+	resB, err := b.svc.Publish(context.Background(), sfid18, "sB")
+	require.NoError(t, err)
+	assert.Equal(t, []string{"amy", "bob"}, resB.Roster.Usernames(), "the later publisher reads the catalog entry of the earlier one although no index lists either row")
+	assert.Equal(t, []string{"c-entity-1", "c-entity-2"}, resB.Roster.CompanyIDs)
+	require.Len(t, pubB.calls, 1)
+	assert.True(t, pubB.calls[0].at.After(pubA.calls[0].at), "the complete roster carries the later stamp")
+	assert.Equal(t, map[string]bool{"sA": true, "sB": true}, shared.sets[sfid18])
+}
+
+// a registered row whose company no index lists yet makes that company's other rows count too
+func TestRosterCatalogEntrySeedsCompanyDiscovery(t *testing.T) {
+	h := newHarness(&fakePublisher{})
+	companies, ok := h.svc.Companies.(fakeCompanies)
+	require.True(t, ok)
+	companies.rows = map[string][]*models.Company{}
+	h.svc.Companies, h.svc.CompanyRows = companies, companies
+	h.cclas.index = map[string][]string{"c-entity-2": {"s3", "s9"}}
+	require.NoError(t, h.pending.Add(context.Background(), sfid18, "s9"))
+	h.log = nil
+	roster, err := h.svc.Roster(context.Background(), sfid18)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"amy", "bob", "zed"}, roster.Usernames())
+	assert.Equal(t, []string{"catalog", "read s9", "list c-entity-2", "read s3,s9", "companies c-entity-2"}, h.log)
+}
+
+func TestPublishCatalogFailures(t *testing.T) {
+	t.Run("a failed registration publishes nothing", func(t *testing.T) {
+		pub := &fakePublisher{}
+		h := newHarness(pub)
+		h.pending.addErr = errors.New("dynamo down")
+		_, err := h.svc.Publish(context.Background(), sfid18, "s3")
+		assert.ErrorContains(t, err, "registering the changed CCLAs of "+sfid18+": dynamo down")
+		assert.Empty(t, pub.calls)
+		assert.Equal(t, []string{"register s3"}, h.log)
+	})
+	t.Run("a failed catalog read publishes nothing", func(t *testing.T) {
+		pub := &fakePublisher{}
+		h := newHarness(pub)
+		h.pending.listErr = errors.New("dynamo down")
+		_, err := h.svc.Publish(context.Background(), sfid18)
+		assert.ErrorContains(t, err, "reading the pending-id catalog of "+sfid18+": dynamo down")
+		assert.Empty(t, pub.calls)
+	})
+	t.Run("a publisher without the catalog is a configuration error", func(t *testing.T) {
+		pub := &fakePublisher{}
+		h := newHarness(pub)
+		h.svc.Pending = nil
+		_, err := h.svc.Publish(context.Background(), sfid18)
+		assert.ErrorIs(t, err, ErrNoPendingCatalog)
+		_, err = h.svc.Roster(context.Background(), sfid18)
+		assert.ErrorIs(t, err, ErrNoPendingCatalog)
+		assert.Empty(t, pub.calls)
+	})
+}
+
+func TestAccountOf(t *testing.T) {
+	h := newHarness(&fakePublisher{})
+	account, found, err := h.svc.AccountOf(context.Background(), "c-entity-2")
+	require.NoError(t, err)
+	assert.True(t, found)
+	assert.Equal(t, sfid18, account)
+	_, found, err = h.svc.AccountOf(context.Background(), "c-gone")
+	require.NoError(t, err)
+	assert.False(t, found)
+	companies, ok := h.svc.Companies.(fakeCompanies)
+	require.True(t, ok)
+	companies.accountsErr = errors.New("dynamo down")
+	h.svc.CompanyRows = companies
+	_, _, err = h.svc.AccountOf(context.Background(), "c-entity-2")
+	assert.ErrorContains(t, err, "reading company c-entity-2: dynamo down")
+}
+
+func TestDynamoPendingIDs(t *testing.T) {
+	const table = "cla-dev-store"
+	db := &fakeDB{getOut: &dynamodb.GetItemOutput{Item: map[string]*dynamodb.AttributeValue{"signature_ids": {SS: aws.StringSlice([]string{"s9", "s1"})}}}}
+	catalog := DynamoPendingIDs{DB: db, Table: table}
+	require.NoError(t, catalog.Add(context.Background(), sfid18, "s1", "s9"))
+	require.NoError(t, catalog.Add(context.Background(), sfid18), "nothing to register, no call")
+	require.Len(t, db.updates, 1)
+	assert.Equal(t, table, aws.StringValue(db.updates[0].TableName))
+	assert.Equal(t, "cla_admins:"+sfid18, aws.StringValue(db.updates[0].Key["key"].S))
+	assert.Equal(t, "ADD signature_ids :ids", aws.StringValue(db.updates[0].UpdateExpression))
+	assert.Equal(t, []string{"s1", "s9"}, aws.StringValueSlice(db.updates[0].ExpressionAttributeValues[":ids"].SS))
+
+	ids, err := catalog.List(context.Background(), sfid18)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"s1", "s9"}, ids)
+	require.Len(t, db.gets, 1)
+	assert.True(t, aws.BoolValue(db.gets[0].ConsistentRead))
+	assert.Equal(t, "cla_admins:"+sfid18, aws.StringValue(db.gets[0].Key["key"].S))
+
+	db.getOut = &dynamodb.GetItemOutput{}
+	ids, err = catalog.List(context.Background(), sfid18)
+	require.NoError(t, err)
+	assert.Nil(t, ids, "no item yet, nothing registered")
+
+	db.getErr = errors.New("dynamo down")
+	_, err = catalog.List(context.Background(), sfid18)
+	assert.ErrorContains(t, err, "pending-id catalog: dynamo down")
+	db.updateErr = errors.New("item too large")
+	assert.ErrorContains(t, catalog.Add(context.Background(), sfid18, "s2"), "pending-id catalog: item too large")
 }

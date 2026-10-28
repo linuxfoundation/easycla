@@ -40,10 +40,26 @@ type CCLAReader interface {
 	GetCCLAs(ctx context.Context, signatureIDs []string) ([]CCLA, error)
 }
 
-// CompanyLister returns every company row stored under one Salesforce account id (company.IRepository satisfies it).
+// CompanyLister discovers the company rows the (eventually consistent) index stores under one Salesforce
+// account id (company.IRepository satisfies it).
 type CompanyLister interface {
 	GetCompaniesByExternalID(ctx context.Context, companySFID string, includeChildCompanies bool) ([]*models.Company, error)
 }
+
+// CompanyRowReader reads company rows as the base table holds them now: company id -> company_external_id.
+type CompanyRowReader interface {
+	GetCompanyAccounts(ctx context.Context, companyIDs []string) (map[string]string, error)
+}
+
+// PendingIDs is the durable per-account catalog of the CCLA signature ids publishers registered before
+// publishing, so a later publisher reads them even while the signatures index has not listed them yet.
+type PendingIDs interface {
+	Add(ctx context.Context, sfid18 string, signatureIDs ...string) error
+	List(ctx context.Context, sfid18 string) ([]string, error)
+}
+
+// ErrNoPendingCatalog reports a Service without the pending-id catalog, which every publisher needs.
+var ErrNoPendingCatalog = errors.New("cla_admins: pending-id catalog not configured")
 
 // UserLookup resolves an LF username to its user record (users.UserRepository satisfies it).
 type UserLookup interface {
@@ -82,11 +98,13 @@ type Result struct {
 
 // Service computes and publishes rosters.
 type Service struct {
-	Companies CompanyLister
-	CCLAs     CCLAReader
-	Users     UserLookup
-	Members   Publisher
-	Now       func() time.Time
+	Companies   CompanyLister
+	CompanyRows CompanyRowReader
+	CCLAs       CCLAReader
+	Pending     PendingIDs
+	Users       UserLookup
+	Members     Publisher
+	Now         func() time.Time
 }
 
 // AccountID returns the 18-character form of a Salesforce Account id (001...); legacy org-service
@@ -100,21 +118,48 @@ func AccountID(id string) (string, bool) {
 }
 
 // Roster computes the roster of the organization identified by sfid (15 or 18 characters): the rows the
-// index lists for its companies plus the signatureIDs the caller knows changed, all read from the base
-// table as they are now, so neither a stale index entry nor an old stream image decides.
+// index lists for its companies, the ids registered in the catalog and the signatureIDs the caller names,
+// all read from the base table as they are now; only rows of companies whose base row carries this
+// account count, so neither a stale index entry nor an old stream image decides.
 func (s Service) Roster(ctx context.Context, sfid string, signatureIDs ...string) (*Roster, error) {
 	id18, ok := AccountID(sfid)
 	if !ok {
 		return nil, member_service.ErrInvalidSFID
+	}
+	if s.Pending == nil {
+		return nil, ErrNoPendingCatalog
 	}
 	f := logrus.Fields{"functionName": "cla_admins.Service.Roster", "sfid": id18}
 	companyIDs, err := s.companyIDs(ctx, id18)
 	if err != nil {
 		return nil, err
 	}
-	roster := &Roster{SFID: id18, CompanyIDs: companyIDs, Admins: []member_service.CLAAdmin{}}
-	ids := map[string]bool{}
+	registered, err := s.Pending.List(ctx, id18)
+	if err != nil {
+		return nil, fmt.Errorf("reading the pending-id catalog of %s: %w", id18, err)
+	}
+	seed := nonEmpty(append(append([]string{}, registered...), signatureIDs...))
+	discovered := map[string]bool{}
 	for _, companyID := range companyIDs {
+		discovered[companyID] = true
+	}
+	if len(seed) > 0 {
+		// a registered row may name a company the company index does not list yet - its other rows count too
+		seedRows, readErr := s.CCLAs.GetCCLAs(ctx, seed)
+		if readErr != nil {
+			return nil, fmt.Errorf("reading the registered CCLAs of %s: %w", id18, readErr)
+		}
+		for _, c := range seedRows {
+			if c.CompanyID != "" {
+				discovered[c.CompanyID] = true
+			}
+		}
+	}
+	ids := map[string]bool{}
+	for _, id := range seed {
+		ids[id] = true
+	}
+	for _, companyID := range sortedKeys(discovered) {
 		listed, listErr := s.CCLAs.ListCompanyCCLAIDs(ctx, companyID)
 		if listErr != nil {
 			return nil, fmt.Errorf("listing CCLAs of company %s: %w", companyID, listErr)
@@ -125,18 +170,18 @@ func (s Service) Roster(ctx context.Context, sfid string, signatureIDs ...string
 			}
 		}
 	}
-	for _, id := range signatureIDs {
-		if id = strings.TrimSpace(id); id != "" {
-			ids[id] = true
-		}
-	}
 	rows, err := s.CCLAs.GetCCLAs(ctx, sortedKeys(ids))
 	if err != nil {
 		return nil, fmt.Errorf("reading the CCLAs of %s: %w", id18, err)
 	}
+	verified, err := s.verifyCompanies(ctx, id18, rows)
+	if err != nil {
+		return nil, err
+	}
+	roster := &Roster{SFID: id18, CompanyIDs: verified, Admins: []member_service.CLAAdmin{}}
 	usernames := map[string]bool{}
 	for _, c := range rows {
-		if !c.Signed || !utils.StringInSlice(c.CompanyID, companyIDs) {
+		if !c.Signed || !utils.StringInSlice(c.CompanyID, verified) {
 			continue
 		}
 		roster.SignedCCLAs++
@@ -152,9 +197,22 @@ func (s Service) Roster(ctx context.Context, sfid string, signatureIDs ...string
 	return roster, nil
 }
 
-// Publish sends the roster stamped with the time its reads began, so a slower, older publish never
-// outranks a newer one; a 409 is retried once with a recomputed roster, a 404 is reported as skipped.
+// Publish registers the changed signatureIDs in the catalog, then sends the roster stamped with the time
+// its reads began, so a slower, older publish never outranks a newer one and a concurrent publisher
+// reads the registered ids; a 409 is retried once with a recomputed roster, a 404 is reported as skipped.
 func (s Service) Publish(ctx context.Context, sfid string, signatureIDs ...string) (*Result, error) {
+	id18, ok := AccountID(sfid)
+	if !ok {
+		return nil, member_service.ErrInvalidSFID
+	}
+	if s.Pending == nil {
+		return nil, ErrNoPendingCatalog
+	}
+	if ids := nonEmpty(signatureIDs); len(ids) > 0 {
+		if err := s.Pending.Add(ctx, id18, ids...); err != nil {
+			return nil, fmt.Errorf("registering the changed CCLAs of %s: %w", id18, err)
+		}
+	}
 	res := &Result{}
 	for attempt := 0; ; attempt++ {
 		at := s.now()
@@ -176,6 +234,53 @@ func (s Service) Publish(ctx context.Context, sfid string, signatureIDs ...strin
 			return res, nil
 		}
 	}
+}
+
+// AccountOf returns the Salesforce account id a company's base row carries now, read consistently;
+// found is false when the row is gone.
+func (s Service) AccountOf(ctx context.Context, companyID string) (string, bool, error) {
+	accounts, err := s.CompanyRows.GetCompanyAccounts(ctx, []string{companyID})
+	if err != nil {
+		return "", false, fmt.Errorf("reading company %s: %w", companyID, err)
+	}
+	account, found := accounts[companyID]
+	return account, found, nil
+}
+
+// nonEmpty returns the trimmed, deduplicated, sorted non-empty entries.
+func nonEmpty(ids []string) []string {
+	set := map[string]bool{}
+	for _, id := range ids {
+		if id = strings.TrimSpace(id); id != "" {
+			set[id] = true
+		}
+	}
+	return sortedKeys(set)
+}
+
+// verifyCompanies returns the companies of the read rows whose base row carries this account id - listed
+// by the index or not - so a stale listing or a missing one never decides.
+func (s Service) verifyCompanies(ctx context.Context, id18 string, rows []CCLA) ([]string, error) {
+	referenced := map[string]bool{}
+	for _, c := range rows {
+		if c.CompanyID != "" {
+			referenced[c.CompanyID] = true
+		}
+	}
+	if len(referenced) == 0 {
+		return []string{}, nil
+	}
+	accounts, err := s.CompanyRows.GetCompanyAccounts(ctx, sortedKeys(referenced))
+	if err != nil {
+		return nil, fmt.Errorf("reading the companies of %s: %w", id18, err)
+	}
+	verified := map[string]bool{}
+	for companyID := range referenced {
+		if owner, ok := AccountID(accounts[companyID]); ok && owner == id18 {
+			verified[companyID] = true
+		}
+	}
+	return sortedKeys(verified), nil
 }
 
 // companyIDs returns the ids of the rows stored under the 18- or the 15-character form of the account id.
@@ -251,7 +356,7 @@ func waitBeforeRetry(ctx context.Context, attempt int) error {
 	defer timer.Stop()
 	select {
 	case <-ctx.Done():
-		return fmt.Errorf("reading CCLAs: %w", ctx.Err())
+		return ctx.Err()
 	case <-timer.C:
 		return nil
 	}
@@ -293,52 +398,139 @@ func (d DynamoCCLAs) ListCompanyCCLAIDs(ctx context.Context, companyID string) (
 // corporate CLAs any more are left out. Keys DynamoDB leaves unprocessed are reissued a bounded number
 // of times; when they stay unprocessed an error is returned rather than a partial roster.
 func (d DynamoCCLAs) GetCCLAs(ctx context.Context, signatureIDs []string) ([]CCLA, error) {
+	items, err := consistentBatchGet(ctx, d.DB, d.Table, "signature_id", signatureIDs,
+		"signature_id, signature_reference_id, signature_type, signature_reference_type, signature_signed, signature_acl")
+	if err != nil {
+		return nil, fmt.Errorf("reading CCLAs: %w", err)
+	}
+	var rows []struct {
+		SignatureID   string   `json:"signature_id"`
+		CompanyID     string   `json:"signature_reference_id"`
+		Type          string   `json:"signature_type"`
+		ReferenceType string   `json:"signature_reference_type"`
+		Signed        bool     `json:"signature_signed"`
+		ACL           []string `json:"signature_acl"`
+	}
+	if err = dynamodbattribute.UnmarshalListOfMaps(items, &rows); err != nil {
+		return nil, fmt.Errorf("decoding CCLAs: %w", err)
+	}
 	var out []CCLA
-	for start := 0; start < len(signatureIDs); start += batchGetLimit {
+	for _, r := range rows {
+		if r.Type != "ccla" || r.ReferenceType != "company" {
+			continue
+		}
+		out = append(out, CCLA{SignatureID: r.SignatureID, CompanyID: r.CompanyID, Signed: r.Signed, ACL: r.ACL})
+	}
+	return out, nil
+}
+
+// pendingKeyPrefix namespaces the catalog items in the store table: one item per account, a string set of
+// signature ids, no expiry.
+const pendingKeyPrefix = "cla_admins:"
+
+// DynamoPendingIDs keeps the per-account catalog in the store table.
+type DynamoPendingIDs struct {
+	DB    dynamodbiface.DynamoDBAPI
+	Table string
+}
+
+// Add unions the ids into the account's set atomically (creating the item on first use).
+func (d DynamoPendingIDs) Add(ctx context.Context, sfid18 string, signatureIDs ...string) error {
+	if len(signatureIDs) == 0 {
+		return nil
+	}
+	_, err := d.DB.UpdateItemWithContext(ctx, &dynamodb.UpdateItemInput{
+		TableName:                 aws.String(d.Table),
+		Key:                       map[string]*dynamodb.AttributeValue{"key": {S: aws.String(pendingKeyPrefix + sfid18)}},
+		UpdateExpression:          aws.String("ADD signature_ids :ids"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{":ids": {SS: aws.StringSlice(signatureIDs)}},
+	})
+	if err != nil {
+		return fmt.Errorf("pending-id catalog: %w", err)
+	}
+	return nil
+}
+
+// List reads the account's set with a consistent read; an account without an item has no ids.
+func (d DynamoPendingIDs) List(ctx context.Context, sfid18 string) ([]string, error) {
+	out, err := d.DB.GetItemWithContext(ctx, &dynamodb.GetItemInput{
+		TableName:            aws.String(d.Table),
+		Key:                  map[string]*dynamodb.AttributeValue{"key": {S: aws.String(pendingKeyPrefix + sfid18)}},
+		ConsistentRead:       aws.Bool(true),
+		ProjectionExpression: aws.String("signature_ids"),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("pending-id catalog: %w", err)
+	}
+	set, ok := out.Item["signature_ids"]
+	if !ok || set == nil {
+		return nil, nil
+	}
+	ids := aws.StringValueSlice(set.SS)
+	sort.Strings(ids)
+	return ids, nil
+}
+
+// DynamoCompanies reads company rows of the companies table with consistent reads.
+type DynamoCompanies struct {
+	DB    dynamodbiface.DynamoDBAPI
+	Table string
+}
+
+// GetCompanyAccounts returns company id -> company_external_id for the rows that exist now.
+func (d DynamoCompanies) GetCompanyAccounts(ctx context.Context, companyIDs []string) (map[string]string, error) {
+	items, err := consistentBatchGet(ctx, d.DB, d.Table, "company_id", companyIDs, "company_id, company_external_id")
+	if err != nil {
+		return nil, fmt.Errorf("reading companies: %w", err)
+	}
+	var rows []struct {
+		CompanyID  string `json:"company_id"`
+		ExternalID string `json:"company_external_id"`
+	}
+	if err = dynamodbattribute.UnmarshalListOfMaps(items, &rows); err != nil {
+		return nil, fmt.Errorf("decoding companies: %w", err)
+	}
+	out := make(map[string]string, len(rows))
+	for _, r := range rows {
+		out[r.CompanyID] = r.ExternalID
+	}
+	return out, nil
+}
+
+// consistentBatchGet reads the keyed items with ConsistentRead in chunks of batchGetLimit; keys DynamoDB
+// leaves unprocessed are reissued at most batchGetAttempts times with an incremental, cancellable wait,
+// and an error is returned when they stay unprocessed.
+func consistentBatchGet(ctx context.Context, db dynamodbiface.DynamoDBAPI, table, keyName string, ids []string, projection string) ([]map[string]*dynamodb.AttributeValue, error) {
+	var out []map[string]*dynamodb.AttributeValue
+	for start := 0; start < len(ids); start += batchGetLimit {
 		end := start + batchGetLimit
-		if end > len(signatureIDs) {
-			end = len(signatureIDs)
+		if end > len(ids) {
+			end = len(ids)
 		}
 		keys := make([]map[string]*dynamodb.AttributeValue, 0, end-start)
-		for _, id := range signatureIDs[start:end] {
-			keys = append(keys, map[string]*dynamodb.AttributeValue{"signature_id": {S: aws.String(id)}})
+		for _, id := range ids[start:end] {
+			keys = append(keys, map[string]*dynamodb.AttributeValue{keyName: {S: aws.String(id)}})
 		}
-		request := map[string]*dynamodb.KeysAndAttributes{d.Table: {
+		request := map[string]*dynamodb.KeysAndAttributes{table: {
 			Keys:                 keys,
 			ConsistentRead:       aws.Bool(true),
-			ProjectionExpression: aws.String("signature_id, signature_reference_id, signature_type, signature_reference_type, signature_signed, signature_acl"),
+			ProjectionExpression: aws.String(projection),
 		}}
 		for attempt := 0; ; attempt++ {
 			if attempt == batchGetAttempts {
-				return nil, fmt.Errorf("reading CCLAs: %d rows still unprocessed after %d batch read attempts", len(request[d.Table].Keys), attempt)
+				return nil, fmt.Errorf("%d rows still unprocessed after %d batch read attempts", len(request[table].Keys), attempt)
 			}
 			if attempt > 0 {
 				if err := waitBeforeRetry(ctx, attempt); err != nil {
 					return nil, err
 				}
 			}
-			page, err := d.DB.BatchGetItemWithContext(ctx, &dynamodb.BatchGetItemInput{RequestItems: request})
+			page, err := db.BatchGetItemWithContext(ctx, &dynamodb.BatchGetItemInput{RequestItems: request})
 			if err != nil {
-				return nil, fmt.Errorf("reading CCLAs: %w", err)
+				return nil, err
 			}
-			var rows []struct {
-				SignatureID   string   `json:"signature_id"`
-				CompanyID     string   `json:"signature_reference_id"`
-				Type          string   `json:"signature_type"`
-				ReferenceType string   `json:"signature_reference_type"`
-				Signed        bool     `json:"signature_signed"`
-				ACL           []string `json:"signature_acl"`
-			}
-			if err = dynamodbattribute.UnmarshalListOfMaps(page.Responses[d.Table], &rows); err != nil {
-				return nil, fmt.Errorf("decoding CCLAs: %w", err)
-			}
-			for _, r := range rows {
-				if r.Type != "ccla" || r.ReferenceType != "company" {
-					continue
-				}
-				out = append(out, CCLA{SignatureID: r.SignatureID, CompanyID: r.CompanyID, Signed: r.Signed, ACL: r.ACL})
-			}
-			pending := page.UnprocessedKeys[d.Table]
+			out = append(out, page.Responses[table]...)
+			pending := page.UnprocessedKeys[table]
 			if pending == nil || len(pending.Keys) == 0 {
 				break
 			}

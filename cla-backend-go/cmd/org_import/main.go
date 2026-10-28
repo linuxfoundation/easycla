@@ -249,10 +249,11 @@ func run(args []string, stdin io.Reader) int {
 	return code
 }
 
-// runCLAAdmins publishes (dry run by default) the CLA-manager rosters; --apply is refused until the
-// stage's SSM switch is on, so nothing reaches member-service before its endpoint exists.
+// runCLAAdmins publishes (dry run by default) the CLA-manager rosters; a dry run only reads DynamoDB, while
+// --apply needs the member-service client and is refused until the stage's SSM switch is on, so nothing
+// reaches member-service before its endpoint exists.
 func runCLAAdmins(ctx context.Context, e env, stage string, apply, yes bool, ids []string, outDir string, info *orgimport.RunInfo, out, errOut io.Writer, stdin io.Reader) int {
-	if e.members == nil {
+	if apply && e.members == nil {
 		fmt.Fprintf(errOut, "cla-admins failed: %v\n", orgimport.ErrNotConfigured)
 		info.Err = orgimport.ErrNotConfigured.Error()
 		return 2
@@ -272,10 +273,14 @@ func runCLAAdmins(ctx context.Context, e env, stage string, apply, yes bool, ids
 		}
 	}
 	svc := cla_admins.Service{
-		Companies: e.companies,
-		CCLAs:     cla_admins.DynamoCCLAs{DB: dynamodb.New(e.sess), Table: fmt.Sprintf("cla-%s-signatures", stage)},
-		Users:     e.users,
-		Members:   e.members,
+		Companies:   e.companies,
+		CompanyRows: cla_admins.DynamoCompanies{DB: dynamodb.New(e.sess), Table: fmt.Sprintf("cla-%s-companies", stage)},
+		CCLAs:       cla_admins.DynamoCCLAs{DB: dynamodb.New(e.sess), Table: fmt.Sprintf("cla-%s-signatures", stage)},
+		Pending:     cla_admins.DynamoPendingIDs{DB: dynamodb.New(e.sess), Table: fmt.Sprintf("cla-%s-store", stage)},
+		Users:       e.users,
+	}
+	if e.members != nil {
+		svc.Members = e.members
 	}
 	summary, _, err := orgimport.BackfillCLAAdmins(ctx, e.deps, svc, orgimport.CLAAdminsOptions{Apply: apply, IDs: ids, OutDir: outDir})
 	if err != nil {
@@ -287,6 +292,7 @@ func runCLAAdmins(ctx context.Context, e env, stage string, apply, yes bool, ids
 	info.Summary = summary.String()
 	fmt.Fprintf(out, "reports written to %s (cla_admins.csv, run.log)\n", outDir)
 	if summary.Errors > 0 {
+		info.Err = fmt.Sprintf("cla-admins: %d organization(s) failed", summary.Errors)
 		return 1
 	}
 	return 0

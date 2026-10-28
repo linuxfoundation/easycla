@@ -42,7 +42,9 @@ const (
 )
 
 // Configure setups handlers on api with service
-func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventService events.Service, sessionStore *dynastore.Store, contributorConsoleV2Base string) {
+const missingGitLabOriginURL = "Error getting gitlab_origin_url - missing from session object"
+
+func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventService events.Service, sessionStore *dynastore.Store, contributorConsoleV2Base string) { //nolint:gocyclo
 
 	api.GitlabOrganizationsGetProjectGitlabOrganizationsHandler = gitlab_organizations.GetProjectGitlabOrganizationsHandlerFunc(
 		func(params gitlab_organizations.GetProjectGitlabOrganizationsParams, authUser *auth.User) middleware.Responder {
@@ -163,9 +165,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 				}
 
 				// Remove leading slash
-				if strings.HasPrefix(params.Body.OrganizationFullPath, "/") {
-					params.Body.OrganizationFullPath = params.Body.OrganizationFullPath[1:]
-				}
+				params.Body.OrganizationFullPath = strings.TrimPrefix(params.Body.OrganizationFullPath, "/")
 
 				if strings.HasSuffix(params.Body.OrganizationFullPath, "/") {
 					log.WithFields(f).Debugf("Trimming suffix for : %s", params.Body.OrganizationFullPath)
@@ -184,10 +184,10 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 
 			if !utils.ValidateAutoEnabledClaGroupID(*params.Body.AutoEnabled, params.Body.AutoEnabledClaGroupID) {
 				msg := "AutoEnabledClaGroupID can't be empty when AutoEnabled"
-				err := fmt.Errorf("%s", msg)
+				validationErr := fmt.Errorf("%s", msg)
 				log.WithFields(f).Warn(msg)
 				return gitlab_organizations.NewAddProjectGitlabOrganizationBadRequest().WithPayload(
-					utils.ErrorResponseBadRequestWithError(reqID, msg, err))
+					utils.ErrorResponseBadRequestWithError(reqID, msg, validationErr))
 			}
 
 			// If the parent is TLF, then use the same project SFID value for the parent SFID value
@@ -417,7 +417,11 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 			"state":          params.State,
 		}
 
-		requestID, _ := uuid.NewV4()
+		requestID, uuidErr := uuid.NewV4()
+		if uuidErr != nil {
+			log.WithFields(f).WithError(uuidErr).Warn("unable to generate a request id")
+			return NewServerError("", "", uuidErr)
+		}
 		reqID := requestID.String()
 
 		if params.Code == nil || params.State == nil {
@@ -433,7 +437,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 					}
 					gitlabOriginURL, ok := session.Values["gitlab_origin_url"].(string)
 					if !ok {
-						msg := "Error getting gitlab_origin_url - missing from session object"
+						msg := missingGitLabOriginURL
 						log.WithFields(f).Warn(msg)
 						http.Error(rw, msg, http.StatusInternalServerError)
 						return
@@ -471,7 +475,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 
 					gitlabOriginURL, ok := session.Values["gitlab_origin_url"].(string)
 					if !ok {
-						msg := "Error getting gitlab_origin_url - missing from session object"
+						msg := missingGitLabOriginURL
 						log.WithFields(f).Warn(msg)
 						http.Error(rw, msg, http.StatusInternalServerError)
 						return
@@ -504,14 +508,16 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 					log.WithFields(f).Debug("Fetching access token for user...")
 					token, err := gitlabApi.FetchOauthCredentials(*params.Code)
 					if err != nil {
-						msg := fmt.Sprint("unable to fetch access token for user")
+						msg := "unable to fetch access token for user"
 						log.WithFields(f).Warn(msg)
 						http.Error(rw, msg, http.StatusInternalServerError)
 						return
 					}
 
 					session.Values["gitlab_oauth2_token"] = token.AccessToken
-					session.Save(params.HTTPRequest, rw)
+					if saveErr := session.Save(params.HTTPRequest, rw); saveErr != nil {
+						log.WithFields(f).WithError(saveErr).Warn("unable to save the session")
+					}
 
 					// Get client
 					gitlabClient, err := gitlabApi.NewGitlabOauthClientFromAccessToken(token.AccessToken)
@@ -560,7 +566,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 		if updateErr != nil {
 			msg := fmt.Sprintf("installation of GitLab Group and Repositories, error: %v", updateErr)
 			log.WithFields(f).WithError(updateErr).Warn(msg)
-			return NewServerError(reqID, "", errors.New(fmt.Sprintf("%v", updateErr)))
+			return NewServerError(reqID, "", fmt.Errorf("%v", updateErr))
 		}
 
 		// Reload the GitLab organization - will have additional details now...

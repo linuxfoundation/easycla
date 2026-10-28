@@ -74,8 +74,8 @@ class Store:
     def active_eclas(self, company_id, cla_group_id):
         kwargs = {
             "IndexName": "signature-user-ccla-company-index",
-            "KeyConditionExpression": Key("signature_user_ccla_company_id").eq(company_id),
-            "FilterExpression": Attr("signature_project_id").eq(cla_group_id) & Attr("signature_approved").eq(True) & Attr("signature_signed").eq(True),
+            "KeyConditionExpression": Key("signature_user_ccla_company_id").eq(company_id) & Key("signature_project_id").eq(cla_group_id),
+            "FilterExpression": Attr("signature_approved").eq(True) & Attr("signature_signed").eq(True),
             "ProjectionExpression": "signature_id, signature_reference_id",
         }
         rows = []

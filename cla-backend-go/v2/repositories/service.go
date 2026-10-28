@@ -295,7 +295,8 @@ func (s *Service) GitHubDisableRepository(ctx context.Context, repositoryID stri
 }
 
 // GitHubDisableProjectRepository disables a repository only when it is bound to the project it is
-// addressed through (lfx-self-serve-ops#748) and returns the record for the event log.
+// addressed through (lfx-self-serve-ops#748) - checked first and enforced again by the write itself - and
+// returns the record for the event log.
 func (s *Service) GitHubDisableProjectRepository(ctx context.Context, projectSFID, repositoryID string) (*v1Models.GithubRepository, error) {
 	ghRepo, err := s.gitV1Repository.GitHubGetRepository(ctx, repositoryID)
 	if err != nil {
@@ -304,7 +305,7 @@ func (s *Service) GitHubDisableProjectRepository(ctx context.Context, projectSFI
 	if ghRepo == nil || ghRepo.RepositoryProjectSfid != projectSFID {
 		return nil, &utils.GitHubRepositoryNotFound{Message: fmt.Sprintf("repository %s does not belong to project %s", repositoryID, projectSFID)}
 	}
-	if err = s.gitV1Repository.GitHubDisableRepository(ctx, repositoryID); err != nil {
+	if err = s.gitV1Repository.GitHubDisableRepositoryForProject(ctx, repositoryID, projectSFID); err != nil {
 		return nil, err
 	}
 	return ghRepo, nil
@@ -708,11 +709,12 @@ func (s *Service) GetRepositoriesByProjectSFID(ctx context.Context, projectSFID 
 	return data, nil
 }
 
-// organizationEntitled reports whether the GitHub organization is registered for the project, or under
-// the foundation the project's CLA group mapping names - the rule the organization listing applies - so
-// another project's installation never enrolls repositories here (lfx-self-serve-ops#982, #747).
+// organizationEntitled reports whether the GitHub organization is still enabled and registered for the
+// project, or under the foundation the project's CLA group mapping names - the rule the organization
+// listing applies - so another project's or a removed installation never enrolls repositories here
+// (lfx-self-serve-ops#982, #747).
 func organizationEntitled(org *v1Models.GithubOrganizations, projectSFID string, mappings []*projects_cla_groups.ProjectClaGroup) bool {
-	if org == nil || len(org.List) == 0 || org.List[0] == nil {
+	if org == nil || len(org.List) == 0 || org.List[0] == nil || !org.List[0].Enabled {
 		return false
 	}
 	registered := org.List[0]
