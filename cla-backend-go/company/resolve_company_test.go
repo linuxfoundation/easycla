@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -40,11 +41,14 @@ type resolveHTTP struct {
 	t          *testing.T
 	orgs       map[string]string
 	searchBody string
+	mu         sync.Mutex
 	calls      []string
 }
 
 func (h *resolveHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
+	h.mu.Lock()
 	h.calls = append(h.calls, r.Method+" "+r.URL.Path)
+	h.mu.Unlock()
 	response := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Request: r}
 	switch {
 	case r.URL.Host == resolveAuthHost && r.URL.Path == "/oauth/token":

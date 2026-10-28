@@ -270,3 +270,13 @@ func (s *service) GetRepositoriesByCLAGroup(ctx context.Context, claGroupID stri
 func (s *service) GetRepositoriesByOrganizationName(ctx context.Context, gitHubOrgName string) ([]*models.GithubRepository, error) {
 	return s.repo.GitHubGetRepositoriesByOrganizationName(ctx, gitHubOrgName)
 }
+
+// RepositoryBoundToOtherProject exposes repositoryBoundToOtherProject to the v4 enrollment path (lfx-self-serve-ops#982, #747).
+func RepositoryBoundToOtherProject(existing *models.GithubRepository, projectSFID string) error {
+	return repositoryBoundToOtherProject(existing, projectSFID)
+}
+
+// ExternalIDRecordReusable exposes externalIDRecordReusable to the v4 enrollment path (lfx-self-serve-ops#982, #747).
+func ExternalIDRecordReusable(existing *models.GithubRepository, lookupErr error, externalID, projectSFID string) error {
+	return externalIDRecordReusable(existing, lookupErr, externalID, projectSFID)
+}

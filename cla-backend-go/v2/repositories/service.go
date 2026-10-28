@@ -44,6 +44,7 @@ type ServiceInterface interface {
 	GitHubAddRepositories(ctx context.Context, projectSFID string, input *models.GithubRepositoryInput) ([]*v1Models.GithubRepository, error)
 	GitHubEnableRepository(ctx context.Context, repositoryID string) error
 	GitHubDisableRepository(ctx context.Context, repositoryID string) error
+	GitHubDisableProjectRepository(ctx context.Context, projectSFID, repositoryID string) (*v1Models.GithubRepository, error)
 	GitHubListProjectRepositories(ctx context.Context, projectSFID string) (*v1Models.GithubListRepositories, error)
 	GitHubGetRepository(ctx context.Context, repositoryID string) (*v1Models.GithubRepository, error)
 	GitHubGetRepositoryByName(ctx context.Context, repositoryName string) (*v1Models.GithubRepository, error)
@@ -165,6 +166,11 @@ func (s *Service) GitHubAddRepositories(ctx context.Context, projectSFID string,
 		log.WithFields(f).WithError(err).Warn("unable to get organization by name")
 		return nil, err
 	}
+	if !organizationEntitled(org, projectSFID, allMappings) {
+		msg := fmt.Sprintf("github organization %s is not registered for project %s or its foundation", utils.StringValue(input.GithubOrganizationName), projectSFID)
+		log.WithFields(f).Warn(msg)
+		return nil, errors.New(msg)
+	}
 
 	// Updated to process a list of repository IDs - take the list (may be empty) and add the single repository GH ID if it was set
 	repositoryIDList := input.RepositoryGithubIds
@@ -215,6 +221,10 @@ func (s *Service) GitHubAddRepositories(ctx context.Context, projectSFID string,
 		// We already have an existing repository model with the same name
 		if existingRepositoryModel != nil {
 			if !existingRepositoryModel.Enabled {
+				if bindErr := v1Repositories.RepositoryBoundToOtherProject(existingRepositoryModel, projectSFID); bindErr != nil {
+					log.WithFields(f).WithError(bindErr).Warn("disabled repository is bound to another project - not re-enabled here")
+					return nil, bindErr
+				}
 				msg := fmt.Sprintf("Github repository: %s previously disabled - will re-enabled... ", utils.StringValue(ghRepo.FullName))
 				log.WithFields(f).Debug(msg)
 				enabled := true
@@ -245,6 +255,11 @@ func (s *Service) GitHubAddRepositories(ctx context.Context, projectSFID string,
 			}
 		} else {
 			// No record exists...
+			byExternalID, externalIDErr := s.gitV1Repository.GitHubGetRepositoryByExternalID(ctx, repoID)
+			if guardErr := v1Repositories.ExternalIDRecordReusable(byExternalID, externalIDErr, repoID, projectSFID); guardErr != nil {
+				log.WithFields(f).WithError(guardErr).Warn("the record with this GitHub repository id cannot be re-used by this project")
+				return nil, guardErr
+			}
 			log.WithFields(f).Debug("no existing GitHub repository configured - creating...")
 			in := &v1Models.GithubRepositoryInput{
 				RepositoryExternalID:       &repoID, // nolint
@@ -277,6 +292,22 @@ func (s *Service) GitHubEnableRepository(ctx context.Context, repositoryID strin
 // GitHubDisableRepository service function
 func (s *Service) GitHubDisableRepository(ctx context.Context, repositoryID string) error {
 	return s.gitV1Repository.GitHubDisableRepository(ctx, repositoryID)
+}
+
+// GitHubDisableProjectRepository disables a repository only when it is bound to the project it is
+// addressed through (lfx-self-serve-ops#748) and returns the record for the event log.
+func (s *Service) GitHubDisableProjectRepository(ctx context.Context, projectSFID, repositoryID string) (*v1Models.GithubRepository, error) {
+	ghRepo, err := s.gitV1Repository.GitHubGetRepository(ctx, repositoryID)
+	if err != nil {
+		return nil, err
+	}
+	if ghRepo == nil || ghRepo.RepositoryProjectSfid != projectSFID {
+		return nil, &utils.GitHubRepositoryNotFound{Message: fmt.Sprintf("repository %s does not belong to project %s", repositoryID, projectSFID)}
+	}
+	if err = s.gitV1Repository.GitHubDisableRepository(ctx, repositoryID); err != nil {
+		return nil, err
+	}
+	return ghRepo, nil
 }
 
 // GitHubListProjectRepositories service function
@@ -675,4 +706,26 @@ func (s *Service) GetRepositoriesByProjectSFID(ctx context.Context, projectSFID 
 		return nil, err
 	}
 	return data, nil
+}
+
+// organizationEntitled reports whether the GitHub organization is registered for the project, or under
+// the foundation the project's CLA group mapping names - the rule the organization listing applies - so
+// another project's installation never enrolls repositories here (lfx-self-serve-ops#982, #747).
+func organizationEntitled(org *v1Models.GithubOrganizations, projectSFID string, mappings []*projects_cla_groups.ProjectClaGroup) bool {
+	if org == nil || len(org.List) == 0 || org.List[0] == nil {
+		return false
+	}
+	registered := org.List[0]
+	if registered.ProjectSFID == projectSFID || registered.OrganizationSfid == projectSFID {
+		return true
+	}
+	for _, m := range mappings {
+		if m == nil || m.FoundationSFID == "" || registered.OrganizationSfid != m.FoundationSFID {
+			continue
+		}
+		if m.ProjectSFID == projectSFID || m.FoundationSFID == projectSFID {
+			return true
+		}
+	}
+	return false
 }

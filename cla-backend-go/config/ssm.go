@@ -281,6 +281,7 @@ func loadSSMConfig(awsSession *session.Session, stage string) (Config, error) { 
 
 	config.MemberService.BaseURL = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-member-service-base-url-%s", stage), f)
 	config.MemberService.Audience = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-member-service-auth0-audience-%s", stage), f)
+	config.MemberService.CLAAdminsEnabled = strings.EqualFold(strings.TrimSpace(getOptionalSSMString(ssmClient, fmt.Sprintf("cla-member-service-cla-admins-enabled-%s", stage), f)), "true")
 
 	return config, nil
 }

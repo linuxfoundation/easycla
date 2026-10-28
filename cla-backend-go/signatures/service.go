@@ -117,6 +117,16 @@ var listUserPublicOrgs = github.ListUserPublicOrgs
 // call the approval list organization removal uses to pick the acknowledgments to re-check
 var getOrganizationMembers = github.GetOrganizationMembers
 
+// gitLabGroupMembers resolves the usernames of a GitLab group's members; nil until the API server
+// installs the gitlab_organizations resolver, which this package cannot import directly.
+var gitLabGroupMembers func(ctx context.Context, groupPath string) ([]string, error)
+
+// SetGitLabGroupMembersResolver installs the GitLab group membership lookup used when a GitLab group
+// is removed from a corporate approval list.
+func SetGitLabGroupMembersResolver(resolver func(ctx context.Context, groupPath string) ([]string, error)) {
+	gitLabGroupMembers = resolver
+}
+
 // NewService creates a new signature service
 func NewService(repo SignatureRepository, companyService company.IService, usersService users.Service, eventsService events.Service, githubOrgValidation bool, repositoryService repositories.Service, githubOrgService github_organizations.ServiceInterface, claGroupService service2.Service, gitLabApp *gitlab_api.App, CLABaseAPIURL, CLALandingPage, CLALogoURL string) SignatureService {
 	return service{
