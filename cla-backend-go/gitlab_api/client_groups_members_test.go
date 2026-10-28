@@ -23,6 +23,7 @@ type fakeGroupMembersAPI struct {
 	mu       sync.Mutex
 	pages    map[string][]map[string]interface{}
 	failPage string
+	onPage   func(page string)
 	requests []string
 }
 
@@ -41,6 +42,9 @@ func (f *fakeGroupMembersAPI) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	if page == f.failPage {
 		http.Error(w, `{"message":"403 Forbidden"}`, http.StatusForbidden)
 		return
+	}
+	if f.onPage != nil {
+		f.onPage(page)
 	}
 	members, ok := f.pages[page]
 	if !ok {
@@ -111,4 +115,26 @@ func TestListAllDirectGroupMembersFailsWithoutPartialResult(t *testing.T) {
 	members, err := ListAllDirectGroupMembers(context.Background(), membersClient(t, api), 42)
 	require.Error(t, err)
 	assert.Nil(t, members, "no first-page-only answer when a later page fails")
+}
+
+func TestListAllDirectGroupMembersStopsWhenTheContextIsCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	api := &fakeGroupMembersAPI{pages: map[string][]map[string]interface{}{
+		"1": {member(1, "alice")},
+		"2": {member(2, "bob")},
+	}}
+	api.onPage = func(page string) {
+		if page == "1" {
+			cancel()
+		}
+	}
+	members, err := ListAllDirectGroupMembers(ctx, membersClient(t, api), 42)
+	require.Error(t, err)
+	assert.Nil(t, members, "no partial roster after cancellation")
+	api.mu.Lock()
+	defer api.mu.Unlock()
+	for _, r := range api.requests {
+		assert.NotContains(t, r, "page=2", "pagination stops once the context is canceled")
+	}
 }

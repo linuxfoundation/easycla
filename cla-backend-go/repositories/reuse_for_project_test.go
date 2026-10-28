@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -21,7 +22,7 @@ import (
 const projectA = "project-a"
 
 // the re-use write condition, placeholders resolved and spaces removed, as every scoped write must carry it
-const reuseConditionForProjectA = `(attribute_exists(repository_id))AND((project_sfid="project-a")OR(((attribute_not_exists(project_sfid))OR(size(project_sfid)=0))AND(((attribute_not_exists(repository_sfdc_id))OR(size(repository_sfdc_id)=0))OR(repository_sfdc_id="project-a"))))`
+const reuseConditionForProjectA = `(attribute_exists(repository_id))AND((project_sfid="project-a")OR((((attribute_not_exists(project_sfid))OR(attribute_type(project_sfid,"NULL")))OR(size(project_sfid)=0))AND((((attribute_not_exists(repository_sfdc_id))OR(attribute_type(repository_sfdc_id,"NULL")))OR(size(repository_sfdc_id)=0))OR(repository_sfdc_id="project-a"))))`
 
 func disabledUnboundItem() map[string]interface{} {
 	return map[string]interface{}{
@@ -31,6 +32,15 @@ func disabledUnboundItem() map[string]interface{} {
 		"enabled":                map[string]interface{}{"BOOL": false},
 		"note":                   map[string]interface{}{"S": "disabled earlier"},
 	}
+}
+
+// a record whose bindings were written as empty strings: the row model has no omitempty on its dynamodbav tags,
+// so they are stored as NULL
+func disabledNullBoundItem() map[string]interface{} {
+	item := disabledUnboundItem()
+	item["project_sfid"] = map[string]interface{}{"NULL": true}
+	item["repository_sfdc_id"] = map[string]interface{}{"NULL": true}
+	return item
 }
 
 func reuseInput() *models.GithubRepositoryInput {
@@ -183,6 +193,37 @@ func TestReusableByProjectSemantics(t *testing.T) {
 				allowed := repositoryBoundToOtherProject(&models.GithubRepository{RepositoryProjectSfid: tc.project, RepositorySfdcID: tc.legacy}, projectA) == nil
 				assert.Equal(t, tc.want, allowed, "the write condition and the pure predicate agree for existing records")
 			}
+		})
+	}
+}
+
+func TestEmptyBindingsAreStoredAsNull(t *testing.T) {
+	item, err := dynamodbattribute.MarshalMap(&RepositoryDBModel{RepositoryID: "repo-1"})
+	require.NoError(t, err)
+	assert.True(t, aws.BoolValue(item["project_sfid"].NULL))
+	assert.True(t, aws.BoolValue(item["repository_sfdc_id"].NULL))
+}
+
+// stored NULL bindings are unbound for the Go predicate and for the write condition alike
+func TestScopedReuseAcceptsStoredNullBindings(t *testing.T) {
+	routes := map[string]func(*Repository) (*models.GithubRepository, error){
+		"re-enable by repository id": func(r *Repository) (*models.GithubRepository, error) {
+			return r.GitHubUpdateRepositoryForProject(context.Background(), "repo-1", "project-a", "foundation-x", reuseInput())
+		},
+		"re-use of a disabled record found by GitHub id": func(r *Repository) (*models.GithubRepository, error) {
+			return r.GitHubAddRepositoryForProject(context.Background(), "foundation-x", "project-a", reuseInput())
+		},
+	}
+	for name, route := range routes {
+		t.Run(name, func(t *testing.T) {
+			table := &fakeRepositoriesTable{item: disabledNullBoundItem()}
+			_, err := route(fakeRepository(t, table))
+			require.NoError(t, err)
+			table.mu.Lock()
+			defer table.mu.Unlock()
+			require.Len(t, table.updates, 1, "the NULL-bound record is re-used, not re-created")
+			assert.Equal(t, reuseConditionForProjectA, resolvedCondition(t, table.updates[0]))
+			assert.Empty(t, table.puts)
 		})
 	}
 }

@@ -221,7 +221,7 @@ func ListAllDirectGroupMembers(ctx context.Context, client *goGitLab.Client, gro
 	opts := &goGitLab.ListGroupMembersOptions{ListOptions: goGitLab.ListOptions{Page: 1, PerPage: 100}}
 	var all []*goGitLab.GroupMember
 	for {
-		members, resp, err := client.Groups.ListGroupMembers(groupID, opts)
+		members, resp, err := client.Groups.ListGroupMembers(groupID, opts, goGitLab.WithContext(ctx))
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to fetch members page %d for gitlab GroupID: %d", opts.Page, groupID)
 			return nil, err

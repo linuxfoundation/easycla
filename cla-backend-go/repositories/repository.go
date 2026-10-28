@@ -191,15 +191,19 @@ func (r *Repository) GitHubUpdateRepositoryForProject(ctx context.Context, repos
 }
 
 // reusableByProject is the write condition mirroring repositoryBoundToOtherProject: the record must still exist
-// and be owned by projectSFID (project_sfid), or be unbound - project_sfid absent or empty and the legacy
-// repository_sfdc_id absent, empty or equal to projectSFID. "Empty" is size(attr) = 0: the expression builder
-// would encode an empty string value as NULL, which never equals a stored empty string.
+// and be owned by projectSFID (project_sfid), or be unbound - project_sfid unset and the legacy
+// repository_sfdc_id unset or equal to projectSFID.
 func reusableByProject(projectSFID string) expression.ConditionBuilder {
 	project := expression.Name("project_sfid")
 	legacy := expression.Name("repository_sfdc_id")
-	unboundProject := project.AttributeNotExists().Or(project.Size().Equal(expression.Value(0)))
-	legacyFree := legacy.AttributeNotExists().Or(legacy.Size().Equal(expression.Value(0))).Or(legacy.Equal(expression.Value(projectSFID)))
-	return expression.Name("repository_id").AttributeExists().And(project.Equal(expression.Value(projectSFID)).Or(unboundProject.And(legacyFree)))
+	legacyFree := unset(legacy).Or(legacy.Equal(expression.Value(projectSFID)))
+	return expression.Name("repository_id").AttributeExists().And(project.Equal(expression.Value(projectSFID)).Or(unset(project).And(legacyFree)))
+}
+
+// unset holds for an absent attribute, a stored NULL (how the row model marshals an empty string) or an empty
+// string (size = 0: the expression builder would encode an empty string value as NULL, which never equals one)
+func unset(attr expression.NameBuilder) expression.ConditionBuilder {
+	return attr.AttributeNotExists().Or(attr.AttributeType(expression.Null)).Or(attr.Size().Equal(expression.Value(0)))
 }
 
 // applyWriteCondition merges an optional condition into the hand-written update input; the builder's #n / :n
