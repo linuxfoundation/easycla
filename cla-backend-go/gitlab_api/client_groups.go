@@ -210,6 +210,30 @@ func ListGroupMembers(ctx context.Context, client *goGitLab.Client, groupID int)
 	return members, err
 }
 
+// ListAllDirectGroupMembers lists every direct member of the group - the same /groups/:id/members listing as
+// ListGroupMembers, all pages; a failure on any page returns no members at all.
+func ListAllDirectGroupMembers(ctx context.Context, client *goGitLab.Client, groupID int) ([]*goGitLab.GroupMember, error) {
+	f := logrus.Fields{
+		"functionName":   "gitlab_api.client_groups.ListAllDirectGroupMembers",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"groupID":        groupID,
+	}
+	opts := &goGitLab.ListGroupMembersOptions{ListOptions: goGitLab.ListOptions{Page: 1, PerPage: 100}}
+	var all []*goGitLab.GroupMember
+	for {
+		members, resp, err := client.Groups.ListGroupMembers(groupID, opts)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to fetch members page %d for gitlab GroupID: %d", opts.Page, groupID)
+			return nil, err
+		}
+		all = append(all, members...)
+		if resp == nil || resp.NextPage == 0 {
+			return all, nil
+		}
+		opts.Page = resp.NextPage
+	}
+}
+
 // ListUserProjectGroups fetches the unique groups of a gitlab users groups,
 // note: it doesn't list the projects/groups the user is member of ..., it's very limited
 func ListUserProjectGroups(ctx context.Context, client *goGitLab.Client, userID int) ([]*UserGroup, error) {

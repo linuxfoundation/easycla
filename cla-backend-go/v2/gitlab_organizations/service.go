@@ -58,6 +58,7 @@ type ServiceInterface interface {
 	GetGitLabOrganizationsByProjectSFID(ctx context.Context, projectSFID string) (*v2Models.GitlabProjectOrganizations, error)
 	GetGitLabOrganizationByState(ctx context.Context, gitLabOrganizationID, authState string) (*v2Models.GitlabOrganization, error)
 	GetGitLabGroupMembers(ctx context.Context, groupID string) (*v2Models.GitlabGroupMembersList, error)
+	GetAllGitLabGroupMembers(ctx context.Context, groupID string) (*v2Models.GitlabGroupMembersList, error)
 	UpdateGitLabOrganization(ctx context.Context, input *common.GitLabAddOrganization) error
 	UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrganizationID string, oauthResp *gitlabApi.OauthSuccessResponse, authExpiryTime int64) error
 	DeleteGitLabOrganizationByFullPath(ctx context.Context, projectSFID string, gitlabOrgFullPath string) error
@@ -325,6 +326,47 @@ func (s *Service) GetGitLabOrganizationsEnabledWithAutoEnabled(ctx context.Conte
 	}
 
 	return out, nil
+}
+
+// GetAllGitLabGroupMembers gets every direct group member across all pages (the approval list removal
+// re-check needs the complete list); GetGitLabGroupMembers keeps its single-page behaviour.
+func (s *Service) GetAllGitLabGroupMembers(ctx context.Context, groupID string) (*v2Models.GitlabGroupMembersList, error) {
+	f := logrus.Fields{
+		"functionName":   "v2.gitlab_organizations.service.GetAllGitLabGroupMembers",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"groupID":        groupID,
+	}
+	groupMemberList := make([]*v2Models.GitlabGroupMember, 0)
+	gitlabOrg, err := s.GetGitLabOrganization(ctx, groupID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to fetch gitlab details")
+		return nil, err
+	}
+	if gitlabOrg != nil {
+		oauthResponse, authErr := s.RefreshGitLabOrganizationAuth(ctx, common.ToCommonModel(gitlabOrg))
+		if authErr != nil {
+			log.WithFields(f).WithError(authErr).Warn("unable to refresh gitlab auth")
+			return nil, authErr
+		}
+		glClient, clientErr := gitlabApi.NewGitlabOauthClient(*oauthResponse, s.gitLabApp)
+		if clientErr != nil {
+			log.WithFields(f).WithError(clientErr).Warn("problem getting gitLabClient")
+			return nil, clientErr
+		}
+		members, listErr := gitlabApi.ListAllDirectGroupMembers(ctx, glClient, int(gitlabOrg.OrganizationExternalID))
+		if listErr != nil {
+			log.WithFields(f).WithError(listErr).Warn("unable to get the complete group members list")
+			return nil, listErr
+		}
+		for _, member := range members {
+			groupMemberList = append(groupMemberList, &v2Models.GitlabGroupMember{
+				Name:     member.Name,
+				ID:       strconv.Itoa(member.ID),
+				Username: member.Username,
+			})
+		}
+	}
+	return &v2Models.GitlabGroupMembersList{List: groupMemberList}, nil
 }
 
 // GetGitLabGroupMembers gets group members

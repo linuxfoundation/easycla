@@ -6,6 +6,7 @@ package gitlab_organizations
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -32,7 +33,7 @@ func (s *groupMembersService) GetGitLabOrganizationByURL(_ context.Context, url 
 	return s.orgs[url], nil
 }
 
-func (s *groupMembersService) GetGitLabGroupMembers(_ context.Context, groupID string) (*models.GitlabGroupMembersList, error) {
+func (s *groupMembersService) GetAllGitLabGroupMembers(_ context.Context, groupID string) (*models.GitlabGroupMembersList, error) {
 	s.askedIDs = append(s.askedIDs, groupID)
 	if s.membersErr != nil {
 		return nil, s.membersErr
@@ -93,4 +94,20 @@ func TestGroupMemberUsernamesReportsLookupFailures(t *testing.T) {
 	_, err = resolve(svc)
 	require.EqualError(t, err, "gitlab: 503")
 	assert.Equal(t, []string{"org-acme"}, svc.askedIDs)
+}
+
+// the resolver asks for the complete membership and returns every username, well beyond one API page
+func TestGroupMemberUsernamesReturnsEveryPage(t *testing.T) {
+	members := make([]*models.GitlabGroupMember, 0, 150)
+	for i := 1; i <= 150; i++ {
+		members = append(members, &models.GitlabGroupMember{Username: fmt.Sprintf("user-%03d", i)})
+	}
+	svc := &groupMembersService{
+		orgs:    map[string]*models.GitlabOrganization{"https://gitlab.com/groups/acme": {OrganizationID: "org-acme"}},
+		members: map[string][]*models.GitlabGroupMember{"org-acme": members},
+	}
+	usernames, err := GroupMemberUsernames(svc)(context.Background(), "https://gitlab.com/groups/acme")
+	require.NoError(t, err)
+	assert.Len(t, usernames, 150)
+	assert.Equal(t, "user-150", usernames[149], "a member from the last page is included")
 }

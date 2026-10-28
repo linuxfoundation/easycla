@@ -41,11 +41,20 @@ func (s claAdminsSignatures) GetCCLASignatures(context.Context, *bool, *bool) ([
 }
 
 type claAdminsFakeService struct {
-	rosters   []string
-	published []string
-	skip      map[string]bool
-	fail      map[string]error
-	empty     map[string]bool
+	rosters    []string
+	published  []string
+	rosterIDs  map[string][]string
+	publishIDs map[string][]string
+	skip       map[string]bool
+	fail       map[string]error
+	empty      map[string]bool
+}
+
+func (f *claAdminsFakeService) record(store *map[string][]string, sfid string, ids []string) {
+	if *store == nil {
+		*store = map[string][]string{}
+	}
+	(*store)[sfid] = append([]string{}, ids...)
 }
 
 func (f *claAdminsFakeService) roster(sfid string) *cla_admins.Roster {
@@ -55,16 +64,18 @@ func (f *claAdminsFakeService) roster(sfid string) *cla_admins.Roster {
 	return &cla_admins.Roster{SFID: sfid, CompanyIDs: []string{"c-" + sfid[:4]}, Admins: []member_service.CLAAdmin{{Username: "amy"}, {Username: "bob"}}}
 }
 
-func (f *claAdminsFakeService) Roster(_ context.Context, sfid string, _ ...string) (*cla_admins.Roster, error) {
+func (f *claAdminsFakeService) Roster(_ context.Context, sfid string, ids ...string) (*cla_admins.Roster, error) {
 	f.rosters = append(f.rosters, sfid)
+	f.record(&f.rosterIDs, sfid, ids)
 	if err := f.fail[sfid]; err != nil {
 		return nil, err
 	}
 	return f.roster(sfid), nil
 }
 
-func (f *claAdminsFakeService) Publish(_ context.Context, sfid string, _ ...string) (*cla_admins.Result, error) {
+func (f *claAdminsFakeService) Publish(_ context.Context, sfid string, ids ...string) (*cla_admins.Result, error) {
 	f.published = append(f.published, sfid)
+	f.record(&f.publishIDs, sfid, ids)
 	if err := f.fail[sfid]; err != nil {
 		return nil, err
 	}
@@ -98,6 +109,7 @@ func TestBackfillCLAAdminsDryRun(t *testing.T) {
 	dir := t.TempDir()
 	summary, rows, err := BackfillCLAAdmins(context.Background(), claAdminsDeps(&out), svc, CLAAdminsOptions{OutDir: dir})
 	require.NoError(t, err)
+	assert.Equal(t, map[string][]string{"0012M00002KB7YxQAL": {"s3"}, "0014100000Te0G7AAJ": {"s1", "s2"}}, svc.rosterIDs, "the scanned CCLA ids of every entity of the Account reach the roster, never another Account's")
 	assert.Equal(t, []string{"0012M00002KB7YxQAL", "0014100000Te0G7AAJ"}, svc.rosters, "the 15- and 18-character rows collapse onto one organization; legacy and unsigned companies are left out")
 	assert.Empty(t, svc.published)
 	assert.Equal(t, CLAAdminsSummary{Orgs: 2, DryRun: 2, NoAccount: 1}, *summary)
@@ -115,6 +127,7 @@ func TestBackfillCLAAdminsApply(t *testing.T) {
 	summary, rows, err := BackfillCLAAdmins(context.Background(), claAdminsDeps(nil), svc, CLAAdminsOptions{Apply: true})
 	require.NoError(t, err)
 	assert.Equal(t, []string{"0012M00002KB7YxQAL", "0014100000Te0G7AAJ"}, svc.published)
+	assert.Equal(t, map[string][]string{"0012M00002KB7YxQAL": {"s3"}, "0014100000Te0G7AAJ": {"s1", "s2"}}, svc.publishIDs, "the scanned ids are registered and read by Publish")
 	assert.Empty(t, svc.rosters)
 	assert.Equal(t, CLAAdminsSummary{Orgs: 2, Published: 1, Skipped: 1, NoAccount: 1}, *summary)
 	assert.Equal(t, "skipped_no_b2b_org", rows[0].Result)
@@ -144,6 +157,7 @@ func TestBackfillCLAAdminsExplicitIDWithoutSignedCCLA(t *testing.T) {
 	summary, rows, err := BackfillCLAAdmins(context.Background(), claAdminsDeps(nil), svc, CLAAdminsOptions{IDs: []string{"0014100000Te0G9"}})
 	require.NoError(t, err)
 	assert.Equal(t, []string{gone}, svc.rosters)
+	assert.Empty(t, svc.rosterIDs[gone], "no scanned CCLA for an explicitly named Account")
 	assert.Equal(t, CLAAdminsSummary{Orgs: 1, DryRun: 1, NoAccount: 1}, *summary)
 	require.Len(t, rows, 1)
 	assert.Equal(t, "dry_run", rows[0].Result)

@@ -23,12 +23,14 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 )
 
-// fakeRepositoriesTable serves the DynamoDB JSON protocol for one stored row: GetItem returns it and every
-// UpdateItem is recorded; with failCondition set, a conditional update fails the way DynamoDB reports it
+// fakeRepositoriesTable serves the DynamoDB JSON protocol for one stored row: GetItem and Query return it,
+// every UpdateItem and PutItem is recorded; with failCondition set, a conditional update fails the way
+// DynamoDB reports it
 type fakeRepositoriesTable struct {
 	mu            sync.Mutex
 	item          map[string]interface{}
 	updates       []map[string]interface{}
+	puts          []map[string]interface{}
 	failCondition bool
 }
 
@@ -45,6 +47,15 @@ func (f *fakeRepositoriesTable) ServeHTTP(w http.ResponseWriter, r *http.Request
 	switch r.Header.Get("X-Amz-Target") {
 	case "DynamoDB_20120810.GetItem":
 		response = map[string]interface{}{"Item": f.item}
+	case "DynamoDB_20120810.Query":
+		items := []map[string]interface{}{}
+		if f.item != nil {
+			items = append(items, f.item)
+		}
+		response = map[string]interface{}{"Items": items, "Count": len(items)}
+	case "DynamoDB_20120810.PutItem":
+		f.puts = append(f.puts, body)
+		response = map[string]interface{}{}
 	case "DynamoDB_20120810.UpdateItem":
 		f.updates = append(f.updates, body)
 		if f.failCondition && body["ConditionExpression"] != nil {

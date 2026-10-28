@@ -26,8 +26,8 @@ func gateSearchURL(entry string) string {
 }
 
 // GroupMemberUsernames returns the resolver the signatures package uses when a GitLab group is removed
-// from a corporate approval list: the usernames of the members of the registered group the merge
-// request gate resolves the entry to; an entry the gate cannot resolve covers nobody.
+// from a corporate approval list: the usernames of every direct member (all pages) of the registered group
+// the merge request gate resolves the entry to; an entry the gate cannot resolve covers nobody.
 func GroupMemberUsernames(svc ServiceInterface) func(ctx context.Context, entry string) ([]string, error) {
 	return func(ctx context.Context, entry string) ([]string, error) {
 		searchURL := gateSearchURL(entry)
@@ -41,7 +41,7 @@ func GroupMemberUsernames(svc ServiceInterface) func(ctx context.Context, entry 
 		if org == nil {
 			return nil, nil
 		}
-		members, err := svc.GetGitLabGroupMembers(ctx, org.OrganizationID)
+		members, err := svc.GetAllGitLabGroupMembers(ctx, org.OrganizationID)
 		if err != nil {
 			return nil, err
 		}

@@ -80,10 +80,12 @@ func BackfillCLAAdmins(ctx context.Context, deps Deps, svc CLAAdminsService, opt
 		return nil, nil, fmt.Errorf("listing signed CCLAs: %w", err)
 	}
 	signedCompanies := map[string]bool{}
+	signedIDs := map[string][]string{}
 	for _, c := range cclas {
 		if c != nil && c.SignatureSigned && c.SignatureReferenceID != "" && c.SignatureType == utils.SignatureTypeCCLA &&
 			c.SignatureReferenceType == utils.SignatureReferenceTypeCompany {
 			signedCompanies[c.SignatureReferenceID] = true
+			signedIDs[c.SignatureReferenceID] = append(signedIDs[c.SignatureReferenceID], c.SignatureID)
 		}
 	}
 	companies, err := deps.Companies.GetCompanies(ctx)
@@ -92,6 +94,9 @@ func BackfillCLAAdmins(ctx context.Context, deps Deps, svc CLAAdminsService, opt
 	}
 	summary := &CLAAdminsSummary{}
 	sfids := map[string]bool{}
+	// the scanned CCLA ids of every entity of the Account go to the publisher, so a row the indexes do not
+	// list yet is still read from the base table
+	scanned := map[string]map[string]bool{}
 	for _, c := range companies.Companies {
 		if !signedCompanies[c.CompanyID] {
 			continue
@@ -102,6 +107,12 @@ func BackfillCLAAdmins(ctx context.Context, deps Deps, svc CLAAdminsService, opt
 			continue
 		}
 		sfids[id18] = true
+		if scanned[id18] == nil {
+			scanned[id18] = map[string]bool{}
+		}
+		for _, id := range signedIDs[c.CompanyID] {
+			scanned[id18][id] = true
+		}
 	}
 	for id18 := range want {
 		sfids[id18] = true
@@ -114,7 +125,7 @@ func BackfillCLAAdmins(ctx context.Context, deps Deps, svc CLAAdminsService, opt
 		summary.Orgs++
 		row := CLAAdminsRow{SFID: sfid}
 		if opts.Apply {
-			res, pubErr := svc.Publish(ctx, sfid)
+			res, pubErr := svc.Publish(ctx, sfid, sortedBoolKeys(scanned[sfid])...)
 			if res != nil && res.Roster != nil {
 				row.CompanyIDs, row.Managers = res.Roster.CompanyIDs, res.Roster.Usernames()
 			}
@@ -130,7 +141,7 @@ func BackfillCLAAdmins(ctx context.Context, deps Deps, svc CLAAdminsService, opt
 				summary.Published++
 			}
 		} else {
-			roster, rosterErr := svc.Roster(ctx, sfid)
+			roster, rosterErr := svc.Roster(ctx, sfid, sortedBoolKeys(scanned[sfid])...)
 			if rosterErr != nil {
 				row.Result, row.Err = claAdminsResultError, rosterErr.Error()
 				summary.Errors++

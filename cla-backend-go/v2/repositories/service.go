@@ -241,7 +241,7 @@ func (s *Service) GitHubAddRepositories(ctx context.Context, projectSFID string,
 				}
 
 				// Update Repo details in case of any changes
-				updatedRepository, updateErr := s.gitV1Repository.GitHubUpdateRepository(ctx, existingRepositoryModel.RepositoryID, projectSFID, parentProjectSFID, v1Input)
+				updatedRepository, updateErr := s.gitV1Repository.GitHubUpdateRepositoryForProject(ctx, existingRepositoryModel.RepositoryID, projectSFID, parentProjectSFID, v1Input)
 				if updateErr != nil {
 					log.WithFields(f).WithError(updateErr).Warnf("unable to update GitHub repository with name: %s, id: %s, using input: %+v", utils.StringValue(ghRepo.FullName), existingRepositoryModel.RepositoryID, v1Input)
 					return nil, updateErr
@@ -270,7 +270,7 @@ func (s *Service) GitHubAddRepositories(ctx context.Context, projectSFID string,
 				RepositoryURL:              ghRepo.HTMLURL,
 			}
 
-			addedModel, addErr := s.gitV1Repository.GitHubAddRepository(ctx, parentProjectSFID, projectSFID, in)
+			addedModel, addErr := s.gitV1Repository.GitHubAddRepositoryForProject(ctx, parentProjectSFID, projectSFID, in)
 			if addErr != nil {
 				log.WithFields(f).WithError(addErr).Warnf("unable to add github repository: %s for project: %s", *ghRepo.FullName, projectSFID)
 				return nil, addErr
