@@ -286,7 +286,7 @@ func TestRosterUnionsEveryRowSharingTheAccount(t *testing.T) {
 func TestRosterSkipsUnpublishableIdentities(t *testing.T) {
 	h := newHarness(&fakePublisher{})
 	row := h.cclas.base["s1"]
-	row.ACL = []string{"zoe", " amy ", "bad user", "tab\tname", "ctl\x01x", "Zoe.Q-1", "   ", "github:42", "github:99", "github:7"}
+	row.ACL = []string{"zoe", " amy ", "bad user", "tab\tname", "ctl\x01x", "Zoe.Q-1", "   ", "github:42", "github:99", "github:7", "github:abc", "github:", "github:12x", "github:0", "github:-5", "github:99999999999999999999"}
 	h.cclas.base["s1"] = row
 	h.svc.Users = fakeUsers{byName: map[string]*models.User{
 		"amy":     {LfUsername: "amy", LfEmail: strfmt.Email(" amy@example.com "), Username: "Amy Adams"},
@@ -297,6 +297,13 @@ func TestRosterSkipsUnpublishableIdentities(t *testing.T) {
 	}, byEntry: map[string]*models.User{
 		"github:42": {LfUsername: "gina"},
 		"github:7":  {LfUsername: "amy"},
+	}, entryErr: map[string]error{
+		"github:abc":                  errors.New("malformed entries must not be looked up"),
+		"github:":                     errors.New("malformed entries must not be looked up"),
+		"github:12x":                  errors.New("malformed entries must not be looked up"),
+		"github:0":                    errors.New("malformed entries must not be looked up"),
+		"github:-5":                   errors.New("malformed entries must not be looked up"),
+		"github:99999999999999999999": errors.New("malformed entries must not be looked up"),
 	}}
 	roster, err := h.svc.Roster(context.Background(), sfid15)
 	require.NoError(t, err)
@@ -306,7 +313,7 @@ func TestRosterSkipsUnpublishableIdentities(t *testing.T) {
 		{Username: "bob", Name: "Bob"},
 		{Username: "gina", Email: "gina@example.com", Name: "Gina"},
 		{Username: "zoe"},
-	}, roster.Admins, "github:42 resolves to gina, github:7 is amy again, github:99 has no record")
+	}, roster.Admins, "github:42 resolves to gina, github:7 is amy again, github:99 has no record, malformed github entries are skipped without a lookup")
 	res, err := h.svc.Publish(context.Background(), sfid15)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"Zoe.Q-1", "amy", "bob", "gina", "zoe"}, res.Roster.Usernames())
