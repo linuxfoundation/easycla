@@ -41,6 +41,7 @@ import (
 	v2OrgService "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
 	v2ProjectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 	v2UserService "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
+	v2UserModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/models"
 )
 
 var (
@@ -201,42 +202,11 @@ func (s *service) CreateCLAManager(ctx context.Context, authUser *auth.User, cla
 
 	// Check if user exists in easyCLA DB, if not add User
 	log.WithFields(f).Debugf("Checking user: %+v in EasyCLA database...", user)
-	claUser, claUserErr := s.easyCLAUserService.GetUserByLFUserName(user.Username)
-	if claUserErr != nil {
-		msg := fmt.Sprintf("Problem getting claUser by :%s, error: %+v ", user.Username, claUserErr)
-		log.WithFields(f).Warn(msg)
+	if _, provisionErr := s.ensureCLAManagerUser(f, v1CompanyModel, user, *params.Body.FirstName, *params.Body.LastName); provisionErr != nil {
 		return nil, &models.ErrorResponse{
-			Message: msg,
+			Message: provisionErr.Error(),
 			Code:    "400",
 		}
-	}
-
-	if claUser == nil {
-		msg := fmt.Sprintf("User not found when searching by LF Login: %s and shall be created", user.Username)
-		log.WithFields(f).Debug(msg)
-		userName := fmt.Sprintf("%s %s", *params.Body.FirstName, *params.Body.LastName)
-		_, currentTimeString := utils.CurrentTime()
-		claUserModel := &v1Models.User{
-			CompanyID:      v1CompanyModel.CompanyID,
-			UserExternalID: v1CompanyModel.CompanyExternalID,
-			LfEmail:        strfmt.Email(*user.Emails[0].EmailAddress),
-			Admin:          true,
-			LfUsername:     user.Username,
-			DateCreated:    currentTimeString,
-			DateModified:   currentTimeString,
-			Username:       userName,
-			Version:        "v1",
-		}
-		newUserModel, userModelErr := s.easyCLAUserService.CreateUser(claUserModel, nil)
-		if userModelErr != nil {
-			msg := fmt.Sprintf("Failed to create user : %+v", claUserModel)
-			log.WithFields(f).Warn(msg)
-			return nil, &models.ErrorResponse{
-				Message: msg,
-				Code:    "400",
-			}
-		}
-		log.WithFields(f).Debugf("Created easyCLAUser %+v ", newUserModel)
 	}
 
 	// GetSFProject
@@ -1395,4 +1365,46 @@ func GetNonNoReplyUserEmail(userEmails []string) string {
 	}
 
 	return ""
+}
+
+// ensureCLAManagerUser returns the EasyCLA record of the new CLA manager, created without the admin flag
+// when none exists; an existing record, administrator or not, is returned untouched
+// (lfx-self-serve-ops#978). The error text is the response message.
+func (s *service) ensureCLAManagerUser(f logrus.Fields, company *v1Models.Company, platformUser *v2UserModels.User, firstName, lastName string) (*v1Models.User, error) {
+	claUser, claUserErr := s.easyCLAUserService.GetUserByLFUserName(platformUser.Username)
+	if claUserErr != nil {
+		msg := fmt.Sprintf("Problem getting claUser by :%s, error: %+v ", platformUser.Username, claUserErr)
+		log.WithFields(f).Warn(msg)
+		return nil, errors.New(msg)
+	}
+	if claUser != nil {
+		return claUser, nil
+	}
+	log.WithFields(f).Debugf("User not found when searching by LF Login: %s and shall be created", platformUser.Username)
+	_, currentTimeString := utils.CurrentTime()
+	claUserModel := claManagerUserRecord(company, platformUser.Username, *platformUser.Emails[0].EmailAddress, fmt.Sprintf("%s %s", firstName, lastName), currentTimeString)
+	newUserModel, userModelErr := s.easyCLAUserService.CreateUser(claUserModel, nil)
+	if userModelErr != nil {
+		msg := fmt.Sprintf("Failed to create user : %+v", claUserModel)
+		log.WithFields(f).Warn(msg)
+		return nil, errors.New(msg)
+	}
+	log.WithFields(f).Debugf("Created easyCLAUser %+v ", newUserModel)
+	return newUserModel, nil
+}
+
+// claManagerUserRecord is the EasyCLA user record created for a CLA manager who has none yet; it
+// never carries the EasyCLA admin flag (lfx-self-serve-ops#978).
+func claManagerUserRecord(company *v1Models.Company, lfUsername, lfEmail, displayName, now string) *v1Models.User {
+	return &v1Models.User{
+		CompanyID:      company.CompanyID,
+		UserExternalID: company.CompanyExternalID,
+		LfEmail:        strfmt.Email(lfEmail),
+		Admin:          false,
+		LfUsername:     lfUsername,
+		DateCreated:    now,
+		DateModified:   now,
+		Username:       displayName,
+		Version:        "v1",
+	}
 }

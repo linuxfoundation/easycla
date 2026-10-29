@@ -58,6 +58,7 @@ type ServiceInterface interface {
 	GetGitLabOrganizationsByProjectSFID(ctx context.Context, projectSFID string) (*v2Models.GitlabProjectOrganizations, error)
 	GetGitLabOrganizationByState(ctx context.Context, gitLabOrganizationID, authState string) (*v2Models.GitlabOrganization, error)
 	GetGitLabGroupMembers(ctx context.Context, groupID string) (*v2Models.GitlabGroupMembersList, error)
+	GetAllGitLabGroupMembers(ctx context.Context, groupID string) (*v2Models.GitlabGroupMembersList, error)
 	UpdateGitLabOrganization(ctx context.Context, input *common.GitLabAddOrganization) error
 	UpdateGitLabOrganizationAuth(ctx context.Context, gitLabOrganizationID string, oauthResp *gitlabApi.OauthSuccessResponse, authExpiryTime int64) error
 	DeleteGitLabOrganizationByFullPath(ctx context.Context, projectSFID string, gitlabOrgFullPath string) error
@@ -327,6 +328,47 @@ func (s *Service) GetGitLabOrganizationsEnabledWithAutoEnabled(ctx context.Conte
 	return out, nil
 }
 
+// GetAllGitLabGroupMembers gets every direct group member across all pages (the approval list removal
+// re-check needs the complete list); GetGitLabGroupMembers keeps its single-page behaviour.
+func (s *Service) GetAllGitLabGroupMembers(ctx context.Context, groupID string) (*v2Models.GitlabGroupMembersList, error) {
+	f := logrus.Fields{
+		"functionName":   "v2.gitlab_organizations.service.GetAllGitLabGroupMembers",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"groupID":        groupID,
+	}
+	groupMemberList := make([]*v2Models.GitlabGroupMember, 0)
+	gitlabOrg, err := s.GetGitLabOrganization(ctx, groupID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to fetch gitlab details")
+		return nil, err
+	}
+	if gitlabOrg != nil {
+		oauthResponse, authErr := s.RefreshGitLabOrganizationAuth(ctx, common.ToCommonModel(gitlabOrg))
+		if authErr != nil {
+			log.WithFields(f).WithError(authErr).Warn("unable to refresh gitlab auth")
+			return nil, authErr
+		}
+		glClient, clientErr := gitlabApi.NewGitlabOauthClient(*oauthResponse, s.gitLabApp)
+		if clientErr != nil {
+			log.WithFields(f).WithError(clientErr).Warn("problem getting gitLabClient")
+			return nil, clientErr
+		}
+		members, listErr := gitlabApi.ListAllDirectGroupMembers(ctx, glClient, int(gitlabOrg.OrganizationExternalID))
+		if listErr != nil {
+			log.WithFields(f).WithError(listErr).Warn("unable to get the complete group members list")
+			return nil, listErr
+		}
+		for _, member := range members {
+			groupMemberList = append(groupMemberList, &v2Models.GitlabGroupMember{
+				Name:     member.Name,
+				ID:       strconv.Itoa(member.ID),
+				Username: member.Username,
+			})
+		}
+	}
+	return &v2Models.GitlabGroupMembersList{List: groupMemberList}, nil
+}
+
 // GetGitLabGroupMembers gets group members
 func (s *Service) GetGitLabGroupMembers(ctx context.Context, groupID string) (*v2Models.GitlabGroupMembersList, error) {
 	f := logrus.Fields{
@@ -490,7 +532,7 @@ func (s *Service) RefreshGitLabOrganizationAuth(ctx context.Context, gitLabOrg *
 
 		log.WithFields(f).Debugf("encrypted oauthResponse: %d bytes", len(gitLabAuthResponse))
 
-		err = s.repo.UpdateGitLabOrganizationAuth(ctx, gitLabOrg.OrganizationID, int(gitLabOrg.ExternalGroupID), authExpiryTime, gitLabAuthResponse, gitLabOrg.OrganizationName, gitLabOrg.OrganizationFullPath, gitLabOrg.OrganizationURL)
+		err = s.repo.UpdateGitLabOrganizationAuth(ctx, gitLabOrg.OrganizationID, gitLabOrg.ExternalGroupID, authExpiryTime, gitLabAuthResponse, gitLabOrg.OrganizationName, gitLabOrg.OrganizationFullPath, gitLabOrg.OrganizationURL)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn("problem updating gitlab organization auth")
 			return nil, err
@@ -839,12 +881,19 @@ func (s *Service) InitiateSignRequest(ctx context.Context, req *http.Request, gi
 
 	params := "redirect=" + url.QueryEscape(originURL)
 	consoleURL := fmt.Sprintf("https://%s/#/cla/project/%s/user/%s?%s", contributorBaseURL, gitlabRepo.RepositoryClaGroupID, claUser.UserID, params)
-	_, err = http.Get(consoleURL)
-
+	consoleReq, err := http.NewRequestWithContext(ctx, http.MethodGet, consoleURL, nil)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to build the console request for : %s", consoleURL)
+		return nil, err
+	}
+	consoleResp, err := http.DefaultClient.Do(consoleReq)
 	if err != nil {
 		msg := fmt.Sprintf("unable to redirect to : %s , error: %+v ", consoleURL, err)
 		log.WithFields(f).Warn(msg)
 		return nil, err
+	}
+	if closeErr := consoleResp.Body.Close(); closeErr != nil {
+		log.WithFields(f).WithError(closeErr).Debug("unable to close the console response body")
 	}
 	var signatureID string
 	icla, signErr := s.signatureRepo.GetIndividualSignature(ctx, gitlabRepo.RepositoryClaGroupID, claUser.UserID, aws.Bool(false), aws.Bool(true))
@@ -875,9 +924,9 @@ func (s *Service) InitiateSignRequest(ctx context.Context, req *http.Request, gi
 			return &consoleURL, nil
 		}
 
-		corporateSignature, err := s.signatureRepo.GetCorporateSignature(ctx, gitlabRepo.RepositoryClaGroupID, companyID, aws.Bool(false), aws.Bool(true))
-		if err != nil {
-			msg := fmt.Sprintf("can't load company signature record for company: %s for user : %s (%s), error : %v", companyID, claUser.Username, claUser.UserID, err)
+		corporateSignature, sigErr := s.signatureRepo.GetCorporateSignature(ctx, gitlabRepo.RepositoryClaGroupID, companyID, aws.Bool(false), aws.Bool(true))
+		if sigErr != nil {
+			msg := fmt.Sprintf("can't load company signature record for company: %s for user : %s (%s), error : %v", companyID, claUser.Username, claUser.UserID, sigErr)
 			log.WithFields(f).Errorf("%s", msg)
 			return &consoleURL, nil
 		}

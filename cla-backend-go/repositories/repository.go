@@ -41,11 +41,14 @@ var ErrRepositoryDoesNotExist = errors.New("repository does not exist")
 // RepositoryInterface contains functions of the repositories service
 type RepositoryInterface interface {
 	GitHubAddRepository(ctx context.Context, externalProjectID string, projectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error)
+	GitHubAddRepositoryForProject(ctx context.Context, externalProjectID string, projectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error)
 	GitHubUpdateRepository(ctx context.Context, repositoryID, projectSFID, parentProjectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error)
+	GitHubUpdateRepositoryForProject(ctx context.Context, repositoryID, projectSFID, parentProjectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error)
 	GitHubUpdateClaGroupID(ctx context.Context, repositoryID, claGroupID string) error
 	GitHubEnableRepository(ctx context.Context, repositoryID string) error
 	GitHubEnableRepositoryWithCLAGroupID(ctx context.Context, repositoryID, claGroupID string) error
 	GitHubDisableRepository(ctx context.Context, repositoryID string) error
+	GitHubDisableRepositoryForProject(ctx context.Context, repositoryID, projectSFID string) error
 	GitHubDisableRepositoriesByProjectID(ctx context.Context, projectID string) error
 	GitHubDisableRepositoriesOfOrganization(ctx context.Context, externalProjectID, githubOrgName string) error
 	GitHubDisableRepositoriesOfOrganizationParent(ctx context.Context, parentProjectSFID, githubOrgName string) error
@@ -78,6 +81,20 @@ type Repository struct {
 
 // GitHubAddRepository adds the specified repository
 func (r *Repository) GitHubAddRepository(ctx context.Context, externalProjectID string, projectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error) {
+	return r.addGithubRepository(ctx, externalProjectID, projectSFID, input, nil, nil)
+}
+
+// GitHubAddRepositoryForProject is GitHubAddRepository whose re-use of a disabled record found by GitHub id is
+// written only while that record is unbound or owned by projectSFID (reusableByProject); a record bound
+// elsewhere meanwhile is reported as GitHubRepositoryNotFound and nothing is written
+func (r *Repository) GitHubAddRepositoryForProject(ctx context.Context, externalProjectID string, projectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error) {
+	condition := reusableByProject(projectSFID)
+	return r.addGithubRepository(ctx, externalProjectID, projectSFID, input, &condition,
+		&utils.GitHubRepositoryNotFound{Message: fmt.Sprintf("repository with GitHub id %s is bound to another project or gone - not re-used for project %s", utils.StringValue(input.RepositoryExternalID), projectSFID)})
+}
+
+// addGithubRepository is GitHubAddRepository with an optional condition on the re-use write
+func (r *Repository) addGithubRepository(ctx context.Context, externalProjectID string, projectSFID string, input *models.GithubRepositoryInput, condition *expression.ConditionBuilder, conditionFailed error) (*models.GithubRepository, error) {
 	f := logrus.Fields{
 		"functionName":               "v1.repositories.repository.AddGitHubRepository",
 		utils.XREQUESTID:             ctx.Value(utils.XREQUESTID),
@@ -103,7 +120,7 @@ func (r *Repository) GitHubAddRepository(ctx context.Context, externalProjectID 
 		// Here repository already exists. We update the same repository with latest document in order to avoid duplicate entries.
 		var enabled = true
 		var repository *models.GithubRepository
-		repository, err = r.GitHubUpdateRepository(ctx, repo.RepositoryID, projectSFID, externalProjectID, &models.GithubRepositoryInput{
+		repository, err = r.updateGithubRepositoryIf(ctx, repo.RepositoryID, projectSFID, externalProjectID, &models.GithubRepositoryInput{
 			RepositoryName:             input.RepositoryName,
 			RepositoryOrganizationName: input.RepositoryOrganizationName,
 			RepositoryProjectID:        input.RepositoryProjectID,
@@ -111,7 +128,7 @@ func (r *Repository) GitHubAddRepository(ctx context.Context, externalProjectID 
 			RepositoryType:             input.RepositoryType,
 			RepositoryURL:              input.RepositoryURL,
 			Note:                       "Disabled repository enabled and updated",
-		})
+		}, condition, conditionFailed)
 		if err != nil {
 			return nil, err
 		}
@@ -161,6 +178,57 @@ func (r *Repository) GitHubAddRepository(ctx context.Context, externalProjectID 
 
 // GitHubUpdateRepository updates the repository record for given ID
 func (r *Repository) GitHubUpdateRepository(ctx context.Context, repositoryID, projectSFID, parentProjectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error) {
+	return r.updateGithubRepositoryIf(ctx, repositoryID, projectSFID, parentProjectSFID, input, nil, nil)
+}
+
+// GitHubUpdateRepositoryForProject is GitHubUpdateRepository written only while the record is unbound or owned
+// by projectSFID (reusableByProject); a record bound elsewhere meanwhile or gone is reported as
+// GitHubRepositoryNotFound and nothing is written
+func (r *Repository) GitHubUpdateRepositoryForProject(ctx context.Context, repositoryID, projectSFID, parentProjectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error) {
+	condition := reusableByProject(projectSFID)
+	return r.updateGithubRepositoryIf(ctx, repositoryID, projectSFID, parentProjectSFID, input, &condition,
+		&utils.GitHubRepositoryNotFound{Message: fmt.Sprintf("repository %s is bound to another project or gone - not re-bound to project %s", repositoryID, projectSFID)})
+}
+
+// reusableByProject is the write condition mirroring repositoryBoundToOtherProject: the record must still exist
+// and be owned by projectSFID (project_sfid), or be unbound - project_sfid unset and the legacy
+// repository_sfdc_id unset or equal to projectSFID.
+func reusableByProject(projectSFID string) expression.ConditionBuilder {
+	project := expression.Name("project_sfid")
+	legacy := expression.Name("repository_sfdc_id")
+	legacyFree := unset(legacy).Or(legacy.Equal(expression.Value(projectSFID)))
+	return expression.Name("repository_id").AttributeExists().And(project.Equal(expression.Value(projectSFID)).Or(unset(project).And(legacyFree)))
+}
+
+// unset holds for an absent attribute, a stored NULL (how the row model marshals an empty string) or an empty
+// string (size = 0: the expression builder would encode an empty string value as NULL, which never equals one)
+func unset(attr expression.NameBuilder) expression.ConditionBuilder {
+	return attr.AttributeNotExists().Or(attr.AttributeType(expression.Null)).Or(attr.Size().Equal(expression.Value(0)))
+}
+
+// applyWriteCondition merges an optional condition into the hand-written update input; the builder's #n / :n
+// placeholders never collide with the hand-written ones
+func applyWriteCondition(updateInput *dynamodb.UpdateItemInput, condition *expression.ConditionBuilder) error {
+	if condition == nil {
+		return nil
+	}
+	expr, err := expression.NewBuilder().WithCondition(*condition).Build()
+	if err != nil {
+		return err
+	}
+	for name, value := range expr.Names() {
+		updateInput.ExpressionAttributeNames[name] = value
+	}
+	for name, value := range expr.Values() {
+		updateInput.ExpressionAttributeValues[name] = value
+	}
+	updateInput.ConditionExpression = expr.Condition()
+	return nil
+}
+
+// updateGithubRepositoryIf is GitHubUpdateRepository with an optional write condition; when the condition
+// fails, conditionFailed is returned
+func (r *Repository) updateGithubRepositoryIf(ctx context.Context, repositoryID, projectSFID, parentProjectSFID string, input *models.GithubRepositoryInput, condition *expression.ConditionBuilder, conditionFailed error) (*models.GithubRepository, error) {
 
 	externalID := utils.StringValue(input.RepositoryExternalID)
 	repositoryName := utils.StringValue(input.RepositoryName)
@@ -301,9 +369,17 @@ func (r *Repository) GitHubUpdateRepository(ctx context.Context, repositoryID, p
 		UpdateExpression:          &updateExpression,
 		TableName:                 aws.String(r.repositoryTableName),
 	}
+	if conditionErr := applyWriteCondition(updateInput, condition); conditionErr != nil {
+		log.WithFields(f).WithError(conditionErr).Warn("error building the write condition")
+		return nil, conditionErr
+	}
 
 	_, updateErr := r.dynamoDBClient.UpdateItem(updateInput)
 	if updateErr != nil {
+		if aerr, ok := updateErr.(awserr.Error); ok && aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException && conditionFailed != nil {
+			log.WithFields(f).Debug("repository record no longer satisfies the write condition - not updated")
+			return nil, conditionFailed
+		}
 		log.WithFields(f).Warnf("error updatingRepository by repositoryID: %s, error: %v", repositoryID, updateErr)
 		return nil, updateErr
 	}
@@ -329,6 +405,14 @@ func (r *Repository) GitHubEnableRepositoryWithCLAGroupID(ctx context.Context, r
 // GitHubDisableRepository disables the repository entry (we don't delete)
 func (r *Repository) GitHubDisableRepository(ctx context.Context, repositoryID string) error {
 	return r.disableGithubRepository(ctx, repositoryID)
+}
+
+// GitHubDisableRepositoryForProject disables the repository only while its project_sfid is still projectSFID;
+// a record rebound meanwhile is reported as GitHubRepositoryNotFound and left untouched
+func (r *Repository) GitHubDisableRepositoryForProject(ctx context.Context, repositoryID, projectSFID string) error {
+	condition := expression.Name("project_sfid").Equal(expression.Value(projectSFID))
+	return r.setEnabledGithubRepositoryIf(ctx, repositoryID, false, &condition,
+		&utils.GitHubRepositoryNotFound{Message: fmt.Sprintf("repository %s is not bound to project %s", repositoryID, projectSFID)})
 }
 
 // GitHubDisableRepositoriesByProjectID  disables the repository by the project ID
@@ -867,6 +951,12 @@ func (r *Repository) disableGithubRepository(ctx context.Context, repositoryID s
 
 // setEnabledGithubRepository updates the existing repository record by setting the enabled flag to false
 func (r *Repository) setEnabledGithubRepository(ctx context.Context, repositoryID string, enabled bool) error {
+	return r.setEnabledGithubRepositoryIf(ctx, repositoryID, enabled, nil, nil)
+}
+
+// setEnabledGithubRepositoryIf is setEnabledGithubRepository with an optional write condition; when the
+// condition fails, conditionFailed is returned
+func (r *Repository) setEnabledGithubRepositoryIf(ctx context.Context, repositoryID string, enabled bool, condition *expression.ConditionBuilder, conditionFailed error) error {
 	f := logrus.Fields{
 		"functionName":   "v1.repositories.repository.setEnabledGitHubRepository",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -908,7 +998,11 @@ func (r *Repository) setEnabledGithubRepository(ctx context.Context, repositoryI
 		updateExpression = updateExpression.Remove(expression.Name("project_sfid")).Remove(expression.Name("repository_sfdc_id")).Remove(expression.Name("repository_project_id"))
 	}
 
-	expr, exprErr := expression.NewBuilder().WithUpdate(updateExpression).Build()
+	builder := expression.NewBuilder().WithUpdate(updateExpression)
+	if condition != nil {
+		builder = builder.WithCondition(*condition)
+	}
+	expr, exprErr := builder.Build()
 	if exprErr != nil {
 		log.WithFields(f).Warnf("error building expression for updating repository record, error: %v", exprErr)
 		return exprErr
@@ -921,6 +1015,7 @@ func (r *Repository) setEnabledGithubRepository(ctx context.Context, repositoryI
 		ExpressionAttributeNames:  expr.Names(),
 		ExpressionAttributeValues: expr.Values(),
 		UpdateExpression:          expr.Update(),
+		ConditionExpression:       expr.Condition(),
 		TableName:                 aws.String(r.repositoryTableName),
 	})
 
@@ -928,6 +1023,10 @@ func (r *Repository) setEnabledGithubRepository(ctx context.Context, repositoryI
 		if aerr, ok := err.(awserr.Error); ok {
 			switch aerr.Code() {
 			case dynamodb.ErrCodeConditionalCheckFailedException:
+				if conditionFailed != nil {
+					log.WithFields(f).Debug("repository record no longer satisfies the write condition - not updated")
+					return conditionFailed
+				}
 				return errors.New("github repository entry does not exist or *Repositorysitory_sfdc_id does not match with specified project id")
 			}
 		}

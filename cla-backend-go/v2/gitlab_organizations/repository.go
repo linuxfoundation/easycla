@@ -137,7 +137,7 @@ func (repo *Repository) AddGitLabOrganization(ctx context.Context, input *common
 			}
 		}
 
-		msg := fmt.Sprintf("record already exists - existing GitLab group with a different project SFID - won't be able to update it")
+		msg := "record already exists - existing GitLab group with a different project SFID - won't be able to update it"
 		log.WithFields(f).Debug(msg)
 		return nil, errors.New(msg)
 	}
@@ -819,28 +819,6 @@ func (repo *Repository) getOrganizationsWithConditionFilter(ctx context.Context,
 	log.WithFields(f).Debugf("building response model for %d results...", len(resultOutput))
 	gitlabOrgList := buildGitlabOrganizationListModels(ctx, resultOutput)
 	return &v2Models.GitlabOrganizations{List: gitlabOrgList}, nil
-}
-
-func updateResponse(fullResponse, response *v2Models.GitlabOrganizations) {
-	if fullResponse.List == nil {
-		fullResponse.List = response.List
-		return
-	}
-
-	if response != nil && response.List != nil {
-		for _, item := range response.List {
-			found := false
-			for _, fr := range fullResponse.List {
-				if fr.OrganizationID == item.OrganizationID {
-					found = true
-					break
-				}
-			}
-			if !found {
-				fullResponse.List = append(fullResponse.List, item)
-			}
-		}
-	}
 }
 
 func (repo *Repository) getScanResults(ctx context.Context, filter *expression.ConditionBuilder) (*v2Models.GitlabOrganizations, error) {
