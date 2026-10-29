@@ -124,6 +124,7 @@ provider:
             - dynamodb:DeleteItem
             - dynamodb:UpdateItem
             - dynamodb:PutItem
+            - dynamodb:ConditionCheckItem
             - dynamodb:GetItem
             - dynamodb:Scan
             - dynamodb:DescribeTable

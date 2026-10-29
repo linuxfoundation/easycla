@@ -64,8 +64,8 @@ type SignatureService interface {
 	HasUserSigned(ctx context.Context, user *models.User, projectID string) (*bool, *bool, error)
 
 	GetGithubOrganizationsFromApprovalList(ctx context.Context, signatureID string, githubAccessToken string) ([]models.GithubOrg, error)
-	AddGithubOrganizationToApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgAllowlist, githubAccessToken string) ([]models.GithubOrg, error)
-	DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgAllowlist, githubAccessToken string) ([]models.GithubOrg, error)
+	AddGithubOrganizationToApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgAllowlist, githubAccessToken, lfUsername string) ([]models.GithubOrg, error)
+	DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgAllowlist, githubAccessToken, lfUsername string) ([]models.GithubOrg, error)
 	UpdateApprovalList(ctx context.Context, authUser *auth.User, claGroupModel *models.ClaGroup, companyModel *models.Company, claGroupID string, params *models.ApprovalList, projectSFID string) (*models.Signature, error)
 
 	AddCLAManager(ctx context.Context, signatureID, claManagerID string) (*models.Signature, error)
@@ -116,6 +116,16 @@ var listUserPublicOrgs = github.ListUserPublicOrgs
 // getOrganizationMembers is the same indirection for the GitHub App /orgs/<org>/members
 // call the approval list organization removal uses to pick the acknowledgments to re-check
 var getOrganizationMembers = github.GetOrganizationMembers
+
+// gitLabGroupMembers resolves the usernames of a GitLab group's members; nil until the API server
+// installs the gitlab_organizations resolver, which this package cannot import directly.
+var gitLabGroupMembers func(ctx context.Context, groupPath string) ([]string, error)
+
+// SetGitLabGroupMembersResolver installs the GitLab group membership lookup used when a GitLab group
+// is removed from a corporate approval list.
+func SetGitLabGroupMembersResolver(resolver func(ctx context.Context, groupPath string) ([]string, error)) {
+	gitLabGroupMembers = resolver
+}
 
 // NewService creates a new signature service
 func NewService(repo SignatureRepository, companyService company.IService, usersService users.Service, eventsService events.Service, githubOrgValidation bool, repositoryService repositories.Service, githubOrgService github_organizations.ServiceInterface, claGroupService service2.Service, gitLabApp *gitlab_api.App, CLABaseAPIURL, CLALandingPage, CLALogoURL string) SignatureService {
@@ -348,7 +358,7 @@ func (s service) GetGithubOrganizationsFromApprovalList(ctx context.Context, sig
 }
 
 // AddGithubOrganizationToApprovalList adds the GH organization to the approval list
-func (s service) AddGithubOrganizationToApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgAllowlist, githubAccessToken string) ([]models.GithubOrg, error) {
+func (s service) AddGithubOrganizationToApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgAllowlist, githubAccessToken, lfUsername string) ([]models.GithubOrg, error) {
 	organizationID := approvalListParams.OrganizationID
 
 	if signatureID == "" {
@@ -407,7 +417,7 @@ func (s service) AddGithubOrganizationToApprovalList(ctx context.Context, signat
 		}
 	}
 
-	gitHubOrgApprovalList, err := s.repo.AddGithubOrganizationToApprovalList(ctx, signatureID, *organizationID)
+	gitHubOrgApprovalList, err := s.repo.AddGithubOrganizationToApprovalList(ctx, signatureID, *organizationID, lfUsername)
 	if err != nil {
 		log.Warnf("issue adding github organization to approval list using signatureID: %s, gh org id: %s, error: %v",
 			signatureID, *organizationID, err)
@@ -418,7 +428,7 @@ func (s service) AddGithubOrganizationToApprovalList(ctx context.Context, signat
 }
 
 // DeleteGithubOrganizationFromApprovalList deletes the specified GH organization from the approval list
-func (s service) DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgAllowlist, githubAccessToken string) ([]models.GithubOrg, error) {
+func (s service) DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID string, approvalListParams models.GhOrgAllowlist, githubAccessToken, lfUsername string) ([]models.GithubOrg, error) {
 
 	// Extract the payload values
 	organizationID := approvalListParams.OrganizationID
@@ -479,7 +489,7 @@ func (s service) DeleteGithubOrganizationFromApprovalList(ctx context.Context, s
 		}
 	}
 
-	gitHubOrgApprovalList, err := s.repo.DeleteGithubOrganizationFromApprovalList(ctx, signatureID, *organizationID)
+	gitHubOrgApprovalList, err := s.repo.DeleteGithubOrganizationFromApprovalList(ctx, signatureID, *organizationID, lfUsername)
 	if err != nil {
 		return nil, err
 	}

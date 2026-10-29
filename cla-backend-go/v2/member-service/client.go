@@ -31,6 +31,19 @@ var ErrNotEligible = errors.New("member-service: account not eligible for a b2b 
 // ErrNotConfigured is returned when the client has no base URL or audience.
 var ErrNotConfigured = errors.New("member-service: client not configured")
 
+// ErrConflict is returned when member-service reports a concurrent update (409); retry with fresh state.
+var ErrConflict = errors.New("member-service: concurrent update")
+
+// ErrInvalidRequest is returned when member-service rejects a request body (400) other than the SFID.
+var ErrInvalidRequest = errors.New("member-service: request rejected")
+
+// CLAAdmin is one CLA manager of the organization's cla_admins list (lfx-self-serve#4362).
+type CLAAdmin struct {
+	Username string `json:"username"`
+	Email    string `json:"email,omitempty"`
+	Name     string `json:"name,omitempty"`
+}
+
 // AuthError is returned for token or authorization failures (Auth0 non-2xx, member-service 401/403).
 type AuthError struct {
 	Status  int
@@ -123,6 +136,11 @@ func sfid18(id string) (string, bool) {
 	return string(b[:]), true
 }
 
+// SFID18 returns the canonical 18-character form of a 15- or 18-character Salesforce ID.
+func SFID18(id string) (string, bool) {
+	return sfid18(id)
+}
+
 // restoreSFIDCase re-applies the letter case encoded by the case-insensitive 3-character suffix
 // (bit j of suffix character g set <=> position g*5+j is an uppercase letter).
 func restoreSFIDCase(id []byte, suffix string) bool {
@@ -196,6 +214,53 @@ func (c *Client) RegisterB2BOrg(ctx context.Context, sfid string) (*B2BOrg, erro
 	return c.do(req, tok, "POST /b2b_orgs")
 }
 
+// PutB2BOrgCLAAdmins replaces the organization's CLA manager list (PUT /b2b_orgs/{uid}/settings/cla_admins);
+// member-service writes the cla_admin tuples itself. An empty list clears it; 404 means no b2b_org yet.
+func (c *Client) PutB2BOrgCLAAdmins(ctx context.Context, uid string, admins []CLAAdmin, sourceUpdatedAt time.Time) error {
+	uid, ok := sfid18(uid)
+	if !ok {
+		return ErrInvalidSFID
+	}
+	tok, err := c.getToken(ctx)
+	if err != nil {
+		return err
+	}
+	if admins == nil {
+		admins = []CLAAdmin{}
+	}
+	payload, err := json.Marshal(struct {
+		CLAAdmins       []CLAAdmin `json:"cla_admins"`
+		SendInvite      bool       `json:"send_invite"`
+		SourceUpdatedAt string     `json:"source_updated_at"`
+	}{CLAAdmins: admins, SendInvite: false, SourceUpdatedAt: sourceUpdatedAt.UTC().Format(time.RFC3339Nano)})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPut, c.cfg.BaseURL+"/b2b_orgs/"+url.PathEscape(uid)+"/settings/cla_admins?"+url.Values{"v": {"1"}}.Encode(), bytes.NewReader(payload))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	_ = resp.Body.Close()
+	if readErr != nil {
+		return readErr
+	}
+	if resp.StatusCode >= 200 && resp.StatusCode <= 299 {
+		return nil
+	}
+	if resp.StatusCode == http.StatusBadRequest {
+		return fmt.Errorf("%w: %s", ErrInvalidRequest, responseMessage(body, resp.Status))
+	}
+	return c.statusError(resp.StatusCode, resp.Status, body, tok, "PUT /b2b_orgs/{uid}/settings/cla_admins")
+}
+
 func (c *Client) do(req *http.Request, tok, operation string) (*B2BOrg, error) {
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -216,19 +281,29 @@ func (c *Client) do(req *http.Request, tok, operation string) (*B2BOrg, error) {
 			return nil, fmt.Errorf("member-service: b2b org response has no uid")
 		}
 		return &org, nil
-	case resp.StatusCode == http.StatusNotFound:
-		return nil, ErrOrgNotFound
-	case resp.StatusCode == http.StatusBadRequest:
-		return nil, fmt.Errorf("%w: %s", ErrInvalidSFID, responseMessage(body, resp.Status))
-	case resp.StatusCode == http.StatusUnprocessableEntity:
-		return nil, fmt.Errorf("%w: %s", ErrNotEligible, responseMessage(body, resp.Status))
-	case resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden:
-		if resp.StatusCode == http.StatusUnauthorized {
+	default:
+		return nil, c.statusError(resp.StatusCode, resp.Status, body, tok, operation)
+	}
+}
+
+// statusError maps a non-2xx member-service response to the package sentinels.
+func (c *Client) statusError(status int, statusText string, body []byte, tok, operation string) error {
+	switch status {
+	case http.StatusNotFound:
+		return ErrOrgNotFound
+	case http.StatusBadRequest:
+		return fmt.Errorf("%w: %s", ErrInvalidSFID, responseMessage(body, statusText))
+	case http.StatusConflict:
+		return fmt.Errorf("%w: %s", ErrConflict, responseMessage(body, statusText))
+	case http.StatusUnprocessableEntity:
+		return fmt.Errorf("%w: %s", ErrNotEligible, responseMessage(body, statusText))
+	case http.StatusUnauthorized, http.StatusForbidden:
+		if status == http.StatusUnauthorized {
 			c.forgetToken(tok)
 		}
-		return nil, &AuthError{Status: resp.StatusCode, Message: responseMessage(body, resp.Status)}
+		return &AuthError{Status: status, Message: responseMessage(body, statusText)}
 	default:
-		return nil, fmt.Errorf("member-service: %s returned %d: %s", operation, resp.StatusCode, responseMessage(body, resp.Status))
+		return fmt.Errorf("member-service: %s returned %d: %s", operation, status, responseMessage(body, statusText))
 	}
 }
 

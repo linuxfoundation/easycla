@@ -10,6 +10,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -40,11 +41,21 @@ type resolveHTTP struct {
 	t          *testing.T
 	orgs       map[string]string
 	searchBody string
+	mu         sync.Mutex
 	calls      []string
 }
 
+// snapshot of the recorded calls, taken under the lock RoundTrip appends with
+func (h *resolveHTTP) recorded() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]string(nil), h.calls...)
+}
+
 func (h *resolveHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
+	h.mu.Lock()
 	h.calls = append(h.calls, r.Method+" "+r.URL.Path)
+	h.mu.Unlock()
 	response := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Request: r}
 	switch {
 	case r.URL.Host == resolveAuthHost && r.URL.Path == "/oauth/token":
@@ -99,7 +110,7 @@ func TestResolveCompanyOrder(t *testing.T) {
 	}, "")
 	orgCalls := func() int {
 		n := 0
-		for _, c := range transport.calls {
+		for _, c := range transport.recorded() {
 			if strings.Contains(c, "/organization-service/v1/orgs/") {
 				n++
 			}
@@ -328,7 +339,7 @@ func TestSearchOrganizationByNameDoesNotCreate(t *testing.T) {
 		assert.True(t, *result.List[0].CclaEnabled)
 		assert.False(t, *result.List[1].CclaEnabled)
 	})
-	for _, call := range transport.calls {
+	for _, call := range transport.recorded() {
 		if strings.Contains(call, "/organization-service/") {
 			assert.True(t, strings.HasPrefix(call, "GET "), "the search must only read from the organization service: %s", call)
 		}

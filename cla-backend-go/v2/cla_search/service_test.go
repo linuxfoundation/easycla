@@ -666,3 +666,55 @@ func TestSearchPastedURLOnAnUnknownHostFallsBackToTheOrganizationOfThatHost(t *t
 	require.Equal(t, []string{"cg-gerrit"}, ids(list))
 	assert.Equal(t, []string{matchOrganization}, list.Results[0].MatchTypes)
 }
+
+func TestGetAgreesWithSearchOnTheSignableProject(t *testing.T) {
+	svc := NewService(sampleRepo())
+	list, err := svc.Search(context.Background(), "kubernetes", 0)
+	require.NoError(t, err)
+	var searched *models.ClaSearchResult
+	for i := range list.Results {
+		if list.Results[i].ClaGroupID == "cg-kube" {
+			searched = &list.Results[i]
+		}
+	}
+	require.NotNil(t, searched)
+
+	got, err := svc.Get(context.Background(), "cg-kube")
+	require.NoError(t, err)
+	assert.Equal(t, searched.ProjectSFID, got.ProjectSFID)
+	assert.Equal(t, searched.ProjectName, got.ProjectName)
+	assert.Equal(t, searched.ClaGroupName, got.ClaGroupName)
+	assert.Equal(t, searched.CclaEnabled, got.CclaEnabled)
+	assert.Equal(t, "sfid-kube", got.ProjectSFID)
+	assert.True(t, got.CclaEnabled)
+}
+
+func TestGetResolvesAFoundationLevelGroupToItsFoundation(t *testing.T) {
+	got, err := NewService(sampleRepo()).Get(context.Background(), "cg-onap")
+	require.NoError(t, err)
+	assert.Equal(t, "sfid-onap-f", got.ProjectSFID)
+	assert.Equal(t, "ONAP", got.ProjectName)
+	assert.False(t, got.CclaEnabled)
+}
+
+func TestGetLeavesAMultiProjectGroupUnresolved(t *testing.T) {
+	got, err := NewService(sampleRepo()).Get(context.Background(), "cg-multi")
+	require.NoError(t, err)
+	assert.Equal(t, "Shared CLA", got.ClaGroupName)
+	assert.Empty(t, got.ProjectSFID)
+	assert.Empty(t, got.ProjectName)
+}
+
+func TestGetReturnsAGroupWithNoProjectMapping(t *testing.T) {
+	got, err := NewService(sampleRepo()).Get(context.Background(), "cg-orphan")
+	require.NoError(t, err)
+	assert.Equal(t, "Kubernetes Edge CLA", got.ClaGroupName)
+	assert.Empty(t, got.ProjectSFID)
+}
+
+func TestGetUnknownIDIsNotFound(t *testing.T) {
+	_, err := NewService(sampleRepo()).Get(context.Background(), "cg-missing")
+	require.ErrorIs(t, err, ErrNotFound)
+	_, err = NewService(sampleRepo()).Get(context.Background(), "  ")
+	require.ErrorIs(t, err, ErrNotFound)
+}

@@ -67,8 +67,8 @@ const (
 // SignatureRepository interface defines the functions for the the signature repository
 type SignatureRepository interface {
 	GetGithubOrganizationsFromApprovalList(ctx context.Context, signatureID string) ([]models.GithubOrg, error)
-	AddGithubOrganizationToApprovalList(ctx context.Context, signatureID, githubOrganizationID string) ([]models.GithubOrg, error)
-	DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID, githubOrganizationID string) ([]models.GithubOrg, error)
+	AddGithubOrganizationToApprovalList(ctx context.Context, signatureID, githubOrganizationID, lfUsername string) ([]models.GithubOrg, error)
+	DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID, githubOrganizationID, lfUsername string) ([]models.GithubOrg, error)
 	ValidateProjectRecord(ctx context.Context, signatureID, note string) error
 	ValidateProjectRecordUnlessInvalidated(ctx context.Context, signatureID, note string) error
 	InvalidateProjectRecord(ctx context.Context, signatureID, note string) error
@@ -492,7 +492,7 @@ func (repo repository) GetGithubOrganizationsFromApprovalList(ctx context.Contex
 }
 
 // AddGithubOrganizationToApprovalList adds the specified GH organization to the approval list
-func (repo repository) AddGithubOrganizationToApprovalList(ctx context.Context, signatureID, GitHubOrganizationID string) ([]models.GithubOrg, error) {
+func (repo repository) AddGithubOrganizationToApprovalList(ctx context.Context, signatureID, GitHubOrganizationID, lfUsername string) ([]models.GithubOrg, error) {
 	f := logrus.Fields{
 		"functionName":         "v1.signatures.repository.AddGithubOrganizationToApprovalList",
 		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
@@ -503,7 +503,8 @@ func (repo repository) AddGithubOrganizationToApprovalList(ctx context.Context, 
 	log.WithFields(f).Debugf("querying database for GitHub organization approval list using signatureID: %s", signatureID)
 
 	result, err := repo.dynamoDBClient.GetItem(&dynamodb.GetItemInput{
-		TableName: aws.String(repo.signatureTableName),
+		TableName:      aws.String(repo.signatureTableName),
+		ConsistentRead: aws.Bool(true),
 		Key: map[string]*dynamodb.AttributeValue{
 			"signature_id": {
 				S: aws.String(signatureID),
@@ -515,6 +516,14 @@ func (repo repository) AddGithubOrganizationToApprovalList(ctx context.Context, 
 		log.WithFields(f).Warnf("Error retrieving GitHub organization approval list for signatureID: %s and GH Org: %s, error: %v",
 			signatureID, GitHubOrganizationID, err)
 		return nil, err
+	}
+	actor, actorErr := repo.actorACLEntry(result.Item["signature_acl"], lfUsername)
+	if actorErr != nil {
+		log.WithFields(f).WithError(actorErr).Warn("unable to resolve the acting CLA manager - not updated")
+		return nil, actorErr
+	}
+	if actor == "" {
+		return nil, notSignatureManager(f, lfUsername, signatureID)
 	}
 
 	itemFromMap, ok := result.Item["github_org_whitelist"]
@@ -565,9 +574,13 @@ func (repo repository) AddGithubOrganizationToApprovalList(ctx context.Context, 
 		ReturnValues:     &addReturnValues,
 	}
 
+	managerCondition(input, actor)
 	log.WithFields(f).Warnf("updating database record using signatureID: %s with values: %v", signatureID, newList)
 	updatedValues, err := repo.dynamoDBClient.UpdateItem(input)
 	if err != nil {
+		if isConditionalCheckFailed(err) {
+			return nil, notSignatureManager(f, lfUsername, signatureID)
+		}
 		log.WithFields(f).Warnf("Error updating white list, error: %v", err)
 		return nil, err
 	}
@@ -585,7 +598,7 @@ func (repo repository) AddGithubOrganizationToApprovalList(ctx context.Context, 
 }
 
 // DeleteGithubOrganizationFromApprovalList removes the specified GH organization from the approval list
-func (repo repository) DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID, GitHubOrganizationID string) ([]models.GithubOrg, error) {
+func (repo repository) DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID, GitHubOrganizationID, lfUsername string) ([]models.GithubOrg, error) {
 	f := logrus.Fields{
 		"functionName":         "v1.signatures.repository.DeleteGithubOrganizationFromApprovalList",
 		utils.XREQUESTID:       ctx.Value(utils.XREQUESTID),
@@ -594,7 +607,8 @@ func (repo repository) DeleteGithubOrganizationFromApprovalList(ctx context.Cont
 	}
 	// get item from dynamoDB table
 	result, err := repo.dynamoDBClient.GetItem(&dynamodb.GetItemInput{
-		TableName: aws.String(repo.signatureTableName),
+		TableName:      aws.String(repo.signatureTableName),
+		ConsistentRead: aws.Bool(true),
 		Key: map[string]*dynamodb.AttributeValue{
 			"signature_id": {
 				S: aws.String(signatureID),
@@ -606,6 +620,14 @@ func (repo repository) DeleteGithubOrganizationFromApprovalList(ctx context.Cont
 		log.WithFields(f).Warnf("error retrieving GH organization approval list for signatureID: %s and GH Org: %s, error: %v",
 			signatureID, GitHubOrganizationID, err)
 		return nil, err
+	}
+	actor, actorErr := repo.actorACLEntry(result.Item["signature_acl"], lfUsername)
+	if actorErr != nil {
+		log.WithFields(f).WithError(actorErr).Warn("unable to resolve the acting CLA manager - not updated")
+		return nil, actorErr
+	}
+	if actor == "" {
+		return nil, notSignatureManager(f, lfUsername, signatureID)
 	}
 
 	itemFromMap, ok := result.Item["github_org_whitelist"]
@@ -653,8 +675,12 @@ func (repo repository) DeleteGithubOrganizationFromApprovalList(ctx context.Cont
 			UpdateExpression: aws.String("SET #L = :l"),
 		}
 
+		managerCondition(input, actor)
 		_, err = repo.dynamoDBClient.UpdateItem(input)
 		if err != nil {
+			if isConditionalCheckFailed(err) {
+				return nil, notSignatureManager(f, lfUsername, signatureID)
+			}
 			log.WithFields(f).Warnf("error updating github org approva list to NULL value, error: %v", err)
 			return nil, err
 		}
@@ -686,8 +712,12 @@ func (repo repository) DeleteGithubOrganizationFromApprovalList(ctx context.Cont
 		ReturnValues:     &updatedReturnValues,
 	}
 
+	managerCondition(input, actor)
 	updatedValues, err := repo.dynamoDBClient.UpdateItem(input)
 	if err != nil {
+		if isConditionalCheckFailed(err) {
+			return nil, notSignatureManager(f, lfUsername, signatureID)
+		}
 		log.WithFields(f).Warnf("Error updating github org approva list, error: %v", err)
 		return nil, err
 	}
@@ -3814,6 +3844,17 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		CompanyID:               companyID,
 	}
 
+	// GitLab group removal targets are resolved before any branch writes, so a lookup failure changes nothing
+	var removedGroupMembers []string
+	var removedGroupECLAs []*models.Signature
+	if len(params.RemoveGitlabOrgApprovalList) > 0 {
+		var targetsErr error
+		removedGroupMembers, removedGroupECLAs, targetsErr = repo.gitLabOrgRemovalTargets(ctx, projectID, companyID, params.RemoveGitlabOrgApprovalList, approvalList.GitlabOrgApprovals)
+		if targetsErr != nil {
+			return nil, targetsErr
+		}
+	}
+
 	expressionAttributeNames := map[string]*string{}
 	expressionAttributeValues := map[string]*dynamodb.AttributeValue{}
 	haveAdditions := false
@@ -3989,7 +4030,10 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 					}
 
 					// Invalidate signatures
-					invalidatedICLAs, invalidatedECLAs := repo.invalidateSignatures(ctx, &entryApprovalList, claManager, eventArgs)
+					invalidatedICLAs, invalidatedECLAs, recheckErr := repo.invalidateSignatures(ctx, &entryApprovalList, claManager, eventArgs)
+					if recheckErr != nil {
+						log.WithFields(f).WithError(recheckErr).Warn("some acknowledgment re-checks of this entry removal failed - the removal continues")
+					}
 
 					// Send email
 					if len(invalidatedICLAs) > 0 || len(invalidatedECLAs) > 0 {
@@ -4063,7 +4107,9 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 				approvalList.ECLAs = eclas.Signatures
 			}
 
-			repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs)
+			if _, _, recheckErr := repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs); recheckErr != nil {
+				log.WithFields(f).WithError(recheckErr).Warn("some acknowledgment re-checks of the domain removal failed - the removal continues")
+			}
 			repo.updateApprovalTable(ctx, params.RemoveDomainApprovalList, utils.DomainApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, false)
 		}
 	}
@@ -4156,7 +4202,10 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 							}
 						}
 
-						invalidatedICLAs, invalidatedECLAs := repo.invalidateSignatures(ctx, &entryApprovalList, claManager, eventArgs)
+						invalidatedICLAs, invalidatedECLAs, recheckErr := repo.invalidateSignatures(ctx, &entryApprovalList, claManager, eventArgs)
+						if recheckErr != nil {
+							log.WithFields(f).WithError(recheckErr).Warn("some acknowledgment re-checks of this entry removal failed - the removal continues")
+						}
 
 						// Send Email
 						if len(invalidatedICLAs) > 0 || len(invalidatedECLAs) > 0 {
@@ -4191,6 +4240,24 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			}
 		}
 
+		// the removed organizations' members are re-checked before the criterion changes, so a failed
+		// re-check leaves the organization listed
+		if len(params.RemoveGithubOrgApprovalList) > 0 {
+			approvalList.Criteria = utils.GitHubOrgCriteria
+			approvalList.ApprovalList = params.RemoveGithubOrgApprovalList
+			approvalList.Action = utils.RemoveApprovals
+			approvalList.Version = claGroupModel.Version
+			approvalList.GitHubUsernames = removedOrgMembers
+			// ICLAs carry no company link, so an organization removal never considers them
+			approvalList.ICLAs = nil
+			approvalList.ECLAs = removedOrgECLAs
+
+			if _, _, recheckErr := repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs); recheckErr != nil {
+				log.WithFields(f).WithError(recheckErr).Warnf("GitHub organization removal not committed for company ID: %s project ID: %s", companyID, projectID)
+				return nil, fmt.Errorf("GitHub organization removal not committed for company ID: %s project ID: %s - %w", companyID, projectID, recheckErr)
+			}
+		}
+
 		attrList := buildApprovalAttributeList(ctx, cclaSignature.GithubOrgApprovalList, params.AddGithubOrgApprovalList, params.RemoveGithubOrgApprovalList)
 		// If no entries after consolidating all the updates, we need to remove the column
 		if attrList == nil || attrList.L == nil {
@@ -4214,16 +4281,6 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 		}
 
 		if len(params.RemoveGithubOrgApprovalList) > 0 {
-			approvalList.Criteria = utils.GitHubOrgCriteria
-			approvalList.ApprovalList = params.RemoveGithubOrgApprovalList
-			approvalList.Action = utils.RemoveApprovals
-			approvalList.Version = claGroupModel.Version
-			approvalList.GitHubUsernames = removedOrgMembers
-			// ICLAs carry no company link, so an organization removal never considers them
-			approvalList.ICLAs = nil
-			approvalList.ECLAs = removedOrgECLAs
-
-			repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs)
 			repo.updateApprovalTable(ctx, params.RemoveGithubOrgApprovalList, utils.GithubOrgApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, false)
 		}
 	}
@@ -4316,7 +4373,10 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 							}
 						}
 
-						invalidatedICLAs, invalidatedECLAs := repo.invalidateSignatures(ctx, &entryApprovalList, claManager, eventArgs)
+						invalidatedICLAs, invalidatedECLAs, recheckErr := repo.invalidateSignatures(ctx, &entryApprovalList, claManager, eventArgs)
+						if recheckErr != nil {
+							log.WithFields(f).WithError(recheckErr).Warn("some acknowledgment re-checks of this entry removal failed - the removal continues")
+						}
 
 						// Send Email
 						if len(invalidatedICLAs) > 0 || len(invalidatedECLAs) > 0 {
@@ -4336,6 +4396,24 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 
 	if len(params.AddGitlabOrgApprovalList) > 0 || len(params.RemoveGitlabOrgApprovalList) > 0 {
 		columnName := SignatureGitlabOrgApprovalListColumn
+
+		// the removed groups' members are re-checked before the criterion changes (see the GitHub branch)
+		if len(params.RemoveGitlabOrgApprovalList) > 0 {
+			approvalList.Criteria = utils.GitlabOrgCriteria
+			approvalList.ApprovalList = params.RemoveGitlabOrgApprovalList
+			approvalList.Action = utils.RemoveApprovals
+			approvalList.Version = claGroupModel.Version
+			approvalList.GitlabUsernames = removedGroupMembers
+			// ICLAs carry no company link, so a group removal never considers them
+			approvalList.ICLAs = nil
+			approvalList.ECLAs = removedGroupECLAs
+
+			if _, _, recheckErr := repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs); recheckErr != nil {
+				log.WithFields(f).WithError(recheckErr).Warnf("GitLab group removal not committed for company ID: %s project ID: %s", companyID, projectID)
+				return nil, fmt.Errorf("GitLab group removal not committed for company ID: %s project ID: %s - %w", companyID, projectID, recheckErr)
+			}
+		}
+
 		attrList := buildApprovalAttributeList(ctx, cclaSignature.GitlabOrgApprovalList, params.AddGitlabOrgApprovalList, params.RemoveGitlabOrgApprovalList)
 		// If no entries after consolidating all the updates, we need to remove the column
 		if attrList == nil || attrList.L == nil {
@@ -4358,54 +4436,8 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			repo.updateApprovalTable(ctx, params.AddGitlabOrgApprovalList, utils.GitlabOrgApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, true)
 		}
 
-		if params.RemoveGitlabOrgApprovalList != nil {
+		if len(params.RemoveGitlabOrgApprovalList) > 0 {
 			repo.updateApprovalTable(ctx, params.RemoveGitlabOrgApprovalList, utils.GitlabOrgApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, false)
-			approvalList.Criteria = utils.GitlabOrgCriteria
-			approvalList.ApprovalList = params.RemoveGitlabOrgApprovalList
-			approvalList.Action = utils.RemoveApprovals
-			approvalList.Version = claGroupModel.Version
-			// Get repositories by CLAGroup
-			repositories, getRepoByCLAGroupErr := repo.repositoriesRepo.GitHubGetRepositoriesByCLAGroup(ctx, projectID, true)
-			var noRepositories *utils.GitHubRepositoryNotFound
-			if errors.As(getRepoByCLAGroupErr, &noRepositories) {
-				repositories = nil
-			} else if getRepoByCLAGroupErr != nil {
-				msg := fmt.Sprintf("unable to fetch repositories for cla group ID: %s ", projectID)
-				log.WithFields(f).WithError(getRepoByCLAGroupErr).Warn(msg)
-				return nil, errors.New(msg)
-			}
-			var gitLabOrgRepositories []*models.GithubRepository
-			var gitLabOrgs []*models.GithubOrganization
-			for _, repository := range repositories {
-				// Check for matching organization name in repositories table against approvalList removal gitlab organizations/groups
-				if utils.StringInSlice(repository.RepositoryOrganizationName, approvalList.ApprovalList) {
-					gitLabOrgRepositories = append(gitLabOrgRepositories, repository)
-				}
-			}
-
-			for _, gitLabOrgRepo := range gitLabOrgRepositories {
-				gitLabOrg, getGitlabOrgErr := repo.ghOrgRepo.GetGitHubOrganization(ctx, gitLabOrgRepo.RepositoryOrganizationName)
-				if getGitlabOrgErr != nil {
-					msg := fmt.Sprintf("unable to get gitlab organization by name: %s ", gitLabOrgRepo.RepositoryOrganizationName)
-					log.WithFields(f).WithError(getGitlabOrgErr).Warn(msg)
-					return nil, errors.New(msg)
-				}
-				gitLabOrgs = append(gitLabOrgs, gitLabOrg)
-			}
-
-			var gitLabUsernames []string
-			for _, gitLabOrg := range gitLabOrgs {
-				gitLabOrgUsers, getOrgMembersErr := github.GetOrganizationMembers(ctx, gitLabOrg.OrganizationName, gitLabOrg.OrganizationInstallationID)
-				if getOrgMembersErr != nil {
-					msg := fmt.Sprintf("unable to fetch gitLabOrgUsers for org: %s ", gitLabOrg.OrganizationName)
-					log.WithFields(f).WithError(getOrgMembersErr).Warnf("%s", msg)
-					return nil, errors.New(msg)
-				}
-				gitLabUsernames = append(gitLabUsernames, gitLabOrgUsers...)
-			}
-			approvalList.GitlabUsernames = utils.RemoveDuplicates(gitLabUsernames)
-
-			repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs)
 		}
 	}
 	// Ensure at least one value is set for us to update
@@ -4716,7 +4748,7 @@ func (repo repository) getEmployeeSignatureByUserID(ctx context.Context, project
 
 // invalidateSignatures is a helper function that invalidates signature records based on approval list.
 // It returns the signatures that were actually invalidated.
-func (repo repository) invalidateSignatures(ctx context.Context, approvalList *ApprovalList, claManager *models.User, eventArgs *events.LogEventArgs) ([]*models.IclaSignature, []*models.Signature) {
+func (repo repository) invalidateSignatures(ctx context.Context, approvalList *ApprovalList, claManager *models.User, eventArgs *events.LogEventArgs) ([]*models.IclaSignature, []*models.Signature, error) {
 	f := logrus.Fields{
 		"functionName":   "v1.signatures.repository.invalidateSignatures",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -4726,6 +4758,17 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 	var invalidatedMutex sync.Mutex
 	var invalidatedICLAs []*models.IclaSignature
 	var invalidatedECLAs []*models.Signature
+	// the first re-check failure and how many there were, so the caller can refuse to commit a removal
+	var firstFailure error
+	failures := 0
+	recheckFailed := func(signatureID string, cause error) {
+		invalidatedMutex.Lock()
+		defer invalidatedMutex.Unlock()
+		failures++
+		if firstFailure == nil {
+			firstFailure = fmt.Errorf("signature %s: %w", signatureID, cause)
+		}
+	}
 
 	if len(approvalList.ICLAs) > 0 && !invalidateICLAsOnApprovalListRemoval {
 		log.WithFields(f).Debugf("skipping invalidation of %d icla record(s) - ICLAs are not tied to the company approved list", len(approvalList.ICLAs))
@@ -4747,6 +4790,7 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 						if icla != nil {
 							sigID = icla.SignatureID
 						}
+						recheckFailed(sigID, fmt.Errorf("panic: %v", r))
 						log.WithFields(f).Errorf("recovered from panic while invalidating signature: %s - skipping record: %v", sigID, r)
 					}
 				}()
@@ -4756,6 +4800,7 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 				}
 				signature, sigErr := repo.GetSignature(ctx, icla.SignatureID)
 				if sigErr != nil {
+					recheckFailed(icla.SignatureID, sigErr)
 					log.WithFields(f).Warnf("unable to fetch signature for ID: %s ", icla.SignatureID)
 					return
 				}
@@ -4767,6 +4812,7 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 
 				user, invalidated, verifyErr := repo.verifyUserApprovals(ctx, signature.SignatureReferenceID, signature.SignatureID, claManager, approvalList)
 				if verifyErr != nil {
+					recheckFailed(signature.SignatureID, verifyErr)
 					log.WithFields(f).Warnf("unable to verify user: %s ", signature.SignatureReferenceID)
 					return
 				}
@@ -4809,6 +4855,7 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 						if ecla != nil {
 							sigID = ecla.SignatureID
 						}
+						recheckFailed(sigID, fmt.Errorf("panic: %v", r))
 						log.WithFields(f).Errorf("recovered from panic while invalidating signature: %s - skipping record: %v", sigID, r)
 					}
 				}()
@@ -4823,6 +4870,7 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 				}
 				user, invalidated, verifyErr := repo.verifyUserApprovals(ctx, ecla.SignatureReferenceID, ecla.SignatureID, claManager, approvalList)
 				if verifyErr != nil {
+					recheckFailed(ecla.SignatureID, verifyErr)
 					log.WithFields(f).Warnf("unable to verify user: %s ", ecla.SignatureReferenceID)
 					return
 				}
@@ -4848,7 +4896,10 @@ func (repo repository) invalidateSignatures(ctx context.Context, approvalList *A
 		eclaWg.Wait()
 	}
 
-	return invalidatedICLAs, invalidatedECLAs
+	if failures > 0 {
+		return invalidatedICLAs, invalidatedECLAs, fmt.Errorf("%d acknowledgment re-check(s) failed - first: %w", failures, firstFailure)
+	}
+	return invalidatedICLAs, invalidatedECLAs, nil
 }
 
 // verify UserApprovals checks user
@@ -4931,6 +4982,18 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 				//Invalidate record
 
 				note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), utils.GitHubOrgCriteria)
+				invalidated, err = repo.invalidateApprovedProjectRecord(ctx, signatureID, note, invalidationMetadata)
+				if err != nil {
+					log.WithFields(f).Warnf("unable to invalidate record for signatureID: %s ", signatureID)
+					return user, false, err
+				}
+			}
+		}
+	} else if approvalList.Criteria == utils.GitlabOrgCriteria {
+		// Handle GitLab group approvals
+		if containsFold(approvalList.GitlabUsernames, user.GitlabUsername) {
+			if !stillCovered(ctx, f, user, approvalList, signatureID) {
+				note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), utils.GitlabOrgCriteria)
 				invalidated, err = repo.invalidateApprovedProjectRecord(ctx, signatureID, note, invalidationMetadata)
 				if err != nil {
 					log.WithFields(f).Warnf("unable to invalidate record for signatureID: %s ", signatureID)
@@ -5123,6 +5186,64 @@ func (repo repository) gitHubOrgRemovalTargets(ctx context.Context, projectID, c
 		return nil, nil, errors.New(msg)
 	}
 	return utils.RemoveDuplicates(ghUsernames), eclas, nil
+}
+
+// gitLabOrgRemovalTargets resolves whom a GitLab group removal re-checks: the removed groups'
+// members, through the resolver the API server installs, except the members of the groups that
+// stay on the list (the gate approves by membership), plus the company's approved
+// acknowledgments. Without a resolver nobody is re-checked, as before one existed.
+func (repo repository) gitLabOrgRemovalTargets(ctx context.Context, projectID, companyID string, removedGroups, remainingGroups []string) ([]string, []*models.Signature, error) {
+	f := logrus.Fields{
+		"functionName":    "v1.signatures.repository.gitLabOrgRemovalTargets",
+		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
+		"projectID":       projectID,
+		"companyID":       companyID,
+		"removedGroups":   removedGroups,
+		"remainingGroups": remainingGroups,
+	}
+	if gitLabGroupMembers == nil {
+		log.WithFields(f).Warn("GitLab group membership resolver not configured - members of the removed groups are not re-checked")
+		return nil, nil, nil
+	}
+	var removedMembers []string
+	for _, group := range removedGroups {
+		members, err := gitLabGroupMembers(ctx, group)
+		if err != nil {
+			msg := fmt.Sprintf("unable to fetch GitLab group members for group: %s ", group)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return nil, nil, errors.New(msg)
+		}
+		removedMembers = append(removedMembers, members...)
+	}
+	if len(removedMembers) == 0 {
+		return nil, nil, nil
+	}
+	var coveredMembers []string
+	for _, group := range remainingGroups {
+		members, err := gitLabGroupMembers(ctx, group)
+		if err != nil {
+			msg := fmt.Sprintf("unable to fetch GitLab group members for group: %s ", group)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return nil, nil, errors.New(msg)
+		}
+		coveredMembers = append(coveredMembers, members...)
+	}
+	var usernames []string
+	for _, member := range removedMembers {
+		if !containsFold(coveredMembers, member) {
+			usernames = append(usernames, member)
+		}
+	}
+	if len(usernames) == 0 {
+		return nil, nil, nil
+	}
+	eclas, eclaErr := repo.approvedEmployeeSignatures(ctx, projectID, companyID)
+	if eclaErr != nil {
+		msg := fmt.Sprintf("unable to load the employee acknowledgments for company ID: %s project ID: %s", companyID, projectID)
+		log.WithFields(f).WithError(eclaErr).Warn(msg)
+		return nil, nil, errors.New(msg)
+	}
+	return utils.RemoveDuplicates(usernames), eclas, nil
 }
 
 // approvedEmployeeSignatures returns the company's employee acknowledgments for the CLA group
@@ -6207,4 +6328,72 @@ func decodeNextKey(str string) (map[string]*dynamodb.AttributeValue, error) {
 	}
 
 	return m, nil
+}
+
+// aclEntries lists the stored signature_acl entries (a string set or a list)
+func aclEntries(acl *dynamodb.AttributeValue) []string {
+	if acl == nil {
+		return nil
+	}
+	var entries []string
+	for _, s := range acl.SS {
+		if s != nil {
+			entries = append(entries, *s)
+		}
+	}
+	for _, e := range acl.L {
+		if e != nil && e.S != nil {
+			entries = append(entries, *e.S)
+		}
+	}
+	return entries
+}
+
+// actorACLEntry is the raw signature_acl entry naming the acting manager: the LF username itself, or a legacy
+// github:<id> entry whose user record carries that LF username (the rule the signature converter applies)
+func (repo repository) actorACLEntry(acl *dynamodb.AttributeValue, lfUsername string) (string, error) {
+	if lfUsername == "" {
+		return "", nil
+	}
+	entries := aclEntries(acl)
+	for _, e := range entries {
+		if e == lfUsername {
+			return e, nil
+		}
+	}
+	if repo.usersRepo == nil {
+		return "", nil
+	}
+	for _, e := range entries {
+		if !strings.HasPrefix(e, "github:") {
+			continue
+		}
+		user, err := repo.usersRepo.GetUserByUserName(e, true)
+		if err != nil {
+			return "", fmt.Errorf("resolving the signature ACL entry %s: %w", e, err)
+		}
+		if user != nil && user.LfUsername == lfUsername {
+			return e, nil
+		}
+	}
+	return "", nil
+}
+
+// managerCondition makes the write succeed only while signature_acl still names the acting CLA manager
+func managerCondition(input *dynamodb.UpdateItemInput, lfUsername string) {
+	input.ExpressionAttributeNames["#ACL"] = aws.String("signature_acl")
+	input.ExpressionAttributeValues[":actor"] = &dynamodb.AttributeValue{S: aws.String(lfUsername)}
+	input.ConditionExpression = aws.String("contains(#ACL, :actor)")
+}
+
+// notSignatureManager is the typed refusal of a GitHub-organization approval-list write (handlers answer 403)
+func notSignatureManager(f logrus.Fields, lfUsername, signatureID string) error {
+	msg := fmt.Sprintf("user %s is not a CLA manager of signature %s - approval list unchanged", lfUsername, signatureID)
+	log.WithFields(f).Warn(msg)
+	return NewForbiddenError(msg)
+}
+
+func isConditionalCheckFailed(err error) bool {
+	aerr, ok := err.(awserr.Error)
+	return ok && aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException
 }

@@ -116,6 +116,11 @@ type Config struct {
 type MemberService struct {
 	BaseURL  string `json:"base_url"`
 	Audience string `json:"audience"`
+	// CLAAdminsEnabled (cla-member-service-cla-admins-enabled-{stage} = true) switches on the CLA-manager
+	// publisher of the signatures stream and the org_import cla-admins --apply (lfx-self-serve#4435)
+	CLAAdminsEnabled bool `json:"cla_admins_enabled"`
+	// CLAAdminsFlagError is why that flag could not be read or parsed (runtime only); only the publisher paths act on it
+	CLAAdminsFlagError string `json:"-"`
 }
 
 // SelfServe holds the LFX Self Serve trusted-caller configuration: the Auth0 azp (client ID)

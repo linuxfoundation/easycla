@@ -75,6 +75,11 @@ type service struct {
 	claManagerRequestsRepo   cla_manager.IRepository
 	approvalListRequestsRepo approval_list.IRepository
 	gitLabApp                *gitlab_api.App
+	signaturesTable          string
+	claAdmins                claAdminsPublisher
+	claAdminsAlerts          claAdminsAlerts
+	claAdminsRecipients      []string
+	claAdminsUnavailable     error
 }
 
 // Service implements DynamoDB stream event handler service
@@ -99,7 +104,8 @@ func NewService(stage string,
 	claManagerRequestsRepo cla_manager.IRepository,
 	approvalListRequestsRepo approval_list.IRepository,
 	gitLabApp *gitlab_api.App,
-	gitlabOrgService gitlab_organizations.ServiceInterface) Service {
+	gitlabOrgService gitlab_organizations.ServiceInterface,
+	opts ...Option) Service {
 
 	signaturesTable := fmt.Sprintf("cla-%s-signatures", stage)
 	eventsTable := fmt.Sprintf("cla-%s-events", stage)
@@ -129,6 +135,7 @@ func NewService(stage string,
 		approvalListRequestsRepo: approvalListRequestsRepo,
 		gitLabApp:                gitLabApp,
 		gitLabOrgService:         gitlabOrgService,
+		signaturesTable:          signaturesTable,
 	}
 
 	s.registerCallback(signaturesTable, Modify, s.SignatureSignedEvent)
@@ -176,6 +183,9 @@ func NewService(stage string,
 
 	s.registerCallback(claGroupsTable, Modify, s.ProcessCLAGroupUpdateEvents)
 
+	for _, opt := range opts {
+		opt(s)
+	}
 	return s
 }
 
@@ -199,6 +209,9 @@ func (s *service) ProcessEvents(dynamoDBEvents events.DynamoDBEvent) {
 			// "event":      event,
 		}
 
+		if s.claAdminsUnavailable != nil && tableName == s.signaturesTable {
+			log.WithFields(fields).Panicf("CLA-manager publisher enabled but unavailable - not consuming signature events without it: %v", s.claAdminsUnavailable)
+		}
 		log.WithFields(fields).Debug("processing event record")
 		key := fmt.Sprintf("%s:%s", tableName, event.EventName)
 

@@ -210,6 +210,57 @@ func ListGroupMembers(ctx context.Context, client *goGitLab.Client, groupID int)
 	return members, err
 }
 
+// ListAllDirectGroupMembers lists every direct member of the group - the same /groups/:id/members listing as
+// ListGroupMembers, all pages; a failure on any page returns no members at all.
+func ListAllDirectGroupMembers(ctx context.Context, client *goGitLab.Client, groupID int) ([]*goGitLab.GroupMember, error) {
+	f := logrus.Fields{
+		"functionName":   "gitlab_api.client_groups.ListAllDirectGroupMembers",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"groupID":        groupID,
+	}
+	opts := &goGitLab.ListGroupMembersOptions{ListOptions: goGitLab.ListOptions{Page: 1, PerPage: 100}}
+	var all []*goGitLab.GroupMember
+	for {
+		members, resp, err := client.Groups.ListGroupMembers(groupID, opts, goGitLab.WithContext(ctx))
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to fetch members page %d for gitlab GroupID: %d", opts.Page, groupID)
+			return nil, err
+		}
+		all = append(all, members...)
+		if resp == nil || resp.NextPage == 0 {
+			return all, nil
+		}
+		opts.Page = resp.NextPage
+	}
+}
+
+// IsDirectGroupMember reports whether username is a direct member of the group, reading member pages only until
+// the first match; a page that fails before a match is an error, never a verdict
+func IsDirectGroupMember(ctx context.Context, client *goGitLab.Client, groupID int, username string) (bool, error) {
+	f := logrus.Fields{
+		"functionName":   "gitlab_api.client_groups.IsDirectGroupMember",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"groupID":        groupID,
+	}
+	opts := &goGitLab.ListGroupMembersOptions{ListOptions: goGitLab.ListOptions{Page: 1, PerPage: 100}}
+	for {
+		members, resp, err := client.Groups.ListGroupMembers(groupID, opts, goGitLab.WithContext(ctx))
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to fetch members page %d for gitlab GroupID: %d", opts.Page, groupID)
+			return false, err
+		}
+		for _, m := range members {
+			if m != nil && m.Username == username {
+				return true, nil
+			}
+		}
+		if resp == nil || resp.NextPage == 0 {
+			return false, nil
+		}
+		opts.Page = resp.NextPage
+	}
+}
+
 // ListUserProjectGroups fetches the unique groups of a gitlab users groups,
 // note: it doesn't list the projects/groups the user is member of ..., it's very limited
 func ListUserProjectGroups(ctx context.Context, client *goGitLab.Client, userID int) ([]*UserGroup, error) {

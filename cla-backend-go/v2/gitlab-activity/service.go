@@ -741,6 +741,9 @@ func getParams(regEx, url string) (paramsMap map[string]string) {
 	return paramsMap
 }
 
+// newGitLabClient builds the merge request gate's GitLab client; tests point it at a fake API
+var newGitLabClient = gitlab_api.NewGitlabOauthClient
+
 func (s *service) checkGitLabGroupApproval(ctx context.Context, userName, URL string) (bool, error) {
 	f := logrus.Fields{
 		"functionName": "checkGitLabGroupApproval",
@@ -765,21 +768,19 @@ func (s *service) checkGitLabGroupApproval(ctx context.Context, userName, URL st
 			return false, err
 		}
 
-		gitlabClient, clientErr := gitlab_api.NewGitlabOauthClient(*oauthResponse, s.gitLabApp)
+		gitlabClient, clientErr := newGitLabClient(*oauthResponse, s.gitLabApp)
 		if clientErr != nil {
 			log.WithFields(f).WithError(clientErr).Warnf("problem getting gitLabClient for org: %s ", gitlabOrg.OrganizationName)
 			return false, clientErr
 		}
-		members, err := gitlab_api.ListGroupMembers(ctx, gitlabClient, int(gitlabOrg.OrganizationExternalID))
+		isMember, err := gitlab_api.IsDirectGroupMember(ctx, gitlabClient, int(gitlabOrg.OrganizationExternalID), userName)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn("problem getting gitlab group members")
 			return false, err
 		}
-		for _, member := range members {
-			if userName == member.Username {
-				log.WithFields(f).Debugf("%s is a member of group: %s ", userName, URL)
-				return true, nil
-			}
+		if isMember {
+			log.WithFields(f).Debugf("%s is a member of group: %s ", userName, URL)
+			return true, nil
 		}
 	}
 

@@ -11,14 +11,17 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
@@ -40,6 +43,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/users"
 	acs_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/approvals"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/cla_admins"
 	member_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
 	organization_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
 )
@@ -49,6 +53,9 @@ const usageText = `usage:
   org_import ingest [--apply] [--yes] [--tranche N] [--ids id1,id2] [--mapping map.csv] [--decisions decisions.csv]
                     [--shared-domains domains.txt] [--state state.jsonl] [--routes register,rewrite] [--skip-wait]
                     [--use-apex] [--register-unregistered] [--out-dir ./org-import-out] [report flags]
+  org_import cla-admins [--apply] [--yes] [--ids sfid1,sfid2] [--out-dir ./org-import-out] [report flags]
+                    publishes the CLA-manager roster of every organization with a signed CCLA to member-service
+                    (lfx-self-serve#4435); --apply needs SSM cla-member-service-cla-admins-enabled-<stage>=true
   report flags:     [--email-to a@x,b@y] [--no-email] [--no-aws-log] [--aws-log-group /easycla/org-import/<stage>]
 
 Environment: STAGE=dev|prod (required), AWS credentials for that account (AWS_PROFILE/AWS_SDK_LOAD_CONFIG=1
@@ -66,9 +73,60 @@ type combinedRepo struct {
 }
 
 type env struct {
-	deps orgimport.Deps
-	cfg  config.Config
-	sess *session.Session
+	deps      orgimport.Deps
+	cfg       config.Config
+	sess      *session.Session
+	clock     *awsClock
+	companies company.IRepository
+	users     users.UserRepository
+	members   *member_service.Client
+}
+
+// awsClock keeps the first AWS response Date and the monotonic instant it arrived; cla-admins --apply stamps
+// rosters with that time, never with the operator's wall clock
+type awsClock struct {
+	mu         sync.Mutex
+	date       time.Time
+	receivedAt time.Time
+}
+
+func (c *awsClock) observe(r *request.Request) {
+	if r == nil || r.Error != nil || r.HTTPResponse == nil {
+		return
+	}
+	date, err := http.ParseTime(r.HTTPResponse.Header.Get("Date"))
+	if err != nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.receivedAt.IsZero() {
+		c.date, c.receivedAt = date, time.Now()
+	}
+}
+
+func (c *awsClock) now() (time.Time, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.receivedAt.IsZero() {
+		return time.Time{}, false
+	}
+	return c.date.Add(time.Since(c.receivedAt)), true
+}
+
+var errNoAWSTime = errors.New("no AWS time sample: no successful AWS response with a Date header yet")
+
+func applyClock(c *awsClock) (func() time.Time, error) {
+	if c == nil {
+		return nil, errNoAWSTime
+	}
+	if _, ok := c.now(); !ok {
+		return nil, errNoAWSTime
+	}
+	return func() time.Time {
+		t, _ := c.now()
+		return t
+	}, nil
 }
 
 type reportFlags struct {
@@ -79,10 +137,12 @@ type reportFlags struct {
 }
 
 const (
-	cmdAudit     = "audit"
-	cmdIngest    = "ingest"
-	trueString   = "true"
-	unknownValue = "unknown"
+	cmdAudit        = "audit"
+	cmdIngest       = "ingest"
+	cmdCLAAdmins    = "cla-admins"
+	abortedAtPrompt = "aborted at the confirmation prompt"
+	trueString      = "true"
+	unknownValue    = "unknown"
 )
 
 func main() {
@@ -122,7 +182,7 @@ func run(args []string, stdin io.Reader) int {
 	if err := fs.Parse(args[1:]); err != nil {
 		return 2
 	}
-	if cmd != cmdAudit && cmd != cmdIngest {
+	if cmd != cmdAudit && cmd != cmdIngest && cmd != cmdCLAAdmins {
 		fmt.Fprint(os.Stderr, usageText)
 		return 2
 	}
@@ -197,6 +257,9 @@ func run(args []string, stdin io.Reader) int {
 			return 2
 		}
 		e.deps.Out = out
+		if cmd == cmdCLAAdmins {
+			return runCLAAdmins(ctx, e, stage, *apply, *yes, opts.IDs, *outDir, &info, out, errOut, stdin)
+		}
 		if cmd == cmdAudit {
 			if audit, err = orgimport.Audit(ctx, e.deps, opts); err != nil {
 				fmt.Fprintf(errOut, "audit failed: %v\n", err)
@@ -215,7 +278,7 @@ func run(args []string, stdin io.Reader) int {
 		plan.Print(out)
 		if *apply && !*yes && !confirm(stage, out, stdin) {
 			fmt.Fprintf(out, "aborted: nothing was written\n")
-			info.Err = "aborted at the confirmation prompt"
+			info.Err = abortedAtPrompt
 			return 2
 		}
 		summary, err := orgimport.Execute(ctx, e.deps, opts, plan)
@@ -235,6 +298,70 @@ func run(args []string, stdin io.Reader) int {
 	report(ctx, e, info, plan, audit, rf, logPath, out, errOut)
 	_ = logFile.Close()
 	return code
+}
+
+// runCLAAdmins publishes (dry run by default) the CLA-manager rosters; a dry run only reads DynamoDB, while
+// --apply needs the member-service client and is refused until the stage's SSM switch is on, so nothing
+// reaches member-service before its endpoint exists.
+func runCLAAdmins(ctx context.Context, e env, stage string, apply, yes bool, ids []string, outDir string, info *orgimport.RunInfo, out, errOut io.Writer, stdin io.Reader) int {
+	if apply && e.members == nil {
+		fmt.Fprintf(errOut, "cla-admins failed: %v\n", orgimport.ErrNotConfigured)
+		info.Err = orgimport.ErrNotConfigured.Error()
+		return 2
+	}
+	if apply && e.cfg.MemberService.CLAAdminsFlagError != "" {
+		msg := fmt.Sprintf("cla-admins --apply refused: SSM cla-member-service-cla-admins-enabled-%s is unreadable or not true/false: %s", stage, e.cfg.MemberService.CLAAdminsFlagError)
+		fmt.Fprintf(errOut, "%s\n", msg)
+		info.Err = msg
+		return 2
+	}
+	if apply && !e.cfg.MemberService.CLAAdminsEnabled {
+		msg := fmt.Sprintf("cla-admins --apply refused: SSM cla-member-service-cla-admins-enabled-%s is not true", stage)
+		fmt.Fprintf(errOut, "%s\n", msg)
+		info.Err = msg
+		return 2
+	}
+	var awsNow func() time.Time
+	if apply {
+		var clockErr error
+		if awsNow, clockErr = applyClock(e.clock); clockErr != nil {
+			msg := fmt.Sprintf("cla-admins --apply refused: %v", clockErr)
+			fmt.Fprintf(errOut, "%s\n", msg)
+			info.Err = msg
+			return 2
+		}
+		fmt.Fprintf(out, "APPLY: the CLA-manager roster of every organization with a signed CCLA will be sent to member-service\n")
+		if !yes && !confirm(stage, out, stdin) {
+			fmt.Fprintf(out, "aborted: nothing was written\n")
+			info.Err = abortedAtPrompt
+			return 2
+		}
+	}
+	svc := cla_admins.Service{
+		Companies:   e.companies,
+		CompanyRows: cla_admins.DynamoCompanies{DB: dynamodb.New(e.sess), Table: fmt.Sprintf("cla-%s-companies", stage)},
+		CCLAs:       cla_admins.DynamoCCLAs{DB: dynamodb.New(e.sess), Table: fmt.Sprintf("cla-%s-signatures", stage)},
+		Pending:     cla_admins.DynamoPendingIDs{DB: dynamodb.New(e.sess), Table: fmt.Sprintf("cla-%s-store", stage)},
+		Users:       e.users,
+		Now:         awsNow,
+	}
+	if e.members != nil {
+		svc.Members = e.members
+	}
+	summary, _, err := orgimport.BackfillCLAAdmins(ctx, e.deps, svc, orgimport.CLAAdminsOptions{Apply: apply, IDs: ids, OutDir: outDir})
+	if err != nil {
+		fmt.Fprintf(errOut, "cla-admins failed: %v\n", err)
+		info.Err = err.Error()
+		return 1
+	}
+	fmt.Fprintf(out, "%s\n", summary.String())
+	info.Summary = summary.String()
+	fmt.Fprintf(out, "reports written to %s (cla_admins.csv, run.log)\n", outDir)
+	if summary.Errors > 0 {
+		info.Err = fmt.Sprintf("cla-admins: %d organization(s) failed", summary.Errors)
+		return 1
+	}
+	return 0
 }
 
 // report ships run.log to CloudWatch Logs and e-mails the decision record; failures never change the exit code.
@@ -447,7 +574,8 @@ func confirm(stage string, out io.Writer, stdin io.Reader) bool {
 
 func wire(ctx context.Context, stage string, useApex bool) (env, error) {
 	awsSession := session.Must(session.NewSession(&aws.Config{}))
-	e := env{sess: awsSession}
+	e := env{sess: awsSession, clock: &awsClock{}}
+	awsSession.Handlers.Complete.PushBack(e.clock.observe)
 	cfg, err := config.LoadConfig("", awsSession, stage)
 	if err != nil {
 		return e, fmt.Errorf("loading SSM config: %w", err)
@@ -470,6 +598,8 @@ func wire(ctx context.Context, stage string, useApex bool) (env, error) {
 	organization_service.InitClient(cfg.APIGatewayURL, eventsService)
 	acs_service.InitClient(cfg.APIGatewayURL, cfg.AcsAPIKey)
 
+	e.companies = companyRepo
+	e.users = usersRepo
 	e.deps = orgimport.Deps{
 		Companies:  companyRepo,
 		Signatures: signaturesRepo,
@@ -490,6 +620,7 @@ func wire(ctx context.Context, stage string, useApex bool) (env, error) {
 	switch {
 	case err == nil:
 		e.deps.Members = members
+		e.members = members
 	case errors.Is(err, member_service.ErrNotConfigured):
 		log.Warnf("member-service not configured (cla-member-service-base-url-%s / cla-member-service-auth0-audience-%s): liveness is unverified, SFID groups stay pending (crm_unverified) and nothing is registered or rewritten for them", stage, stage)
 	default:
