@@ -101,7 +101,7 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 			if err != nil {
 				msg := "unable to read the CLA Group"
 				log.WithFields(f).WithError(err).Warn(msg)
-				return claSearchOps.NewGetClaGroupInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
+				return claSearchOps.NewGetClaGroupInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerError(reqID, msg))
 			}
 
 			return claSearchOps.NewGetClaGroupOK().WithXRequestID(reqID).WithPayload(result)

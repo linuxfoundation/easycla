@@ -5,6 +5,7 @@ package cla_search
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -20,9 +21,11 @@ import (
 )
 
 type stubService struct {
-	list *models.ClaSearchList
-	err  error
-	term string
+	list       *models.ClaSearchList
+	group      *models.ClaSearchResult
+	err        error
+	term       string
+	claGroupID string
 }
 
 func (s *stubService) Search(_ context.Context, searchTerm string, _ int64) (*models.ClaSearchList, error) {
@@ -30,8 +33,9 @@ func (s *stubService) Search(_ context.Context, searchTerm string, _ int64) (*mo
 	return s.list, s.err
 }
 
-func (s *stubService) Get(context.Context, string) (*models.ClaSearchResult, error) {
-	return nil, s.err
+func (s *stubService) Get(_ context.Context, claGroupID string) (*models.ClaSearchResult, error) {
+	s.claGroupID = claGroupID
+	return s.group, s.err
 }
 
 func invoke(t *testing.T, svc Service, authUser *auth.User, searchTerm string) *httptest.ResponseRecorder {
@@ -92,6 +96,51 @@ func TestGetHandlerNotFoundAndUnauthorized(t *testing.T) {
 	missing := httptest.NewRecorder()
 	api.ClaSearchGetClaGroupHandler.Handle(params, &auth.User{UserName: "jdoe"}).WriteResponse(missing, runtime.JSONProducer())
 	assert.Equal(t, http.StatusNotFound, missing.Code)
+}
+
+func invokeGet(t *testing.T, svc Service, claGroupID, requestID string) *httptest.ResponseRecorder {
+	t.Helper()
+	api := &operations.EasyclaAPI{}
+	Configure(api, svc)
+	require.NotNil(t, api.ClaSearchGetClaGroupHandler)
+
+	params := claSearchOps.GetClaGroupParams{
+		HTTPRequest: httptest.NewRequest(http.MethodGet, "/v4/cla-group/"+claGroupID, nil),
+		ClaGroupID:  claGroupID,
+		XREQUESTID:  &requestID,
+	}
+	recorder := httptest.NewRecorder()
+	api.ClaSearchGetClaGroupHandler.Handle(params, &auth.User{UserName: "jdoe"}).WriteResponse(recorder, runtime.JSONProducer())
+	return recorder
+}
+
+func TestGetHandlerSuccess(t *testing.T) {
+	const claGroupID = "11111111-1111-4111-8111-111111111111"
+	svc := &stubService{group: &models.ClaSearchResult{ClaGroupID: claGroupID, ClaGroupName: "Kubernetes", ProjectSFID: "sfid-kube"}}
+	recorder := invokeGet(t, svc, claGroupID, "req-200")
+
+	assert.Equal(t, http.StatusOK, recorder.Code)
+	assert.Equal(t, claGroupID, svc.claGroupID)
+	assert.Equal(t, "req-200", recorder.Header().Get("x-request-id"))
+	var payload models.ClaSearchResult
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
+	assert.Equal(t, claGroupID, payload.ClaGroupID)
+	assert.Equal(t, "Kubernetes", payload.ClaGroupName)
+	assert.Equal(t, "sfid-kube", payload.ProjectSFID)
+}
+
+func TestGetHandlerInternalServerErrorOmitsLookupError(t *testing.T) {
+	const claGroupID = "22222222-2222-4222-8222-222222222222"
+	svc := &stubService{err: errors.New("dynamodb: secret internal detail")}
+	recorder := invokeGet(t, svc, claGroupID, "req-500")
+
+	assert.Equal(t, http.StatusInternalServerError, recorder.Code)
+	assert.Equal(t, claGroupID, svc.claGroupID)
+	assert.Equal(t, "req-500", recorder.Header().Get("x-request-id"))
+	var payload models.ErrorResponse
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
+	assert.Equal(t, "req-500", payload.XRequestID)
+	assert.NotContains(t, payload.Message, "secret internal detail")
 }
 
 func TestHandlerSuccess(t *testing.T) {
