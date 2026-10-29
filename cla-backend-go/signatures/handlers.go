@@ -199,7 +199,7 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 		aclSignature, aclErr := service.GetSignature(ctx, params.SignatureID)
 		if aclErr != nil {
 			log.Warnf("error looking up signature using signature_id: %s, error: %+v", params.SignatureID, aclErr)
-			return signatures.NewAddGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(aclErr))
+			return signatures.NewAddGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(signatureUnavailableError(params.SignatureID))
 		}
 		if aclSignature == nil {
 			return signatures.NewAddGitHubOrgAllowlistNotFound().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
@@ -207,7 +207,12 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 				Message: fmt.Sprintf("EasyCLA - 404 Not Found - signature %s not found", params.SignatureID),
 			})
 		}
-		if !claUserInSignatureACL(claUser, aclSignature.SignatureACL) {
+		actor, actorErr := signatureManagerActor(ctx, service, params.SignatureID, claUser, aclSignature.SignatureACL)
+		if actorErr != nil {
+			log.Warnf("error reading the stored ACL of signature_id: %s, error: %+v", params.SignatureID, actorErr)
+			return signatures.NewAddGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(signatureUnavailableError(params.SignatureID))
+		}
+		if actor == "" {
 			msg := fmt.Sprintf("EasyCLA - 403 Forbidden - user %s is not authorized to modify the approval list of signature %s", claUser.LFUsername, params.SignatureID)
 			log.Warn(msg)
 			return signatures.NewAddGitHubOrgAllowlistForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
@@ -228,10 +233,16 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 			githubAccessToken = ""
 		}
 
-		ghApprovalList, err := service.AddGithubOrganizationToApprovalList(ctx, params.SignatureID, params.Body, githubAccessToken)
+		ghApprovalList, err := service.AddGithubOrganizationToApprovalList(ctx, params.SignatureID, params.Body, githubAccessToken, actor)
 		if err != nil {
 			log.Warnf("error adding github organization %s using signature_id: %s to the allowlist, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)
+			if _, forbidden := err.(*ForbiddenError); forbidden {
+				return signatures.NewAddGitHubOrgAllowlistForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
+					Code:    "403",
+					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s is not authorized to modify the approval list of signature %s", claUser.LFUsername, params.SignatureID),
+				})
+			}
 			return signatures.NewAddGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 		}
 
@@ -273,7 +284,7 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 		aclSignature, aclErr := service.GetSignature(ctx, params.SignatureID)
 		if aclErr != nil {
 			log.Warnf("error looking up signature using signature_id: %s, error: %+v", params.SignatureID, aclErr)
-			return signatures.NewDeleteGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(aclErr))
+			return signatures.NewDeleteGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(signatureUnavailableError(params.SignatureID))
 		}
 		if aclSignature == nil {
 			return signatures.NewDeleteGitHubOrgAllowlistNotFound().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
@@ -281,7 +292,12 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 				Message: fmt.Sprintf("EasyCLA - 404 Not Found - signature %s not found", params.SignatureID),
 			})
 		}
-		if !claUserInSignatureACL(claUser, aclSignature.SignatureACL) {
+		actor, actorErr := signatureManagerActor(ctx, service, params.SignatureID, claUser, aclSignature.SignatureACL)
+		if actorErr != nil {
+			log.Warnf("error reading the stored ACL of signature_id: %s, error: %+v", params.SignatureID, actorErr)
+			return signatures.NewDeleteGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(signatureUnavailableError(params.SignatureID))
+		}
+		if actor == "" {
 			msg := fmt.Sprintf("EasyCLA - 403 Forbidden - user %s is not authorized to modify the approval list of signature %s", claUser.LFUsername, params.SignatureID)
 			log.Warn(msg)
 			return signatures.NewDeleteGitHubOrgAllowlistForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
@@ -302,10 +318,16 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 			githubAccessToken = ""
 		}
 
-		ghApprovalList, err := service.DeleteGithubOrganizationFromApprovalList(ctx, params.SignatureID, params.Body, githubAccessToken)
+		ghApprovalList, err := service.DeleteGithubOrganizationFromApprovalList(ctx, params.SignatureID, params.Body, githubAccessToken, actor)
 		if err != nil {
 			log.Warnf("error deleting github organization %s using signature_id: %s from the allowlist, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)
+			if _, forbidden := err.(*ForbiddenError); forbidden {
+				return signatures.NewDeleteGitHubOrgAllowlistForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
+					Code:    "403",
+					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s is not authorized to modify the approval list of signature %s", claUser.LFUsername, params.SignatureID),
+				})
+			}
 			return signatures.NewDeleteGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 		}
 
@@ -461,8 +483,14 @@ func errorResponse(err error) *models.ErrorResponse {
 	return &e
 }
 
-// claUserInSignatureACL reports whether the v3 caller is one of the CLA managers on the signature ACL - entries are
-// matched by user ID or, when the ACL was loaded without user details, by LF username
+// signatureUnavailableError is the 400 payload when the signature or its stored ACL cannot be read; the cause is logged only
+func signatureUnavailableError(signatureID string) *models.ErrorResponse {
+	return &models.ErrorResponse{
+		Code:    "400",
+		Message: fmt.Sprintf("EasyCLA - 400 Bad Request - unable to load signature %s", signatureID),
+	}
+}
+
 // hasAuthenticatedPrincipal reports whether the authorizer supplied an identifiable user
 func hasAuthenticatedPrincipal(claUser *user.CLAUser) bool {
 	return claUser != nil && (claUser.UserID != "" || claUser.LFUsername != "")
@@ -476,19 +504,53 @@ func missingPrincipalError() *models.ErrorResponse {
 	}
 }
 
-func claUserInSignatureACL(claUser *user.CLAUser, acl []models.User) bool {
+// signatureManagerActor is the actor the write is conditioned on - the hydrated ACL match, else the caller's LF
+// username when only the stored signature_acl still names it (no user record); "" for a non-manager
+func signatureManagerActor(ctx context.Context, service SignatureService, signatureID string, claUser *user.CLAUser, acl []models.User) (string, error) {
+	if actor := aclManagerActor(claUser, acl); actor != "" {
+		return actor, nil
+	}
+	if claUser == nil || claUser.LFUsername == "" {
+		return "", nil
+	}
+	row, err := service.GetItemSignature(ctx, signatureID)
+	if err != nil {
+		return "", err
+	}
+	if row != nil && utils.StringInSlice(claUser.LFUsername, row.SignatureACL) {
+		return claUser.LFUsername, nil
+	}
+	return "", nil
+}
+
+// matchedACLManager is the ACL entry the principal matches, by user id or by LF username
+func matchedACLManager(claUser *user.CLAUser, acl []models.User) *models.User {
 	if claUser == nil {
-		return false
+		return nil
 	}
-	for _, manager := range acl {
-		if claUser.UserID != "" && manager.UserID == claUser.UserID {
-			return true
-		}
-		if claUser.LFUsername != "" && manager.LfUsername == claUser.LFUsername {
-			return true
+	for i := range acl {
+		manager := &acl[i]
+		if (claUser.UserID != "" && manager.UserID == claUser.UserID) || (claUser.LFUsername != "" && manager.LfUsername == claUser.LFUsername) {
+			return manager
 		}
 	}
-	return false
+	return nil
+}
+
+// aclManagerActor is the identity the repository writes are conditioned on: the matched manager's LF username,
+// or the legacy github:<id> form of a GitHub-only manager (the stored signature_acl entry of such a manager)
+func aclManagerActor(claUser *user.CLAUser, acl []models.User) string {
+	manager := matchedACLManager(claUser, acl)
+	if manager == nil {
+		return ""
+	}
+	if manager.LfUsername != "" {
+		return manager.LfUsername
+	}
+	if manager.GithubID != "" {
+		return "github:" + manager.GithubID
+	}
+	return ""
 }
 
 func generateHTMLRedirectPage(downloadLink, claType string) string {

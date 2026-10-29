@@ -16,10 +16,13 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/go-openapi/strfmt"
+	"github.com/sirupsen/logrus"
+	logtest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	member_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
 )
@@ -98,14 +101,26 @@ func (f *fakeCCLAs) GetCCLAs(_ context.Context, ids []string) ([]CCLA, error) {
 	return out, nil
 }
 
-type fakeUsers struct{ byName map[string]*models.User }
+type fakeUsers struct {
+	byName   map[string]*models.User
+	byEntry  map[string]*models.User
+	entryErr map[string]error
+}
 
 func (f fakeUsers) GetUserByLFUserName(name string) (*models.User, error) {
 	u, ok := f.byName[name]
 	if !ok {
-		return nil, errors.New("not found")
+		return nil, fmt.Errorf("user %s not found", name)
 	}
 	return u, nil
+}
+
+// GetUserByUserName mirrors the users repository: a missing record is (nil, nil), a failure is an error
+func (f fakeUsers) GetUserByUserName(name string, _ bool) (*models.User, error) {
+	if err, failed := f.entryErr[name]; failed {
+		return nil, err
+	}
+	return f.byEntry[name], nil
 }
 
 type fakePublisher struct {
@@ -271,13 +286,24 @@ func TestRosterUnionsEveryRowSharingTheAccount(t *testing.T) {
 func TestRosterSkipsUnpublishableIdentities(t *testing.T) {
 	h := newHarness(&fakePublisher{})
 	row := h.cclas.base["s1"]
-	row.ACL = []string{"zoe", " amy ", "bad user", "tab\tname", "ctl\x01x", "Zoe.Q-1", "   "}
+	row.ACL = []string{"zoe", " amy ", "bad user", "tab\tname", "ctl\x01x", "Zoe.Q-1", "   ", "github:42", "github:99", "github:7", "github:abc", "github:", "github:12x", "github:0", "github:-5", "github:99999999999999999999"}
 	h.cclas.base["s1"] = row
 	h.svc.Users = fakeUsers{byName: map[string]*models.User{
 		"amy":     {LfUsername: "amy", LfEmail: strfmt.Email(" amy@example.com "), Username: "Amy Adams"},
 		"bob":     {LfUsername: "bob", LfEmail: strfmt.Email("bob@example.com (home)"), Username: "Bob"},
 		"Zoe.Q-1": {LfUsername: "Zoe.Q-1", LfEmail: strfmt.Email("Zoe Q <zoe@example.com>"), Username: "Zoe Q"},
 		"zoe":     {LfUsername: "zoe", LfEmail: strfmt.Email("not an address")},
+		"gina":    {LfUsername: "gina", LfEmail: strfmt.Email("gina@example.com"), Username: "Gina"},
+	}, byEntry: map[string]*models.User{
+		"github:42": {LfUsername: "gina"},
+		"github:7":  {LfUsername: "amy"},
+	}, entryErr: map[string]error{
+		"github:abc":                  errors.New("malformed entries must not be looked up"),
+		"github:":                     errors.New("malformed entries must not be looked up"),
+		"github:12x":                  errors.New("malformed entries must not be looked up"),
+		"github:0":                    errors.New("malformed entries must not be looked up"),
+		"github:-5":                   errors.New("malformed entries must not be looked up"),
+		"github:99999999999999999999": errors.New("malformed entries must not be looked up"),
 	}}
 	roster, err := h.svc.Roster(context.Background(), sfid15)
 	require.NoError(t, err)
@@ -285,13 +311,86 @@ func TestRosterSkipsUnpublishableIdentities(t *testing.T) {
 		{Username: "Zoe.Q-1", Name: "Zoe Q"},
 		{Username: "amy", Email: "amy@example.com", Name: "Amy Adams"},
 		{Username: "bob", Name: "Bob"},
+		{Username: "gina", Email: "gina@example.com", Name: "Gina"},
 		{Username: "zoe"},
-	}, roster.Admins)
+	}, roster.Admins, "github:42 resolves to gina, github:7 is amy again, github:99 has no record, malformed github entries are skipped without a lookup")
 	res, err := h.svc.Publish(context.Background(), sfid15)
 	require.NoError(t, err)
-	assert.Equal(t, []string{"Zoe.Q-1", "amy", "bob", "zoe"}, res.Roster.Usernames())
+	assert.Equal(t, []string{"Zoe.Q-1", "amy", "bob", "gina", "zoe"}, res.Roster.Usernames())
 	require.Len(t, h.pub.calls, 1)
 	assert.Equal(t, roster.Admins, h.pub.calls[0].admins, "the filtered roster is what member-service receives")
+}
+
+// no CLA-manager username reaches the logs: skipped names are counted, an omitted email and a missing
+// user record are reported without the name
+func TestRosterLogsNoManagerUsernames(t *testing.T) {
+	logger := log.GetLogger()
+	oldHooks := logger.ReplaceHooks(make(logrus.LevelHooks))
+	oldLevel := logger.GetLevel()
+	logger.SetLevel(logrus.DebugLevel)
+	t.Cleanup(func() {
+		logger.ReplaceHooks(oldHooks)
+		logger.SetLevel(oldLevel)
+	})
+	hook := logtest.NewLocal(logger)
+
+	h := newHarness(&fakePublisher{})
+	row := h.cclas.base["s1"]
+	row.ACL = []string{"bad user", "tab\tname", "ctl\x01x", "zoe", "Zoe.Q-1", "ghost"}
+	h.cclas.base["s1"] = row
+	h.svc.Users = fakeUsers{byName: map[string]*models.User{
+		"amy":     {LfUsername: "amy", LfEmail: strfmt.Email("amy@example.com"), Username: "Amy"},
+		"bob":     {LfUsername: "bob", LfEmail: strfmt.Email("bob@example.com"), Username: "Bob"},
+		"zoe":     {LfUsername: "zoe", LfEmail: strfmt.Email("not an address")},
+		"Zoe.Q-1": {LfUsername: "Zoe.Q-1", LfEmail: strfmt.Email("Zoe Q <zoe@example.com>"), Username: "Zoe Q"},
+	}}
+	roster, err := h.svc.Roster(context.Background(), sfid15)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Zoe.Q-1", "amy", "bob", "ghost", "zoe"}, roster.Usernames(), "the other rows of the account add amy and bob")
+	names := []string{"bad user", "tab\tname", "ctl\x01x", "zoe", "Zoe.Q-1", "ghost", "amy", "bob"}
+
+	var skipped, omitted, missing int
+	for _, e := range hook.AllEntries() {
+		text := e.Message
+		for k, v := range e.Data {
+			text += " " + k + "=" + fmt.Sprint(v)
+		}
+		for _, name := range names {
+			assert.NotContains(t, text, name, "log entry %q", e.Message)
+		}
+		switch e.Message {
+		case "CLA manager usernames skipped - not publishable to member-service":
+			skipped++
+			assert.Equal(t, 3, e.Data["skipped"])
+			assert.Equal(t, logrus.WarnLevel, e.Level)
+		case "CLA manager email omitted - the username is sent alone":
+			omitted++
+			assert.Equal(t, logrus.WarnLevel, e.Level)
+		case "no user record for a CLA manager - sending the username only":
+			missing++
+			assert.Equal(t, true, e.Data["lookupFailed"])
+		}
+	}
+	assert.Equal(t, 1, skipped, "one counted Warn for the three unpublishable names")
+	assert.Equal(t, 2, omitted, "zoe and Zoe.Q-1 keep their username, lose the email")
+	assert.Equal(t, 1, missing, "ghost has no user record")
+}
+
+// a legacy entry whose lookup FAILS aborts the roster before anything reaches member-service; the entry and
+// the lookup error stay out of the returned error
+func TestRosterAbortsWhenALegacyEntryLookupFails(t *testing.T) {
+	h := newHarness(&fakePublisher{})
+	row := h.cclas.base["s1"]
+	row.ACL = []string{"zoe", "github:500"}
+	h.cclas.base["s1"] = row
+	h.svc.Users = fakeUsers{byName: map[string]*models.User{}, entryErr: map[string]error{"github:500": errors.New("dynamo down for github:500")}}
+	_, err := h.svc.Roster(context.Background(), sfid15)
+	require.ErrorIs(t, err, errLegacyManagerLookup)
+	assert.NotContains(t, err.Error(), "github:500")
+	assert.NotContains(t, err.Error(), "dynamo down")
+	_, err = h.svc.Publish(context.Background(), sfid15)
+	require.Error(t, err)
+	assert.Empty(t, h.pub.calls, "nothing is sent to member-service")
 }
 
 func TestRosterEdgeCases(t *testing.T) {

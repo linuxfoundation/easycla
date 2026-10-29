@@ -38,12 +38,18 @@ const (
 // ErrRepositoryDoesNotExist ...
 var ErrRepositoryDoesNotExist = errors.New("repository does not exist")
 
+// ErrRegistrationRequired is returned by the project-scoped writes without the organization registration
+var ErrRegistrationRequired = errors.New("the GitHub organization registration the enrollment was authorized through is required")
+
+// ErrRegistrationChanged is the cause when the organization registration no longer matches at write time
+var ErrRegistrationChanged = errors.New("the GitHub organization registration changed during the enrollment - nothing written")
+
 // RepositoryInterface contains functions of the repositories service
 type RepositoryInterface interface {
 	GitHubAddRepository(ctx context.Context, externalProjectID string, projectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error)
-	GitHubAddRepositoryForProject(ctx context.Context, externalProjectID string, projectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error)
+	GitHubAddRepositoryForProject(ctx context.Context, externalProjectID string, projectSFID string, input *models.GithubRepositoryInput, registered *models.GithubOrganization) (*models.GithubRepository, error)
 	GitHubUpdateRepository(ctx context.Context, repositoryID, projectSFID, parentProjectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error)
-	GitHubUpdateRepositoryForProject(ctx context.Context, repositoryID, projectSFID, parentProjectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error)
+	GitHubUpdateRepositoryForProject(ctx context.Context, repositoryID, projectSFID, parentProjectSFID string, input *models.GithubRepositoryInput, registered *models.GithubOrganization) (*models.GithubRepository, error)
 	GitHubUpdateClaGroupID(ctx context.Context, repositoryID, claGroupID string) error
 	GitHubEnableRepository(ctx context.Context, repositoryID string) error
 	GitHubEnableRepositoryWithCLAGroupID(ctx context.Context, repositoryID, claGroupID string) error
@@ -69,6 +75,7 @@ func NewRepository(awsSession *session.Session, stage string) *Repository {
 		stage:               stage,
 		dynamoDBClient:      dynamodb.New(awsSession),
 		repositoryTableName: fmt.Sprintf("cla-%s-repositories", stage),
+		githubOrgTableName:  fmt.Sprintf("cla-%s-github-orgs", stage),
 	}
 }
 
@@ -77,24 +84,31 @@ type Repository struct {
 	stage               string
 	dynamoDBClient      *dynamodb.DynamoDB
 	repositoryTableName string
+	githubOrgTableName  string
 }
 
 // GitHubAddRepository adds the specified repository
 func (r *Repository) GitHubAddRepository(ctx context.Context, externalProjectID string, projectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error) {
-	return r.addGithubRepository(ctx, externalProjectID, projectSFID, input, nil, nil)
+	return r.addGithubRepository(ctx, externalProjectID, projectSFID, input, nil, nil, nil)
 }
 
 // GitHubAddRepositoryForProject is GitHubAddRepository whose re-use of a disabled record found by GitHub id is
 // written only while that record is unbound or owned by projectSFID (reusableByProject); a record bound
-// elsewhere meanwhile is reported as GitHubRepositoryNotFound and nothing is written
-func (r *Repository) GitHubAddRepositoryForProject(ctx context.Context, externalProjectID string, projectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error) {
+// elsewhere meanwhile is reported as GitHubRepositoryNotFound and nothing is written. Both the re-use and the
+// creation commit together with a check that registered, the organization registration the enrollment was
+// authorized through, is still stored unchanged (transactWrite)
+func (r *Repository) GitHubAddRepositoryForProject(ctx context.Context, externalProjectID string, projectSFID string, input *models.GithubRepositoryInput, registered *models.GithubOrganization) (*models.GithubRepository, error) {
+	if registered == nil {
+		return nil, ErrRegistrationRequired
+	}
 	condition := reusableByProject(projectSFID)
 	return r.addGithubRepository(ctx, externalProjectID, projectSFID, input, &condition,
-		&utils.GitHubRepositoryNotFound{Message: fmt.Sprintf("repository with GitHub id %s is bound to another project or gone - not re-used for project %s", utils.StringValue(input.RepositoryExternalID), projectSFID)})
+		&utils.GitHubRepositoryNotFound{Message: fmt.Sprintf("repository with GitHub id %s is bound to another project or gone - not re-used for project %s", utils.StringValue(input.RepositoryExternalID), projectSFID)}, registered)
 }
 
-// addGithubRepository is GitHubAddRepository with an optional condition on the re-use write
-func (r *Repository) addGithubRepository(ctx context.Context, externalProjectID string, projectSFID string, input *models.GithubRepositoryInput, condition *expression.ConditionBuilder, conditionFailed error) (*models.GithubRepository, error) {
+// addGithubRepository is GitHubAddRepository with an optional condition on the re-use write and an optional
+// organization registration every write is transacted with
+func (r *Repository) addGithubRepository(ctx context.Context, externalProjectID string, projectSFID string, input *models.GithubRepositoryInput, condition *expression.ConditionBuilder, conditionFailed error, registered *models.GithubOrganization) (*models.GithubRepository, error) {
 	f := logrus.Fields{
 		"functionName":               "v1.repositories.repository.AddGitHubRepository",
 		utils.XREQUESTID:             ctx.Value(utils.XREQUESTID),
@@ -128,7 +142,7 @@ func (r *Repository) addGithubRepository(ctx context.Context, externalProjectID 
 			RepositoryType:             input.RepositoryType,
 			RepositoryURL:              input.RepositoryURL,
 			Note:                       "Disabled repository enabled and updated",
-		}, condition, conditionFailed)
+		}, condition, conditionFailed, registered)
 		if err != nil {
 			return nil, err
 		}
@@ -164,10 +178,14 @@ func (r *Repository) addGithubRepository(ctx context.Context, externalProjectID 
 	}
 
 	log.WithFields(f).Debug("creating repository entry")
-	_, err = r.dynamoDBClient.PutItem(&dynamodb.PutItemInput{
-		Item:      av,
-		TableName: aws.String(r.repositoryTableName),
-	})
+	if registered != nil {
+		err = r.transactWrite(ctx, f, registered, &dynamodb.TransactWriteItem{Put: &dynamodb.Put{Item: av, TableName: aws.String(r.repositoryTableName)}}, nil)
+	} else {
+		_, err = r.dynamoDBClient.PutItem(&dynamodb.PutItemInput{
+			Item:      av,
+			TableName: aws.String(r.repositoryTableName),
+		})
+	}
 	if err != nil {
 		log.WithFields(f).Warnf("cannot add github repository, error: %+v", err)
 		return nil, err
@@ -178,16 +196,20 @@ func (r *Repository) addGithubRepository(ctx context.Context, externalProjectID 
 
 // GitHubUpdateRepository updates the repository record for given ID
 func (r *Repository) GitHubUpdateRepository(ctx context.Context, repositoryID, projectSFID, parentProjectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error) {
-	return r.updateGithubRepositoryIf(ctx, repositoryID, projectSFID, parentProjectSFID, input, nil, nil)
+	return r.updateGithubRepositoryIf(ctx, repositoryID, projectSFID, parentProjectSFID, input, nil, nil, nil)
 }
 
 // GitHubUpdateRepositoryForProject is GitHubUpdateRepository written only while the record is unbound or owned
-// by projectSFID (reusableByProject); a record bound elsewhere meanwhile or gone is reported as
+// by projectSFID (reusableByProject) and registered, the organization registration the enrollment was authorized
+// through, is still stored unchanged (transactWrite); a record bound elsewhere meanwhile or gone is reported as
 // GitHubRepositoryNotFound and nothing is written
-func (r *Repository) GitHubUpdateRepositoryForProject(ctx context.Context, repositoryID, projectSFID, parentProjectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error) {
+func (r *Repository) GitHubUpdateRepositoryForProject(ctx context.Context, repositoryID, projectSFID, parentProjectSFID string, input *models.GithubRepositoryInput, registered *models.GithubOrganization) (*models.GithubRepository, error) {
+	if registered == nil {
+		return nil, ErrRegistrationRequired
+	}
 	condition := reusableByProject(projectSFID)
 	return r.updateGithubRepositoryIf(ctx, repositoryID, projectSFID, parentProjectSFID, input, &condition,
-		&utils.GitHubRepositoryNotFound{Message: fmt.Sprintf("repository %s is bound to another project or gone - not re-bound to project %s", repositoryID, projectSFID)})
+		&utils.GitHubRepositoryNotFound{Message: fmt.Sprintf("repository %s is bound to another project or gone - not re-bound to project %s", repositoryID, projectSFID)}, registered)
 }
 
 // reusableByProject is the write condition mirroring repositoryBoundToOtherProject: the record must still exist
@@ -226,9 +248,75 @@ func applyWriteCondition(updateInput *dynamodb.UpdateItemInput, condition *expre
 	return nil
 }
 
-// updateGithubRepositoryIf is GitHubUpdateRepository with an optional write condition; when the condition
-// fails, conditionFailed is returned
-func (r *Repository) updateGithubRepositoryIf(ctx context.Context, repositoryID, projectSFID, parentProjectSFID string, input *models.GithubRepositoryInput, condition *expression.ConditionBuilder, conditionFailed error) (*models.GithubRepository, error) {
+// transactWrite commits write together with a check that the registered organization row is still the one the
+// enrollment was authorized through (registrationUnchanged); a changed registration is reported as
+// GitHubOrgNotFound wrapping ErrRegistrationChanged, a failed write condition as conditionFailed
+func (r *Repository) transactWrite(ctx context.Context, f logrus.Fields, registered *models.GithubOrganization, write *dynamodb.TransactWriteItem, conditionFailed error) error {
+	expr, err := expression.NewBuilder().WithCondition(registrationUnchanged(registered)).Build()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("error building the organization registration check")
+		return err
+	}
+	check := &dynamodb.TransactWriteItem{ConditionCheck: &dynamodb.ConditionCheck{
+		TableName:                 aws.String(r.githubOrgTableName),
+		Key:                       map[string]*dynamodb.AttributeValue{"organization_name": {S: aws.String(registered.OrganizationName)}},
+		ConditionExpression:       expr.Condition(),
+		ExpressionAttributeNames:  expr.Names(),
+		ExpressionAttributeValues: expr.Values(),
+	}}
+	_, err = r.dynamoDBClient.TransactWriteItemsWithContext(ctx, &dynamodb.TransactWriteItemsInput{TransactItems: []*dynamodb.TransactWriteItem{check, write}})
+	if err == nil {
+		return nil
+	}
+	var canceled *dynamodb.TransactionCanceledException
+	if errors.As(err, &canceled) {
+		if cancellationFailed(canceled, 0) {
+			log.WithFields(f).Warnf("GitHub organization %s registration changed during the enrollment - nothing written", registered.OrganizationName)
+			return &utils.GitHubOrgNotFound{ProjectSFID: registered.ProjectSFID, OrganizationName: registered.OrganizationName, Err: ErrRegistrationChanged}
+		}
+		if cancellationFailed(canceled, 1) && conditionFailed != nil {
+			log.WithFields(f).Debug("repository record no longer satisfies the write condition - not written")
+			return conditionFailed
+		}
+	}
+	log.WithFields(f).Warnf("error writing the repository with the organization registration check, error: %+v", err)
+	return err
+}
+
+// cancellationFailed reports whether the transaction item at index failed its condition
+func cancellationFailed(canceled *dynamodb.TransactionCanceledException, index int) bool {
+	if index >= len(canceled.CancellationReasons) || canceled.CancellationReasons[index] == nil {
+		return false
+	}
+	return aws.StringValue(canceled.CancellationReasons[index].Code) == "ConditionalCheckFailed"
+}
+
+// registrationUnchanged is the check on the organization row: still present and enabled, bound to the same
+// project and organization SFIDs and installed under the same GitHub App installation as registered
+func registrationUnchanged(registered *models.GithubOrganization) expression.ConditionBuilder {
+	installation := expression.Name("organization_installation_id")
+	installed := installation.Equal(expression.Value(registered.OrganizationInstallationID))
+	if registered.OrganizationInstallationID == 0 {
+		installed = installation.AttributeNotExists().Or(installed)
+	}
+	return expression.Name("organization_name").AttributeExists().
+		And(expression.Name("enabled").Equal(expression.Value(true))).
+		And(boundTo(expression.Name("project_sfid"), registered.ProjectSFID)).
+		And(boundTo(expression.Name("organization_sfid"), registered.OrganizationSfid)).
+		And(installed)
+}
+
+// boundTo holds when the string attribute carries value, or is unset when value is empty
+func boundTo(attr expression.NameBuilder, value string) expression.ConditionBuilder {
+	if value == "" {
+		return unset(attr)
+	}
+	return attr.Equal(expression.Value(value))
+}
+
+// updateGithubRepositoryIf is GitHubUpdateRepository with an optional write condition and an optional
+// organization registration the write is transacted with; when the condition fails, conditionFailed is returned
+func (r *Repository) updateGithubRepositoryIf(ctx context.Context, repositoryID, projectSFID, parentProjectSFID string, input *models.GithubRepositoryInput, condition *expression.ConditionBuilder, conditionFailed error, registered *models.GithubOrganization) (*models.GithubRepository, error) {
 
 	externalID := utils.StringValue(input.RepositoryExternalID)
 	repositoryName := utils.StringValue(input.RepositoryName)
@@ -374,17 +462,37 @@ func (r *Repository) updateGithubRepositoryIf(ctx context.Context, repositoryID,
 		return nil, conditionErr
 	}
 
+	if writeErr := r.writeGithubRepositoryUpdate(ctx, f, updateInput, conditionFailed, registered); writeErr != nil {
+		return nil, writeErr
+	}
+
+	return r.GitHubGetRepository(ctx, repositoryID)
+}
+
+// writeGithubRepositoryUpdate sends the assembled update: transacted with the organization registration check
+// when registered is set (transactWrite), as the plain UpdateItem otherwise
+func (r *Repository) writeGithubRepositoryUpdate(ctx context.Context, f logrus.Fields, updateInput *dynamodb.UpdateItemInput, conditionFailed error, registered *models.GithubOrganization) error {
+	if registered != nil {
+		return r.transactWrite(ctx, f, registered, &dynamodb.TransactWriteItem{Update: &dynamodb.Update{
+			Key:                       updateInput.Key,
+			TableName:                 updateInput.TableName,
+			UpdateExpression:          updateInput.UpdateExpression,
+			ConditionExpression:       updateInput.ConditionExpression,
+			ExpressionAttributeNames:  updateInput.ExpressionAttributeNames,
+			ExpressionAttributeValues: updateInput.ExpressionAttributeValues,
+		}}, conditionFailed)
+	}
+
 	_, updateErr := r.dynamoDBClient.UpdateItem(updateInput)
 	if updateErr != nil {
 		if aerr, ok := updateErr.(awserr.Error); ok && aerr.Code() == dynamodb.ErrCodeConditionalCheckFailedException && conditionFailed != nil {
 			log.WithFields(f).Debug("repository record no longer satisfies the write condition - not updated")
-			return nil, conditionFailed
+			return conditionFailed
 		}
-		log.WithFields(f).Warnf("error updatingRepository by repositoryID: %s, error: %v", repositoryID, updateErr)
-		return nil, updateErr
+		log.WithFields(f).Warnf("error updatingRepository by repositoryID: %s, error: %v", aws.StringValue(updateInput.Key["repository_id"].S), updateErr)
+		return updateErr
 	}
-
-	return r.GitHubGetRepository(ctx, repositoryID)
+	return nil
 }
 
 // GitHubUpdateClaGroupID updates the claGroupID of the repository

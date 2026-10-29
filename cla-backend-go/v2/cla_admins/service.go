@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/mail"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -63,9 +64,11 @@ type PendingIDs interface {
 // ErrNoPendingCatalog reports a Service without the pending-id catalog, which every publisher needs.
 var ErrNoPendingCatalog = errors.New("cla_admins: pending-id catalog not configured")
 
-// UserLookup resolves an LF username to its user record (users.UserRepository satisfies it).
+// UserLookup resolves an LF username, or a legacy github:<id> ACL entry, to its user record
+// (users.UserRepository satisfies it).
 type UserLookup interface {
 	GetUserByLFUserName(lfUserName string) (*models.User, error)
+	GetUserByUserName(userName string, fullMatch bool) (*models.User, error)
 }
 
 // Publisher replaces the organization's CLA manager list (*member_service.Client satisfies it).
@@ -192,6 +195,19 @@ func (s Service) Roster(ctx context.Context, sfid string, signatureIDs ...string
 			if u = strings.TrimSpace(u); u == "" {
 				continue
 			}
+			if strings.HasPrefix(u, "github:") {
+				resolved, lookupErr := s.legacyUsername(u)
+				if lookupErr != nil {
+					log.WithFields(f).Warn("legacy CLA manager entry lookup failed - roster not published")
+					return nil, errLegacyManagerLookup
+				}
+				if resolved != "" {
+					usernames[resolved] = true
+				} else {
+					skipped[u] = true
+				}
+				continue
+			}
 			if !plainUsername(u) {
 				skipped[u] = true
 				continue
@@ -199,8 +215,8 @@ func (s Service) Roster(ctx context.Context, sfid string, signatureIDs ...string
 			usernames[u] = true
 		}
 	}
-	for _, u := range sortedKeys(skipped) {
-		log.WithFields(f).WithFields(logrus.Fields{"username": u, "reason": "whitespace or control character"}).Warn("CLA manager username skipped - not publishable to member-service")
+	if len(skipped) > 0 {
+		log.WithFields(f).WithFields(logrus.Fields{"skipped": len(skipped), "reason": "not a publishable LF username"}).Warn("CLA manager usernames skipped - not publishable to member-service")
 	}
 	for _, u := range sortedKeys(usernames) {
 		roster.Admins = append(roster.Admins, s.entry(f, u))
@@ -315,6 +331,33 @@ func (s Service) companyIDs(ctx context.Context, id18 string) ([]string, error) 
 	return sortedKeys(seen), nil
 }
 
+// errLegacyManagerLookup aborts a roster whose legacy github:<id> entry could not be looked up; the entry itself
+// stays out of logs and error text
+var errLegacyManagerLookup = errors.New("cla_admins: legacy CLA manager entry lookup failed")
+
+// legacyUsername resolves a github:<id> ACL entry to the LF username of its user record, as the signature
+// converter does; a missing record or one without a usable LF username is not publishable (""), a lookup
+// failure is an error
+func (s Service) legacyUsername(entry string) (string, error) {
+	if s.Users == nil {
+		return "", nil
+	}
+	if id, parseErr := strconv.Atoi(strings.TrimPrefix(entry, "github:")); parseErr != nil || id <= 0 {
+		return "", nil
+	}
+	user, err := s.Users.GetUserByUserName(entry, true)
+	if err != nil {
+		return "", err
+	}
+	if user == nil {
+		return "", nil
+	}
+	if u := strings.TrimSpace(user.LfUsername); u != "" && plainUsername(u) {
+		return u, nil
+	}
+	return "", nil
+}
+
 func (s Service) entry(f logrus.Fields, username string) member_service.CLAAdmin {
 	e := member_service.CLAAdmin{Username: username}
 	if s.Users == nil {
@@ -322,14 +365,14 @@ func (s Service) entry(f logrus.Fields, username string) member_service.CLAAdmin
 	}
 	user, err := s.Users.GetUserByLFUserName(username)
 	if err != nil || user == nil {
-		log.WithFields(f).WithError(err).Debugf("no user record for CLA manager %s - sending the username only", username)
+		log.WithFields(f).WithField("lookupFailed", err != nil).Debug("no user record for a CLA manager - sending the username only")
 		return e
 	}
 	if email := strings.TrimSpace(string(user.LfEmail)); email != "" {
 		if plainEmail(email) {
 			e.Email = email
 		} else {
-			log.WithFields(f).WithFields(logrus.Fields{"username": username, "reason": "not a plain email address"}).Warn("CLA manager email omitted - the username is sent alone")
+			log.WithFields(f).WithField("reason", "not a plain email address").Warn("CLA manager email omitted - the username is sent alone")
 		}
 	}
 	e.Name = strings.TrimSpace(user.Username)

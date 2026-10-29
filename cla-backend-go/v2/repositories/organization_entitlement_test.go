@@ -13,6 +13,8 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	v1Repositories "github.com/linuxfoundation/easycla/cla-backend-go/repositories"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+
+	gogithub "github.com/google/go-github/v37/github"
 )
 
 // POST /v4/project/{projectSFID}/github/repositories only uses organizations the project may list
@@ -76,4 +78,33 @@ func TestV4EnrollmentGuardsReuseTheV1Predicates(t *testing.T) {
 	assert.Error(t, v1Repositories.ExternalIDRecordReusable(nil, nil, "123", "project-a"), "an unreadable record is refused")
 	lookupErr := errors.New("dynamo down")
 	assert.ErrorIs(t, v1Repositories.ExternalIDRecordReusable(nil, lookupErr, "123", "project-a"), lookupErr)
+}
+
+// several records may share a name in the index; the enabled, entitled one is used (with its installation)
+func TestEntitledOrganizationPicksTheEntitledRecord(t *testing.T) {
+	mappings := []*projects_cla_groups.ProjectClaGroup{{ProjectSFID: "project-a", FoundationSFID: "foundation-x"}}
+	org := &v1Models.GithubOrganizations{List: []*v1Models.GithubOrganization{
+		{OrganizationName: "Org", ProjectSFID: "project-a", Enabled: false, OrganizationInstallationID: 1},
+		{OrganizationName: "org", ProjectSFID: "project-b", Enabled: true, OrganizationInstallationID: 2},
+		{OrganizationName: "ORG", OrganizationSfid: "foundation-x", Enabled: true, OrganizationInstallationID: 3},
+	}}
+	got := entitledOrganization(org, "project-a", mappings)
+	if assert.NotNil(t, got) {
+		assert.Equal(t, int64(3), got.OrganizationInstallationID)
+		assert.Equal(t, "ORG", got.OrganizationName)
+		assert.Equal(t, "ORG", *repositoryOrganization(got), "the stored repository organization is the registration's exact name")
+	}
+	assert.Nil(t, entitledOrganization(org, "project-z", mappings))
+	assert.Nil(t, entitledOrganization(nil, "project-a", mappings))
+}
+
+// the repository fetched by id must belong to the entitled organization (case-insensitively)
+func TestRepositoryOwnedBy(t *testing.T) {
+	repo := func(owner string) *gogithub.Repository {
+		return &gogithub.Repository{FullName: gogithub.String(owner + "/repo"), Owner: &gogithub.User{Login: gogithub.String(owner)}}
+	}
+	assert.NoError(t, repositoryOwnedBy(repo("Acme-Org"), "acme-org"))
+	assert.ErrorContains(t, repositoryOwnedBy(repo("other-org"), "acme-org"), `belongs to "other-org"`)
+	assert.Error(t, repositoryOwnedBy(&gogithub.Repository{}, "acme-org"), "no owner")
+	assert.Error(t, repositoryOwnedBy(nil, "acme-org"))
 }

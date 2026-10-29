@@ -247,11 +247,193 @@ func TestUpdateApprovalListGitLabGroupRemovalFailsBeforeWritingWhenTheLookupFail
 	assert.Equal(t, fakeStringList(removedGroupURL, keptGroupURL), table.find("ccla-sig")["gitlab_org_approval_list"], "the list is untouched")
 }
 
-// a group that stays on the list still covers its members; when it cannot be resolved nobody is
-// re-checked and the list is still updated
-func TestUpdateApprovalListGitLabGroupRemovalSkipsTheReCheckWhenARemainingGroupIsUnresolvable(t *testing.T) {
+// a membership lookup failure on a group that stays listed also stops the request before anything is
+// written: the removal is not committed while coverage is unknown, and the email changes sent along
+// with it are not applied either
+func TestUpdateApprovalListGitLabGroupRemovalFailsBeforeWritingWhenARemainingGroupIsUnresolvable(t *testing.T) {
 	logins := map[string]string{"user-001": "alice"}
 	table := &fakeSignaturesTable{items: gitLabRemovalItems(t, logins), invalidated: map[string]int{}}
+	awsSession := gitLabRemovalSession(t, table)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	repo := gitLabRemovalRepo(t, ctrl, awsSession, logins)
+	approvalTable := &fakeApprovalRepo{}
+	repo.approvalRepo = approvalTable
+	stubGitLabGroupMembers(t, func(_ context.Context, group string) ([]string, error) {
+		if group == removedGroupURL {
+			return []string{"alice"}, nil
+		}
+		return nil, errors.New("gitlab: 503")
+	})
+
+	_, err := repo.UpdateApprovalList(context.Background(),
+		&models.User{LfUsername: "manager-lf"},
+		&models.ClaGroup{ProjectID: "cla-group-1", ProjectName: "My Project", Version: "v2"},
+		"company-1",
+		&models.ApprovalList{
+			AddEmailApprovalList:        []string{"new@corp.example"},
+			RemoveEmailApprovalList:     []string{"dave@corp.example"},
+			RemoveGitlabOrgApprovalList: []string{removedGroupURL},
+		},
+		&events.LogEventArgs{EventType: events.InvalidatedSignature})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unable to fetch GitLab group members")
+
+	table.mu.Lock()
+	defer table.mu.Unlock()
+	assert.Empty(t, table.invalidated)
+	assert.Empty(t, table.updates, "no signature row was written")
+	assert.Empty(t, table.puts)
+	assert.Equal(t, fakeStringList(removedGroupURL, keptGroupURL), table.find("ccla-sig")["gitlab_org_approval_list"], "the group list is untouched")
+	assert.Equal(t, fakeStringList("dave@corp.example"), table.find("ccla-sig")["email_whitelist"], "the email changes of the same request are not applied")
+	assert.Empty(t, approvalTable.added)
+	assert.Empty(t, approvalTable.updated)
+}
+
+// the email addition sent along with a removal whose lookup fails is not applied either
+func TestUpdateApprovalListGitLabGroupRemovalLookupFailureAlsoHoldsTheEmailAddition(t *testing.T) {
+	logins := map[string]string{"user-001": "alice"}
+	table := &fakeSignaturesTable{items: gitLabRemovalItems(t, logins), invalidated: map[string]int{}}
+	awsSession := gitLabRemovalSession(t, table)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	repo := gitLabRemovalRepo(t, ctrl, awsSession, logins)
+	approvalTable := &fakeApprovalRepo{}
+	repo.approvalRepo = approvalTable
+	stubGitLabGroupMembers(t, func(context.Context, string) ([]string, error) { return nil, errors.New("gitlab: 503") })
+
+	_, err := repo.UpdateApprovalList(context.Background(),
+		&models.User{LfUsername: "manager-lf"},
+		&models.ClaGroup{ProjectID: "cla-group-1", ProjectName: "My Project", Version: "v2"},
+		"company-1",
+		&models.ApprovalList{AddEmailApprovalList: []string{"new@corp.example"}, RemoveGitlabOrgApprovalList: []string{removedGroupURL}},
+		&events.LogEventArgs{EventType: events.InvalidatedSignature})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unable to fetch GitLab group members")
+
+	table.mu.Lock()
+	defer table.mu.Unlock()
+	assert.Empty(t, table.invalidated)
+	assert.Empty(t, table.updates)
+	assert.Empty(t, table.puts)
+	assert.Equal(t, fakeStringList("dave@corp.example"), table.find("ccla-sig")["email_whitelist"])
+	assert.Empty(t, approvalTable.added, "the email was not recorded in the approvals table")
+	assert.Empty(t, approvalTable.updated)
+}
+
+// adding a group resolves no membership
+func TestUpdateApprovalListGitLabGroupAddOnlyResolvesNoMembers(t *testing.T) {
+	logins := map[string]string{"user-001": "alice"}
+	table := &fakeSignaturesTable{items: gitLabRemovalItems(t, logins), invalidated: map[string]int{}}
+	awsSession := gitLabRemovalSession(t, table)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	repo := gitLabRemovalRepo(t, ctrl, awsSession, logins)
+	var lookups int64
+	stubGitLabGroupMembers(t, func(context.Context, string) ([]string, error) {
+		atomic.AddInt64(&lookups, 1)
+		return nil, errors.New("gitlab: 503")
+	})
+
+	updated, err := repo.UpdateApprovalList(context.Background(),
+		&models.User{LfUsername: "manager-lf"},
+		&models.ClaGroup{ProjectID: "cla-group-1", ProjectName: "My Project", Version: "v2"},
+		"company-1",
+		&models.ApprovalList{AddGitlabOrgApprovalList: []string{"https://gitlab.com/groups/added-group"}},
+		&events.LogEventArgs{EventType: events.InvalidatedSignature})
+	require.NoError(t, err)
+	require.NotNil(t, updated)
+	assert.Equal(t, int64(0), atomic.LoadInt64(&lookups))
+
+	table.mu.Lock()
+	defer table.mu.Unlock()
+	assert.Empty(t, table.invalidated)
+	assert.Equal(t, fakeStringList(removedGroupURL, keptGroupURL, "https://gitlab.com/groups/added-group"), table.find("ccla-sig")["gitlab_org_approval_list"])
+}
+
+// an acknowledgment that cannot be invalidated stops the removal from being committed: the group stays
+// listed and the approvals table is untouched, so nothing reports a success with stale approvals
+func TestUpdateApprovalListGitLabGroupRemovalFailsWhenAnAcknowledgmentCannotBeInvalidated(t *testing.T) {
+	logins := map[string]string{"user-001": "alice"}
+	table := &fakeSignaturesTable{items: gitLabRemovalItems(t, logins), invalidated: map[string]int{}, failUpdateOf: "sig-001"}
+	awsSession := gitLabRemovalSession(t, table)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	repo := gitLabRemovalRepo(t, ctrl, awsSession, logins)
+	approvalTable := &fakeApprovalRepo{}
+	repo.approvalRepo = approvalTable
+	stubGitLabGroupMembers(t, func(_ context.Context, group string) ([]string, error) {
+		if group == removedGroupURL {
+			return []string{"alice"}, nil
+		}
+		return nil, nil
+	})
+
+	_, err := repo.UpdateApprovalList(context.Background(),
+		&models.User{LfUsername: "manager-lf"},
+		&models.ClaGroup{ProjectID: "cla-group-1", ProjectName: "My Project", Version: "v2"},
+		"company-1",
+		&models.ApprovalList{RemoveGitlabOrgApprovalList: []string{removedGroupURL}},
+		&events.LogEventArgs{EventType: events.InvalidatedSignature})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "GitLab group removal not committed")
+	assert.Contains(t, err.Error(), "1 acknowledgment re-check(s) failed")
+	assert.Contains(t, err.Error(), "injected write failure", "the cause is reported")
+
+	table.mu.Lock()
+	defer table.mu.Unlock()
+	assert.Empty(t, table.invalidated, "the failed invalidation changed nothing")
+	assert.Equal(t, fakeStringList(removedGroupURL, keptGroupURL), table.find("ccla-sig")["gitlab_org_approval_list"], "the group stays listed")
+	assert.Empty(t, approvalTable.updated)
+	assert.Empty(t, approvalTable.added)
+}
+
+// removing the LAST listed group drops the column right away in the old order; a failing acknowledgment
+// invalidation must still leave the criterion in place and the approvals table untouched
+func TestUpdateApprovalListGitLabLastGroupRemovalFailsWhenAnAcknowledgmentCannotBeInvalidated(t *testing.T) {
+	logins := map[string]string{"user-001": "alice"}
+	items := gitLabRemovalItems(t, logins)
+	items[0]["gitlab_org_approval_list"] = fakeStringList(removedGroupURL)
+	table := &fakeSignaturesTable{items: items, invalidated: map[string]int{}, failUpdateOf: "sig-001"}
+	awsSession := gitLabRemovalSession(t, table)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	repo := gitLabRemovalRepo(t, ctrl, awsSession, logins)
+	approvalTable := &fakeApprovalRepo{}
+	repo.approvalRepo = approvalTable
+	stubGitLabGroupMembers(t, func(_ context.Context, group string) ([]string, error) {
+		if group == removedGroupURL {
+			return []string{"alice"}, nil
+		}
+		return nil, nil
+	})
+
+	_, err := repo.UpdateApprovalList(context.Background(),
+		&models.User{LfUsername: "manager-lf"},
+		&models.ClaGroup{ProjectID: "cla-group-1", ProjectName: "My Project", Version: "v2"},
+		"company-1",
+		&models.ApprovalList{RemoveGitlabOrgApprovalList: []string{removedGroupURL}},
+		&events.LogEventArgs{EventType: events.InvalidatedSignature})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "GitLab group removal not committed")
+
+	table.mu.Lock()
+	defer table.mu.Unlock()
+	assert.Empty(t, table.invalidated, "alice stays approved")
+	assert.Equal(t, fakeStringList(removedGroupURL), table.find("ccla-sig")["gitlab_org_approval_list"], "the last group is still the criterion")
+	assert.Empty(t, approvalTable.updated)
+	assert.Empty(t, approvalTable.added)
+}
+
+// a failing final CCLA write is reported as an error, never as a successful removal
+func TestUpdateApprovalListGitLabGroupRemovalReportsAFailedFinalWrite(t *testing.T) {
+	logins := map[string]string{"user-001": "alice"}
+	table := &fakeSignaturesTable{items: gitLabRemovalItems(t, logins), invalidated: map[string]int{}, failUpdateOf: "ccla-sig"}
 	awsSession := gitLabRemovalSession(t, table)
 
 	ctrl := gomock.NewController(t)
@@ -261,7 +443,7 @@ func TestUpdateApprovalListGitLabGroupRemovalSkipsTheReCheckWhenARemainingGroupI
 		if group == removedGroupURL {
 			return []string{"alice"}, nil
 		}
-		return nil, errors.New("gitlab: 503")
+		return nil, nil
 	})
 
 	updated, err := repo.UpdateApprovalList(context.Background(),
@@ -270,13 +452,13 @@ func TestUpdateApprovalListGitLabGroupRemovalSkipsTheReCheckWhenARemainingGroupI
 		"company-1",
 		&models.ApprovalList{RemoveGitlabOrgApprovalList: []string{removedGroupURL}},
 		&events.LogEventArgs{EventType: events.InvalidatedSignature})
-	require.NoError(t, err)
-	require.NotNil(t, updated)
+	require.Error(t, err)
+	assert.Nil(t, updated)
 
 	table.mu.Lock()
 	defer table.mu.Unlock()
-	assert.Empty(t, table.invalidated, "alice may still be covered by the unresolvable group")
-	assert.Equal(t, fakeStringList(keptGroupURL), table.find("ccla-sig")["gitlab_org_approval_list"])
+	assert.Equal(t, fakeStringList(removedGroupURL, keptGroupURL), table.find("ccla-sig")["gitlab_org_approval_list"], "the group stays listed")
+	assert.Equal(t, map[string]int{"sig-001": 1}, table.invalidated, "alice's acknowledgment was revoked before the failed write and can be re-acknowledged while the group is listed")
 }
 
 // without a resolver (binaries other than the API server) the list changes and nobody is re-checked,
