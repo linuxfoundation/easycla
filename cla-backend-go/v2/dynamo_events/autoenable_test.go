@@ -5,6 +5,7 @@ package dynamo_events
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
@@ -232,4 +233,20 @@ func TestAutoEnableServiceProvider_AutoEnabledForGithubOrg(t *testing.T) {
 
 func TestAutoEnableServiceProvider_CreateAutoEnabledRepository(t *testing.T) {
 
+}
+
+// repository names from the GitHub webhook are HTML-escaped in the auto-enable notification (ops#807)
+func TestAutoEnabledRepositoryEmailContentEscapesRepositoryNames(t *testing.T) {
+	claGroup := &models.ClaGroup{ProjectName: "Project X", Version: "v2"}
+	repos := []*models.GithubRepository{
+		{RepositoryName: `org/<script>alert(1)</script>`},
+		{RepositoryName: "org/repo-two"},
+	}
+	_, body, _ := autoEnabledRepositoryEmailContent(claGroup, "org", nil, repos)
+	items := regexp.MustCompile(`<li>(.*?)</li>`).FindAllStringSubmatch(body, -1)
+	if assert.Len(t, items, 2, body) {
+		assert.Equal(t, "org/&lt;script&gt;alert(1)&lt;/script&gt;", items[0][1])
+		assert.Equal(t, "org/repo-two", items[1][1])
+	}
+	assert.NotContains(t, body, "<script>")
 }

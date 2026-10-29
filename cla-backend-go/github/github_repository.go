@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"net/http"
 	"os"
 	"regexp"
@@ -2355,7 +2356,7 @@ func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommi
 			}
 			log.WithFields(f).Debugf("SHAs for signed users: %v", shas)
 			committersComment.WriteString(
-				fmt.Sprintf("<li>%s %s (%s)</li>", success, authorInfo, strings.Join(shas, ", ")),
+				fmt.Sprintf("<li>%s %s (%s)</li>", success, html.EscapeString(authorInfo), strings.Join(shas, ", ")),
 			)
 		}
 	}
@@ -2427,7 +2428,7 @@ func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommi
 						`Start the authorization process <a href='%s' target='_blank'> by clicking here</a>, `+
 						`click "Corporate", select the appropriate company from the list, then confirm your affiliation on the page that appears. `+
 						`For further assistance with EasyCLA, <a href='%s' target='_blank'>please visit our EasyCLA portal</a> and chat with our support bot.</li>`,
-					failed, authorInfo, strings.Join(shas, ", "),
+					failed, html.EscapeString(authorInfo), strings.Join(shas, ", "),
 					signURL, supportURL,
 				))
 			} else {
@@ -2441,7 +2442,7 @@ func getCommentBody(repositoryType, signURL string, signed, missing []*UserCommi
 					`<li><a href='%s' target='_blank'>%s</a> - %s. The commit (%s) is not authorized under a signed CLA. `+
 						`<a href='%s' target='_blank'>Please click here to be authorized</a>. `+
 						`For further assistance with EasyCLA, <a href='%s' target='_blank'>please visit our EasyCLA portal</a> and chat with our support bot.</li>`,
-					signURL, failed, authorInfo, strings.Join(shas, ", "),
+					signURL, failed, html.EscapeString(authorInfo), strings.Join(shas, ", "),
 					signURL, supportURL,
 				))
 			}

@@ -6,6 +6,7 @@ package gitlab_organizations
 import (
 	"errors"
 	"fmt"
+	"html"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -647,7 +648,7 @@ func NewServerError(reqID string, gitLabGroupName string, theError error) *Serve
 
 // WriteResponse to the client
 func (o *ServerError) WriteResponse(rw http.ResponseWriter, producer runtime.Producer) {
-	html := fmt.Sprintf(`<!DOCTYPE html>
+	page := fmt.Sprintf(`<!DOCTYPE html>
     <html lang="en">
 		<head>
 			<title>LFX EasyCLA Service GitLab App Installation Status</title>
@@ -666,11 +667,11 @@ func (o *ServerError) WriteResponse(rw http.ResponseWriter, producer runtime.Pro
  			<h2 class="text-center">LFx EasyCLA Service GitLab App - Installation Issue</h2> 
 			<p class="text-center">Unable to install the GitLab Group %s due to the following error: %s.</p>
 		</body>
-	</html>`, o.GitLabGroupName, o.Error.Error())
+	</html>`, html.EscapeString(o.GitLabGroupName), html.EscapeString(o.Error.Error()))
 
 	rw.Header().Set("Content-Type", "text/html")
 	rw.Header().Set(utils.XREQUESTID, o.ReqID)
-	_, err := rw.Write([]byte(html))
+	_, err := rw.Write([]byte(page))
 	if err != nil {
 		panic(err)
 	}

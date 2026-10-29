@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"strconv"
 	"strings"
 
@@ -269,7 +270,7 @@ func autoEnabledRepositoryEmailContent(claGroupModel *models.ClaGroup, orgName s
 
 	repoContent := "<ul>"
 	for _, repo := range repos {
-		repoContent += "<li>" + repo.RepositoryName + "</li>"
+		repoContent += "<li>" + html.EscapeString(repo.RepositoryName) + "</li>"
 	}
 	repoContent += "</ul>"
 

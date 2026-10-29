@@ -8,6 +8,7 @@ import (
 	"crypto/subtle"
 	"errors"
 	"fmt"
+	"html"
 	"regexp"
 	"strconv"
 	"strings"
@@ -347,7 +348,7 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
 	if len(signedUsers) > 0 {
 		result = "<ul>"
 		for _, signed := range signedUsers {
-			authorInfo := getAuthorInfo(signed)
+			authorInfo := html.EscapeString(getAuthorInfo(signed))
 			result += fmt.Sprintf("<li>%s %s</li>", success, authorInfo)
 		}
 		result += "</ul>"
@@ -361,7 +362,7 @@ func PrepareMrCommentContent(missingUsers []*gatedGitlabUser, signedUsers []*git
 	if len(missingUsers) > 0 {
 		result += "<ul>"
 		for _, missingUser := range missingUsers {
-			authorInfo := getAuthorInfo(missingUser.User)
+			authorInfo := html.EscapeString(getAuthorInfo(missingUser.User))
 			if errors.Is(missingUser.err, missingCompanyAffiliation) {
 				msg := fmt.Sprintf(`<li> %s %s. This user is authorized, but they must confirm their affiliation with their company. 
 								  Start the authorization process <a href='%s'> by clicking here</a>, click "Corporate", 
