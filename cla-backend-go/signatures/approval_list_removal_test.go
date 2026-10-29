@@ -53,6 +53,8 @@ type fakeSignaturesTable struct {
 	invalidated       map[string]int
 	ccla              []string
 	conditionFailures int
+	// failUpdateOf makes every UpdateItem of that signature fail with an internal error
+	failUpdateOf string
 	// maxRawPage caps the rows a single Query evaluates regardless of Limit (the 1 MB window)
 	maxRawPage int
 	// failQueryAt makes the n-th Query (1-based) fail with a non-retryable ValidationException
@@ -94,6 +96,8 @@ type fakeAttrValue struct {
 	S    *string
 	N    *string
 	BOOL *bool
+	NULL *bool
+	SS   []string
 	L    []fakeAttrValue
 }
 
@@ -426,6 +430,10 @@ func (f *fakeSignaturesTable) handleUpdate(w http.ResponseWriter, body []byte) {
 		fakeWriteError(w, "ConditionalCheckFailedException", "The conditional request failed")
 		return
 	}
+	if f.failUpdateOf != "" && signatureID == f.failUpdateOf {
+		fakeWriteError(w, "InternalServerError", "injected write failure")
+		return
+	}
 	if item == nil {
 		// an unconditional UpdateItem on a missing key creates the item, as DynamoDB does
 		item = map[string]interface{}{"signature_id": fakeS(signatureID)}
@@ -476,8 +484,39 @@ func fakeAttrToItem(value fakeAttrValue) map[string]interface{} {
 			list = append(list, fakeAttrToItem(element))
 		}
 		return map[string]interface{}{"L": list}
+	case value.NULL != nil && *value.NULL:
+		return map[string]interface{}{"NULL": true}
+	case value.SS != nil:
+		set := make([]interface{}, 0, len(value.SS))
+		for _, element := range value.SS {
+			set = append(set, element)
+		}
+		return map[string]interface{}{"SS": set}
 	}
 	return nil
+}
+
+// fakeContains evaluates contains(path, operand) for a stored string list or string set
+func fakeContains(attr interface{}, value fakeAttrValue) bool {
+	m, ok := attr.(map[string]interface{})
+	if !ok || value.S == nil {
+		return false
+	}
+	if list, ok := m["L"].([]interface{}); ok {
+		for _, e := range list {
+			if em, ok := e.(map[string]interface{}); ok && em["S"] == *value.S {
+				return true
+			}
+		}
+	}
+	if set, ok := m["SS"].([]interface{}); ok {
+		for _, e := range set {
+			if e == *value.S {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 const fakeAttributeExists = "attribute_exists"
@@ -486,7 +525,7 @@ var (
 	fakeSetAssignment      = regexp.MustCompile(`^(#[0-9A-Za-z_]+) = (:[0-9A-Za-z_]+)$`)
 	fakeIfNotExistsAssign  = regexp.MustCompile(`^(#[0-9A-Za-z_]+) = if_not_exists\((#[0-9A-Za-z_]+), (:[0-9A-Za-z_]+)\)$`)
 	fakeUpdateClauseSplit  = regexp.MustCompile(`\b(SET|REMOVE|ADD|DELETE)\b`)
-	fakeConditionTokenizer = regexp.MustCompile(`\(|\)|,|=|attribute_not_exists|attribute_exists|AND|OR|#[0-9A-Za-z_]+|:[0-9A-Za-z_]+`)
+	fakeConditionTokenizer = regexp.MustCompile(`\(|\)|,|=|attribute_not_exists|attribute_exists|contains|AND|OR|#[0-9A-Za-z_]+|:[0-9A-Za-z_]+`)
 )
 
 // applies the SET (plain and if_not_exists) and REMOVE clauses the production code emits
@@ -576,6 +615,13 @@ func fakeEvalCondition(expr string, names map[string]string, values map[string]f
 				return exists
 			}
 			return !exists
+		case "contains":
+			next()
+			attr := item[names[next()]]
+			next()
+			value := values[next()]
+			next()
+			return fakeContains(attr, value)
 		default:
 			next()
 			return fakeItemMatches(item, map[string]fakeAttrValue{names[tok]: values[next()]})
@@ -2145,4 +2191,91 @@ func TestUpdateApprovalListGitHubOrgRemovalSucceedsWhenTheCLAGroupHasNoRepositor
 	require.Len(t, approvalRepo.added, 1)
 	assert.Equal(t, "removed-org", approvalRepo.added[0].ApprovalName)
 	assert.False(t, approvalRepo.added[0].Active)
+}
+
+// removing the LAST listed GitHub organization used to drop the column before the members were re-checked;
+// a failing acknowledgment invalidation now leaves the organization listed, the acknowledgment approved and
+// the approvals table untouched
+func TestUpdateApprovalListGitHubLastOrgRemovalFailsWhenAnAcknowledgmentCannotBeInvalidated(t *testing.T) {
+	items := []map[string]interface{}{{
+		"signature_id":             fakeS("ccla-sig"),
+		"signature_project_id":     fakeS("cla-group-1"),
+		"signature_reference_id":   fakeS("company-1"),
+		"signature_reference_type": fakeS("company"),
+		"signature_reference_name": fakeS("Acme"),
+		"signature_type":           fakeS("ccla"),
+		"signature_approved":       fakeTrue(),
+		"signature_signed":         fakeTrue(),
+		"github_org_whitelist":     fakeStringList("removed-org"),
+		"signature_acl":            fakeStringList("manager-lf"),
+		"date_created":             fakeS("2023-01-01T00:00:00Z"),
+		"date_modified":            fakeS("2023-01-01T00:00:00Z"),
+	}, fakeEclaItem(1, "alice@corp.example")}
+	table := &fakeSignaturesTable{items: items, invalidated: map[string]int{}, failUpdateOf: "sig-001"}
+	server := httptest.NewServer(table)
+	defer server.Close()
+	awsSession, err := session.NewSession(&aws.Config{
+		Region:      aws.String("us-east-1"),
+		Endpoint:    aws.String(server.URL),
+		Credentials: credentials.NewStaticCredentials("test", "test", ""),
+		DisableSSL:  aws.Bool(true),
+	})
+	require.NoError(t, err)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	mockUsers := mock_users.NewMockUserRepository(ctrl)
+	mockUsers.EXPECT().GetUser("user-001").
+		Return(&models.User{UserID: "user-001", GithubUsername: "alice", LfEmail: strfmt.Email("alice@corp.example")}, nil).AnyTimes()
+	mockUsers.EXPECT().GetUserByUserName("manager-lf", true).
+		Return(&models.User{LfUsername: "manager-lf", LfEmail: "manager@example.com"}, nil).AnyTimes()
+	mockCompanyRepo := mock_company.NewMockIRepository(ctrl)
+	mockCompanyRepo.EXPECT().GetCompany(gomock.Any(), "company-1").
+		Return(&models.Company{CompanyID: "company-1", CompanyName: "Acme"}, nil).AnyTimes()
+	mockRepositories := mock.NewMockRepositoryInterface(ctrl)
+	mockRepositories.EXPECT().GitHubGetRepositoriesByCLAGroup(gomock.Any(), "cla-group-1", true).
+		Return([]*models.GithubRepository{{RepositoryID: "repo-1", RepositoryOrganizationName: "removed-org"}}, nil)
+	mockGitHubOrgs := githubOrgMock.NewMockRepositoryInterface(ctrl)
+	mockGitHubOrgs.EXPECT().GetGitHubOrganization(gomock.Any(), "removed-org").
+		Return(&models.GithubOrganization{OrganizationName: "removed-org", OrganizationInstallationID: 4242}, nil)
+	originalMembers := getOrganizationMembers
+	getOrganizationMembers = func(context.Context, string, int64) ([]string, error) { return []string{"alice"}, nil }
+	defer func() { getOrganizationMembers = originalMembers }()
+	originalPublicOrgs := listUserPublicOrgs
+	listUserPublicOrgs = func(context.Context, string) ([]string, error) { return nil, nil }
+	defer func() { listUserPublicOrgs = originalPublicOrgs }()
+	mockEvents := eventsMock.NewMockService(ctrl)
+	mockEvents.EXPECT().LogEventWithContext(gomock.Any(), gomock.Any()).AnyTimes()
+	approvalRepo := &fakeApprovalRepo{}
+	previousSender := utils.GetEmailSender()
+	utils.SetEmailSender(&recordingEmailSender{})
+	defer utils.SetEmailSender(previousSender)
+
+	repo := repository{
+		stage:              "test",
+		dynamoDBClient:     dynamodb.New(awsSession),
+		companyRepo:        mockCompanyRepo,
+		usersRepo:          mockUsers,
+		eventsService:      mockEvents,
+		repositoriesRepo:   mockRepositories,
+		ghOrgRepo:          mockGitHubOrgs,
+		signatureTableName: "cla-test-signatures",
+		approvalRepo:       approvalRepo,
+	}
+
+	_, err = repo.UpdateApprovalList(context.Background(),
+		&models.User{LfUsername: "manager-lf", LfEmail: "manager@example.com"},
+		&models.ClaGroup{ProjectID: "cla-group-1", ProjectName: "My Project", Version: "v2"},
+		"company-1",
+		&models.ApprovalList{RemoveGithubOrgApprovalList: []string{"removed-org"}},
+		&events.LogEventArgs{EventType: events.InvalidatedSignature})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "GitHub organization removal not committed")
+
+	table.mu.Lock()
+	defer table.mu.Unlock()
+	assert.Empty(t, table.invalidated, "alice stays approved")
+	assert.Equal(t, fakeStringList("removed-org"), table.find("ccla-sig")["github_org_whitelist"], "the last organization is still the criterion")
+	assert.Empty(t, approvalRepo.updated)
+	assert.Empty(t, approvalRepo.added)
 }

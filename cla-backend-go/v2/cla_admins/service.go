@@ -199,8 +199,8 @@ func (s Service) Roster(ctx context.Context, sfid string, signatureIDs ...string
 			usernames[u] = true
 		}
 	}
-	for _, u := range sortedKeys(skipped) {
-		log.WithFields(f).WithFields(logrus.Fields{"username": u, "reason": "whitespace or control character"}).Warn("CLA manager username skipped - not publishable to member-service")
+	if len(skipped) > 0 {
+		log.WithFields(f).WithFields(logrus.Fields{"skipped": len(skipped), "reason": "whitespace or control character"}).Warn("CLA manager usernames skipped - not publishable to member-service")
 	}
 	for _, u := range sortedKeys(usernames) {
 		roster.Admins = append(roster.Admins, s.entry(f, u))
@@ -322,14 +322,14 @@ func (s Service) entry(f logrus.Fields, username string) member_service.CLAAdmin
 	}
 	user, err := s.Users.GetUserByLFUserName(username)
 	if err != nil || user == nil {
-		log.WithFields(f).WithError(err).Debugf("no user record for CLA manager %s - sending the username only", username)
+		log.WithFields(f).WithField("lookupFailed", err != nil).Debug("no user record for a CLA manager - sending the username only")
 		return e
 	}
 	if email := strings.TrimSpace(string(user.LfEmail)); email != "" {
 		if plainEmail(email) {
 			e.Email = email
 		} else {
-			log.WithFields(f).WithFields(logrus.Fields{"username": username, "reason": "not a plain email address"}).Warn("CLA manager email omitted - the username is sent alone")
+			log.WithFields(f).WithField("reason", "not a plain email address").Warn("CLA manager email omitted - the username is sent alone")
 		}
 	}
 	e.Name = strings.TrimSpace(user.Username)

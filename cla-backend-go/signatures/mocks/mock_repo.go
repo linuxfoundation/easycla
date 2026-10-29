@@ -73,18 +73,18 @@ func (mr *MockSignatureRepositoryMockRecorder) AddCLAManager(ctx, signatureID, c
 }
 
 // AddGithubOrganizationToApprovalList mocks base method.
-func (m *MockSignatureRepository) AddGithubOrganizationToApprovalList(ctx context.Context, signatureID, githubOrganizationID string) ([]models.GithubOrg, error) {
+func (m *MockSignatureRepository) AddGithubOrganizationToApprovalList(ctx context.Context, signatureID, githubOrganizationID, lfUsername string) ([]models.GithubOrg, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "AddGithubOrganizationToApprovalList", ctx, signatureID, githubOrganizationID)
+	ret := m.ctrl.Call(m, "AddGithubOrganizationToApprovalList", ctx, signatureID, githubOrganizationID, lfUsername)
 	ret0, _ := ret[0].([]models.GithubOrg)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // AddGithubOrganizationToApprovalList indicates an expected call of AddGithubOrganizationToApprovalList.
-func (mr *MockSignatureRepositoryMockRecorder) AddGithubOrganizationToApprovalList(ctx, signatureID, githubOrganizationID interface{}) *gomock.Call {
+func (mr *MockSignatureRepositoryMockRecorder) AddGithubOrganizationToApprovalList(ctx, signatureID, githubOrganizationID, lfUsername interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddGithubOrganizationToApprovalList", reflect.TypeOf((*MockSignatureRepository)(nil).AddGithubOrganizationToApprovalList), ctx, signatureID, githubOrganizationID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddGithubOrganizationToApprovalList", reflect.TypeOf((*MockSignatureRepository)(nil).AddGithubOrganizationToApprovalList), ctx, signatureID, githubOrganizationID, lfUsername)
 }
 
 // AddSigTypeSignedApprovedID mocks base method.
@@ -188,18 +188,18 @@ func (mr *MockSignatureRepositoryMockRecorder) CreateSignature(ctx, signature in
 }
 
 // DeleteGithubOrganizationFromApprovalList mocks base method.
-func (m *MockSignatureRepository) DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID, githubOrganizationID string) ([]models.GithubOrg, error) {
+func (m *MockSignatureRepository) DeleteGithubOrganizationFromApprovalList(ctx context.Context, signatureID, githubOrganizationID, lfUsername string) ([]models.GithubOrg, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteGithubOrganizationFromApprovalList", ctx, signatureID, githubOrganizationID)
+	ret := m.ctrl.Call(m, "DeleteGithubOrganizationFromApprovalList", ctx, signatureID, githubOrganizationID, lfUsername)
 	ret0, _ := ret[0].([]models.GithubOrg)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // DeleteGithubOrganizationFromApprovalList indicates an expected call of DeleteGithubOrganizationFromApprovalList.
-func (mr *MockSignatureRepositoryMockRecorder) DeleteGithubOrganizationFromApprovalList(ctx, signatureID, githubOrganizationID interface{}) *gomock.Call {
+func (mr *MockSignatureRepositoryMockRecorder) DeleteGithubOrganizationFromApprovalList(ctx, signatureID, githubOrganizationID, lfUsername interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteGithubOrganizationFromApprovalList", reflect.TypeOf((*MockSignatureRepository)(nil).DeleteGithubOrganizationFromApprovalList), ctx, signatureID, githubOrganizationID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteGithubOrganizationFromApprovalList", reflect.TypeOf((*MockSignatureRepository)(nil).DeleteGithubOrganizationFromApprovalList), ctx, signatureID, githubOrganizationID, lfUsername)
 }
 
 // EclaAutoCreate mocks base method.

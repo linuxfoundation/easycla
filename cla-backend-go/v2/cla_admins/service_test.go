@@ -16,10 +16,13 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/go-openapi/strfmt"
+	"github.com/sirupsen/logrus"
+	logtest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	member_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
 )
@@ -103,7 +106,7 @@ type fakeUsers struct{ byName map[string]*models.User }
 func (f fakeUsers) GetUserByLFUserName(name string) (*models.User, error) {
 	u, ok := f.byName[name]
 	if !ok {
-		return nil, errors.New("not found")
+		return nil, fmt.Errorf("user %s not found", name)
 	}
 	return u, nil
 }
@@ -292,6 +295,61 @@ func TestRosterSkipsUnpublishableIdentities(t *testing.T) {
 	assert.Equal(t, []string{"Zoe.Q-1", "amy", "bob", "zoe"}, res.Roster.Usernames())
 	require.Len(t, h.pub.calls, 1)
 	assert.Equal(t, roster.Admins, h.pub.calls[0].admins, "the filtered roster is what member-service receives")
+}
+
+// no CLA-manager username reaches the logs: skipped names are counted, an omitted email and a missing
+// user record are reported without the name
+func TestRosterLogsNoManagerUsernames(t *testing.T) {
+	logger := log.GetLogger()
+	oldHooks := logger.ReplaceHooks(make(logrus.LevelHooks))
+	oldLevel := logger.GetLevel()
+	logger.SetLevel(logrus.DebugLevel)
+	t.Cleanup(func() {
+		logger.ReplaceHooks(oldHooks)
+		logger.SetLevel(oldLevel)
+	})
+	hook := logtest.NewLocal(logger)
+
+	h := newHarness(&fakePublisher{})
+	row := h.cclas.base["s1"]
+	row.ACL = []string{"bad user", "tab\tname", "ctl\x01x", "zoe", "Zoe.Q-1", "ghost"}
+	h.cclas.base["s1"] = row
+	h.svc.Users = fakeUsers{byName: map[string]*models.User{
+		"amy":     {LfUsername: "amy", LfEmail: strfmt.Email("amy@example.com"), Username: "Amy"},
+		"bob":     {LfUsername: "bob", LfEmail: strfmt.Email("bob@example.com"), Username: "Bob"},
+		"zoe":     {LfUsername: "zoe", LfEmail: strfmt.Email("not an address")},
+		"Zoe.Q-1": {LfUsername: "Zoe.Q-1", LfEmail: strfmt.Email("Zoe Q <zoe@example.com>"), Username: "Zoe Q"},
+	}}
+	roster, err := h.svc.Roster(context.Background(), sfid15)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Zoe.Q-1", "amy", "bob", "ghost", "zoe"}, roster.Usernames(), "the other rows of the account add amy and bob")
+	names := []string{"bad user", "tab\tname", "ctl\x01x", "zoe", "Zoe.Q-1", "ghost", "amy", "bob"}
+
+	var skipped, omitted, missing int
+	for _, e := range hook.AllEntries() {
+		text := e.Message
+		for k, v := range e.Data {
+			text += " " + k + "=" + fmt.Sprint(v)
+		}
+		for _, name := range names {
+			assert.NotContains(t, text, name, "log entry %q", e.Message)
+		}
+		switch e.Message {
+		case "CLA manager usernames skipped - not publishable to member-service":
+			skipped++
+			assert.Equal(t, 3, e.Data["skipped"])
+			assert.Equal(t, logrus.WarnLevel, e.Level)
+		case "CLA manager email omitted - the username is sent alone":
+			omitted++
+			assert.Equal(t, logrus.WarnLevel, e.Level)
+		case "no user record for a CLA manager - sending the username only":
+			missing++
+			assert.Equal(t, true, e.Data["lookupFailed"])
+		}
+	}
+	assert.Equal(t, 1, skipped, "one counted Warn for the three unpublishable names")
+	assert.Equal(t, 2, omitted, "zoe and Zoe.Q-1 keep their username, lose the email")
+	assert.Equal(t, 1, missing, "ghost has no user record")
 }
 
 func TestRosterEdgeCases(t *testing.T) {

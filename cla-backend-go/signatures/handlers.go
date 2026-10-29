@@ -228,10 +228,16 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 			githubAccessToken = ""
 		}
 
-		ghApprovalList, err := service.AddGithubOrganizationToApprovalList(ctx, params.SignatureID, params.Body, githubAccessToken)
+		ghApprovalList, err := service.AddGithubOrganizationToApprovalList(ctx, params.SignatureID, params.Body, githubAccessToken, aclManagerLFUsername(claUser, aclSignature.SignatureACL))
 		if err != nil {
 			log.Warnf("error adding github organization %s using signature_id: %s to the allowlist, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)
+			if _, forbidden := err.(*ForbiddenError); forbidden {
+				return signatures.NewAddGitHubOrgAllowlistForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
+					Code:    "403",
+					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s is not authorized to modify the approval list of signature %s", claUser.LFUsername, params.SignatureID),
+				})
+			}
 			return signatures.NewAddGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 		}
 
@@ -302,10 +308,16 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 			githubAccessToken = ""
 		}
 
-		ghApprovalList, err := service.DeleteGithubOrganizationFromApprovalList(ctx, params.SignatureID, params.Body, githubAccessToken)
+		ghApprovalList, err := service.DeleteGithubOrganizationFromApprovalList(ctx, params.SignatureID, params.Body, githubAccessToken, aclManagerLFUsername(claUser, aclSignature.SignatureACL))
 		if err != nil {
 			log.Warnf("error deleting github organization %s using signature_id: %s from the allowlist, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)
+			if _, forbidden := err.(*ForbiddenError); forbidden {
+				return signatures.NewDeleteGitHubOrgAllowlistForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
+					Code:    "403",
+					Message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s is not authorized to modify the approval list of signature %s", claUser.LFUsername, params.SignatureID),
+				})
+			}
 			return signatures.NewDeleteGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
 		}
 
@@ -477,6 +489,10 @@ func missingPrincipalError() *models.ErrorResponse {
 }
 
 func claUserInSignatureACL(claUser *user.CLAUser, acl []models.User) bool {
+	return aclManagerLFUsername(claUser, acl) != "" || claUserMatchesACL(claUser, acl)
+}
+
+func claUserMatchesACL(claUser *user.CLAUser, acl []models.User) bool {
 	if claUser == nil {
 		return false
 	}
@@ -489,6 +505,20 @@ func claUserInSignatureACL(claUser *user.CLAUser, acl []models.User) bool {
 		}
 	}
 	return false
+}
+
+// aclManagerLFUsername is the stored ACL username of the manager entry the principal matches (by user id or
+// LF username) - the actor the repository writes are conditioned on
+func aclManagerLFUsername(claUser *user.CLAUser, acl []models.User) string {
+	if claUser == nil {
+		return ""
+	}
+	for _, manager := range acl {
+		if (claUser.UserID != "" && manager.UserID == claUser.UserID) || (claUser.LFUsername != "" && manager.LfUsername == claUser.LFUsername) {
+			return manager.LfUsername
+		}
+	}
+	return ""
 }
 
 func generateHTMLRedirectPage(downloadLink, claType string) string {
