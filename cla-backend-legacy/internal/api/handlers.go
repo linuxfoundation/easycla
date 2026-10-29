@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"html/template"
 	"io"
 	"net/http"
 	stdmail "net/mail"
@@ -21,7 +22,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"text/template"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -9882,7 +9882,7 @@ var canceledSignatureHTML = template.Must(template.New("canceledSignature").Pars
 </head>
 <body style='margin-top:20;margin-left:0;margin-right:0;'>
     <div class="text-center">
-        <img width=300px"
+        <img width="300px"
          src="https://cla-project-logo-prod.s3.amazonaws.com/lf-horizontal-color.svg"
          alt="community bridge logo"/>
     </div>
