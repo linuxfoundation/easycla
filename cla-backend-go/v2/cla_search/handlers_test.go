@@ -13,7 +13,9 @@ import (
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/go-openapi/runtime"
+	"github.com/go-openapi/spec"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
 	claSearchOps "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/cla_search"
 	"github.com/stretchr/testify/assert"
@@ -86,7 +88,7 @@ func TestGetHandlerNotFoundAndUnauthorized(t *testing.T) {
 	require.NotNil(t, api.ClaSearchGetClaGroupHandler)
 
 	params := claSearchOps.GetClaGroupParams{
-		HTTPRequest: httptest.NewRequest(http.MethodGet, "/v4/cla-group/11111111-1111-4111-8111-111111111111", nil),
+		HTTPRequest: httptest.NewRequest(http.MethodGet, "/v4/cla-group/11111111-1111-4111-8111-111111111111/catalogue", nil),
 		ClaGroupID:  "11111111-1111-4111-8111-111111111111",
 	}
 	unauthorized := httptest.NewRecorder()
@@ -98,6 +100,23 @@ func TestGetHandlerNotFoundAndUnauthorized(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, missing.Code)
 }
 
+// The gateway's access control refuses a GET on /cla-group/{claGroupID}, so the read must stay on
+// its own path. The handler tests above call Handle directly and never see the route.
+func TestGetClaGroupRoute(t *testing.T) {
+	var doc spec.Swagger
+	require.NoError(t, json.Unmarshal(restapi.SwaggerJSON, &doc))
+
+	catalogue, ok := doc.Paths.Paths["/cla-group/{claGroupID}/catalogue"]
+	require.True(t, ok, "catalogue path missing from the embedded spec")
+	require.NotNil(t, catalogue.Get)
+	assert.Equal(t, "getClaGroup", catalogue.Get.ID)
+
+	group := doc.Paths.Paths["/cla-group/{claGroupID}"]
+	assert.Nil(t, group.Get, "getClaGroup must not be served on /cla-group/{claGroupID}")
+	assert.NotNil(t, group.Put)
+	assert.NotNil(t, group.Delete)
+}
+
 func invokeGet(t *testing.T, svc Service, claGroupID, requestID string) *httptest.ResponseRecorder {
 	t.Helper()
 	api := &operations.EasyclaAPI{}
@@ -105,7 +124,7 @@ func invokeGet(t *testing.T, svc Service, claGroupID, requestID string) *httptes
 	require.NotNil(t, api.ClaSearchGetClaGroupHandler)
 
 	params := claSearchOps.GetClaGroupParams{
-		HTTPRequest: httptest.NewRequest(http.MethodGet, "/v4/cla-group/"+claGroupID, nil),
+		HTTPRequest: httptest.NewRequest(http.MethodGet, "/v4/cla-group/"+claGroupID+"/catalogue", nil),
 		ClaGroupID:  claGroupID,
 		XREQUESTID:  &requestID,
 	}
