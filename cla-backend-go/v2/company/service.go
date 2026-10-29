@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"html"
 	"sort"
 	"strings"
 	"sync"
@@ -2136,7 +2137,23 @@ func (s *service) RequestCompanyAdmin(ctx context.Context, userID string, claMan
 
 	subject := fmt.Sprintf("EasyCLA: Request to start CLA signature process for : %s", projectName)
 	recipients := []string{claManagerEmail}
-	body := fmt.Sprintf(`
+	body := requestCompanyAdminBody(claManagerName, projectName, contributorName, contributorEmail, companyName, corporateLink)
+	err := utils.SendEmail(subject, body, recipients)
+	if err != nil {
+		log.Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
+	} else {
+		log.Debugf("sent email with subject: %s to recipients: %+v", subject, recipients)
+	}
+
+	return nil
+}
+
+// requestCompanyAdminBody renders the request-company-admin notification; every caller-supplied
+// value is HTML-escaped (lfx-self-serve-ops#767).
+func requestCompanyAdminBody(claManagerName, projectName, contributorName, contributorEmail, companyName, corporateLink string) string {
+	claManagerName, projectName, contributorName = html.EscapeString(claManagerName), html.EscapeString(projectName), html.EscapeString(contributorName)
+	contributorEmail, companyName, corporateLink = html.EscapeString(contributorEmail), html.EscapeString(companyName), html.EscapeString(corporateLink)
+	return fmt.Sprintf(`
 	<p>Hello %s,</p>
 	<p>This is a notification email from EasyCLA regarding the project %s.</p>
 	<p> %s uses EasyCLA to ensure that before a contribution is accepted, the contributor is covered under a signed CLA. </p>
@@ -2154,14 +2171,6 @@ func (s *service) RequestCompanyAdmin(ctx context.Context, userID string, claMan
 		contributorEmail, companyName, projectName, projectName,
 		projectName, projectName, corporateLink,
 		utils.GetEmailHelpContent(true), utils.GetEmailSignOffContent())
-	err := utils.SendEmail(subject, body, recipients)
-	if err != nil {
-		log.Warnf("problem sending email with subject: %s to recipients: %+v, error: %+v", subject, recipients, err)
-	} else {
-		log.Debugf("sent email with subject: %s to recipients: %+v", subject, recipients)
-	}
-
-	return nil
 }
 
 func (s *service) ValidateRequestCompanyAdminCheck(ctx context.Context, f logrus.Fields, userID string, claManagerEmail string, claManagerName string, contributorName string, contributorEmail string, projectName string, companyName string) error {

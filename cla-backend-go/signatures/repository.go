@@ -4336,6 +4336,18 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 
 	if len(params.AddGitlabOrgApprovalList) > 0 || len(params.RemoveGitlabOrgApprovalList) > 0 {
 		columnName := SignatureGitlabOrgApprovalListColumn
+
+		// resolved before this branch writes anything, like the GitHub organization removal
+		var removedGroupMembers []string
+		var removedGroupECLAs []*models.Signature
+		if len(params.RemoveGitlabOrgApprovalList) > 0 {
+			var targetsErr error
+			removedGroupMembers, removedGroupECLAs, targetsErr = repo.gitLabOrgRemovalTargets(ctx, projectID, companyID, params.RemoveGitlabOrgApprovalList, approvalList.GitlabOrgApprovals)
+			if targetsErr != nil {
+				return nil, targetsErr
+			}
+		}
+
 		attrList := buildApprovalAttributeList(ctx, cclaSignature.GitlabOrgApprovalList, params.AddGitlabOrgApprovalList, params.RemoveGitlabOrgApprovalList)
 		// If no entries after consolidating all the updates, we need to remove the column
 		if attrList == nil || attrList.L == nil {
@@ -4358,54 +4370,18 @@ func (repo repository) UpdateApprovalList(ctx context.Context, claManager *model
 			repo.updateApprovalTable(ctx, params.AddGitlabOrgApprovalList, utils.GitlabOrgApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, true)
 		}
 
-		if params.RemoveGitlabOrgApprovalList != nil {
-			repo.updateApprovalTable(ctx, params.RemoveGitlabOrgApprovalList, utils.GitlabOrgApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, false)
+		if len(params.RemoveGitlabOrgApprovalList) > 0 {
 			approvalList.Criteria = utils.GitlabOrgCriteria
 			approvalList.ApprovalList = params.RemoveGitlabOrgApprovalList
 			approvalList.Action = utils.RemoveApprovals
 			approvalList.Version = claGroupModel.Version
-			// Get repositories by CLAGroup
-			repositories, getRepoByCLAGroupErr := repo.repositoriesRepo.GitHubGetRepositoriesByCLAGroup(ctx, projectID, true)
-			var noRepositories *utils.GitHubRepositoryNotFound
-			if errors.As(getRepoByCLAGroupErr, &noRepositories) {
-				repositories = nil
-			} else if getRepoByCLAGroupErr != nil {
-				msg := fmt.Sprintf("unable to fetch repositories for cla group ID: %s ", projectID)
-				log.WithFields(f).WithError(getRepoByCLAGroupErr).Warn(msg)
-				return nil, errors.New(msg)
-			}
-			var gitLabOrgRepositories []*models.GithubRepository
-			var gitLabOrgs []*models.GithubOrganization
-			for _, repository := range repositories {
-				// Check for matching organization name in repositories table against approvalList removal gitlab organizations/groups
-				if utils.StringInSlice(repository.RepositoryOrganizationName, approvalList.ApprovalList) {
-					gitLabOrgRepositories = append(gitLabOrgRepositories, repository)
-				}
-			}
-
-			for _, gitLabOrgRepo := range gitLabOrgRepositories {
-				gitLabOrg, getGitlabOrgErr := repo.ghOrgRepo.GetGitHubOrganization(ctx, gitLabOrgRepo.RepositoryOrganizationName)
-				if getGitlabOrgErr != nil {
-					msg := fmt.Sprintf("unable to get gitlab organization by name: %s ", gitLabOrgRepo.RepositoryOrganizationName)
-					log.WithFields(f).WithError(getGitlabOrgErr).Warn(msg)
-					return nil, errors.New(msg)
-				}
-				gitLabOrgs = append(gitLabOrgs, gitLabOrg)
-			}
-
-			var gitLabUsernames []string
-			for _, gitLabOrg := range gitLabOrgs {
-				gitLabOrgUsers, getOrgMembersErr := github.GetOrganizationMembers(ctx, gitLabOrg.OrganizationName, gitLabOrg.OrganizationInstallationID)
-				if getOrgMembersErr != nil {
-					msg := fmt.Sprintf("unable to fetch gitLabOrgUsers for org: %s ", gitLabOrg.OrganizationName)
-					log.WithFields(f).WithError(getOrgMembersErr).Warnf("%s", msg)
-					return nil, errors.New(msg)
-				}
-				gitLabUsernames = append(gitLabUsernames, gitLabOrgUsers...)
-			}
-			approvalList.GitlabUsernames = utils.RemoveDuplicates(gitLabUsernames)
+			approvalList.GitlabUsernames = removedGroupMembers
+			// ICLAs carry no company link, so a group removal never considers them
+			approvalList.ICLAs = nil
+			approvalList.ECLAs = removedGroupECLAs
 
 			repo.invalidateSignatures(ctx, &approvalList, claManager, eventArgs)
+			repo.updateApprovalTable(ctx, params.RemoveGitlabOrgApprovalList, utils.GitlabOrgApprovalCriteria, signatureID, projectID, companyID, cclaSignature.SignatureReferenceName, false)
 		}
 	}
 	// Ensure at least one value is set for us to update
@@ -4938,6 +4914,18 @@ func (repo repository) verifyUserApprovals(ctx context.Context, userID, signatur
 				}
 			}
 		}
+	} else if approvalList.Criteria == utils.GitlabOrgCriteria {
+		// Handle GitLab group approvals
+		if containsFold(approvalList.GitlabUsernames, user.GitlabUsername) {
+			if !stillCovered(ctx, f, user, approvalList, signatureID) {
+				note := fmt.Sprintf("Signature invalidated (approved set to false) by %s due to %s  removal", utils.GetBestUsername(claManager), utils.GitlabOrgCriteria)
+				invalidated, err = repo.invalidateApprovedProjectRecord(ctx, signatureID, note, invalidationMetadata)
+				if err != nil {
+					log.WithFields(f).Warnf("unable to invalidate record for signatureID: %s ", signatureID)
+					return user, false, err
+				}
+			}
+		}
 	} else if approvalList.Criteria == utils.GitHubUsernameCriteria || approvalList.Criteria == utils.GitlabUsernameCriteria || approvalList.Criteria == utils.EmailCriteria {
 		if stillCovered(ctx, f, user, approvalList, signatureID) {
 			return user, false, nil
@@ -5123,6 +5111,63 @@ func (repo repository) gitHubOrgRemovalTargets(ctx context.Context, projectID, c
 		return nil, nil, errors.New(msg)
 	}
 	return utils.RemoveDuplicates(ghUsernames), eclas, nil
+}
+
+// gitLabOrgRemovalTargets resolves whom a GitLab group removal re-checks: the removed groups'
+// members, through the resolver the API server installs, except the members of the groups that
+// stay on the list (the gate approves by membership), plus the company's approved
+// acknowledgments. Without a resolver nobody is re-checked, as before one existed.
+func (repo repository) gitLabOrgRemovalTargets(ctx context.Context, projectID, companyID string, removedGroups, remainingGroups []string) ([]string, []*models.Signature, error) {
+	f := logrus.Fields{
+		"functionName":    "v1.signatures.repository.gitLabOrgRemovalTargets",
+		utils.XREQUESTID:  ctx.Value(utils.XREQUESTID),
+		"projectID":       projectID,
+		"companyID":       companyID,
+		"removedGroups":   removedGroups,
+		"remainingGroups": remainingGroups,
+	}
+	if gitLabGroupMembers == nil {
+		log.WithFields(f).Warn("GitLab group membership resolver not configured - members of the removed groups are not re-checked")
+		return nil, nil, nil
+	}
+	var removedMembers []string
+	for _, group := range removedGroups {
+		members, err := gitLabGroupMembers(ctx, group)
+		if err != nil {
+			msg := fmt.Sprintf("unable to fetch GitLab group members for group: %s ", group)
+			log.WithFields(f).WithError(err).Warn(msg)
+			return nil, nil, errors.New(msg)
+		}
+		removedMembers = append(removedMembers, members...)
+	}
+	if len(removedMembers) == 0 {
+		return nil, nil, nil
+	}
+	var coveredMembers []string
+	for _, group := range remainingGroups {
+		members, err := gitLabGroupMembers(ctx, group)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warnf("unable to fetch GitLab group members for group: %s - cannot tell whether it still covers the removed members, nobody is re-checked", group)
+			return nil, nil, nil
+		}
+		coveredMembers = append(coveredMembers, members...)
+	}
+	var usernames []string
+	for _, member := range removedMembers {
+		if !containsFold(coveredMembers, member) {
+			usernames = append(usernames, member)
+		}
+	}
+	if len(usernames) == 0 {
+		return nil, nil, nil
+	}
+	eclas, eclaErr := repo.approvedEmployeeSignatures(ctx, projectID, companyID)
+	if eclaErr != nil {
+		msg := fmt.Sprintf("unable to load the employee acknowledgments for company ID: %s project ID: %s", companyID, projectID)
+		log.WithFields(f).WithError(eclaErr).Warn(msg)
+		return nil, nil, errors.New(msg)
+	}
+	return utils.RemoveDuplicates(usernames), eclas, nil
 }
 
 // approvedEmployeeSignatures returns the company's employee acknowledgments for the CLA group

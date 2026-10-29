@@ -75,6 +75,10 @@ type service struct {
 	claManagerRequestsRepo   cla_manager.IRepository
 	approvalListRequestsRepo approval_list.IRepository
 	gitLabApp                *gitlab_api.App
+	signaturesTable          string
+	claAdmins                claAdminsPublisher
+	claAdminsAlerts          claAdminsAlerts
+	claAdminsRecipients      []string
 }
 
 // Service implements DynamoDB stream event handler service
@@ -99,7 +103,8 @@ func NewService(stage string,
 	claManagerRequestsRepo cla_manager.IRepository,
 	approvalListRequestsRepo approval_list.IRepository,
 	gitLabApp *gitlab_api.App,
-	gitlabOrgService gitlab_organizations.ServiceInterface) Service {
+	gitlabOrgService gitlab_organizations.ServiceInterface,
+	opts ...Option) Service {
 
 	signaturesTable := fmt.Sprintf("cla-%s-signatures", stage)
 	eventsTable := fmt.Sprintf("cla-%s-events", stage)
@@ -129,6 +134,7 @@ func NewService(stage string,
 		approvalListRequestsRepo: approvalListRequestsRepo,
 		gitLabApp:                gitLabApp,
 		gitLabOrgService:         gitlabOrgService,
+		signaturesTable:          signaturesTable,
 	}
 
 	s.registerCallback(signaturesTable, Modify, s.SignatureSignedEvent)
@@ -176,6 +182,9 @@ func NewService(stage string,
 
 	s.registerCallback(claGroupsTable, Modify, s.ProcessCLAGroupUpdateEvents)
 
+	for _, opt := range opts {
+		opt(s)
+	}
 	return s
 }
 

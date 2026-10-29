@@ -54,10 +54,13 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/config"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/cla_admins"
+	member_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
@@ -142,6 +145,36 @@ func init() {
 	v2CompanyService := v2Company.NewService(companyService, signaturesRepo, projectRepo, usersRepo, companyRepo, projectClaGroupRepo, eventsService)
 	organization_service.InitClient(configFile.APIGatewayURL, eventsService)
 	acs_service.InitClient(configFile.APIGatewayURL, configFile.AcsAPIKey)
+	var options []dynamo_events.Option
+	if configFile.MemberService.CLAAdminsEnabled {
+		members, memberErr := member_service.NewClient(member_service.Config{
+			BaseURL:       configFile.MemberService.BaseURL,
+			Audience:      configFile.MemberService.Audience,
+			OAuthTokenURL: configFile.Auth0Platform.URL,
+			ClientID:      configFile.Auth0Platform.ClientID,
+			ClientSecret:  configFile.Auth0Platform.ClientSecret,
+		})
+		if memberErr != nil {
+			log.Warnf("CLA-manager publisher disabled: %v", memberErr)
+		} else {
+			var alerts utils.EmailSender
+			if configFile.SNSEventTopicARN != "" {
+				alerts = utils.NewSnsEmailSender(awsSession, configFile.SNSEventTopicARN, configFile.SenderEmailAddress)
+			}
+			recipients := dynamo_events.AlertRecipients(os.Getenv("PLATFORM_MAINTAINERS"))
+			if alerts == nil || len(recipients) == 0 {
+				log.Warn("CLA-manager publisher: no alert transport or recipients configured - publish failures are only logged")
+			}
+			options = append(options, dynamo_events.WithCLAAdmins(cla_admins.Service{
+				Companies:   companyRepo,
+				CompanyRows: cla_admins.DynamoCompanies{DB: dynamodb.New(awsSession), Table: fmt.Sprintf("cla-%s-companies", stage)},
+				CCLAs:       cla_admins.DynamoCCLAs{DB: dynamodb.New(awsSession), Table: fmt.Sprintf("cla-%s-signatures", stage)},
+				Pending:     cla_admins.DynamoPendingIDs{DB: dynamodb.New(awsSession), Table: fmt.Sprintf("cla-%s-store", stage)},
+				Users:       usersRepo,
+				Members:     members,
+			}, alerts, recipients))
+		}
+	}
 	dynamoEventsService = dynamo_events.NewService(
 		stage,
 		signaturesRepo,
@@ -160,6 +193,7 @@ func init() {
 		approvalListRequestsRepo,
 		gitlabApp,
 		gitlabOrgService,
+		options...,
 	)
 }
 

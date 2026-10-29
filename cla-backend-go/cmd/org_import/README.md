@@ -55,6 +55,10 @@ Safety rules:
   - `cla-api-gateway-url-{stage}`, `cla-acs-api-key-{stage}` — org-service and ACS.
   - `cla-salesforce-apex-base-url-{stage}`, `cla-salesforce-apex-token-{stage}` — only with `--use-apex`.
   - `cla-org-import-report-emails-{stage}` — optional, comma-separated recipients of the run report e-mail (§8); absent ⇒ no e-mail, noted in run.log.
+  - `cla-member-service-cla-admins-enabled-{stage}` — `true` switches on the CLA-manager publisher (signatures stream) and allows
+    `org_import cla-admins --apply`, which sends every organization's CLA-manager roster (union of `signature_acl` over the signed CCLAs
+    of all rows sharing the Account id) to `PUT /b2b_orgs/{sfid}/settings/cla_admins` (linuxfoundation/lfx-self-serve#4435, contract #4362);
+    without `--apply` the command only lists the rosters in `cla_admins.csv`.
     `cla-ses-sender-email-address-{stage}` (pre-existing) is the sender.
 - Reports (§8) additionally need `logs:CreateLogGroup/CreateLogStream/PutLogEvents` on `/easycla/org-import/{stage}` and `ses:SendRawEmail`;
   `--no-aws-log` / `--no-email` switch them off (use both for a read-only look at prod from a laptop).
