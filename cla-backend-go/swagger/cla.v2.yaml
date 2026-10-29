@@ -379,6 +379,33 @@ paths:
         - cla-group
 
   /cla-group/{claGroupID}:
+    get:
+      summary: Get a CLA Group by id
+      description: Returns one CLA Group from the same unscoped catalogue as CLA Group search, including the project a corporate signature would be requested against. A foundation-level CLA Group resolves to its foundation; a single project-level mapping resolves to that project; several project-level mappings with no foundation marker leave the project unset rather than picking one. An id that is not in the catalogue is 404. The catalogue is served from the same in-process cache as search, so a newly added CLA Group or project mapping can take up to the cache TTL (30 minutes by default) to become readable
+      operationId: getClaGroup
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/x-acl"
+        - $ref: "#/parameters/x-username"
+        - $ref: "#/parameters/x-email"
+        - $ref: "#/parameters/path-claGroupID"
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/cla-search-result'
+        '401':
+          $ref: '#/responses/unauthorized'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - cla_search
     put:
       summary: Updates a CLA Group
       description: Updates CLA Group
