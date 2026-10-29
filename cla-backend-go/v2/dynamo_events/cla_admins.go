@@ -60,6 +60,16 @@ func WithCLAAdmins(publisher claAdminsPublisher, alerts claAdminsAlerts, recipie
 	}
 }
 
+// WithCLAAdminsUnavailable fails the signatures stream closed while the publisher is switched on but cannot run
+// (flag unreadable, member-service client unavailable): ProcessEvents panics on a signatures record, so that
+// function's batch is retried instead of acknowledged without the roster publication; the other stream
+// functions never receive signatures records and are unaffected.
+func WithCLAAdminsUnavailable(cause error) Option {
+	return func(s *service) {
+		s.claAdminsUnavailable = cause
+	}
+}
+
 // claAdminsTarget is one organization (by company id) whose roster an event affects and the row that changed.
 type claAdminsTarget struct {
 	companyID   string
@@ -151,10 +161,13 @@ func (s *service) alertCLAAdmins(f logrus.Fields, target claAdminsTarget, sfid s
 		organization = "of company " + target.companyID
 	}
 	subject := fmt.Sprintf("EasyCLA: CLA-manager roster not published for organization %s", organization)
+	recovery := fmt.Sprintf("<p>The roster stays stale until <code>org_import cla-admins --apply --ids %s</code> runs.</p>", html.EscapeString(sfid))
+	if sfid == "" {
+		recovery = fmt.Sprintf("<p>Resolve the Salesforce Account id of company %s first, then run <code>org_import cla-admins --apply --ids &lt;account id&gt;</code> for it; the company id is not a valid <code>--ids</code> value.</p>", html.EscapeString(target.companyID))
+	}
 	body := fmt.Sprintf("<p>EasyCLA could not publish the CLA-manager roster of organization %s to member-service.</p>"+
-		"<p>Company ID: %s<br/>Signature ID: %s<br/>Error: %s</p>"+
-		"<p>The roster stays stale until <code>org_import cla-admins --apply</code> runs for it.</p>",
-		html.EscapeString(organization), html.EscapeString(target.companyID), html.EscapeString(target.signatureID), html.EscapeString(cause.Error()))
+		"<p>Company ID: %s<br/>Signature ID: %s<br/>Error: %s</p>%s",
+		html.EscapeString(organization), html.EscapeString(target.companyID), html.EscapeString(target.signatureID), html.EscapeString(cause.Error()), recovery)
 	if err := s.claAdminsAlerts.SendEmail(subject, body, s.claAdminsRecipients); err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to send the CLA-manager roster alert")
 		return

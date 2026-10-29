@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	"github.com/linuxfoundation/easycla/cla-backend-go/github_organizations"
@@ -26,6 +27,7 @@ import (
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
+	gogithub "github.com/google/go-github/v37/github"
 	"github.com/linuxfoundation/easycla/cla-backend-go/github"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -166,7 +168,8 @@ func (s *Service) GitHubAddRepositories(ctx context.Context, projectSFID string,
 		log.WithFields(f).WithError(err).Warn("unable to get organization by name")
 		return nil, err
 	}
-	if !organizationEntitled(org, projectSFID, allMappings) {
+	registered := entitledOrganization(org, projectSFID, allMappings)
+	if registered == nil {
 		msg := fmt.Sprintf("github organization %s is not registered for project %s or its foundation", utils.StringValue(input.GithubOrganizationName), projectSFID)
 		log.WithFields(f).Warn(msg)
 		return nil, errors.New(msg)
@@ -194,10 +197,14 @@ func (s *Service) GitHubAddRepositories(ctx context.Context, projectSFID string,
 		}
 
 		log.WithFields(f).Debugf("loading GitHub repository by external id: %d", repoGithubID)
-		ghRepo, err := github.GetRepositoryByExternalID(ctx, org.List[0].OrganizationInstallationID, repoGithubID)
+		ghRepo, err := github.GetRepositoryByExternalID(ctx, registered.OrganizationInstallationID, repoGithubID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to load repository by external ID: %d", repoGithubID)
 			return nil, err
+		}
+		if ownerErr := repositoryOwnedBy(ghRepo, registered.OrganizationName); ownerErr != nil {
+			log.WithFields(f).WithError(ownerErr).Warn("repository not enrolled")
+			return nil, ownerErr
 		}
 		f["repositoryName"] = ghRepo.FullName
 		f["repositoryURL"] = ghRepo.URL
@@ -235,13 +242,13 @@ func (s *Service) GitHubAddRepositories(ctx context.Context, projectSFID string,
 					utils.StringValue(input.GithubOrganizationName), utils.StringValue(input.ClaGroupID))
 				v1Input := &v1Models.GithubRepositoryInput{
 					Enabled:                    &enabled,
-					RepositoryOrganizationName: input.GithubOrganizationName,
+					RepositoryOrganizationName: repositoryOrganization(registered),
 					RepositoryProjectID:        input.ClaGroupID,
 					Note:                       fmt.Sprintf("re-enabling repository on %s.", now),
 				}
 
 				// Update Repo details in case of any changes
-				updatedRepository, updateErr := s.gitV1Repository.GitHubUpdateRepositoryForProject(ctx, existingRepositoryModel.RepositoryID, projectSFID, parentProjectSFID, v1Input)
+				updatedRepository, updateErr := s.gitV1Repository.GitHubUpdateRepositoryForProject(ctx, existingRepositoryModel.RepositoryID, projectSFID, parentProjectSFID, v1Input, registered)
 				if updateErr != nil {
 					log.WithFields(f).WithError(updateErr).Warnf("unable to update GitHub repository with name: %s, id: %s, using input: %+v", utils.StringValue(ghRepo.FullName), existingRepositoryModel.RepositoryID, v1Input)
 					return nil, updateErr
@@ -264,13 +271,13 @@ func (s *Service) GitHubAddRepositories(ctx context.Context, projectSFID string,
 			in := &v1Models.GithubRepositoryInput{
 				RepositoryExternalID:       &repoID, // nolint
 				RepositoryName:             ghRepo.FullName,
-				RepositoryOrganizationName: input.GithubOrganizationName,
+				RepositoryOrganizationName: repositoryOrganization(registered),
 				RepositoryProjectID:        input.ClaGroupID,
 				RepositoryType:             aws.String("github"),
 				RepositoryURL:              ghRepo.HTMLURL,
 			}
 
-			addedModel, addErr := s.gitV1Repository.GitHubAddRepositoryForProject(ctx, parentProjectSFID, projectSFID, in)
+			addedModel, addErr := s.gitV1Repository.GitHubAddRepositoryForProject(ctx, parentProjectSFID, projectSFID, in, registered)
 			if addErr != nil {
 				log.WithFields(f).WithError(addErr).Warnf("unable to add github repository: %s for project: %s", *ghRepo.FullName, projectSFID)
 				return nil, addErr
@@ -714,20 +721,49 @@ func (s *Service) GetRepositoriesByProjectSFID(ctx context.Context, projectSFID 
 // listing applies - so another project's or a removed installation never enrolls repositories here
 // (lfx-self-serve-ops#982, #747).
 func organizationEntitled(org *v1Models.GithubOrganizations, projectSFID string, mappings []*projects_cla_groups.ProjectClaGroup) bool {
-	if org == nil || len(org.List) == 0 || org.List[0] == nil || !org.List[0].Enabled {
-		return false
+	return entitledOrganization(org, projectSFID, mappings) != nil
+}
+
+// entitledOrganization is the first enabled registration of the organization the project may enroll through
+// (the name index can hold several records, for example differently cased names)
+func entitledOrganization(org *v1Models.GithubOrganizations, projectSFID string, mappings []*projects_cla_groups.ProjectClaGroup) *v1Models.GithubOrganization {
+	if org == nil {
+		return nil
 	}
-	registered := org.List[0]
-	if registered.ProjectSFID == projectSFID || registered.OrganizationSfid == projectSFID {
-		return true
-	}
-	for _, m := range mappings {
-		if m == nil || m.FoundationSFID == "" || registered.OrganizationSfid != m.FoundationSFID {
+	for _, registered := range org.List {
+		if registered == nil || !registered.Enabled {
 			continue
 		}
-		if m.ProjectSFID == projectSFID || m.FoundationSFID == projectSFID {
-			return true
+		if registered.ProjectSFID == projectSFID || registered.OrganizationSfid == projectSFID {
+			return registered
+		}
+		for _, m := range mappings {
+			if m == nil || m.FoundationSFID == "" || registered.OrganizationSfid != m.FoundationSFID {
+				continue
+			}
+			if m.ProjectSFID == projectSFID || m.FoundationSFID == projectSFID {
+				return registered
+			}
 		}
 	}
-	return false
+	return nil
+}
+
+// repositoryOrganization is the exact stored name of the selected registration, the key later lookups use
+func repositoryOrganization(registered *v1Models.GithubOrganization) *string {
+	name := registered.OrganizationName
+	return &name
+}
+
+// repositoryOwnedBy refuses a GitHub repository whose owner is not the entitled organization: the id a project
+// admin supplies is looked up with the organization's installation, but GitHub returns any visible repository
+func repositoryOwnedBy(ghRepo *gogithub.Repository, organization string) error {
+	owner := ""
+	if ghRepo != nil && ghRepo.Owner != nil {
+		owner = strings.TrimSpace(ghRepo.Owner.GetLogin())
+	}
+	if owner == "" || !strings.EqualFold(owner, strings.TrimSpace(organization)) {
+		return fmt.Errorf("github repository %s belongs to %q, not to organization %s - not enrolled", ghRepo.GetFullName(), owner, organization)
+	}
+	return nil
 }

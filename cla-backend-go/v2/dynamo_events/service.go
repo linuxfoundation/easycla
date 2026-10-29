@@ -79,6 +79,7 @@ type service struct {
 	claAdmins                claAdminsPublisher
 	claAdminsAlerts          claAdminsAlerts
 	claAdminsRecipients      []string
+	claAdminsUnavailable     error
 }
 
 // Service implements DynamoDB stream event handler service
@@ -208,6 +209,9 @@ func (s *service) ProcessEvents(dynamoDBEvents events.DynamoDBEvent) {
 			// "event":      event,
 		}
 
+		if s.claAdminsUnavailable != nil && tableName == s.signaturesTable {
+			log.WithFields(fields).Panicf("CLA-manager publisher enabled but unavailable - not consuming signature events without it: %v", s.claAdminsUnavailable)
+		}
 		log.WithFields(fields).Debug("processing event record")
 		key := fmt.Sprintf("%s:%s", tableName, event.EventName)
 

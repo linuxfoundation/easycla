@@ -228,13 +228,17 @@ func TestInvalidateSignaturesPanicContainment(t *testing.T) {
 
 	// the ICLA entry proves the disabled-invalidation contract: with
 	// invalidateICLAsOnApprovalListRemoval false the loop is never entered
-	icla, ecla := repo.invalidateSignatures(context.Background(),
+	icla, ecla, recheckErr := repo.invalidateSignatures(context.Background(),
 		&ApprovalList{
 			Criteria: utils.EmailDomainCriteria,
 			ICLAs:    []*models.IclaSignature{{SignatureID: "icla-1"}},
 			ECLAs:    eclas,
 		},
 		&models.User{}, nil)
+	// a contained panic is a re-check that did not happen, so it is reported to the caller
+	require.Error(t, recheckErr)
+	assert.Contains(t, recheckErr.Error(), "1 acknowledgment re-check(s) failed")
+	assert.Contains(t, recheckErr.Error(), "signature sig-1: panic")
 
 	assert.Empty(t, icla)
 	assert.Empty(t, ecla)

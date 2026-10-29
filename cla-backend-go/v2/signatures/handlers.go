@@ -267,10 +267,14 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 				utils.ErrorResponseForbidden(reqID, fmt.Sprintf("EasyCLA - 403 Forbidden - caller is not a CLA manager of signature %s", params.SignatureID)))
 		}
 
-		ghApprovalList, err := v1SignatureService.AddGithubOrganizationToApprovalList(ctx, params.SignatureID, input, githubAccessToken)
+		ghApprovalList, err := v1SignatureService.AddGithubOrganizationToApprovalList(ctx, params.SignatureID, input, githubAccessToken, authUser.UserName)
 		if err != nil {
 			log.WithFields(f).Warnf("error adding github organization %s using signature_id: %s to the approval list, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)
+			if _, forbidden := err.(*signatureService.ForbiddenError); forbidden {
+				return signatures.NewAddGitHubOrgAllowlistForbidden().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseForbidden(reqID, fmt.Sprintf("EasyCLA - 403 Forbidden - caller is not a CLA manager of signature %s", params.SignatureID)))
+			}
 			return signatures.NewAddGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
@@ -336,10 +340,14 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 				utils.ErrorResponseForbidden(reqID, fmt.Sprintf("EasyCLA - 403 Forbidden - caller is not a CLA manager of signature %s", params.SignatureID)))
 		}
 
-		ghApprovalList, err := v1SignatureService.DeleteGithubOrganizationFromApprovalList(ctx, params.SignatureID, input, githubAccessToken)
+		ghApprovalList, err := v1SignatureService.DeleteGithubOrganizationFromApprovalList(ctx, params.SignatureID, input, githubAccessToken, authUser.UserName)
 		if err != nil {
 			log.WithFields(f).Warnf("error deleting github organization %s using signature_id: %s from the approval list, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)
+			if _, forbidden := err.(*signatureService.ForbiddenError); forbidden {
+				return signatures.NewDeleteGitHubOrgAllowlistForbidden().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseForbidden(reqID, fmt.Sprintf("EasyCLA - 403 Forbidden - caller is not a CLA manager of signature %s", params.SignatureID)))
+			}
 			return signatures.NewDeleteGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
@@ -1943,8 +1951,16 @@ func requireSignatureManager(ctx context.Context, f logrus.Fields, sigService si
 		return nil, errNotSignatureManager
 	}
 	if !utils.CurrentUserInACL(authUser, signatureModel.SignatureACL) {
-		log.WithFields(f).Warnf("user %s is not a CLA manager of signature %s - refusing the approval list change", authUser.UserName, signatureID)
-		return nil, errNotSignatureManager
+		// the hydrated ACL drops entries without a user record - the stored signature_acl decides
+		row, rowErr := sigService.GetItemSignature(ctx, signatureID)
+		if rowErr != nil {
+			log.WithFields(f).WithError(rowErr).Warn("unable to read the stored signature ACL - refusing the approval list change")
+			return nil, rowErr
+		}
+		if row == nil || !utils.StringInSlice(authUser.UserName, row.SignatureACL) {
+			log.WithFields(f).Warnf("user %s is not a CLA manager of signature %s - refusing the approval list change", authUser.UserName, signatureID)
+			return nil, errNotSignatureManager
+		}
 	}
 	return signatureModel, nil
 }

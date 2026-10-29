@@ -104,8 +104,9 @@ func gateService(t *testing.T, api *fakeGroupMembersAPI) *service {
 	return &service{gitlabOrgService: &fakeGitLabOrgService{org: org}}
 }
 
-// the merge request gate reads every member page of an approved group: a member listed only on a later
-// page is approved, a non-member is not, and a failing page denies with the error instead of guessing
+// the merge request gate reads the member pages of an approved group until the first match: a member listed
+// only on a later page is approved, a non-member is denied after every page, a member found before a failing
+// page is approved, and a failing page before any match denies with the error instead of guessing
 func TestCheckGitLabGroupApprovalReadsEveryMemberPage(t *testing.T) {
 	const groupURL = "https://gitlab.com/groups/acme"
 	pages := func() map[string][]map[string]interface{} {
@@ -126,9 +127,16 @@ func TestCheckGitLabGroupApprovalReadsEveryMemberPage(t *testing.T) {
 		require.Len(t, requests, 2)
 		assert.Contains(t, requests[1], "page=2")
 	})
-	t.Run("a failing later page denies with the error", func(t *testing.T) {
+	t.Run("a member found before a failing page is approved", func(t *testing.T) {
 		api := &fakeGroupMembersAPI{pages: pages(), failPage: "2"}
 		approved, err := gateService(t, api).checkGitLabGroupApproval(context.Background(), "alice", groupURL)
+		require.NoError(t, err)
+		assert.True(t, approved)
+		assert.Len(t, api.memberRequests(), 1, "pagination stops at the first match")
+	})
+	t.Run("a failing page before any match denies with the error", func(t *testing.T) {
+		api := &fakeGroupMembersAPI{pages: pages(), failPage: "2"}
+		approved, err := gateService(t, api).checkGitLabGroupApproval(context.Background(), "carol", groupURL)
 		require.Error(t, err)
 		assert.False(t, approved)
 	})

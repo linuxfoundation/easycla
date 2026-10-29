@@ -121,6 +121,8 @@ func TestCLAAdminsEvent(t *testing.T) {
 		wantCalls  []rosterCall
 		wantErr    string
 		wantAlert  bool
+		wantBody   []string
+		notInBody  []string
 	}{
 		{name: "manager added", event: modify(cclaImage(true, "amy"), cclaImage(true, "amy", "bob")), publish: ok(), wantCalls: []rosterCall{{sfid: accountA, ids: one}}},
 		{name: "signed flag cleared", event: modify(cclaImage(true, "amy"), cclaImage(false, "amy")), publish: ok(), wantCalls: []rosterCall{{sfid: accountA, ids: one}}},
@@ -137,7 +139,9 @@ func TestCLAAdminsEvent(t *testing.T) {
 		{name: "company without account id", event: modify(cclaImage(true), cclaImage(true, "amy")), publish: &fakeRosterPublisher{accounts: map[string]string{"company-1": ""}, res: published}},
 		{name: "company row gone is reported, not skipped", event: modify(cclaImage(true), cclaImage(true, "amy")),
 			publish: &fakeRosterPublisher{accounts: map[string]string{}, res: published}, alerts: &fakeAlerts{}, recipients: ops,
-			wantErr: "no company matching company record", wantAlert: true},
+			wantErr: "no company matching company record", wantAlert: true,
+			wantBody:  []string{"Resolve the Salesforce Account id of company company-1 first", "--ids &lt;account id&gt;"},
+			notInBody: []string{"--ids company-1"}},
 		{name: "legacy org-service id", event: modify(cclaImage(true), cclaImage(true, "amy")),
 			publish: &fakeRosterPublisher{accounts: map[string]string{"company-1": "lfSclQhURLCCrv7EZj"}, err: member_service.ErrInvalidSFID}, alerts: &fakeAlerts{}, recipients: ops,
 			wantCalls: []rosterCall{{sfid: "lfSclQhURLCCrv7EZj", ids: one}}},
@@ -146,7 +150,12 @@ func TestCLAAdminsEvent(t *testing.T) {
 			wantCalls: []rosterCall{{sfid: accountA, ids: one}}},
 		{name: "member-service failure is returned and reported", event: modify(cclaImage(true), cclaImage(true, "amy")),
 			publish: &fakeRosterPublisher{accounts: known, err: errors.New("boom")}, alerts: &fakeAlerts{}, recipients: ops,
-			wantCalls: []rosterCall{{sfid: accountA, ids: one}}, wantErr: "boom", wantAlert: true},
+			wantCalls: []rosterCall{{sfid: accountA, ids: one}}, wantErr: "boom", wantAlert: true,
+			wantBody: []string{"<code>org_import cla-admins --apply --ids " + accountA + "</code>"}},
+		{name: "markup in the failure is escaped", event: modify(cclaImage(true), cclaImage(true, "amy")),
+			publish: &fakeRosterPublisher{accounts: known, err: errors.New("<b>boom</b>")}, alerts: &fakeAlerts{}, recipients: ops,
+			wantCalls: []rosterCall{{sfid: accountA, ids: one}}, wantErr: "boom", wantAlert: true,
+			wantBody: []string{"&lt;b&gt;boom&lt;/b&gt;", "--ids " + accountA}, notInBody: []string{"<b>boom</b>"}},
 		{name: "member-service failure without recipients is only logged", event: modify(cclaImage(true), cclaImage(true, "amy")),
 			publish: &fakeRosterPublisher{accounts: known, err: errors.New("boom")}, alerts: &fakeAlerts{},
 			wantCalls: []rosterCall{{sfid: accountA, ids: one}}, wantErr: "boom"},
@@ -154,7 +163,8 @@ func TestCLAAdminsEvent(t *testing.T) {
 			publish: &fakeRosterPublisher{accounts: known, err: errors.New("boom")}, alerts: &fakeAlerts{err: errors.New("sns down")}, recipients: ops,
 			wantCalls: []rosterCall{{sfid: accountA, ids: one}}, wantErr: "boom", wantAlert: true},
 		{name: "company read failure is returned and reported", event: modify(cclaImage(true), cclaImage(true, "amy")),
-			publish: &fakeRosterPublisher{accountErr: errors.New("dynamo down")}, alerts: &fakeAlerts{}, recipients: ops, wantErr: "dynamo down", wantAlert: true},
+			publish: &fakeRosterPublisher{accountErr: errors.New("dynamo down")}, alerts: &fakeAlerts{}, recipients: ops, wantErr: "dynamo down", wantAlert: true,
+			wantBody: []string{"Resolve the Salesforce Account id of company company-1 first"}, notInBody: []string{"--ids company-1"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -181,6 +191,12 @@ func TestCLAAdminsEvent(t *testing.T) {
 			assert.Contains(t, tc.alerts.calls[0].subject, "CLA-manager roster not published")
 			assert.Contains(t, tc.alerts.calls[0].body, "sig-ccla")
 			assert.Contains(t, tc.alerts.calls[0].body, tc.wantErr)
+			for _, want := range tc.wantBody {
+				assert.Contains(t, tc.alerts.calls[0].body, want)
+			}
+			for _, unwanted := range tc.notInBody {
+				assert.NotContains(t, tc.alerts.calls[0].body, unwanted)
+			}
 		})
 	}
 }
@@ -205,6 +221,35 @@ func TestWithCLAAdminsRegistersTheSignatureEvents(t *testing.T) {
 	}
 	assert.Same(t, alerts, s.claAdminsAlerts)
 	assert.Equal(t, []string{"ops@example.com"}, s.claAdminsRecipients)
+}
+
+// with the publisher switched on but unavailable only the signatures stream fails closed: its records panic
+// before any handler runs (that function's batch is retried), every other table is processed as usual
+func TestWithCLAAdminsUnavailableFailsOnlyTheSignaturesStream(t *testing.T) {
+	record := func(table string) events.DynamoDBEventRecord {
+		return events.DynamoDBEventRecord{EventName: Insert, EventSourceArn: "arn:aws:dynamodb:us-east-1:1:table/" + table + "/stream/2026"}
+	}
+	s := &service{functions: map[string][]EventHandlerFunc{}, signaturesTable: "cla-dev-signatures"}
+	WithCLAAdminsUnavailable(errors.New("member-service client unavailable"))(s)
+	var processed []string
+	for _, table := range []string{"cla-dev-projects", "cla-dev-signatures"} {
+		table := table
+		s.registerCallback(table, Insert, func(events.DynamoDBEventRecord) error { processed = append(processed, table); return nil })
+	}
+	assert.NotPanics(t, func() {
+		s.ProcessEvents(events.DynamoDBEvent{Records: []events.DynamoDBEventRecord{record("cla-dev-projects")}})
+	})
+	assert.Panics(t, func() {
+		s.ProcessEvents(events.DynamoDBEvent{Records: []events.DynamoDBEventRecord{record("cla-dev-signatures")}})
+	})
+	assert.Equal(t, []string{"cla-dev-projects"}, processed, "no signatures handler runs while the publisher is unavailable")
+
+	available := &service{functions: map[string][]EventHandlerFunc{}, signaturesTable: "cla-dev-signatures"}
+	available.registerCallback("cla-dev-signatures", Insert, func(events.DynamoDBEventRecord) error { processed = append(processed, "available"); return nil })
+	assert.NotPanics(t, func() {
+		available.ProcessEvents(events.DynamoDBEvent{Records: []events.DynamoDBEventRecord{record("cla-dev-signatures")}})
+	})
+	assert.Equal(t, []string{"cla-dev-projects", "available"}, processed)
 }
 
 func TestAlertRecipients(t *testing.T) {

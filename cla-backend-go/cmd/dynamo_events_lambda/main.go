@@ -6,6 +6,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -146,6 +147,9 @@ func init() {
 	organization_service.InitClient(configFile.APIGatewayURL, eventsService)
 	acs_service.InitClient(configFile.APIGatewayURL, configFile.AcsAPIKey)
 	var options []dynamo_events.Option
+	if configFile.MemberService.CLAAdminsFlagError != "" {
+		options = append(options, dynamo_events.WithCLAAdminsUnavailable(errors.New(configFile.MemberService.CLAAdminsFlagError)))
+	}
 	if configFile.MemberService.CLAAdminsEnabled {
 		members, memberErr := member_service.NewClient(member_service.Config{
 			BaseURL:       configFile.MemberService.BaseURL,
@@ -155,7 +159,7 @@ func init() {
 			ClientSecret:  configFile.Auth0Platform.ClientSecret,
 		})
 		if memberErr != nil {
-			log.Warnf("CLA-manager publisher disabled: %v", memberErr)
+			options = append(options, dynamo_events.WithCLAAdminsUnavailable(memberErr))
 		} else {
 			var alerts utils.EmailSender
 			if configFile.SNSEventTopicARN != "" {
