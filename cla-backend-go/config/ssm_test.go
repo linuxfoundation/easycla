@@ -228,30 +228,7 @@ func TestGetOptionalSSMBool(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				w.Header().Set("Content-Type", "application/x-amz-json-1.1")
-				if tc.code != "" {
-					w.WriteHeader(http.StatusBadRequest)
-					assert.NoError(t, json.NewEncoder(w).Encode(map[string]string{"__type": tc.code, "message": "test SSM error"}))
-					return
-				}
-				if tc.incomplete {
-					assert.NoError(t, json.NewEncoder(w).Encode(map[string]interface{}{}))
-					return
-				}
-				assert.NoError(t, json.NewEncoder(w).Encode(map[string]interface{}{
-					"Parameter": map[string]string{"Name": "cla-member-service-cla-admins-enabled-test", "Value": tc.value},
-				}))
-			}))
-			defer server.Close()
-			awsSession, err := session.NewSession(&aws.Config{
-				Region:      aws.String("us-east-1"),
-				Endpoint:    aws.String(server.URL),
-				Credentials: credentials.NewStaticCredentials("test", "test", ""),
-				MaxRetries:  aws.Int(0),
-			})
-			require.NoError(t, err)
-			got, err := getOptionalSSMBool(ssm.New(awsSession), "cla-member-service-cla-admins-enabled-test", nil)
+			got, err := getOptionalSSMBool(flagSSMClient(t, tc.code, tc.value, tc.incomplete), "cla-member-service-cla-admins-enabled-test", nil)
 			if tc.wantErr != "" {
 				require.ErrorContains(t, err, tc.wantErr)
 				assert.False(t, got)
@@ -259,6 +236,64 @@ func TestGetOptionalSSMBool(t *testing.T) {
 			}
 			require.NoError(t, err)
 			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+// flagSSMClient answers every GetParameter with the given error code, an incomplete response or the value
+func flagSSMClient(t *testing.T, code, value string, incomplete bool) *ssm.SSM {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-amz-json-1.1")
+		if code != "" {
+			w.WriteHeader(http.StatusBadRequest)
+			assert.NoError(t, json.NewEncoder(w).Encode(map[string]string{"__type": code, "message": "test SSM error"}))
+			return
+		}
+		if incomplete {
+			assert.NoError(t, json.NewEncoder(w).Encode(map[string]interface{}{}))
+			return
+		}
+		assert.NoError(t, json.NewEncoder(w).Encode(map[string]interface{}{
+			"Parameter": map[string]string{"Name": "cla-member-service-cla-admins-enabled-test", "Value": value},
+		}))
+	}))
+	t.Cleanup(server.Close)
+	awsSession, err := session.NewSession(&aws.Config{
+		Region:      aws.String("us-east-1"),
+		Endpoint:    aws.String(server.URL),
+		Credentials: credentials.NewStaticCredentials("test", "test", ""),
+		MaxRetries:  aws.Int(0),
+	})
+	require.NoError(t, err)
+	return ssm.New(awsSession)
+}
+
+// the publisher switch never fails LoadConfig: a missing parameter is off, an unreadable or malformed one is
+// off with the reason recorded for the publisher paths to refuse
+func TestLoadCLAAdminsFlag(t *testing.T) {
+	cases := []struct {
+		name      string
+		code      string
+		value     string
+		want      bool
+		wantError string
+	}{
+		{name: "not provisioned", code: ssm.ErrCodeParameterNotFound},
+		{name: "enabled", value: "true", want: true},
+		{name: "throttled", code: "ThrottlingException", wantError: "ThrottlingException"},
+		{name: "malformed", value: "yes", wantError: "must be true or false"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var cfg Config
+			loadCLAAdminsFlag(flagSSMClient(t, tc.code, tc.value, false), "test", &cfg, nil)
+			assert.Equal(t, tc.want, cfg.MemberService.CLAAdminsEnabled)
+			if tc.wantError == "" {
+				assert.Empty(t, cfg.MemberService.CLAAdminsFlagError)
+				return
+			}
+			assert.Contains(t, cfg.MemberService.CLAAdminsFlagError, tc.wantError)
 		})
 	}
 }

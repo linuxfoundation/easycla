@@ -60,6 +60,16 @@ func WithCLAAdmins(publisher claAdminsPublisher, alerts claAdminsAlerts, recipie
 	}
 }
 
+// WithCLAAdminsUnavailable fails the signatures stream closed while the publisher is switched on but cannot run
+// (flag unreadable, member-service client unavailable): ProcessEvents panics on a signatures record, so that
+// function's batch is retried instead of acknowledged without the roster publication; the other stream
+// functions never receive signatures records and are unaffected.
+func WithCLAAdminsUnavailable(cause error) Option {
+	return func(s *service) {
+		s.claAdminsUnavailable = cause
+	}
+}
+
 // claAdminsTarget is one organization (by company id) whose roster an event affects and the row that changed.
 type claAdminsTarget struct {
 	companyID   string

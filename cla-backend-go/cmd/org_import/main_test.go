@@ -146,6 +146,16 @@ func TestRunCLAAdminsGates(t *testing.T) {
 		assert.Equal(t, 2, code)
 		assert.Contains(t, info.Err, "cla-member-service-cla-admins-enabled-dev is not true")
 	})
+	t.Run("apply is refused while the stage switch is unreadable", func(t *testing.T) {
+		var out, errOut bytes.Buffer
+		info := &orgimport.RunInfo{}
+		e := env{members: &member_service.Client{}}
+		e.cfg.MemberService.CLAAdminsFlagError = "optional SSM key cla-member-service-cla-admins-enabled-dev must be true or false"
+		code := runCLAAdmins(context.Background(), e, "dev", true, true, nil, t.TempDir(), info, &out, &errOut, strings.NewReader(""))
+		assert.Equal(t, 2, code)
+		assert.Contains(t, info.Err, "unreadable or not true/false")
+		assert.Contains(t, info.Err, "must be true or false")
+	})
 }
 
 func sampledClock(date string, err error) *awsClock {

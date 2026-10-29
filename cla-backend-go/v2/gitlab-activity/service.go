@@ -773,16 +773,14 @@ func (s *service) checkGitLabGroupApproval(ctx context.Context, userName, URL st
 			log.WithFields(f).WithError(clientErr).Warnf("problem getting gitLabClient for org: %s ", gitlabOrg.OrganizationName)
 			return false, clientErr
 		}
-		members, err := gitlab_api.ListAllDirectGroupMembers(ctx, gitlabClient, int(gitlabOrg.OrganizationExternalID))
+		isMember, err := gitlab_api.IsDirectGroupMember(ctx, gitlabClient, int(gitlabOrg.OrganizationExternalID), userName)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn("problem getting gitlab group members")
 			return false, err
 		}
-		for _, member := range members {
-			if userName == member.Username {
-				log.WithFields(f).Debugf("%s is a member of group: %s ", userName, URL)
-				return true, nil
-			}
+		if isMember {
+			log.WithFields(f).Debugf("%s is a member of group: %s ", userName, URL)
+			return true, nil
 		}
 	}
 

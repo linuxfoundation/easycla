@@ -27,6 +27,7 @@ import (
 type fakeAllowlistSignatureService struct {
 	SignatureService
 	signature   *models.Signature
+	readErr     error
 	row         *ItemSignature
 	rowErr      error
 	writeErr    error
@@ -36,7 +37,7 @@ type fakeAllowlistSignatureService struct {
 }
 
 func (f *fakeAllowlistSignatureService) GetSignature(_ context.Context, _ string) (*models.Signature, error) {
-	return f.signature, nil
+	return f.signature, f.readErr
 }
 
 func (f *fakeAllowlistSignatureService) GetItemSignature(_ context.Context, _ string) (*ItemSignature, error) {
@@ -118,6 +119,7 @@ func TestGitHubOrgAllowlistWritesRequireSignatureACL(t *testing.T) {
 		actor          string
 		rowErr         error
 		row            *ItemSignature
+		readErr        error
 	}{
 		{name: "cla manager on the ACL", signature: ccla, claUser: manager, expectedStatus: http.StatusOK, expectedCalls: 1},
 		{name: "cla manager revoked before the write", signature: ccla, claUser: manager, expectedStatus: http.StatusForbidden, expectedCalls: 1, writeErr: NewForbiddenError("revoked")},
@@ -129,6 +131,7 @@ func TestGitHubOrgAllowlistWritesRequireSignatureACL(t *testing.T) {
 		{name: "authenticated user outside the ACL", signature: ccla, claUser: outsider, expectedStatus: http.StatusForbidden},
 		{name: "signature without an ACL", signature: noACL, claUser: manager, expectedStatus: http.StatusForbidden, row: &ItemSignature{SignatureID: "sig-1"}},
 		{name: "unknown signature", signature: nil, claUser: manager, expectedStatus: http.StatusNotFound},
+		{name: "signature read failure", signature: ccla, claUser: manager, expectedStatus: http.StatusBadRequest, readErr: errors.New("dynamo down")},
 		{name: "missing principal", signature: ccla, claUser: nil, expectedStatus: http.StatusUnauthorized},
 		{name: "principal without identity", signature: ccla, claUser: &user.CLAUser{LFEmail: "nobody@example.com"}, expectedStatus: http.StatusUnauthorized},
 	}
@@ -139,7 +142,7 @@ func TestGitHubOrgAllowlistWritesRequireSignatureACL(t *testing.T) {
 			if row == nil {
 				row = storedACL
 			}
-			service := &fakeAllowlistSignatureService{signature: tc.signature, writeErr: tc.writeErr, row: row, rowErr: tc.rowErr}
+			service := &fakeAllowlistSignatureService{signature: tc.signature, readErr: tc.readErr, writeErr: tc.writeErr, row: row, rowErr: tc.rowErr}
 			eventsService := &fakeAllowlistEventsService{}
 			expectedEvents := tc.expectedCalls
 			if tc.writeErr != nil {
@@ -172,6 +175,10 @@ func TestGitHubOrgAllowlistWritesRequireSignatureACL(t *testing.T) {
 					assert.Equal(t, []string{actor}, service.actors, "the stored ACL entry of the matched manager is the actor")
 				}
 				assertAllowlistErrorPayload(t, tc.expectedStatus, recorder.Body.Bytes())
+				if tc.readErr != nil || tc.rowErr != nil {
+					assert.NotContains(t, recorder.Body.String(), "dynamo down", "the storage error stays in the log")
+					assert.Contains(t, recorder.Body.String(), "unable to load signature sig-1")
+				}
 			})
 
 			t.Run("delete", func(t *testing.T) {
@@ -194,6 +201,10 @@ func TestGitHubOrgAllowlistWritesRequireSignatureACL(t *testing.T) {
 					assert.Equal(t, []string{actor, actor}, service.actors)
 				}
 				assertAllowlistErrorPayload(t, tc.expectedStatus, recorder.body.Bytes())
+				if tc.readErr != nil || tc.rowErr != nil {
+					assert.NotContains(t, recorder.body.String(), "dynamo down", "the storage error stays in the log")
+					assert.Contains(t, recorder.body.String(), "unable to load signature sig-1")
+				}
 			})
 		})
 	}

@@ -277,11 +277,11 @@ func (f *fakeSignaturesTable) handleQuery(w http.ResponseWriter, body []byte) {
 		captured.startKey = *sk.S
 	}
 	f.mu.Lock()
+	defer f.mu.Unlock()
 	f.queries = append(f.queries, captured)
 	items := f.items
 	failing := (f.failQueryAt > 0 && len(f.queries) == f.failQueryAt) || (f.failIndex != "" && req.IndexName == f.failIndex)
 	maxRawPage := f.maxRawPage
-	f.mu.Unlock()
 	if failing {
 		fakeWriteError(w, "ValidationException", "injected query failure")
 		return

@@ -199,7 +199,7 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 		aclSignature, aclErr := service.GetSignature(ctx, params.SignatureID)
 		if aclErr != nil {
 			log.Warnf("error looking up signature using signature_id: %s, error: %+v", params.SignatureID, aclErr)
-			return signatures.NewAddGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(aclErr))
+			return signatures.NewAddGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(signatureUnavailableError(params.SignatureID))
 		}
 		if aclSignature == nil {
 			return signatures.NewAddGitHubOrgAllowlistNotFound().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
@@ -210,7 +210,7 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 		actor, actorErr := signatureManagerActor(ctx, service, params.SignatureID, claUser, aclSignature.SignatureACL)
 		if actorErr != nil {
 			log.Warnf("error reading the stored ACL of signature_id: %s, error: %+v", params.SignatureID, actorErr)
-			return signatures.NewAddGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(actorErr))
+			return signatures.NewAddGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(signatureUnavailableError(params.SignatureID))
 		}
 		if actor == "" {
 			msg := fmt.Sprintf("EasyCLA - 403 Forbidden - user %s is not authorized to modify the approval list of signature %s", claUser.LFUsername, params.SignatureID)
@@ -284,7 +284,7 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 		aclSignature, aclErr := service.GetSignature(ctx, params.SignatureID)
 		if aclErr != nil {
 			log.Warnf("error looking up signature using signature_id: %s, error: %+v", params.SignatureID, aclErr)
-			return signatures.NewDeleteGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(aclErr))
+			return signatures.NewDeleteGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(signatureUnavailableError(params.SignatureID))
 		}
 		if aclSignature == nil {
 			return signatures.NewDeleteGitHubOrgAllowlistNotFound().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
@@ -295,7 +295,7 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 		actor, actorErr := signatureManagerActor(ctx, service, params.SignatureID, claUser, aclSignature.SignatureACL)
 		if actorErr != nil {
 			log.Warnf("error reading the stored ACL of signature_id: %s, error: %+v", params.SignatureID, actorErr)
-			return signatures.NewDeleteGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(actorErr))
+			return signatures.NewDeleteGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(signatureUnavailableError(params.SignatureID))
 		}
 		if actor == "" {
 			msg := fmt.Sprintf("EasyCLA - 403 Forbidden - user %s is not authorized to modify the approval list of signature %s", claUser.LFUsername, params.SignatureID)
@@ -481,6 +481,14 @@ func errorResponse(err error) *models.ErrorResponse {
 	}
 
 	return &e
+}
+
+// signatureUnavailableError is the 400 payload when the signature or its stored ACL cannot be read; the cause is logged only
+func signatureUnavailableError(signatureID string) *models.ErrorResponse {
+	return &models.ErrorResponse{
+		Code:    "400",
+		Message: fmt.Sprintf("EasyCLA - 400 Bad Request - unable to load signature %s", signatureID),
+	}
 }
 
 // hasAuthenticatedPrincipal reports whether the authorizer supplied an identifiable user

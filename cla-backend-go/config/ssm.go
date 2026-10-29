@@ -281,11 +281,7 @@ func loadSSMConfig(awsSession *session.Session, stage string) (Config, error) { 
 
 	config.MemberService.BaseURL = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-member-service-base-url-%s", stage), f)
 	config.MemberService.Audience = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-member-service-auth0-audience-%s", stage), f)
-	claAdminsEnabled, flagErr := getOptionalSSMBool(ssmClient, fmt.Sprintf("cla-member-service-cla-admins-enabled-%s", stage), f)
-	if flagErr != nil {
-		return config, flagErr
-	}
-	config.MemberService.CLAAdminsEnabled = claAdminsEnabled
+	loadCLAAdminsFlag(ssmClient, stage, &config, f)
 
 	return config, nil
 }
@@ -390,6 +386,17 @@ func loadOptionalSSSConfig(ssmClient *ssm.SSM, stage string, config *Config, f l
 // reported at debug (an expected, benign state), while any other failure - IAM,
 // throttling, etc. - is reported as a warning with the underlying error so it is
 // not silently misattributed to "not set". Returns "" when the value is unreadable.
+// loadCLAAdminsFlag reads the publisher switch: a missing parameter is off; an unreadable or malformed one is
+// recorded in CLAAdminsFlagError for the publisher paths to refuse, without failing every other binary
+func loadCLAAdminsFlag(ssmClient *ssm.SSM, stage string, config *Config, f logrus.Fields) {
+	enabled, err := getOptionalSSMBool(ssmClient, fmt.Sprintf("cla-member-service-cla-admins-enabled-%s", stage), f)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("CLA-manager publisher flag unreadable - its consumers fail closed")
+		config.MemberService.CLAAdminsFlagError = err.Error()
+	}
+	config.MemberService.CLAAdminsEnabled = enabled
+}
+
 // getOptionalSSMBool reads an optional flag: a missing parameter is false, any other read failure is an error so
 // a worker never starts with the feature silently off
 func getOptionalSSMBool(ssmClient *ssm.SSM, key string, f logrus.Fields) (bool, error) {

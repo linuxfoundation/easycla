@@ -309,6 +309,12 @@ func runCLAAdmins(ctx context.Context, e env, stage string, apply, yes bool, ids
 		info.Err = orgimport.ErrNotConfigured.Error()
 		return 2
 	}
+	if apply && e.cfg.MemberService.CLAAdminsFlagError != "" {
+		msg := fmt.Sprintf("cla-admins --apply refused: SSM cla-member-service-cla-admins-enabled-%s is unreadable or not true/false: %s", stage, e.cfg.MemberService.CLAAdminsFlagError)
+		fmt.Fprintf(errOut, "%s\n", msg)
+		info.Err = msg
+		return 2
+	}
 	if apply && !e.cfg.MemberService.CLAAdminsEnabled {
 		msg := fmt.Sprintf("cla-admins --apply refused: SSM cla-member-service-cla-admins-enabled-%s is not true", stage)
 		fmt.Fprintf(errOut, "%s\n", msg)

@@ -223,6 +223,35 @@ func TestWithCLAAdminsRegistersTheSignatureEvents(t *testing.T) {
 	assert.Equal(t, []string{"ops@example.com"}, s.claAdminsRecipients)
 }
 
+// with the publisher switched on but unavailable only the signatures stream fails closed: its records panic
+// before any handler runs (that function's batch is retried), every other table is processed as usual
+func TestWithCLAAdminsUnavailableFailsOnlyTheSignaturesStream(t *testing.T) {
+	record := func(table string) events.DynamoDBEventRecord {
+		return events.DynamoDBEventRecord{EventName: Insert, EventSourceArn: "arn:aws:dynamodb:us-east-1:1:table/" + table + "/stream/2026"}
+	}
+	s := &service{functions: map[string][]EventHandlerFunc{}, signaturesTable: "cla-dev-signatures"}
+	WithCLAAdminsUnavailable(errors.New("member-service client unavailable"))(s)
+	var processed []string
+	for _, table := range []string{"cla-dev-projects", "cla-dev-signatures"} {
+		table := table
+		s.registerCallback(table, Insert, func(events.DynamoDBEventRecord) error { processed = append(processed, table); return nil })
+	}
+	assert.NotPanics(t, func() {
+		s.ProcessEvents(events.DynamoDBEvent{Records: []events.DynamoDBEventRecord{record("cla-dev-projects")}})
+	})
+	assert.Panics(t, func() {
+		s.ProcessEvents(events.DynamoDBEvent{Records: []events.DynamoDBEventRecord{record("cla-dev-signatures")}})
+	})
+	assert.Equal(t, []string{"cla-dev-projects"}, processed, "no signatures handler runs while the publisher is unavailable")
+
+	available := &service{functions: map[string][]EventHandlerFunc{}, signaturesTable: "cla-dev-signatures"}
+	available.registerCallback("cla-dev-signatures", Insert, func(events.DynamoDBEventRecord) error { processed = append(processed, "available"); return nil })
+	assert.NotPanics(t, func() {
+		available.ProcessEvents(events.DynamoDBEvent{Records: []events.DynamoDBEventRecord{record("cla-dev-signatures")}})
+	})
+	assert.Equal(t, []string{"cla-dev-projects", "available"}, processed)
+}
+
 func TestAlertRecipients(t *testing.T) {
 	assert.Equal(t, []string{"a@example.com", "b@example.com"}, AlertRecipients(" a@example.com, b@example.com ,,"))
 	assert.Nil(t, AlertRecipients(""))
