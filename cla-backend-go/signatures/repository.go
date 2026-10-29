@@ -523,7 +523,7 @@ func (repo repository) AddGithubOrganizationToApprovalList(ctx context.Context, 
 		return nil, actorErr
 	}
 	if actor == "" {
-		return nil, notSignatureManager(f, lfUsername, signatureID)
+		return nil, notSignatureManager(f, signatureID)
 	}
 
 	itemFromMap, ok := result.Item["github_org_whitelist"]
@@ -579,7 +579,7 @@ func (repo repository) AddGithubOrganizationToApprovalList(ctx context.Context, 
 	updatedValues, err := repo.dynamoDBClient.UpdateItem(input)
 	if err != nil {
 		if isConditionalCheckFailed(err) {
-			return nil, notSignatureManager(f, lfUsername, signatureID)
+			return nil, notSignatureManager(f, signatureID)
 		}
 		log.WithFields(f).Warnf("Error updating white list, error: %v", err)
 		return nil, err
@@ -627,7 +627,7 @@ func (repo repository) DeleteGithubOrganizationFromApprovalList(ctx context.Cont
 		return nil, actorErr
 	}
 	if actor == "" {
-		return nil, notSignatureManager(f, lfUsername, signatureID)
+		return nil, notSignatureManager(f, signatureID)
 	}
 
 	itemFromMap, ok := result.Item["github_org_whitelist"]
@@ -679,7 +679,7 @@ func (repo repository) DeleteGithubOrganizationFromApprovalList(ctx context.Cont
 		_, err = repo.dynamoDBClient.UpdateItem(input)
 		if err != nil {
 			if isConditionalCheckFailed(err) {
-				return nil, notSignatureManager(f, lfUsername, signatureID)
+				return nil, notSignatureManager(f, signatureID)
 			}
 			log.WithFields(f).Warnf("error updating github org approva list to NULL value, error: %v", err)
 			return nil, err
@@ -716,7 +716,7 @@ func (repo repository) DeleteGithubOrganizationFromApprovalList(ctx context.Cont
 	updatedValues, err := repo.dynamoDBClient.UpdateItem(input)
 	if err != nil {
 		if isConditionalCheckFailed(err) {
-			return nil, notSignatureManager(f, lfUsername, signatureID)
+			return nil, notSignatureManager(f, signatureID)
 		}
 		log.WithFields(f).Warnf("Error updating github org approva list, error: %v", err)
 		return nil, err
@@ -6380,15 +6380,15 @@ func (repo repository) actorACLEntry(acl *dynamodb.AttributeValue, lfUsername st
 }
 
 // managerCondition makes the write succeed only while signature_acl still names the acting CLA manager
-func managerCondition(input *dynamodb.UpdateItemInput, lfUsername string) {
+func managerCondition(input *dynamodb.UpdateItemInput, aclEntry string) {
 	input.ExpressionAttributeNames["#ACL"] = aws.String("signature_acl")
-	input.ExpressionAttributeValues[":actor"] = &dynamodb.AttributeValue{S: aws.String(lfUsername)}
+	input.ExpressionAttributeValues[":actor"] = &dynamodb.AttributeValue{S: aws.String(aclEntry)}
 	input.ConditionExpression = aws.String("contains(#ACL, :actor)")
 }
 
 // notSignatureManager is the typed refusal of a GitHub-organization approval-list write (handlers answer 403)
-func notSignatureManager(f logrus.Fields, lfUsername, signatureID string) error {
-	msg := fmt.Sprintf("user %s is not a CLA manager of signature %s - approval list unchanged", lfUsername, signatureID)
+func notSignatureManager(f logrus.Fields, signatureID string) error {
+	msg := fmt.Sprintf("caller is not a CLA manager of signature %s - approval list unchanged", signatureID)
 	log.WithFields(f).Warn(msg)
 	return NewForbiddenError(msg)
 }

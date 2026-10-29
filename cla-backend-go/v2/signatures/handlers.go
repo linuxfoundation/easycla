@@ -1958,7 +1958,7 @@ func requireSignatureManager(ctx context.Context, f logrus.Fields, sigService si
 			return nil, rowErr
 		}
 		if row == nil || !utils.StringInSlice(authUser.UserName, row.SignatureACL) {
-			log.WithFields(f).Warnf("user %s is not a CLA manager of signature %s - refusing the approval list change", authUser.UserName, signatureID)
+			log.WithFields(f).Warnf("caller is not a CLA manager of signature %s - refusing the approval list change", signatureID)
 			return nil, errNotSignatureManager
 		}
 	}

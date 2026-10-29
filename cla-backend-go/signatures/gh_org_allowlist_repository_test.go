@@ -180,6 +180,7 @@ func TestGitHubOrgAllowlistWritesAreConditionedOnTheSignatureACL(t *testing.T) {
 		repo.usersRepo = users
 		_, err := repo.AddGithubOrganizationToApprovalList(context.Background(), "ccla-sig", "org-c", "someone-else")
 		assert.IsType(t, &ForbiddenError{}, err, "a legacy entry resolving to another user authorizes nobody else")
+		assert.NotContains(t, err.Error(), "someone-else", "the refusal names no user")
 		_, err = repo.AddGithubOrganizationToApprovalList(context.Background(), "ccla-sig", "org-b", "manager-lf")
 		require.NoError(t, err)
 		table.mu.Lock()
