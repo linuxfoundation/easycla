@@ -154,6 +154,11 @@ provider:
             - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-approvals"
         - Effect: Allow
           Action:
+            - dynamodb:ConditionCheckItem
+          Resource:
+            - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-github-orgs"
+        - Effect: Allow
+          Action:
             - dynamodb:Query
           Resource:
             - "arn:aws:dynamodb:${self:custom.dynamodb.region}:${aws:accountId}:table/cla-${opt:stage}-api-log/index/bucket-dt-index"

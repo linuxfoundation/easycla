@@ -5,11 +5,16 @@ package signatures
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	mock_users "github.com/linuxfoundation/easycla/cla-backend-go/users/mocks"
 )
 
 func ghOrgAllowlistTable(orgs ...string) *fakeSignaturesTable {
@@ -163,5 +168,66 @@ func TestGitHubOrgAllowlistWritesAreConditionedOnTheSignatureACL(t *testing.T) {
 		table.mu.Lock()
 		defer table.mu.Unlock()
 		assert.Empty(t, table.updates)
+	})
+	t.Run("manager listed as a legacy github entry", func(t *testing.T) {
+		table := ghOrgAllowlistTable("org-a")
+		table.items[0]["signature_acl"] = fakeStringList("github:42", "other-manager")
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		users := mock_users.NewMockUserRepository(ctrl)
+		users.EXPECT().GetUserByUserName("github:42", true).Return(&models.User{UserID: "u-42", LfUsername: "manager-lf"}, nil).AnyTimes()
+		repo := ghOrgAllowlistRepo(t, table)
+		repo.usersRepo = users
+		_, err := repo.AddGithubOrganizationToApprovalList(context.Background(), "ccla-sig", "org-c", "someone-else")
+		assert.IsType(t, &ForbiddenError{}, err, "a legacy entry resolving to another user authorizes nobody else")
+		_, err = repo.AddGithubOrganizationToApprovalList(context.Background(), "ccla-sig", "org-b", "manager-lf")
+		require.NoError(t, err)
+		table.mu.Lock()
+		defer table.mu.Unlock()
+		assert.Equal(t, fakeStringList("org-a", "org-b"), table.find("ccla-sig")["github_org_whitelist"])
+		require.Len(t, table.updates, 1)
+		assert.Equal(t, "github:42", *table.updates[0].ExpressionAttributeValues[":actor"].S, "the condition names the raw ACL entry")
+	})
+	t.Run("legacy entry lookup failure is reported, nothing written", func(t *testing.T) {
+		table := ghOrgAllowlistTable("org-a")
+		table.items[0]["signature_acl"] = fakeStringList("github:42", "other-manager")
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		users := mock_users.NewMockUserRepository(ctrl)
+		users.EXPECT().GetUserByUserName("github:42", true).Return(nil, errors.New("users table down"))
+		repo := ghOrgAllowlistRepo(t, table)
+		repo.usersRepo = users
+		_, err := repo.AddGithubOrganizationToApprovalList(context.Background(), "ccla-sig", "org-b", "manager-lf")
+		require.ErrorContains(t, err, "users table down")
+		_, forbidden := err.(*ForbiddenError)
+		assert.False(t, forbidden, "a storage failure is not a permission verdict")
+		table.mu.Lock()
+		defer table.mu.Unlock()
+		assert.Empty(t, table.updates)
+		assert.Equal(t, fakeStringList("org-a"), table.find("ccla-sig")["github_org_whitelist"])
+	})
+	t.Run("GitHub-only manager acts through the raw github entry", func(t *testing.T) {
+		table := ghOrgAllowlistTable("org-a")
+		table.items[0]["signature_acl"] = fakeStringList("github:4242", "other-manager")
+		repo := ghOrgAllowlistRepo(t, table)
+		_, err := repo.DeleteGithubOrganizationFromApprovalList(context.Background(), "ccla-sig", "org-a", "github:4242")
+		require.NoError(t, err)
+		table.mu.Lock()
+		defer table.mu.Unlock()
+		require.Len(t, table.updates, 1)
+		assert.Equal(t, "github:4242", *table.updates[0].ExpressionAttributeValues[":actor"].S)
+		assert.Equal(t, map[string]interface{}{"NULL": true}, table.find("ccla-sig")["github_org_whitelist"])
+	})
+	t.Run("GitHub-only manager revoked before the write", func(t *testing.T) {
+		table := ghOrgAllowlistTable("org-a")
+		table.items[0]["signature_acl"] = fakeStringList("github:4242", "other-manager")
+		revokeManager(table, "github:4242")
+		repo := ghOrgAllowlistRepo(t, table)
+		_, err := repo.AddGithubOrganizationToApprovalList(context.Background(), "ccla-sig", "org-b", "github:4242")
+		assert.IsType(t, &ForbiddenError{}, err)
+		table.mu.Lock()
+		defer table.mu.Unlock()
+		assert.Equal(t, 1, table.conditionFailures)
+		assert.Equal(t, fakeStringList("org-a"), table.find("ccla-sig")["github_org_whitelist"])
 	})
 }

@@ -24,14 +24,16 @@ import (
 )
 
 // fakeRepositoriesTable serves the DynamoDB JSON protocol for one stored row: GetItem and Query return it,
-// every UpdateItem and PutItem is recorded; with failCondition set, a conditional update fails the way
-// DynamoDB reports it
+// every UpdateItem, PutItem and TransactWriteItems is recorded; with failCondition set, a conditional update
+// fails the way DynamoDB reports it, with failRegistration set, the organization check of a transaction fails
 type fakeRepositoriesTable struct {
-	mu            sync.Mutex
-	item          map[string]interface{}
-	updates       []map[string]interface{}
-	puts          []map[string]interface{}
-	failCondition bool
+	mu               sync.Mutex
+	item             map[string]interface{}
+	updates          []map[string]interface{}
+	puts             []map[string]interface{}
+	transactions     []map[string]interface{}
+	failCondition    bool
+	failRegistration bool
 }
 
 func (f *fakeRepositoriesTable) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -64,6 +66,35 @@ func (f *fakeRepositoriesTable) ServeHTTP(w http.ResponseWriter, r *http.Request
 		} else {
 			response = map[string]interface{}{}
 		}
+	case "DynamoDB_20120810.TransactWriteItems":
+		f.transactions = append(f.transactions, body)
+		items, ok := body["TransactItems"].([]interface{})
+		if !ok {
+			http.Error(w, "TransactItems missing", http.StatusBadRequest)
+			return
+		}
+		reasons := make([]map[string]string, len(items))
+		canceled := false
+		for i, raw := range items {
+			reasons[i] = map[string]string{"Code": "None"}
+			item, isItem := raw.(map[string]interface{})
+			if !isItem {
+				http.Error(w, "malformed transaction item", http.StatusBadRequest)
+				return
+			}
+			_, isCheck := item["ConditionCheck"]
+			update, isUpdate := item["Update"].(map[string]interface{})
+			if (isCheck && f.failRegistration) || (isUpdate && f.failCondition && update["ConditionExpression"] != nil) {
+				reasons[i] = map[string]string{"Code": "ConditionalCheckFailed", "Message": "The conditional request failed"}
+				canceled = true
+			}
+		}
+		if canceled {
+			w.WriteHeader(http.StatusBadRequest)
+			response = map[string]interface{}{"__type": "com.amazonaws.dynamodb.v20120810#TransactionCanceledException", "Message": "Transaction cancelled, please refer cancellation reasons for specific reasons", "CancellationReasons": reasons}
+		} else {
+			response = map[string]interface{}{}
+		}
 	default:
 		http.Error(w, "unexpected operation "+r.Header.Get("X-Amz-Target"), http.StatusBadRequest)
 		return
@@ -85,7 +116,7 @@ func fakeRepository(t *testing.T, table *fakeRepositoriesTable) *Repository {
 		MaxRetries:  aws.Int(0),
 	})
 	require.NoError(t, err)
-	return &Repository{stage: "test", dynamoDBClient: dynamodb.New(sess), repositoryTableName: "cla-test-repositories"}
+	return &Repository{stage: "test", dynamoDBClient: dynamodb.New(sess), repositoryTableName: "cla-test-repositories", githubOrgTableName: "cla-test-github-orgs"}
 }
 
 func boundRepositoryItem() map[string]interface{} {

@@ -55,18 +55,18 @@ func (mr *MockRepositoryInterfaceMockRecorder) GitHubAddRepository(ctx, external
 }
 
 // GitHubAddRepositoryForProject mocks base method.
-func (m *MockRepositoryInterface) GitHubAddRepositoryForProject(ctx context.Context, externalProjectID, projectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error) {
+func (m *MockRepositoryInterface) GitHubAddRepositoryForProject(ctx context.Context, externalProjectID, projectSFID string, input *models.GithubRepositoryInput, registered *models.GithubOrganization) (*models.GithubRepository, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GitHubAddRepositoryForProject", ctx, externalProjectID, projectSFID, input)
+	ret := m.ctrl.Call(m, "GitHubAddRepositoryForProject", ctx, externalProjectID, projectSFID, input, registered)
 	ret0, _ := ret[0].(*models.GithubRepository)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GitHubAddRepositoryForProject indicates an expected call of GitHubAddRepositoryForProject.
-func (mr *MockRepositoryInterfaceMockRecorder) GitHubAddRepositoryForProject(ctx, externalProjectID, projectSFID, input interface{}) *gomock.Call {
+func (mr *MockRepositoryInterfaceMockRecorder) GitHubAddRepositoryForProject(ctx, externalProjectID, projectSFID, input, registered interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GitHubAddRepositoryForProject", reflect.TypeOf((*MockRepositoryInterface)(nil).GitHubAddRepositoryForProject), ctx, externalProjectID, projectSFID, input)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GitHubAddRepositoryForProject", reflect.TypeOf((*MockRepositoryInterface)(nil).GitHubAddRepositoryForProject), ctx, externalProjectID, projectSFID, input, registered)
 }
 
 // GitHubDisableRepositoriesByProjectID mocks base method.
@@ -331,16 +331,16 @@ func (mr *MockRepositoryInterfaceMockRecorder) GitHubUpdateRepository(ctx, repos
 }
 
 // GitHubUpdateRepositoryForProject mocks base method.
-func (m *MockRepositoryInterface) GitHubUpdateRepositoryForProject(ctx context.Context, repositoryID, projectSFID, parentProjectSFID string, input *models.GithubRepositoryInput) (*models.GithubRepository, error) {
+func (m *MockRepositoryInterface) GitHubUpdateRepositoryForProject(ctx context.Context, repositoryID, projectSFID, parentProjectSFID string, input *models.GithubRepositoryInput, registered *models.GithubOrganization) (*models.GithubRepository, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GitHubUpdateRepositoryForProject", ctx, repositoryID, projectSFID, parentProjectSFID, input)
+	ret := m.ctrl.Call(m, "GitHubUpdateRepositoryForProject", ctx, repositoryID, projectSFID, parentProjectSFID, input, registered)
 	ret0, _ := ret[0].(*models.GithubRepository)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GitHubUpdateRepositoryForProject indicates an expected call of GitHubUpdateRepositoryForProject.
-func (mr *MockRepositoryInterfaceMockRecorder) GitHubUpdateRepositoryForProject(ctx, repositoryID, projectSFID, parentProjectSFID, input interface{}) *gomock.Call {
+func (mr *MockRepositoryInterfaceMockRecorder) GitHubUpdateRepositoryForProject(ctx, repositoryID, projectSFID, parentProjectSFID, input, registered interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GitHubUpdateRepositoryForProject", reflect.TypeOf((*MockRepositoryInterface)(nil).GitHubUpdateRepositoryForProject), ctx, repositoryID, projectSFID, parentProjectSFID, input)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GitHubUpdateRepositoryForProject", reflect.TypeOf((*MockRepositoryInterface)(nil).GitHubUpdateRepositoryForProject), ctx, repositoryID, projectSFID, parentProjectSFID, input, registered)
 }

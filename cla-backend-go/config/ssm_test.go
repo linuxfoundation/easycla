@@ -205,3 +205,60 @@ func TestLoadOptionalSSSConfig(t *testing.T) {
 		})
 	}
 }
+
+// the publisher flag: absent = off, an unreadable parameter is an error (not a silent off), values are case-insensitive
+func TestGetOptionalSSMBool(t *testing.T) {
+	cases := []struct {
+		name       string
+		code       string
+		value      string
+		want       bool
+		wantErr    string
+		incomplete bool
+	}{
+		{name: "not provisioned", code: ssm.ErrCodeParameterNotFound},
+		{name: "throttled", code: "ThrottlingException", wantErr: "ThrottlingException"},
+		{name: "enabled", value: " True ", want: true},
+		{name: "disabled", value: "False"},
+		{name: "malformed", value: "yes", wantErr: "must be true or false"},
+		{name: "empty", value: "", wantErr: "must be true or false"},
+		{name: "numeric one", value: "1", wantErr: "must be true or false"},
+		{name: "numeric zero", value: "0", wantErr: "must be true or false"},
+		{name: "incomplete response", incomplete: true, wantErr: "incomplete response"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/x-amz-json-1.1")
+				if tc.code != "" {
+					w.WriteHeader(http.StatusBadRequest)
+					assert.NoError(t, json.NewEncoder(w).Encode(map[string]string{"__type": tc.code, "message": "test SSM error"}))
+					return
+				}
+				if tc.incomplete {
+					assert.NoError(t, json.NewEncoder(w).Encode(map[string]interface{}{}))
+					return
+				}
+				assert.NoError(t, json.NewEncoder(w).Encode(map[string]interface{}{
+					"Parameter": map[string]string{"Name": "cla-member-service-cla-admins-enabled-test", "Value": tc.value},
+				}))
+			}))
+			defer server.Close()
+			awsSession, err := session.NewSession(&aws.Config{
+				Region:      aws.String("us-east-1"),
+				Endpoint:    aws.String(server.URL),
+				Credentials: credentials.NewStaticCredentials("test", "test", ""),
+				MaxRetries:  aws.Int(0),
+			})
+			require.NoError(t, err)
+			got, err := getOptionalSSMBool(ssm.New(awsSession), "cla-member-service-cla-admins-enabled-test", nil)
+			if tc.wantErr != "" {
+				require.ErrorContains(t, err, tc.wantErr)
+				assert.False(t, got)
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}

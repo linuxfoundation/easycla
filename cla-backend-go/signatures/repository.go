@@ -517,7 +517,12 @@ func (repo repository) AddGithubOrganizationToApprovalList(ctx context.Context, 
 			signatureID, GitHubOrganizationID, err)
 		return nil, err
 	}
-	if !aclContains(result.Item["signature_acl"], lfUsername) {
+	actor, actorErr := repo.actorACLEntry(result.Item["signature_acl"], lfUsername)
+	if actorErr != nil {
+		log.WithFields(f).WithError(actorErr).Warn("unable to resolve the acting CLA manager - not updated")
+		return nil, actorErr
+	}
+	if actor == "" {
 		return nil, notSignatureManager(f, lfUsername, signatureID)
 	}
 
@@ -569,7 +574,7 @@ func (repo repository) AddGithubOrganizationToApprovalList(ctx context.Context, 
 		ReturnValues:     &addReturnValues,
 	}
 
-	managerCondition(input, lfUsername)
+	managerCondition(input, actor)
 	log.WithFields(f).Warnf("updating database record using signatureID: %s with values: %v", signatureID, newList)
 	updatedValues, err := repo.dynamoDBClient.UpdateItem(input)
 	if err != nil {
@@ -616,7 +621,12 @@ func (repo repository) DeleteGithubOrganizationFromApprovalList(ctx context.Cont
 			signatureID, GitHubOrganizationID, err)
 		return nil, err
 	}
-	if !aclContains(result.Item["signature_acl"], lfUsername) {
+	actor, actorErr := repo.actorACLEntry(result.Item["signature_acl"], lfUsername)
+	if actorErr != nil {
+		log.WithFields(f).WithError(actorErr).Warn("unable to resolve the acting CLA manager - not updated")
+		return nil, actorErr
+	}
+	if actor == "" {
 		return nil, notSignatureManager(f, lfUsername, signatureID)
 	}
 
@@ -665,7 +675,7 @@ func (repo repository) DeleteGithubOrganizationFromApprovalList(ctx context.Cont
 			UpdateExpression: aws.String("SET #L = :l"),
 		}
 
-		managerCondition(input, lfUsername)
+		managerCondition(input, actor)
 		_, err = repo.dynamoDBClient.UpdateItem(input)
 		if err != nil {
 			if isConditionalCheckFailed(err) {
@@ -702,7 +712,7 @@ func (repo repository) DeleteGithubOrganizationFromApprovalList(ctx context.Cont
 		ReturnValues:     &updatedReturnValues,
 	}
 
-	managerCondition(input, lfUsername)
+	managerCondition(input, actor)
 	updatedValues, err := repo.dynamoDBClient.UpdateItem(input)
 	if err != nil {
 		if isConditionalCheckFailed(err) {
@@ -6320,22 +6330,53 @@ func decodeNextKey(str string) (map[string]*dynamodb.AttributeValue, error) {
 	return m, nil
 }
 
-// aclContains reports whether the stored signature_acl (a string set or a list) names lfUsername
-func aclContains(acl *dynamodb.AttributeValue, lfUsername string) bool {
-	if acl == nil || lfUsername == "" {
-		return false
+// aclEntries lists the stored signature_acl entries (a string set or a list)
+func aclEntries(acl *dynamodb.AttributeValue) []string {
+	if acl == nil {
+		return nil
 	}
+	var entries []string
 	for _, s := range acl.SS {
-		if s != nil && *s == lfUsername {
-			return true
+		if s != nil {
+			entries = append(entries, *s)
 		}
 	}
 	for _, e := range acl.L {
-		if e != nil && e.S != nil && *e.S == lfUsername {
-			return true
+		if e != nil && e.S != nil {
+			entries = append(entries, *e.S)
 		}
 	}
-	return false
+	return entries
+}
+
+// actorACLEntry is the raw signature_acl entry naming the acting manager: the LF username itself, or a legacy
+// github:<id> entry whose user record carries that LF username (the rule the signature converter applies)
+func (repo repository) actorACLEntry(acl *dynamodb.AttributeValue, lfUsername string) (string, error) {
+	if lfUsername == "" {
+		return "", nil
+	}
+	entries := aclEntries(acl)
+	for _, e := range entries {
+		if e == lfUsername {
+			return e, nil
+		}
+	}
+	if repo.usersRepo == nil {
+		return "", nil
+	}
+	for _, e := range entries {
+		if !strings.HasPrefix(e, "github:") {
+			continue
+		}
+		user, err := repo.usersRepo.GetUserByUserName(e, true)
+		if err != nil {
+			return "", fmt.Errorf("resolving the signature ACL entry %s: %w", e, err)
+		}
+		if user != nil && user.LfUsername == lfUsername {
+			return e, nil
+		}
+	}
+	return "", nil
 }
 
 // managerCondition makes the write succeed only while signature_acl still names the acting CLA manager

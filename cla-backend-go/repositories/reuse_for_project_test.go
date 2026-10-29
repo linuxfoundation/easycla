@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -43,6 +44,33 @@ func disabledNullBoundItem() map[string]interface{} {
 	return item
 }
 
+// the organization registration the enrollment was authorized through
+func registration() *models.GithubOrganization {
+	return &models.GithubOrganization{OrganizationName: "org", OrganizationInstallationID: 42, ProjectSFID: projectA, OrganizationSfid: "foundation-x", Enabled: true}
+}
+
+// transacted returns the organization check and the single repository write (Update or Put) of the only
+// recorded transaction
+func transacted(t *testing.T, table *fakeRepositoriesTable) (check, write map[string]interface{}, kind string) {
+	t.Helper()
+	require.Len(t, table.transactions, 1)
+	items, ok := table.transactions[0]["TransactItems"].([]interface{})
+	require.True(t, ok)
+	require.Len(t, items, 2)
+	first, ok := items[0].(map[string]interface{})
+	require.True(t, ok)
+	check, ok = first["ConditionCheck"].(map[string]interface{})
+	require.True(t, ok, "the organization check comes first")
+	second, ok := items[1].(map[string]interface{})
+	require.True(t, ok)
+	if update, isUpdate := second["Update"].(map[string]interface{}); isUpdate {
+		return check, update, "Update"
+	}
+	put, isPut := second["Put"].(map[string]interface{})
+	require.True(t, isPut, "the transaction carries no repository write")
+	return check, put, "Put"
+}
+
 func reuseInput() *models.GithubRepositoryInput {
 	return &models.GithubRepositoryInput{
 		RepositoryExternalID:       aws.String("123456"),
@@ -73,6 +101,9 @@ func resolvedCondition(t *testing.T, update map[string]interface{}) string {
 		if n, isNumber := values[ph]["N"].(string); isNumber {
 			return n
 		}
+		if b, isBool := values[ph]["BOOL"].(bool); isBool {
+			return strconv.FormatBool(b)
+		}
 		return ph
 	})
 	return strings.ReplaceAll(resolved, " ", "")
@@ -84,36 +115,42 @@ func TestScopedReuseWritesCarryTheProjectCondition(t *testing.T) {
 	t.Run("re-enable by repository id", func(t *testing.T) {
 		table := &fakeRepositoriesTable{item: disabledUnboundItem()}
 		repo := fakeRepository(t, table)
-		_, err := repo.GitHubUpdateRepositoryForProject(context.Background(), "repo-1", "project-a", "foundation-x", reuseInput())
+		_, err := repo.GitHubUpdateRepositoryForProject(context.Background(), "repo-1", "project-a", "foundation-x", reuseInput(), registration())
 		require.NoError(t, err)
 		table.mu.Lock()
 		defer table.mu.Unlock()
-		require.Len(t, table.updates, 1)
-		assert.Equal(t, reuseConditionForProjectA, resolvedCondition(t, table.updates[0]))
+		_, write, kind := transacted(t, table)
+		assert.Equal(t, "Update", kind)
+		assert.Equal(t, reuseConditionForProjectA, resolvedCondition(t, write))
+		assert.Empty(t, table.updates)
 		assert.Empty(t, table.puts)
 	})
 	t.Run("re-use of a disabled record found by GitHub id", func(t *testing.T) {
 		table := &fakeRepositoriesTable{item: disabledUnboundItem()}
 		repo := fakeRepository(t, table)
-		_, err := repo.GitHubAddRepositoryForProject(context.Background(), "foundation-x", "project-a", reuseInput())
+		_, err := repo.GitHubAddRepositoryForProject(context.Background(), "foundation-x", "project-a", reuseInput(), registration())
 		require.NoError(t, err)
 		table.mu.Lock()
 		defer table.mu.Unlock()
-		require.Len(t, table.updates, 1, "the existing record is re-used, not re-created")
-		assert.Equal(t, reuseConditionForProjectA, resolvedCondition(t, table.updates[0]))
+		_, write, kind := transacted(t, table)
+		assert.Equal(t, "Update", kind, "the existing record is re-used, not re-created")
+		assert.Equal(t, reuseConditionForProjectA, resolvedCondition(t, write))
+		assert.Empty(t, table.updates)
 		assert.Empty(t, table.puts)
 	})
-	t.Run("a brand-new record is still created unconditionally", func(t *testing.T) {
+	t.Run("a brand-new record is created without a record condition", func(t *testing.T) {
 		table := &fakeRepositoriesTable{}
 		repo := fakeRepository(t, table)
-		_, err := repo.GitHubAddRepositoryForProject(context.Background(), "foundation-x", "project-a", reuseInput())
+		_, err := repo.GitHubAddRepositoryForProject(context.Background(), "foundation-x", "project-a", reuseInput(), registration())
 		require.NoError(t, err)
 		table.mu.Lock()
 		defer table.mu.Unlock()
-		assert.Empty(t, table.updates)
-		require.Len(t, table.puts, 1)
-		_, conditioned := table.puts[0]["ConditionExpression"]
+		_, write, kind := transacted(t, table)
+		assert.Equal(t, "Put", kind)
+		_, conditioned := write["ConditionExpression"]
 		assert.False(t, conditioned)
+		assert.Empty(t, table.updates)
+		assert.Empty(t, table.puts)
 	})
 }
 
@@ -126,16 +163,17 @@ func TestScopedReuseWritesRejectAStaleIndexAnswer(t *testing.T) {
 			repo := fakeRepository(t, table)
 			var err error
 			if route == "update" {
-				_, err = repo.GitHubUpdateRepositoryForProject(context.Background(), "repo-1", "project-a", "foundation-x", reuseInput())
+				_, err = repo.GitHubUpdateRepositoryForProject(context.Background(), "repo-1", "project-a", "foundation-x", reuseInput(), registration())
 			} else {
-				_, err = repo.GitHubAddRepositoryForProject(context.Background(), "foundation-x", "project-a", reuseInput())
+				_, err = repo.GitHubAddRepositoryForProject(context.Background(), "foundation-x", "project-a", reuseInput(), registration())
 			}
 			var notFound *utils.GitHubRepositoryNotFound
 			require.True(t, errors.As(err, &notFound), "expected not found, got %v", err)
 			assert.Contains(t, err.Error(), "project-a")
 			table.mu.Lock()
 			defer table.mu.Unlock()
-			assert.Len(t, table.updates, 1, "exactly one conditional write was attempted")
+			assert.Len(t, table.transactions, 1, "exactly one conditional write was attempted")
+			assert.Empty(t, table.updates)
 			assert.Empty(t, table.puts)
 		})
 	}
@@ -155,6 +193,7 @@ func TestUnscopedAddAndUpdateStillSendNoCondition(t *testing.T) {
 	for _, update := range table.updates {
 		assert.Equal(t, "", resolvedCondition(t, update), "unchanged legacy behaviour")
 	}
+	assert.Empty(t, table.transactions, "the legacy writes never check a registration")
 }
 
 // reusableByProject mirrors repositoryBoundToOtherProject: project_sfid is authoritative, repository_sfdc_id
@@ -208,10 +247,10 @@ func TestEmptyBindingsAreStoredAsNull(t *testing.T) {
 func TestScopedReuseAcceptsStoredNullBindings(t *testing.T) {
 	routes := map[string]func(*Repository) (*models.GithubRepository, error){
 		"re-enable by repository id": func(r *Repository) (*models.GithubRepository, error) {
-			return r.GitHubUpdateRepositoryForProject(context.Background(), "repo-1", "project-a", "foundation-x", reuseInput())
+			return r.GitHubUpdateRepositoryForProject(context.Background(), "repo-1", "project-a", "foundation-x", reuseInput(), registration())
 		},
 		"re-use of a disabled record found by GitHub id": func(r *Repository) (*models.GithubRepository, error) {
-			return r.GitHubAddRepositoryForProject(context.Background(), "foundation-x", "project-a", reuseInput())
+			return r.GitHubAddRepositoryForProject(context.Background(), "foundation-x", "project-a", reuseInput(), registration())
 		},
 	}
 	for name, route := range routes {
@@ -221,8 +260,10 @@ func TestScopedReuseAcceptsStoredNullBindings(t *testing.T) {
 			require.NoError(t, err)
 			table.mu.Lock()
 			defer table.mu.Unlock()
-			require.Len(t, table.updates, 1, "the NULL-bound record is re-used, not re-created")
-			assert.Equal(t, reuseConditionForProjectA, resolvedCondition(t, table.updates[0]))
+			_, write, kind := transacted(t, table)
+			assert.Equal(t, "Update", kind, "the NULL-bound record is re-used, not re-created")
+			assert.Equal(t, reuseConditionForProjectA, resolvedCondition(t, write))
+			assert.Empty(t, table.updates)
 			assert.Empty(t, table.puts)
 		})
 	}

@@ -1951,8 +1951,16 @@ func requireSignatureManager(ctx context.Context, f logrus.Fields, sigService si
 		return nil, errNotSignatureManager
 	}
 	if !utils.CurrentUserInACL(authUser, signatureModel.SignatureACL) {
-		log.WithFields(f).Warnf("user %s is not a CLA manager of signature %s - refusing the approval list change", authUser.UserName, signatureID)
-		return nil, errNotSignatureManager
+		// the hydrated ACL drops entries without a user record - the stored signature_acl decides
+		row, rowErr := sigService.GetItemSignature(ctx, signatureID)
+		if rowErr != nil {
+			log.WithFields(f).WithError(rowErr).Warn("unable to read the stored signature ACL - refusing the approval list change")
+			return nil, rowErr
+		}
+		if row == nil || !utils.StringInSlice(authUser.UserName, row.SignatureACL) {
+			log.WithFields(f).Warnf("user %s is not a CLA manager of signature %s - refusing the approval list change", authUser.UserName, signatureID)
+			return nil, errNotSignatureManager
+		}
 	}
 	return signatureModel, nil
 }

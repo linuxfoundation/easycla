@@ -155,7 +155,7 @@ func init() {
 			ClientSecret:  configFile.Auth0Platform.ClientSecret,
 		})
 		if memberErr != nil {
-			log.Warnf("CLA-manager publisher disabled: %v", memberErr)
+			log.Panicf("CLA-manager publisher enabled but unavailable - not consuming signature events without it: %v", memberErr)
 		} else {
 			var alerts utils.EmailSender
 			if configFile.SNSEventTopicARN != "" {

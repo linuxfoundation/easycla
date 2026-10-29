@@ -30,6 +30,8 @@ type allowlistSignatureService struct {
 	signatureService.SignatureService
 	signature   *v1Models.Signature
 	readErr     error
+	row         *signatureService.ItemSignature
+	rowErr      error
 	writeErr    error
 	addCalls    int
 	deleteCalls int
@@ -38,6 +40,10 @@ type allowlistSignatureService struct {
 
 func (f *allowlistSignatureService) GetSignature(_ context.Context, _ string) (*v1Models.Signature, error) {
 	return f.signature, f.readErr
+}
+
+func (f *allowlistSignatureService) GetItemSignature(_ context.Context, _ string) (*signatureService.ItemSignature, error) {
+	return f.row, f.rowErr
 }
 
 func (f *allowlistSignatureService) AddGithubOrganizationToApprovalList(_ context.Context, _ string, params v1Models.GhOrgAllowlist, _, lfUsername string) ([]v1Models.GithubOrg, error) {
@@ -97,21 +103,29 @@ func TestGitHubOrgAllowlistHandlersRequireTheSignatureManager(t *testing.T) {
 		calls     int
 		readErr   error
 		writeErr  error
+		rowErr    error
+		row       *signatureService.ItemSignature
 	}{
 		{name: "exact manager", signature: ccla, user: &auth.User{UserName: "manager", Email: "manager@example.com"}, status: http.StatusOK, calls: 1},
+		{name: "manager without a user record, named by the stored ACL", signature: ccla, user: &auth.User{UserName: "ghost"}, status: http.StatusOK, calls: 1},
+		{name: "stored ACL unreadable for a caller the hydration missed", signature: ccla, user: &auth.User{UserName: "ghost"}, rowErr: errors.New("dynamo down"), status: http.StatusInternalServerError},
 		{name: "manager revoked before the write", signature: ccla, user: &auth.User{UserName: "manager"}, status: http.StatusForbidden, calls: 1, writeErr: signatureService.NewForbiddenError("revoked")},
 		{name: "authenticated outsider", signature: ccla, user: &auth.User{UserName: "outsider", Email: "outsider@example.com"}, status: http.StatusForbidden},
 		{name: "manager in another case", signature: ccla, user: &auth.User{UserName: "Manager"}, status: http.StatusForbidden},
 		{name: "empty LF identity", signature: ccla, user: &auth.User{Email: "nobody@example.com"}, status: http.StatusForbidden},
-		{name: "signature without an ACL", signature: &v1Models.Signature{SignatureID: "sig-1"}, user: &auth.User{UserName: "manager"}, status: http.StatusForbidden},
+		{name: "signature without an ACL", signature: &v1Models.Signature{SignatureID: "sig-1"}, user: &auth.User{UserName: "manager"}, status: http.StatusForbidden, row: &signatureService.ItemSignature{SignatureID: "sig-1"}},
 		{name: "unknown signature", user: &auth.User{UserName: "manager"}, status: http.StatusForbidden},
 		{name: "signature read failure", readErr: errors.New("dynamo down"), user: &auth.User{UserName: "manager"}, status: http.StatusInternalServerError},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			svc := &allowlistSignatureService{signature: tc.signature, readErr: tc.readErr, writeErr: tc.writeErr}
+			row := tc.row
+			if row == nil {
+				row = &signatureService.ItemSignature{SignatureID: "sig-1", SignatureACL: []string{"manager", "ghost"}}
+			}
+			svc := &allowlistSignatureService{signature: tc.signature, readErr: tc.readErr, writeErr: tc.writeErr, row: row, rowErr: tc.rowErr}
 			denied, code := "caller is not a CLA manager of signature sig-1", `"Code":"403"`
-			if tc.readErr != nil {
+			if tc.readErr != nil || tc.rowErr != nil {
 				denied, code = "unable to load signature sig-1", `"Code":"500"`
 			}
 			expectedEvents := tc.calls
@@ -151,7 +165,7 @@ func TestGitHubOrgAllowlistHandlersRequireTheSignatureManager(t *testing.T) {
 				assert.Equal(t, events.ApprovalListGitHubOrganizationAdded, event.EventType)
 				assert.Equal(t, "cla-group-1", event.ProjectID)
 				assert.Equal(t, "company-1", event.CompanyID)
-				assert.Equal(t, "manager", event.LfUsername)
+				assert.Equal(t, tc.user.UserName, event.LfUsername)
 				assert.Equal(t, &events.ApprovalListGitHubOrganizationAddedEventData{GitHubOrganizationName: "some-org"}, event.EventData)
 			})
 			logged.logged = nil
@@ -182,7 +196,7 @@ func TestGitHubOrgAllowlistHandlersRequireTheSignatureManager(t *testing.T) {
 				assert.Equal(t, events.ApprovalListGitHubOrganizationDeleted, event.EventType)
 				assert.Equal(t, "cla-group-1", event.ProjectID)
 				assert.Equal(t, "company-1", event.CompanyID)
-				assert.Equal(t, "manager", event.LfUsername)
+				assert.Equal(t, tc.user.UserName, event.LfUsername)
 				assert.Equal(t, &events.ApprovalListGitHubOrganizationDeletedEventData{GitHubOrganizationName: "some-org"}, event.EventData)
 			})
 		})

@@ -207,7 +207,12 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 				Message: fmt.Sprintf("EasyCLA - 404 Not Found - signature %s not found", params.SignatureID),
 			})
 		}
-		if !claUserInSignatureACL(claUser, aclSignature.SignatureACL) {
+		actor, actorErr := signatureManagerActor(ctx, service, params.SignatureID, claUser, aclSignature.SignatureACL)
+		if actorErr != nil {
+			log.Warnf("error reading the stored ACL of signature_id: %s, error: %+v", params.SignatureID, actorErr)
+			return signatures.NewAddGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(actorErr))
+		}
+		if actor == "" {
 			msg := fmt.Sprintf("EasyCLA - 403 Forbidden - user %s is not authorized to modify the approval list of signature %s", claUser.LFUsername, params.SignatureID)
 			log.Warn(msg)
 			return signatures.NewAddGitHubOrgAllowlistForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
@@ -228,7 +233,7 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 			githubAccessToken = ""
 		}
 
-		ghApprovalList, err := service.AddGithubOrganizationToApprovalList(ctx, params.SignatureID, params.Body, githubAccessToken, aclManagerLFUsername(claUser, aclSignature.SignatureACL))
+		ghApprovalList, err := service.AddGithubOrganizationToApprovalList(ctx, params.SignatureID, params.Body, githubAccessToken, actor)
 		if err != nil {
 			log.Warnf("error adding github organization %s using signature_id: %s to the allowlist, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)
@@ -287,7 +292,12 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 				Message: fmt.Sprintf("EasyCLA - 404 Not Found - signature %s not found", params.SignatureID),
 			})
 		}
-		if !claUserInSignatureACL(claUser, aclSignature.SignatureACL) {
+		actor, actorErr := signatureManagerActor(ctx, service, params.SignatureID, claUser, aclSignature.SignatureACL)
+		if actorErr != nil {
+			log.Warnf("error reading the stored ACL of signature_id: %s, error: %+v", params.SignatureID, actorErr)
+			return signatures.NewDeleteGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(actorErr))
+		}
+		if actor == "" {
 			msg := fmt.Sprintf("EasyCLA - 403 Forbidden - user %s is not authorized to modify the approval list of signature %s", claUser.LFUsername, params.SignatureID)
 			log.Warn(msg)
 			return signatures.NewDeleteGitHubOrgAllowlistForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
@@ -308,7 +318,7 @@ func Configure(api *operations.ClaAPI, service SignatureService, sessionStore *d
 			githubAccessToken = ""
 		}
 
-		ghApprovalList, err := service.DeleteGithubOrganizationFromApprovalList(ctx, params.SignatureID, params.Body, githubAccessToken, aclManagerLFUsername(claUser, aclSignature.SignatureACL))
+		ghApprovalList, err := service.DeleteGithubOrganizationFromApprovalList(ctx, params.SignatureID, params.Body, githubAccessToken, actor)
 		if err != nil {
 			log.Warnf("error deleting github organization %s using signature_id: %s from the allowlist, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)
@@ -473,8 +483,6 @@ func errorResponse(err error) *models.ErrorResponse {
 	return &e
 }
 
-// claUserInSignatureACL reports whether the v3 caller is one of the CLA managers on the signature ACL - entries are
-// matched by user ID or, when the ACL was loaded without user details, by LF username
 // hasAuthenticatedPrincipal reports whether the authorizer supplied an identifiable user
 func hasAuthenticatedPrincipal(claUser *user.CLAUser) bool {
 	return claUser != nil && (claUser.UserID != "" || claUser.LFUsername != "")
@@ -488,35 +496,51 @@ func missingPrincipalError() *models.ErrorResponse {
 	}
 }
 
-func claUserInSignatureACL(claUser *user.CLAUser, acl []models.User) bool {
-	return aclManagerLFUsername(claUser, acl) != "" || claUserMatchesACL(claUser, acl)
+// signatureManagerActor is the actor the write is conditioned on - the hydrated ACL match, else the caller's LF
+// username when only the stored signature_acl still names it (no user record); "" for a non-manager
+func signatureManagerActor(ctx context.Context, service SignatureService, signatureID string, claUser *user.CLAUser, acl []models.User) (string, error) {
+	if actor := aclManagerActor(claUser, acl); actor != "" {
+		return actor, nil
+	}
+	if claUser == nil || claUser.LFUsername == "" {
+		return "", nil
+	}
+	row, err := service.GetItemSignature(ctx, signatureID)
+	if err != nil {
+		return "", err
+	}
+	if row != nil && utils.StringInSlice(claUser.LFUsername, row.SignatureACL) {
+		return claUser.LFUsername, nil
+	}
+	return "", nil
 }
 
-func claUserMatchesACL(claUser *user.CLAUser, acl []models.User) bool {
+// matchedACLManager is the ACL entry the principal matches, by user id or by LF username
+func matchedACLManager(claUser *user.CLAUser, acl []models.User) *models.User {
 	if claUser == nil {
-		return false
+		return nil
 	}
-	for _, manager := range acl {
-		if claUser.UserID != "" && manager.UserID == claUser.UserID {
-			return true
-		}
-		if claUser.LFUsername != "" && manager.LfUsername == claUser.LFUsername {
-			return true
+	for i := range acl {
+		manager := &acl[i]
+		if (claUser.UserID != "" && manager.UserID == claUser.UserID) || (claUser.LFUsername != "" && manager.LfUsername == claUser.LFUsername) {
+			return manager
 		}
 	}
-	return false
+	return nil
 }
 
-// aclManagerLFUsername is the stored ACL username of the manager entry the principal matches (by user id or
-// LF username) - the actor the repository writes are conditioned on
-func aclManagerLFUsername(claUser *user.CLAUser, acl []models.User) string {
-	if claUser == nil {
+// aclManagerActor is the identity the repository writes are conditioned on: the matched manager's LF username,
+// or the legacy github:<id> form of a GitHub-only manager (the stored signature_acl entry of such a manager)
+func aclManagerActor(claUser *user.CLAUser, acl []models.User) string {
+	manager := matchedACLManager(claUser, acl)
+	if manager == nil {
 		return ""
 	}
-	for _, manager := range acl {
-		if (claUser.UserID != "" && manager.UserID == claUser.UserID) || (claUser.LFUsername != "" && manager.LfUsername == claUser.LFUsername) {
-			return manager.LfUsername
-		}
+	if manager.LfUsername != "" {
+		return manager.LfUsername
+	}
+	if manager.GithubID != "" {
+		return "github:" + manager.GithubID
 	}
 	return ""
 }
