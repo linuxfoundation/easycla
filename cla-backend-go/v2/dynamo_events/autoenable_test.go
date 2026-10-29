@@ -235,7 +235,6 @@ func TestAutoEnableServiceProvider_CreateAutoEnabledRepository(t *testing.T) {
 
 }
 
-// repository names from the GitHub webhook are HTML-escaped in the auto-enable notification (ops#807)
 // the auto-enable notification is HTML: repository, CLA group and organization names are escaped in the body,
 // the subject and the recipients stay plaintext (ops#807)
 func TestAutoEnabledRepositoryEmailContentEscapesDynamicText(t *testing.T) {
