@@ -30,7 +30,7 @@
     "dotenv": "^16.4.5"
   },
   "dependencies": {
-    "ajv": "^8.18.0",
+    "ajv": "^8.20.0",
     "cypress-mochawesome-reporter": "^3.5.1",
     "mochawesome-merge": "^4.3.0",
     "mochawesome-report-generator": "^6.2.0"
@@ -40,7 +40,7 @@
     "fast-uri": "^3.1.7",
     "lodash": "^4.18.0",
     "tmp": "^0.2.7",
-    "serialize-javascript": "^7.0.5",
+    "serialize-javascript": "^7.1.4",
     "picomatch": "^2.3.2"
   },
   "overrides": {
@@ -48,7 +48,7 @@
     "validator": "13.15.22",
     "qs": "6.14.1",
     "tmp": "^0.2.7",
-    "serialize-javascript": "^7.0.5",
+    "serialize-javascript": "^7.1.4",
     "picomatch": "^2.3.2",
     "@cypress/request": "3.0.10",
     "fast-uri": "^3.1.7",
