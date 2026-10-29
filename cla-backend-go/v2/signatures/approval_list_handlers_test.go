@@ -6,6 +6,7 @@ package signatures
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -28,12 +29,13 @@ import (
 type allowlistSignatureService struct {
 	signatureService.SignatureService
 	signature   *v1Models.Signature
+	readErr     error
 	addCalls    int
 	deleteCalls int
 }
 
 func (f *allowlistSignatureService) GetSignature(_ context.Context, _ string) (*v1Models.Signature, error) {
-	return f.signature, nil
+	return f.signature, f.readErr
 }
 
 func (f *allowlistSignatureService) AddGithubOrganizationToApprovalList(_ context.Context, _ string, params v1Models.GhOrgAllowlist, _ string) ([]v1Models.GithubOrg, error) {
@@ -83,6 +85,7 @@ func TestGitHubOrgAllowlistHandlersRequireTheSignatureManager(t *testing.T) {
 		user      *auth.User
 		status    int
 		calls     int
+		readErr   error
 	}{
 		{name: "exact manager", signature: ccla, user: &auth.User{UserName: "manager", Email: "manager@example.com"}, status: http.StatusOK, calls: 1},
 		{name: "authenticated outsider", signature: ccla, user: &auth.User{UserName: "outsider", Email: "outsider@example.com"}, status: http.StatusForbidden},
@@ -90,10 +93,15 @@ func TestGitHubOrgAllowlistHandlersRequireTheSignatureManager(t *testing.T) {
 		{name: "empty LF identity", signature: ccla, user: &auth.User{Email: "nobody@example.com"}, status: http.StatusForbidden},
 		{name: "signature without an ACL", signature: &v1Models.Signature{SignatureID: "sig-1"}, user: &auth.User{UserName: "manager"}, status: http.StatusForbidden},
 		{name: "unknown signature", user: &auth.User{UserName: "manager"}, status: http.StatusForbidden},
+		{name: "signature read failure", readErr: errors.New("dynamo down"), user: &auth.User{UserName: "manager"}, status: http.StatusInternalServerError},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			svc := &allowlistSignatureService{signature: tc.signature}
+			svc := &allowlistSignatureService{signature: tc.signature, readErr: tc.readErr}
+			denied, code := "caller is not a CLA manager of signature sig-1", `"Code":"403"`
+			if tc.readErr != nil {
+				denied, code = "unable to load signature sig-1", `"Code":"500"`
+			}
 			logged := &allowlistEvents{}
 			api := operations.NewEasyclaAPI(nil)
 			Configure(api, nil, nil, nil, svc, sessionStore, logged, nil, nil)
@@ -115,7 +123,9 @@ func TestGitHubOrgAllowlistHandlersRequireTheSignatureManager(t *testing.T) {
 				assert.Equal(t, tc.calls, svc.addCalls, "the approval list changes only for the signature's CLA manager")
 				require.Len(t, logged.logged, tc.calls, "an event is logged only with the mutation")
 				if tc.calls == 0 {
-					assert.Contains(t, recorder.Body.String(), "caller is not a CLA manager of signature sig-1")
+					assert.Contains(t, recorder.Body.String(), denied)
+					assert.Contains(t, recorder.Body.String(), code)
+					assert.NotContains(t, recorder.Body.String(), "dynamo down", "the storage error stays in the log")
 					return
 				}
 				event := logged.logged[0]
@@ -144,7 +154,9 @@ func TestGitHubOrgAllowlistHandlersRequireTheSignatureManager(t *testing.T) {
 				assert.Equal(t, tc.calls, svc.deleteCalls, "the approval list changes only for the signature's CLA manager")
 				require.Len(t, logged.logged, tc.calls)
 				if tc.calls == 0 {
-					assert.Contains(t, recorder.body.String(), "caller is not a CLA manager of signature sig-1")
+					assert.Contains(t, recorder.body.String(), denied)
+					assert.Contains(t, recorder.body.String(), code)
+					assert.NotContains(t, recorder.body.String(), "dynamo down", "the storage error stays in the log")
 					return
 				}
 				event := logged.logged[0]

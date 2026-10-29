@@ -259,6 +259,10 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 
 		signatureModel, managerErr := requireSignatureManager(ctx, f, v1SignatureService, params.SignatureID, authUser)
 		if managerErr != nil {
+			if !errors.Is(managerErr, errNotSignatureManager) {
+				return signatures.NewAddGitHubOrgAllowlistInternalServerError().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseInternalServerError(reqID, fmt.Sprintf("unable to load signature %s", params.SignatureID)))
+			}
 			return signatures.NewAddGitHubOrgAllowlistForbidden().WithXRequestID(reqID).WithPayload(
 				utils.ErrorResponseForbidden(reqID, fmt.Sprintf("EasyCLA - 403 Forbidden - caller is not a CLA manager of signature %s", params.SignatureID)))
 		}
@@ -324,6 +328,10 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 
 		signatureModel, managerErr := requireSignatureManager(ctx, f, v1SignatureService, params.SignatureID, authUser)
 		if managerErr != nil {
+			if !errors.Is(managerErr, errNotSignatureManager) {
+				return signatures.NewDeleteGitHubOrgAllowlistInternalServerError().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseInternalServerError(reqID, fmt.Sprintf("unable to load signature %s", params.SignatureID)))
+			}
 			return signatures.NewDeleteGitHubOrgAllowlistForbidden().WithXRequestID(reqID).WithPayload(
 				utils.ErrorResponseForbidden(reqID, fmt.Sprintf("EasyCLA - 403 Forbidden - caller is not a CLA manager of signature %s", params.SignatureID)))
 		}

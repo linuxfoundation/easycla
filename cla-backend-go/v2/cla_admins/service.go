@@ -9,9 +9,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/mail"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
@@ -180,16 +182,25 @@ func (s Service) Roster(ctx context.Context, sfid string, signatureIDs ...string
 	}
 	roster := &Roster{SFID: id18, CompanyIDs: verified, Admins: []member_service.CLAAdmin{}}
 	usernames := map[string]bool{}
+	skipped := map[string]bool{}
 	for _, c := range rows {
 		if !c.Signed || !utils.StringInSlice(c.CompanyID, verified) {
 			continue
 		}
 		roster.SignedCCLAs++
 		for _, u := range c.ACL {
-			if u = strings.TrimSpace(u); u != "" {
-				usernames[u] = true
+			if u = strings.TrimSpace(u); u == "" {
+				continue
 			}
+			if !plainUsername(u) {
+				skipped[u] = true
+				continue
+			}
+			usernames[u] = true
 		}
+	}
+	for _, u := range sortedKeys(skipped) {
+		log.WithFields(f).WithFields(logrus.Fields{"username": u, "reason": "whitespace or control character"}).Warn("CLA manager username skipped - not publishable to member-service")
 	}
 	for _, u := range sortedKeys(usernames) {
 		roster.Admins = append(roster.Admins, s.entry(f, u))
@@ -314,9 +325,26 @@ func (s Service) entry(f logrus.Fields, username string) member_service.CLAAdmin
 		log.WithFields(f).WithError(err).Debugf("no user record for CLA manager %s - sending the username only", username)
 		return e
 	}
-	e.Email = strings.TrimSpace(string(user.LfEmail))
+	if email := strings.TrimSpace(string(user.LfEmail)); email != "" {
+		if plainEmail(email) {
+			e.Email = email
+		} else {
+			log.WithFields(f).WithFields(logrus.Fields{"username": username, "reason": "not a plain email address"}).Warn("CLA manager email omitted - the username is sent alone")
+		}
+	}
 	e.Name = strings.TrimSpace(user.Username)
 	return e
+}
+
+func plainUsername(u string) bool {
+	return strings.IndexFunc(u, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) < 0
+}
+
+// plainEmail accepts a bare address only: display-name and comment forms parse but are not the plain
+// email member-service expects
+func plainEmail(e string) bool {
+	addr, err := mail.ParseAddress(e)
+	return err == nil && addr.Address == e
 }
 
 func (s Service) now() time.Time {

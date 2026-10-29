@@ -265,6 +265,35 @@ func TestRosterUnionsEveryRowSharingTheAccount(t *testing.T) {
 	assert.Equal(t, []string{"catalog", "list c-entity-1", "list c-entity-2", "read s1,s2,s3", "companies c-entity-1,c-entity-2"}, h.log, "ids come from the catalog and the index, state and company bindings from base reads")
 }
 
+// interim input filtering before the member-service call (PR 5277 review): a username with whitespace or
+// control characters is skipped, an email that is not a plain address is omitted while the manager stays,
+// case and punctuation are sent untouched; the exact member-service rules are a pre-activation item
+func TestRosterSkipsUnpublishableIdentities(t *testing.T) {
+	h := newHarness(&fakePublisher{})
+	row := h.cclas.base["s1"]
+	row.ACL = []string{"zoe", " amy ", "bad user", "tab\tname", "ctl\x01x", "Zoe.Q-1", "   "}
+	h.cclas.base["s1"] = row
+	h.svc.Users = fakeUsers{byName: map[string]*models.User{
+		"amy":     {LfUsername: "amy", LfEmail: strfmt.Email(" amy@example.com "), Username: "Amy Adams"},
+		"bob":     {LfUsername: "bob", LfEmail: strfmt.Email("bob@example.com (home)"), Username: "Bob"},
+		"Zoe.Q-1": {LfUsername: "Zoe.Q-1", LfEmail: strfmt.Email("Zoe Q <zoe@example.com>"), Username: "Zoe Q"},
+		"zoe":     {LfUsername: "zoe", LfEmail: strfmt.Email("not an address")},
+	}}
+	roster, err := h.svc.Roster(context.Background(), sfid15)
+	require.NoError(t, err)
+	assert.Equal(t, []member_service.CLAAdmin{
+		{Username: "Zoe.Q-1", Name: "Zoe Q"},
+		{Username: "amy", Email: "amy@example.com", Name: "Amy Adams"},
+		{Username: "bob", Name: "Bob"},
+		{Username: "zoe"},
+	}, roster.Admins)
+	res, err := h.svc.Publish(context.Background(), sfid15)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"Zoe.Q-1", "amy", "bob", "zoe"}, res.Roster.Usernames())
+	require.Len(t, h.pub.calls, 1)
+	assert.Equal(t, roster.Admins, h.pub.calls[0].admins, "the filtered roster is what member-service receives")
+}
+
 func TestRosterEdgeCases(t *testing.T) {
 	svc := newService(&fakePublisher{})
 	_, err := svc.Roster(context.Background(), "lfSclQhURLCCrv7EZj")

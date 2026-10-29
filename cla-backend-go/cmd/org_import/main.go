@@ -11,14 +11,17 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cloudwatchlogs"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
@@ -73,9 +76,57 @@ type env struct {
 	deps      orgimport.Deps
 	cfg       config.Config
 	sess      *session.Session
+	clock     *awsClock
 	companies company.IRepository
 	users     users.UserRepository
 	members   *member_service.Client
+}
+
+// awsClock keeps the first AWS response Date and the monotonic instant it arrived; cla-admins --apply stamps
+// rosters with that time, never with the operator's wall clock
+type awsClock struct {
+	mu         sync.Mutex
+	date       time.Time
+	receivedAt time.Time
+}
+
+func (c *awsClock) observe(r *request.Request) {
+	if r == nil || r.Error != nil || r.HTTPResponse == nil {
+		return
+	}
+	date, err := http.ParseTime(r.HTTPResponse.Header.Get("Date"))
+	if err != nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.receivedAt.IsZero() {
+		c.date, c.receivedAt = date, time.Now()
+	}
+}
+
+func (c *awsClock) now() (time.Time, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.receivedAt.IsZero() {
+		return time.Time{}, false
+	}
+	return c.date.Add(time.Since(c.receivedAt)), true
+}
+
+var errNoAWSTime = errors.New("no AWS time sample: no successful AWS response with a Date header yet")
+
+func applyClock(c *awsClock) (func() time.Time, error) {
+	if c == nil {
+		return nil, errNoAWSTime
+	}
+	if _, ok := c.now(); !ok {
+		return nil, errNoAWSTime
+	}
+	return func() time.Time {
+		t, _ := c.now()
+		return t
+	}, nil
 }
 
 type reportFlags struct {
@@ -264,7 +315,15 @@ func runCLAAdmins(ctx context.Context, e env, stage string, apply, yes bool, ids
 		info.Err = msg
 		return 2
 	}
+	var awsNow func() time.Time
 	if apply {
+		var clockErr error
+		if awsNow, clockErr = applyClock(e.clock); clockErr != nil {
+			msg := fmt.Sprintf("cla-admins --apply refused: %v", clockErr)
+			fmt.Fprintf(errOut, "%s\n", msg)
+			info.Err = msg
+			return 2
+		}
 		fmt.Fprintf(out, "APPLY: the CLA-manager roster of every organization with a signed CCLA will be sent to member-service\n")
 		if !yes && !confirm(stage, out, stdin) {
 			fmt.Fprintf(out, "aborted: nothing was written\n")
@@ -278,6 +337,7 @@ func runCLAAdmins(ctx context.Context, e env, stage string, apply, yes bool, ids
 		CCLAs:       cla_admins.DynamoCCLAs{DB: dynamodb.New(e.sess), Table: fmt.Sprintf("cla-%s-signatures", stage)},
 		Pending:     cla_admins.DynamoPendingIDs{DB: dynamodb.New(e.sess), Table: fmt.Sprintf("cla-%s-store", stage)},
 		Users:       e.users,
+		Now:         awsNow,
 	}
 	if e.members != nil {
 		svc.Members = e.members
@@ -508,7 +568,8 @@ func confirm(stage string, out io.Writer, stdin io.Reader) bool {
 
 func wire(ctx context.Context, stage string, useApex bool) (env, error) {
 	awsSession := session.Must(session.NewSession(&aws.Config{}))
-	e := env{sess: awsSession}
+	e := env{sess: awsSession, clock: &awsClock{}}
+	awsSession.Handlers.Complete.PushBack(e.clock.observe)
 	cfg, err := config.LoadConfig("", awsSession, stage)
 	if err != nil {
 		return e, fmt.Errorf("loading SSM config: %w", err)
