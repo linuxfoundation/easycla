@@ -171,7 +171,8 @@ func TestGitHubOrgAllowlistWritesAreConditionedOnTheSignatureACL(t *testing.T) {
 	})
 	t.Run("manager listed as a legacy github entry", func(t *testing.T) {
 		table := ghOrgAllowlistTable("org-a")
-		table.items[0]["signature_acl"] = fakeStringList("github:42", "other-manager")
+		// malformed legacy entries ahead of the manager are skipped without a lookup (the strict mock would fail one)
+		table.items[0]["signature_acl"] = fakeStringList("github:abc", "github:", "github:0", "github:-7", "github:42", "other-manager")
 		ctrl := gomock.NewController(t)
 		defer ctrl.Finish()
 		users := mock_users.NewMockUserRepository(ctrl)

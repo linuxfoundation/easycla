@@ -6368,6 +6368,9 @@ func (repo repository) actorACLEntry(acl *dynamodb.AttributeValue, lfUsername st
 		if !strings.HasPrefix(e, "github:") {
 			continue
 		}
+		if id, parseErr := strconv.Atoi(strings.TrimPrefix(e, "github:")); parseErr != nil || id <= 0 {
+			continue
+		}
 		user, err := repo.usersRepo.GetUserByUserName(e, true)
 		if err != nil {
 			return "", fmt.Errorf("resolving the signature ACL entry %s: %w", e, err)
