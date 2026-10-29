@@ -563,19 +563,21 @@ func (s service) UpdateApprovalList(ctx context.Context, authUser *auth.User, cl
 	}
 
 	updatedCorporateSignature, err := s.repo.UpdateApprovalList(ctx, userModel, claGroupModel, companyModel.CompanyID, params, eventArgs)
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("problem updating approval list for company ID: %s, project ID: %s, cla group ID: %s", companyModel.CompanyID, claGroupModel.ProjectID, claGroupID)
-		return updatedCorporateSignature, err
-	}
 
 	// Invalidate every cached PR-check decision for this project. Approval
 	// list mutations change who is authorized: users newly added must flip
 	// red→green and removed users must flip green→red. The cache is keyed
 	// on (project, github user, login, email), and any negative entry from
 	// before this update is now stale — the handleGitHubStatusUpdate
-	// goroutines below otherwise see the same stale negatives.
+	// goroutines below otherwise see the same stale negatives. A refused
+	// removal may already have invalidated acknowledgments, so this runs
+	// before the error check too.
 	invalidated := github.ModelProjectUserCache.InvalidateByProject(claGroupModel.ProjectID)
 	log.WithFields(f).Infof("invalidated %d ProjectUserCache entries for project %s after approval list update", invalidated, claGroupModel.ProjectID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem updating approval list for company ID: %s, project ID: %s, cla group ID: %s", companyModel.CompanyID, claGroupModel.ProjectID, claGroupID)
+		return updatedCorporateSignature, err
+	}
 
 	// Re-approve the signed employee acknowledgments that only an approval list removal had invalidated, when the
 	// entries just added cover their user again (#2980). The list edit already succeeded and the remaining side

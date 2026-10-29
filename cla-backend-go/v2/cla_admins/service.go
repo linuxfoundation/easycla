@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/mail"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -339,6 +340,9 @@ var errLegacyManagerLookup = errors.New("cla_admins: legacy CLA manager entry lo
 // failure is an error
 func (s Service) legacyUsername(entry string) (string, error) {
 	if s.Users == nil {
+		return "", nil
+	}
+	if id, parseErr := strconv.Atoi(strings.TrimPrefix(entry, "github:")); parseErr != nil || id <= 0 {
 		return "", nil
 	}
 	user, err := s.Users.GetUserByUserName(entry, true)
