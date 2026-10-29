@@ -378,7 +378,7 @@ paths:
       tags:
         - cla-group
 
-  /cla-group/{claGroupID}:
+  /cla-group/{claGroupID}/catalogue:
     get:
       summary: Get a CLA Group by id
       description: Returns one CLA Group from the same unscoped catalogue as CLA Group search, including the project a corporate signature would be requested against. A foundation-level CLA Group resolves to its foundation; a single project-level mapping resolves to that project; several project-level mappings with no foundation marker leave the project unset rather than picking one. An id that is not in the catalogue is 404. The catalogue is served from the same in-process cache as search, so a newly added CLA Group or project mapping can take up to the cache TTL (30 minutes by default) to become readable
@@ -406,6 +406,8 @@ paths:
           $ref: '#/responses/internal-server-error'
       tags:
         - cla_search
+
+  /cla-group/{claGroupID}:
     put:
       summary: Updates a CLA Group
       description: Updates CLA Group

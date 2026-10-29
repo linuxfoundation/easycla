@@ -86,7 +86,7 @@ func TestGetHandlerNotFoundAndUnauthorized(t *testing.T) {
 	require.NotNil(t, api.ClaSearchGetClaGroupHandler)
 
 	params := claSearchOps.GetClaGroupParams{
-		HTTPRequest: httptest.NewRequest(http.MethodGet, "/v4/cla-group/11111111-1111-4111-8111-111111111111", nil),
+		HTTPRequest: httptest.NewRequest(http.MethodGet, "/v4/cla-group/11111111-1111-4111-8111-111111111111/catalogue", nil),
 		ClaGroupID:  "11111111-1111-4111-8111-111111111111",
 	}
 	unauthorized := httptest.NewRecorder()
@@ -105,7 +105,7 @@ func invokeGet(t *testing.T, svc Service, claGroupID, requestID string) *httptes
 	require.NotNil(t, api.ClaSearchGetClaGroupHandler)
 
 	params := claSearchOps.GetClaGroupParams{
-		HTTPRequest: httptest.NewRequest(http.MethodGet, "/v4/cla-group/"+claGroupID, nil),
+		HTTPRequest: httptest.NewRequest(http.MethodGet, "/v4/cla-group/"+claGroupID+"/catalogue", nil),
 		ClaGroupID:  claGroupID,
 		XREQUESTID:  &requestID,
 	}
