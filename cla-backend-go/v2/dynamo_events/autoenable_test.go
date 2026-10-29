@@ -236,17 +236,26 @@ func TestAutoEnableServiceProvider_CreateAutoEnabledRepository(t *testing.T) {
 }
 
 // repository names from the GitHub webhook are HTML-escaped in the auto-enable notification (ops#807)
-func TestAutoEnabledRepositoryEmailContentEscapesRepositoryNames(t *testing.T) {
-	claGroup := &models.ClaGroup{ProjectName: "Project X", Version: "v2"}
+// the auto-enable notification is HTML: repository, CLA group and organization names are escaped in the body,
+// the subject and the recipients stay plaintext (ops#807)
+func TestAutoEnabledRepositoryEmailContentEscapesDynamicText(t *testing.T) {
+	claGroup := &models.ClaGroup{ProjectName: `Group <b>X</b> & co`, Version: "v2"}
+	managers := []*models.ClaManagerUser{{UserEmail: "manager@example.com"}, {UserEmail: ""}}
 	repos := []*models.GithubRepository{
 		{RepositoryName: `org/<script>alert(1)</script>`},
 		{RepositoryName: "org/repo-two"},
 	}
-	_, body, _ := autoEnabledRepositoryEmailContent(claGroup, "org", nil, repos)
+	subject, body, recipients := autoEnabledRepositoryEmailContent(claGroup, `org"><img src=x onerror=alert(1)>`, managers, repos)
+	assert.Equal(t, "EasyCLA: Auto-Enable CombinedRepository for CLA Group: Group <b>X</b> & co", subject)
+	assert.Equal(t, []string{"manager@example.com"}, recipients)
 	items := regexp.MustCompile(`<li>(.*?)</li>`).FindAllStringSubmatch(body, -1)
 	if assert.Len(t, items, 2, body) {
 		assert.Equal(t, "org/&lt;script&gt;alert(1)&lt;/script&gt;", items[0][1])
 		assert.Equal(t, "org/repo-two", items[1][1])
 	}
-	assert.NotContains(t, body, "<script>")
+	assert.Contains(t, body, "regarding the CLA Group Group &lt;b&gt;X&lt;/b&gt; &amp; co.")
+	assert.Contains(t, body, "added to the org&#34;&gt;&lt;img src=x onerror=alert(1)&gt; GitHub Organization.")
+	for _, raw := range []string{"<script>", "<b>X</b>", "<img", `org">`} {
+		assert.NotContains(t, body, raw)
+	}
 }

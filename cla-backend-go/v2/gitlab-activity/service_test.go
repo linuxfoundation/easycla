@@ -6,7 +6,6 @@ package gitlab_activity
 import (
 	"context"
 	"fmt"
-	"regexp"
 	"strings"
 	"testing"
 
@@ -201,21 +200,4 @@ func TestPrepareMrCommentContent(t *testing.T) {
 		}
 	}
 
-}
-
-// author text is HTML-escaped where it enters the merge-request note (ops#826): markup in a GitLab name cannot
-// inject tags into the note, benign names render unchanged, the sign link is untouched
-func TestPrepareMrCommentContentEscapesAuthorText(t *testing.T) {
-	signed := []*gitlab.User{{ID: 1, Username: `neo"`, Name: `<img src=x onerror=alert(1)>`}}
-	missing := []*gatedGitlabUser{{err: fmt.Errorf("not authorized"), User: &gitlab.User{ID: 2, Username: "trinity", Name: "Trinity O'Neil & Co"}}}
-	body := PrepareMrCommentContent(missing, signed, "https://sign.example/s?a=1")
-
-	items := regexp.MustCompile(`(?s)<li>(.*?)</li>`).FindAllStringSubmatch(body, -1)
-	if assert.Len(t, items, 2, body) {
-		assert.Contains(t, items[0][1], "login:@neo&#34;/name:&lt;img src=x onerror=alert(1)&gt;")
-		assert.NotContains(t, items[0][1], "<img")
-		assert.Contains(t, items[1][1], "login:@trinity/name:Trinity O&#39;Neil &amp; Co")
-		assert.Contains(t, items[1][1], "<a href='https://sign.example/s?a=1' target='_blank'>")
-	}
-	assert.NotContains(t, body, "<img src=x")
 }

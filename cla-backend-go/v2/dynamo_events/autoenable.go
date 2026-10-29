@@ -295,8 +295,8 @@ See: GitHub CombinedRepository -> Settings -> Branches -> Branch Protection Rule
 	`
 
 	body = fmt.Sprintf(
-		body, claGroupName, repoWasHere,
-		orgName, pronoun, repoPronounUpper, repoContent,
+		body, html.EscapeString(claGroupName), repoWasHere,
+		html.EscapeString(orgName), pronoun, repoPronounUpper, repoContent,
 		utils.GetEmailHelpContent(claGroupModel.Version == utils.V2), utils.GetEmailSignOffContent())
 	var recipients []string
 	for _, m := range managers {

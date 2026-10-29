@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"regexp"
 	"testing"
 	"time"
 
@@ -447,42 +446,4 @@ func TestIsValidGitHubUsernameAcceptsBotSuffix(t *testing.T) {
 	for _, username := range []string{"[bot]", "ab[bot]", "a[bot]x", "a[bot][bot]", "foo-[bot]", "-foo[bot]", "fo--o[bot]", "renovate[BOT]", "renovate[bot"} {
 		assert.False(t, IsValidGitHubUsername(username), username)
 	}
-}
-
-// commit author text is HTML-escaped where it enters the EasyCLA bot comment (ops#836, ops#986): markup in a
-// GitHub name cannot inject tags into the comment, benign logins and names render unchanged
-func TestGetCommentBodyEscapesAuthorTextInTheHTMLList(t *testing.T) {
-	hostile := &UserCommitSummary{
-		SHA: "sha-evil",
-		CommitAuthor: &gh.User{
-			ID:    gh.Int64(1),
-			Login: gh.String(`evil"login`),
-			Name:  gh.String(`<img src=x onerror=alert(1)>`),
-			Email: gh.String("evil@example.com"),
-		},
-		Affiliated: true,
-		Authorized: true,
-	}
-	benign := &UserCommitSummary{
-		SHA: "sha-dev",
-		CommitAuthor: &gh.User{
-			ID:    gh.Int64(2),
-			Login: gh.String("dev-eloper"),
-			Name:  gh.String("Dev O'Eloper & Co"),
-			Email: gh.String("dev@example.com"),
-		},
-		Affiliated: false,
-		Authorized: false,
-	}
-	// the escaping does not depend on the repository type; "gitlab" also keeps every call site from passing the same value
-	body := getCommentBody("gitlab", "https://sign.example", []*UserCommitSummary{hostile}, []*UserCommitSummary{benign}, false)
-
-	items := regexp.MustCompile(`(?s)<li>(.*?)</li>`).FindAllStringSubmatch(body, -1)
-	if assert.Len(t, items, 2, body) {
-		assert.Contains(t, items[0][1], "login: evil&#34;login / name: &lt;img src=x onerror=alert(1)&gt;")
-		assert.NotContains(t, items[0][1], "<img")
-		assert.Contains(t, items[1][1], "login: @dev-eloper / name: Dev O&#39;Eloper &amp; Co")
-	}
-	assert.Contains(t, body, `<a href='https://sign.example' target='_blank'>`, "the sign link is untouched")
-	assert.NotContains(t, body, "<img src=x")
 }

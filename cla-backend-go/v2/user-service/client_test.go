@@ -6,9 +6,9 @@ package user_service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -21,53 +21,71 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/models"
 )
 
-// answers the user-service lookups for api.example with one user and records every request; anything else
-// (the fake Auth0 server) goes to the real transport
-type capturingTransport struct {
-	mu       sync.Mutex
-	requests []*http.Request
-	fallback http.RoundTripper
-	username string
+const (
+	apiHost   = "api.example"
+	authHost  = "auth.example"
+	fakeToken = "fake-token-abcdef1234"
+)
+
+// answers the fake Auth0 token endpoint and the user-service lookups in-process; closing the token response
+// body is the end of token.Init's asynchronous request, which is signalled through tokenDone
+type fakeTransport struct {
+	mu        sync.Mutex
+	requests  []*http.Request
+	username  string
+	tokenDone chan struct{}
+	once      sync.Once
 }
 
-func (c *capturingTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	if r.URL.Host != "api.example" {
-		return c.fallback.RoundTrip(r)
+type closeSignal struct {
+	io.Reader
+	signal func()
+}
+
+func (c *closeSignal) Close() error {
+	c.signal()
+	return nil
+}
+
+func (f *fakeTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	switch r.URL.Host {
+	case authHost:
+		body := &closeSignal{
+			Reader: strings.NewReader(`{"access_token":"` + fakeToken + `","scope":"","expires_in":3600,"token_type":"Bearer"}`),
+			signal: func() { f.once.Do(func() { close(f.tokenDone) }) },
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: body, Request: r}, nil
+	case apiHost:
+		f.mu.Lock()
+		f.requests = append(f.requests, r.Clone(r.Context()))
+		f.mu.Unlock()
+		body, err := json.Marshal(models.UserList{Data: []*models.User{{Username: f.username}}})
+		if err != nil {
+			return nil, err
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(string(body))), Request: r}, nil
+	default:
+		return nil, fmt.Errorf("unexpected request to %s", r.URL.Host)
 	}
-	c.mu.Lock()
-	c.requests = append(c.requests, r.Clone(r.Context()))
-	c.mu.Unlock()
-	body, err := json.Marshal(models.UserList{Data: []*models.User{{Username: c.username}}})
-	if err != nil {
-		return nil, err
-	}
-	return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(string(body))), Request: r}, nil
 }
 
 // both user-service lookups send a raw LF username as one query-encoded `username` parameter (ops#808): the
 // upstream request keeps the endpoint, the API key and the bearer token, and the matched user comes back
 func TestUserLookupsSendTheRawUsernameAsOneQueryParameter(t *testing.T) {
 	const raw = "a&b=c#d e+f/g?h"
-	const fakeToken = "fake-token-abcdef1234"
-	auth := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		if _, err := w.Write([]byte(`{"access_token":"` + fakeToken + `","scope":"","expires_in":3600,"token_type":"Bearer"}`)); err != nil {
-			t.Error(err)
-		}
-	}))
-	t.Cleanup(auth.Close)
-	token.Init("client-id", "client-secret", auth.URL+"/oauth/token", "aud")
-	require.Eventually(t, func() bool {
-		tok, err := token.GetToken()
-		return err == nil && tok == fakeToken
-	}, 5*time.Second, 50*time.Millisecond, "the fake Auth0 token must be in place before the lookups")
-
+	transport := &fakeTransport{username: raw, tokenDone: make(chan struct{})}
 	original := http.DefaultTransport
-	transport := &capturingTransport{fallback: original, username: raw}
 	http.DefaultTransport = transport
 	t.Cleanup(func() { http.DefaultTransport = original })
 
-	usc := &Client{apiKey: "api-key", apiGwURL: "api.example"}
+	token.Init("client-id", "client-secret", "https://"+authHost+"/oauth/token", "aud")
+	select {
+	case <-transport.tokenDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the token.Init request did not complete")
+	}
+
+	usc := &Client{apiKey: "api-key", apiGwURL: apiHost}
 	listed, err := usc.ListUsersByUsername(raw)
 	require.NoError(t, err)
 	assert.Equal(t, raw, listed.Username)
@@ -80,7 +98,7 @@ func TestUserLookupsSendTheRawUsernameAsOneQueryParameter(t *testing.T) {
 	require.Len(t, transport.requests, 2)
 	for i, r := range transport.requests {
 		assert.Equal(t, http.MethodGet, r.Method, i)
-		assert.Equal(t, "api.example", r.URL.Host, i)
+		assert.Equal(t, apiHost, r.URL.Host, i)
 		assert.Equal(t, "/user-service/v1/users", r.URL.Path, i)
 		assert.Equal(t, []string{raw}, r.URL.Query()["username"], "request %d sends the whole username as one parameter", i)
 		assert.Len(t, r.URL.Query(), 1, "request %d carries no injected parameter", i)
