@@ -24,6 +24,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/company"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
+	v2ProjectServiceClient "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/client/project"
 )
 
 // Configure sets up the middleware handlers
@@ -138,7 +139,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 				return company.NewGetCompanyClaGroupsForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 			}
 
-			result, err := service.GetCompanyClaGroups(ctx, params.CompanySFID)
+			result, err := service.GetCompanyClaGroups(ctx, params.CompanySFID, params.PageSize, params.Offset)
 			if err != nil {
 				msg := fmt.Sprintf("unable to load CLA groups for company SFID: %s", params.CompanySFID)
 				log.WithFields(f).WithError(err).Warn(msg)
@@ -181,6 +182,13 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 
 			result, err := service.GetCompanyProjectCLAManagers(ctx, v2CompanyModel, params.ProjectSFID)
 			if err != nil {
+				var projectNotFound *v2ProjectServiceClient.GetProjectNotFound
+				if errors.As(err, &projectNotFound) {
+					msg := fmt.Sprintf("project not found in the project service: %s", params.ProjectSFID)
+					log.WithFields(f).WithError(err).Warn(msg)
+					return company.NewGetCompanyProjectClaManagersNotFound().WithXRequestID(reqID).WithPayload(utils.ErrorResponseNotFound(reqID, msg))
+				}
+
 				msg := "unable to load company project CLA managers"
 				log.WithFields(f).WithError(err).Warn(msg)
 				return company.NewGetCompanyProjectClaManagersBadRequest().WithXRequestID(reqID).WithPayload(
@@ -374,9 +382,12 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 		})
 
 	api.CompanyCreateCompanyHandler = company.CreateCompanyHandlerFunc(
-		func(params company.CreateCompanyParams) middleware.Responder {
+		func(params company.CreateCompanyParams, authUser *auth.User) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
 			ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+			if authUser != nil {
+				utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+			}
 			f := logrus.Fields{
 				"functionName":      "v2.company.handlers.CompanyCreateCompanyHandler",
 				utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
@@ -386,8 +397,15 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 				"signingEntityName": params.Input.SigningEntityName,
 				"userEmail":         params.Input.UserEmail.String(),
 			}
-			// No permissions needed - anyone can create a company
-
+			// any signed-in user may create a company, but only for themselves (lfx-self-serve-ops#343)
+			if authUser == nil || (authUser.UserName == "" && authUser.Email == "") {
+				msg := "the company can only be created by a signed-in user"
+				log.WithFields(f).Warn(msg)
+				return company.NewCreateCompanyForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+			}
+			username, email := authUser.UserName, authUser.Email
+			params.XUSERNAME = &username
+			params.XEMAIL = &email
 			// Quick validation of the input parameters
 			log.WithFields(f).Debug("validating company name...")
 			if !utils.ValidCompanyName(*params.Input.CompanyName) {
@@ -407,6 +425,12 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 				if _, ok := err.(*organizations.CreateOrgConflict); ok {
 					formatErr := errors.New("organization already exists")
 					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(errorResponse(reqID, formatErr))
+				}
+				if errors.Is(err, ErrCompanyUserMismatch) || errors.Is(err, ErrCompanyNoGrantTarget) {
+					return company.NewCreateCompanyForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, err.Error()))
+				}
+				if errors.Is(err, ErrCompanyUserLookup) {
+					return company.NewCreateCompanyInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, "unable to verify the signed-in user", err))
 				}
 				return company.NewCreateCompanyBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 			}
@@ -670,6 +694,16 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			// V1 corporate console has been shut down - always use V2 console
 			corporateLink := LFXPortalURL
 
+			// the body is optional in the generated binding: an omitted body leaves the required email nil
+			if params.Body.ClaManagerEmail == nil {
+				return company.NewRequestCompanyAdminBadRequest().WithXRequestID(reqID).WithPayload(
+					&models.ErrorResponse{
+						Message:    "claManagerEmail is required",
+						Code:       "400",
+						XRequestID: reqID,
+					})
+			}
+
 			err := service.RequestCompanyAdmin(ctx, params.UserID, params.Body.ClaManagerEmail.String(), params.Body.ClaManagerName, params.Body.ContributorName, params.Body.ContributorEmail.String(), params.Body.ProjectName, params.Body.CompanyName, corporateLink)
 			if err != nil {
 
@@ -755,7 +789,7 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 	}
 
 	log.WithFields(f).Debug("testing if user has access to project SFID...")
-	if utils.IsUserAuthorizedForProject(ctx, authUser, projectSFID, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForProjectOnly(ctx, authUser, projectSFID, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debug("user has access to project SFID...")
 		return true
 	}
@@ -779,7 +813,7 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 	}
 
 	log.WithFields(f).Debug("testing if user has access to organization SFID...")
-	if utils.IsUserAuthorizedForOrganization(ctx, authUser, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForOrganizationOnly(ctx, authUser, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debug("user has access to organization SFID...")
 		return true
 	}
@@ -801,7 +835,7 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 	// Check the foundation permissions
 	f["foundationSFID"] = projectCLAGroupModel.FoundationSFID
 	log.WithFields(f).Debug("testing if user has access to parent foundation...")
-	if utils.IsUserAuthorizedForProject(ctx, authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForProjectOnly(ctx, authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debug("user has access to parent foundation...")
 		return true
 	}

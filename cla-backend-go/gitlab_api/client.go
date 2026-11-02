@@ -46,7 +46,7 @@ func NewGitlabOauthClient(authInfo string, gitLabApp *App) (*goGitLab.Client, er
 		return nil, errors.New("unable to decrypt auth info - value is nil")
 	}
 
-	log.Infof("creating oauth client with access token : %s", oauthResp.AccessToken)
+	log.Debug("creating oauth client with the decrypted access token")
 	return goGitLab.NewOAuthClient(oauthResp.AccessToken)
 }
 

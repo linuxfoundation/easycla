@@ -29,7 +29,7 @@ const (
 <p>Hello CLA Manager,</p>
 <p>This is a notification email from EasyCLA regarding the project {{.ProjectName}} and CLA Group {{.CLAGroupName}}.</p>
 {{if .ContactOnly}}
-<p>{{.ContributorName}} ({{.ContributorIdentity}}) has sent you a message about their employee acknowledgement
+<p>{{.ContributorName}} ({{.ContributorIdentity}}) has sent you a message about their employee acknowledgment
 under the {{.CompanyName}} corporate CLA. You are receiving this message as a CLA Manager from {{.CompanyName}} for {{.ProjectName}}.</p>
 <p>The contributor's message:</p>
 <blockquote style="white-space: pre-wrap;">{{.OptionalMessage}}</blockquote>
@@ -38,7 +38,7 @@ under the {{.CompanyName}} corporate CLA. You are receiving this message as a CL
 {{end}}
 <p>This is a message only - no change was requested and none has been made.</p>
 {{else}}
-<p>{{.ContributorName}} ({{.ContributorIdentity}}) has requested {{.RequestAction}} for their employee acknowledgement
+<p>{{.ContributorName}} ({{.ContributorIdentity}}) has requested {{.RequestAction}} for their employee acknowledgment
 under the {{.CompanyName}} corporate CLA. You are receiving this message as a CLA Manager from {{.CompanyName}} for {{.ProjectName}}.</p>
 {{if .OptionalMessage}}
 <p>The contributor included the following message in the request:</p>

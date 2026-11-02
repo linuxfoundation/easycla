@@ -1,6 +1,6 @@
 # Introduction to EasyCLA
 
-[![Build Status](https://github.com/linuxfoundation/easycla/actions/workflows/deploy-prod.yml/badge.svg)](https://github.com/linuxfoundation/easycla/actions/workflows/deploy-prod.yml)
+[![Build Status](https://github.com/linuxfoundation/easycla/actions/workflows/deploy-prod.yml/badge.svg)](https://github.com/linuxfoundation/easycla/actions/workflows/deploy-prod.yml).
 
 The Contributor License Agreement \(CLA\) service of the Linux Foundation lets project contributors read, sign, and submit contributor license agreements easily.
 
@@ -16,7 +16,7 @@ This platform supports both GitHub and Gerrit source code repositories. Addition
 
 [EasyCLA](#easycla-architecture)
 
-The EasyCL system leverages the following third party services:
+The EasyCLA system leverages the following third-party services:
 
 * [Docusign](https://www.docusign.com/) for CLA agreement e-sign flow
 * [Docraptor](https://docraptor.com/) for converting CLA templates into PDF files

@@ -16,15 +16,18 @@ import (
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/my_clas"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
 	v2Sign "github.com/linuxfoundation/easycla/cla-backend-go/v2/sign"
 	"github.com/sirupsen/logrus"
 )
 
 const missingUsernameMsg = "the authenticated principal carries no username - unable to determine who is signing"
+const unverifiedCallerMsg = "unable to verify the caller's bearer token"
 
-// Configure sets up the Self Serve signing API handlers
-func Configure(api *operations.EasyclaAPI, service Service) {
+// Configure sets up the Self Serve signing API handlers; callerVerifier is the same trusted-caller
+// gate as /v4/my-clas - see auth.TrustedCallerVerifier
+func Configure(api *operations.EasyclaAPI, service Service, callerVerifier my_clas.CallerVerifier) {
 	api.SelfServeSignPrepareSignHandler = selfServeSignOps.PrepareSignHandlerFunc(
 		func(params selfServeSignOps.PrepareSignParams, authUser *auth.User) middleware.Responder {
 			reqID := utils.GetRequestID(params.XREQUESTID)
@@ -37,13 +40,20 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 				"authUserEmail":  utils.StringValue(params.XEMAIL),
 			}
 
+			trustedCaller, err := my_clas.VerifyCaller(callerVerifier, params.HTTPRequest, f)
+			if err != nil {
+				log.WithFields(f).WithError(err).Warn(unverifiedCallerMsg)
+				return selfServeSignOps.NewPrepareSignUnauthorized().WithXRequestID(reqID).WithPayload(utils.ErrorResponseUnauthorized(reqID, unverifiedCallerMsg))
+			}
+
 			currentUsername, currentEmail, admin := principal(authUser)
-			if !admin && currentUsername == "" {
+			trusted := trustedCaller != nil && trustedCaller.Trusted
+			if !admin && !trusted && currentUsername == "" {
 				log.WithFields(f).Warn(missingUsernameMsg)
 				return selfServeSignOps.NewPrepareSignUnauthorized().WithXRequestID(reqID).WithPayload(utils.ErrorResponseUnauthorized(reqID, missingUsernameMsg))
 			}
 
-			result, err := service.PrepareSign(ctx, currentUsername, currentEmail, admin, &params.Body)
+			result, err := service.PrepareSign(ctx, &my_clas.Caller{Username: currentUsername, Admin: admin, Trusted: trusted}, currentEmail, &params.Body)
 			if err != nil {
 				switch {
 				case errors.Is(err, ErrCLAGroupNotFound):
@@ -74,6 +84,7 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
 				"projectSFID":    utils.StringValue(params.Input.ProjectSfid),
 				"companySFID":    utils.StringValue(params.Input.CompanySfid),
+				"claGroupID":     params.Input.ClaGroupID,
 				"authUserName":   utils.StringValue(params.XUSERNAME),
 				"authUserEmail":  utils.StringValue(params.XEMAIL),
 			}
@@ -96,10 +107,15 @@ func Configure(api *operations.EasyclaAPI, service Service) {
 }
 
 // requestCorporateSignatureError maps the errors of the shared corporate signing service to the
-// same statuses as /v4/request-corporate-signature, plus the Self Serve attestation error
+// same statuses as /v4/request-corporate-signature, plus the Self Serve input errors
 func requestCorporateSignatureError(reqID string, err error) middleware.Responder {
+	var sanctionedErr *utils.SanctionedCompanyError
+	if errors.As(err, &sanctionedErr) {
+		return utils.CompanySanctionedResponder(reqID, sanctionedErr)
+	}
 	switch {
-	case errors.Is(err, ErrAttestationRequired):
+	case errors.Is(err, ErrAttestationRequired), errors.Is(err, ErrSignatoryRequired),
+		errors.Is(err, v2Sign.ErrCLAGroupRequired), errors.Is(err, v2Sign.ErrCLAGroupMismatch):
 		return selfServeSignOps.NewSelfServeRequestCorporateSignatureBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, err.Error()))
 	case errors.Is(err, ErrSigningEntityMismatch):
 		return selfServeSignOps.NewSelfServeRequestCorporateSignatureForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, err.Error()))

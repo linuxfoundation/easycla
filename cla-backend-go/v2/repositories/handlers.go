@@ -209,7 +209,7 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 					utils.ErrorResponseForbidden(reqID, msg))
 			}
 
-			ghRepo, err := service.GitHubGetRepository(ctx, params.RepositoryID)
+			ghRepo, err := service.GitHubDisableProjectRepository(ctx, params.ProjectSFID, params.RepositoryID)
 			if err != nil {
 				if _, ok := err.(*utils.GitHubRepositoryNotFound); ok {
 					msg := fmt.Sprintf("repository not found for projectSFID: %s", params.ProjectSFID)
@@ -218,14 +218,6 @@ func Configure(api *operations.EasyclaAPI, service ServiceInterface, eventServic
 						utils.ErrorResponseNotFound(reqID, msg))
 				}
 
-				msg := fmt.Sprintf("problem looking up repository for projectSFID: %s", params.ProjectSFID)
-				log.WithFields(f).WithError(err).Warn(msg)
-				return github_repositories.NewDeleteProjectGithubRepositoryBadRequest().WithPayload(
-					utils.ErrorResponseBadRequestWithError(reqID, msg, err))
-			}
-
-			err = service.GitHubDisableRepository(ctx, params.RepositoryID)
-			if err != nil {
 				msg := fmt.Sprintf("problem disabling repository for projectSFID: %s, error: %+v", params.ProjectSFID, err)
 				log.WithFields(f).WithError(err).Warn(msg)
 				return github_repositories.NewDeleteProjectGithubRepositoryBadRequest().WithPayload(

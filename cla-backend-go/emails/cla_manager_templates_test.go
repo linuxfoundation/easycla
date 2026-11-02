@@ -245,3 +245,25 @@ func TestClaManagerDeletedToCLAManagersTemplate(t *testing.T) {
 	assert.Contains(t, result, "John (john@example.com) has been removed")
 
 }
+
+// the V2 renderers index the first project SFID: an empty list is an error, not a panic (lfx-self-serve-ops#755)
+func TestV2RenderersRejectAnEmptyProjectList(t *testing.T) {
+	renderers := map[string]func() (string, error){
+		"contributor approval request": func() (string, error) {
+			return RenderV2ContributorApprovalRequestTemplate(nil, nil, V2ContributorApprovalRequestTemplateParams{})
+		},
+		"contributor to org admin": func() (string, error) {
+			return RenderV2ContributorToOrgAdminTemplate(nil, []string{}, V2ContributorToOrgAdminTemplateParams{})
+		},
+		"to CLA manager designee": func() (string, error) {
+			return RenderV2ToCLAManagerDesigneeTemplate(nil, nil, V2ToCLAManagerDesigneeTemplateParams{}, V2ToCLAManagerDesigneeTemplate, V2ToCLAManagerDesigneeTemplateName)
+		},
+	}
+	for name, render := range renderers {
+		t.Run(name, func(t *testing.T) {
+			body, err := render()
+			assert.Empty(t, body)
+			assert.EqualError(t, err, "projectSFIDs list is empty")
+		})
+	}
+}

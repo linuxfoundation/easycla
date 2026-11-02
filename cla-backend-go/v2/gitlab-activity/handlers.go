@@ -216,7 +216,7 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 			f := logrus.Fields{
 				"functionName":   "gitlab_activity.handler.GitlabActivityGitlabUserOauthCallbackHandler",
 				utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
-				"code":           guocp.Code,
+				"codeProvided":   guocp.Code != "",
 				"state":          guocp.State,
 			}
 
@@ -280,13 +280,19 @@ func Configure(api *operations.EasyclaAPI, service Service, gitlabOrgService git
 					// Get client
 					gitlabClient, err := gitlab_api.NewGitlabOauthClientFromAccessToken(token.AccessToken)
 					if err != nil {
-						msg := fmt.Sprintf("unable to create gitlab client from token : %s ", token.AccessToken)
-						log.WithFields(f).Warn(msg)
+						msg := "unable to create gitlab client from access token"
+						log.WithFields(f).WithError(err).Warn(msg)
 						http.Error(rw, msg, http.StatusInternalServerError)
 						return
 					}
 
 					consoleURL, err := signService.InitiateSignRequest(ctx, guocp.HTTPRequest, gitlabClient, repositoryID, mergeRequestID, gitlabOriginURL, contributorConsoleV2Base, eventService)
+					if err != nil || consoleURL == nil {
+						msg := "unable to initiate the sign request"
+						log.WithFields(f).WithError(err).Warn(msg)
+						http.Error(rw, msg, http.StatusInternalServerError)
+						return
+					}
 					log.WithFields(f).Debugf("redirecting to :%s ", *consoleURL)
 					http.Redirect(rw, guocp.HTTPRequest, *consoleURL, http.StatusSeeOther)
 				})

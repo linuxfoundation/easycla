@@ -125,6 +125,11 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 			return signatures.NewUpdateApprovalListForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
 		}
 
+		if sanctionedResp := utils.RejectIfCompanySanctioned(ctx, companyModel); sanctionedResp != nil {
+			log.WithFields(f).Warnf("company %s is sanctioned - rejecting UpdateApprovalList", companyModel.CompanyID)
+			return sanctionedResp
+		}
+
 		// Valid the payload input - the validator will return a middleware.Responder response/error type
 		validationError := validateApprovalListInput(reqID, params)
 		if validationError != nil {
@@ -164,7 +169,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		if updateErr != nil || updatedSig == nil {
 			msg := fmt.Sprintf("unable to update signature approval list using CLA Group ID: %s", params.ClaGroupID)
 			log.WithFields(f).Warn(msg)
-			if _, ok := err.(*signatureService.ForbiddenError); ok {
+			if _, ok := updateErr.(*signatureService.ForbiddenError); ok {
 				return signatures.NewUpdateApprovalListForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbiddenWithError(reqID, msg, updateErr))
 			}
 			return signatures.NewUpdateApprovalListBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, updateErr))
@@ -252,25 +257,30 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 			return signatures.NewAddGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
-		ghApprovalList, err := v1SignatureService.AddGithubOrganizationToApprovalList(ctx, params.SignatureID, input, githubAccessToken)
+		signatureModel, managerErr := requireSignatureManager(ctx, f, v1SignatureService, params.SignatureID, authUser)
+		if managerErr != nil {
+			if !errors.Is(managerErr, errNotSignatureManager) {
+				return signatures.NewAddGitHubOrgAllowlistInternalServerError().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseInternalServerError(reqID, fmt.Sprintf("unable to load signature %s", params.SignatureID)))
+			}
+			return signatures.NewAddGitHubOrgAllowlistForbidden().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseForbidden(reqID, fmt.Sprintf("EasyCLA - 403 Forbidden - caller is not a CLA manager of signature %s", params.SignatureID)))
+		}
+
+		ghApprovalList, err := v1SignatureService.AddGithubOrganizationToApprovalList(ctx, params.SignatureID, input, githubAccessToken, authUser.UserName)
 		if err != nil {
 			log.WithFields(f).Warnf("error adding github organization %s using signature_id: %s to the approval list, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)
+			if _, forbidden := err.(*signatureService.ForbiddenError); forbidden {
+				return signatures.NewAddGitHubOrgAllowlistForbidden().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseForbidden(reqID, fmt.Sprintf("EasyCLA - 403 Forbidden - caller is not a CLA manager of signature %s", params.SignatureID)))
+			}
 			return signatures.NewAddGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
 		// Create an event
-		signatureModel, getSigErr := v1SignatureService.GetSignature(ctx, params.SignatureID)
-		var projectID = ""
-		var companyID = ""
-		if getSigErr != nil || signatureModel == nil {
-			log.Warnf("error looking up signature using signature_id: %s, error: %+v",
-				params.SignatureID, getSigErr)
-		}
-		if signatureModel != nil {
-			projectID = signatureModel.ProjectID
-			companyID = signatureModel.SignatureReferenceID
-		}
+		projectID := signatureModel.ProjectID
+		companyID := signatureModel.SignatureReferenceID
 
 		eventsService.LogEvent(&events.LogEventArgs{
 			EventType:  events.ApprovalListGitHubOrganizationAdded,
@@ -320,25 +330,30 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 			return signatures.NewDeleteGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
-		ghApprovalList, err := v1SignatureService.DeleteGithubOrganizationFromApprovalList(ctx, params.SignatureID, input, githubAccessToken)
+		signatureModel, managerErr := requireSignatureManager(ctx, f, v1SignatureService, params.SignatureID, authUser)
+		if managerErr != nil {
+			if !errors.Is(managerErr, errNotSignatureManager) {
+				return signatures.NewDeleteGitHubOrgAllowlistInternalServerError().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseInternalServerError(reqID, fmt.Sprintf("unable to load signature %s", params.SignatureID)))
+			}
+			return signatures.NewDeleteGitHubOrgAllowlistForbidden().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseForbidden(reqID, fmt.Sprintf("EasyCLA - 403 Forbidden - caller is not a CLA manager of signature %s", params.SignatureID)))
+		}
+
+		ghApprovalList, err := v1SignatureService.DeleteGithubOrganizationFromApprovalList(ctx, params.SignatureID, input, githubAccessToken, authUser.UserName)
 		if err != nil {
 			log.WithFields(f).Warnf("error deleting github organization %s using signature_id: %s from the approval list, error: %+v",
 				*params.Body.OrganizationID, params.SignatureID, err)
+			if _, forbidden := err.(*signatureService.ForbiddenError); forbidden {
+				return signatures.NewDeleteGitHubOrgAllowlistForbidden().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseForbidden(reqID, fmt.Sprintf("EasyCLA - 403 Forbidden - caller is not a CLA manager of signature %s", params.SignatureID)))
+			}
 			return signatures.NewDeleteGitHubOrgAllowlistBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 		}
 
 		// Create an event
-		signatureModel, getSigErr := v1SignatureService.GetSignature(ctx, params.SignatureID)
-		var projectID = ""
-		var companyID = ""
-		if getSigErr != nil || signatureModel == nil {
-			log.WithFields(f).Warnf("error looking up signature using signature_id: %s, error: %+v",
-				params.SignatureID, getSigErr)
-		}
-		if signatureModel != nil {
-			projectID = signatureModel.ProjectID
-			companyID = signatureModel.SignatureReferenceID
-		}
+		projectID := signatureModel.ProjectID
+		companyID := signatureModel.SignatureReferenceID
 		eventsService.LogEvent(&events.LogEventArgs{
 			EventType:  events.ApprovalListGitHubOrganizationDeleted,
 			ProjectID:  projectID,
@@ -459,7 +474,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 			"companyID":      params.CompanyID,
 		}
 
-		companyModel, err := companyService.GetCompany(ctx, params.CompanyID)
+		companyModel, err := companyService.ResolveCompany(ctx, params.CompanyID)
 		if err != nil {
 			msg := fmt.Sprintf("User lookup for company by ID: %s failed : %v", params.CompanyID, err)
 			log.Warn(msg)
@@ -483,7 +498,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		}
 
 		log.WithFields(f).Debug("loading project company signatures...")
-		projectSignatures, err := v2SignatureService.GetProjectCompanySignatures(ctx, params.CompanyID, companyModel.CompanyExternalID, params.ProjectSFID)
+		projectSignatures, err := v2SignatureService.GetProjectCompanySignatures(ctx, companyModel.CompanyID, companyModel.CompanyExternalID, params.ProjectSFID)
 		if err != nil {
 			msg := fmt.Sprintf("error retrieving project signatures for project: %s, company: %s", params.ProjectSFID, params.CompanyID)
 			log.WithFields(f).Warn(msg)
@@ -773,7 +788,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		f["foundationSFID"] = projectCLAGroupEntries[0].FoundationSFID
 
 		log.WithFields(f).Debug("checking access control permissions for user...")
-		if !isUserHaveAccessToCLAProjectOrganization(ctx, authUser, projectCLAGroupEntries[0].FoundationSFID, companyModel.CompanyExternalID, projectClaGroupsRepo) {
+		if !isUserHaveAccessToCLAGroupCompany(ctx, authUser, projectCLAGroupEntries, companyModel.CompanyExternalID, projectClaGroupsRepo) {
 			msg := fmt.Sprintf(" user %s is not authorized to view project employee signatures any scope of project", authUser.UserName)
 			log.Warn(msg)
 			return signatures.NewDownloadProjectSignatureEmployeeAsCSVForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
@@ -938,7 +953,7 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		f["foundationSFID"] = projectCLAGroupEntries[0].FoundationSFID
 
 		log.WithFields(f).Debug("checking access control permissions for user...")
-		if !isUserHaveAccessToCLAProjectOrganization(ctx, authUser, projectCLAGroupEntries[0].FoundationSFID, companyModel.CompanyExternalID, projectClaGroupsRepo) {
+		if !isUserHaveAccessToCLAGroupCompany(ctx, authUser, projectCLAGroupEntries, companyModel.CompanyExternalID, projectClaGroupsRepo) {
 			msg := fmt.Sprintf("user '%s' is not authorized to view project CCLA signatures project scope or project|organization scope for company ID: %s",
 				authUser.UserName, companyModel.CompanyID)
 			log.Warn(msg)
@@ -961,6 +976,121 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 
 		log.WithFields(f).Debugf("returning %d Corporate contributors to caller...", len(result.List))
 		return signatures.NewListClaGroupCorporateContributorsOK().WithXRequestID(reqID).WithPayload(result)
+	})
+
+	// Organization-scoped alias of listClaGroupCorporateContributors - the companySFID path segment
+	// lets the API gateway authorize organization-scoped (CLA manager) tokens, which the
+	// /cla-group/{claGroupID}/corporate-contributors path cannot
+	api.SignaturesListCompanyClaGroupCorporateContributorsHandler = signatures.ListCompanyClaGroupCorporateContributorsHandlerFunc(func(params signatures.ListCompanyClaGroupCorporateContributorsParams, authUser *auth.User) middleware.Responder {
+		reqID := utils.GetRequestID(params.XREQUESTID)
+		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
+		f := logrus.Fields{
+			"functionName":   "v2.signatures.handlers.SignaturesListCompanyClaGroupCorporateContributorsHandler",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+			"claGroupID":     params.ClaGroupID,
+			"companySFID":    params.CompanySFID,
+		}
+
+		claGroupModel, err := projectRepo.GetCLAGroupByID(ctx, params.ClaGroupID, repository.DontLoadRepoDetails)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn(problemLoadingCLAGroupByID)
+			var claGroupNotFound *utils.CLAGroupNotFound
+			if errors.As(err, &claGroupNotFound) || errors.Is(err, repository.ErrProjectDoesNotExist) {
+				return signatures.NewListCompanyClaGroupCorporateContributorsNotFound().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseNotFoundWithError(reqID, problemLoadingCLAGroupByID, err))
+			}
+			return signatures.NewListCompanyClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseBadRequest(reqID, problemLoadingCLAGroupByID))
+		}
+
+		// non-mutating lookup - the singular GetCompanyByExternalID auto-creates a company
+		// record on miss, which a GET must never do; one SFID maps to one company record per
+		// signing entity, so the optional companyID query parameter selects a specific record
+		// (default: the parent record, matching the original endpoint's resolution)
+		selectByCompanyID := params.CompanyID != nil && *params.CompanyID != ""
+		companyRecords, err := companyService.GetCompaniesByExternalID(ctx, params.CompanySFID, selectByCompanyID)
+		if err != nil {
+			msg := fmt.Sprintf("company lookup by SFID: %s failed", params.CompanySFID)
+			log.WithFields(f).WithError(err).Warn(msg)
+			if _, notFound := err.(*utils.CompanyNotFound); notFound {
+				return signatures.NewListCompanyClaGroupCorporateContributorsNotFound().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseNotFoundWithError(reqID, msg, err))
+			}
+			return signatures.NewListCompanyClaGroupCorporateContributorsInternalServerError().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseInternalServerErrorWithError(reqID, msg, err))
+		}
+		if len(companyRecords) == 0 || companyRecords[0] == nil {
+			msg := fmt.Sprintf("no company records found for SFID: %s", params.CompanySFID)
+			log.WithFields(f).Warn(msg)
+			return signatures.NewListCompanyClaGroupCorporateContributorsNotFound().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseNotFound(reqID, msg))
+		}
+		companyModel := companyRecords[0]
+		if selectByCompanyID {
+			companyModel = nil
+			for _, companyRecord := range companyRecords {
+				if companyRecord != nil && companyRecord.CompanyID == *params.CompanyID {
+					companyModel = companyRecord
+					break
+				}
+			}
+			if companyModel == nil {
+				msg := fmt.Sprintf("company with ID: %s was not found under SFID: %s", *params.CompanyID, params.CompanySFID)
+				log.WithFields(f).Warn(msg)
+				return signatures.NewListCompanyClaGroupCorporateContributorsNotFound().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseNotFound(reqID, msg))
+			}
+		}
+
+		if !claGroupModel.ProjectCCLAEnabled {
+			msg := fmt.Sprintf("CLA Group with ID '%s' does not support corporate contribution", params.ClaGroupID)
+			log.WithFields(f).Warn(msg)
+			return signatures.NewListCompanyClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, errors.New(msg)))
+		}
+
+		projectCLAGroupEntries, projectCLAGroupErr := projectClaGroupsRepo.GetProjectsIdsForClaGroup(ctx, params.ClaGroupID)
+		if projectCLAGroupErr != nil || len(projectCLAGroupEntries) == 0 {
+			msg := fmt.Sprintf("unable to load project CLA Group mappings for CLA Group: %s - has this project been migrated to v2?", params.ClaGroupID)
+			log.WithFields(f).Warn(msg)
+			return signatures.NewListCompanyClaGroupCorporateContributorsBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, msg))
+		}
+		f["foundationSFID"] = projectCLAGroupEntries[0].FoundationSFID
+
+		log.WithFields(f).Debug("checking access control permissions for user...")
+		if !isUserHaveAccessToCLAGroupCompany(ctx, authUser, projectCLAGroupEntries, companyModel.CompanyExternalID, projectClaGroupsRepo) {
+			msg := fmt.Sprintf("user '%s' is not authorized to view project CCLA signatures project scope or project|organization scope for company ID: %s",
+				authUser.UserName, companyModel.CompanyID)
+			log.Warn(msg)
+			return signatures.NewListCompanyClaGroupCorporateContributorsForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+		}
+		log.WithFields(f).Debug("user has access for this query")
+
+		result, err := v2SignatureService.GetClaGroupCorporateContributors(ctx, signatures.ListClaGroupCorporateContributorsParams{
+			HTTPRequest: params.HTTPRequest,
+			XREQUESTID:  params.XREQUESTID,
+			XACL:        params.XACL,
+			XEMAIL:      params.XEMAIL,
+			XUSERNAME:   params.XUSERNAME,
+			ClaGroupID:  params.ClaGroupID,
+			CompanyID:   &companyModel.CompanyID,
+			SearchTerm:  params.SearchTerm,
+			PageSize:    params.PageSize,
+			NextKey:     params.NextKey,
+		})
+		if err != nil {
+			msg := fmt.Sprintf("problem getting corporate contributors for CLA Group: %s with company: %s", params.ClaGroupID, companyModel.CompanyID)
+			if _, ok := err.(*organizations.GetOrgNotFound); ok {
+				formatErr := errors.New("error retrieving company using companySFID")
+				return signatures.NewListCompanyClaGroupCorporateContributorsNotFound().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseNotFoundWithError(reqID, msg, formatErr))
+			}
+			return signatures.NewListCompanyClaGroupCorporateContributorsInternalServerError().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseInternalServerErrorWithError(reqID, "unexpected error when searching for corporate contributors", err))
+		}
+
+		log.WithFields(f).Debugf("returning %d Corporate contributors to caller...", len(result.List))
+		return signatures.NewListCompanyClaGroupCorporateContributorsOK().WithXRequestID(reqID).WithPayload(result)
 	})
 
 	api.SignaturesGetSignatureSignedDocumentHandler = signatures.GetSignatureSignedDocumentHandlerFunc(func(params signatures.GetSignatureSignedDocumentParams, authUser *auth.User) middleware.Responder {
@@ -1263,6 +1393,15 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 			"userID":         params.UserID,
 		}
 		log.WithFields(f).Debug("Invalidating ICLA record...")
+
+		// Same project-scope gate as the ICLA list endpoint for this CLA group
+		log.WithFields(f).Debug("checking access control permissions for user...")
+		if !isUserHaveAccessToCLAGroupProjects(ctx, authUser, params.ClaGroupID, projectClaGroupsRepo, projectRepo) {
+			msg := fmt.Sprintf("user %s is not authorized to invalidate ICLA signatures for this CLA group", authUser.UserName)
+			log.WithFields(f).Warn(msg)
+			return signatures.NewInvalidateICLAForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, msg))
+		}
+
 		eventArgs := &events.LogEventArgs{
 			EventType: events.InvalidatedSignature,
 			EventData: &events.SignatureProjectInvalidatedEventData{
@@ -1293,16 +1432,18 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 		}
 		log.WithFields(f).Debug("Invalidating ECLA record...")
 		eventArgs := &events.LogEventArgs{
-			EventType: events.InvalidatedSignature,
-			EventData: &events.SignatureProjectInvalidatedEventData{
-				InvalidatedCount: 1,
-			},
+			EventType:  events.InvalidatedSignature,
+			LfUsername: authUser.UserName,
+			EventData:  &events.ECLAInvalidatedEventData{},
 		}
 		result, err := v2SignatureService.InvalidateECLA(ctx, params.ClaGroupID, params.SignatureID, authUser, eventsService, eventArgs, &params.Body)
 		if err != nil {
 			msg := "unable to invalidate ecla"
 			log.WithFields(f).Warn(msg)
+			var sanctionedErr *utils.SanctionedCompanyError
 			switch {
+			case errors.As(err, &sanctionedErr):
+				return utils.CompanySanctionedResponder(reqID, sanctionedErr)
 			case errors.Is(err, errEclaNotFound):
 				return signatures.NewInvalidateECLANotFound().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseNotFoundWithError(reqID, msg, err))
@@ -1354,6 +1495,12 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 			return signatures.NewEclaAutoCreateBadRequest().WithXRequestID(reqID).WithPayload(
 				utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 		}
+		if cclaSignature == nil {
+			msg := fmt.Sprintf("no signed and approved CCLA for company ID %s and CLA group ID %s", eacp.CompanyID, eacp.ClaGroupID)
+			log.WithFields(f).Warn(msg)
+			return signatures.NewEclaAutoCreateNotFound().WithXRequestID(reqID).WithPayload(
+				utils.ErrorResponseNotFound(reqID, msg))
+		}
 
 		companyRecord, err := companyService.GetCompany(ctx, eacp.CompanyID)
 		if err != nil {
@@ -1382,14 +1529,9 @@ func Configure(api *operations.EasyclaAPI, claGroupService service.Service, proj
 				utils.ErrorResponseForbidden(reqID, msg))
 		}
 
-		// Sanctions gate: do not enable ECLA auto-create for a sanctioned company. By design
-		// this enforces the persisted is_sanctioned flag, not a live SSS call (the live screen
-		// at the sign/request entry points keeps it fresh).
-		if eacp.Body.AutoCreateEcla && companyRecord.IsSanctioned {
-			msg := fmt.Sprintf("company %s is sanctioned (origin=%q); cannot enable ECLA auto-create", companyRecord.CompanyID, companyRecord.SanctionOrigin)
-			log.WithFields(f).Warn(msg)
-			return signatures.NewEclaAutoCreateBadRequest().WithXRequestID(reqID).WithPayload(
-				utils.ErrorResponseBadRequestWithError(reqID, msg, fmt.Errorf("company is sanctioned")))
+		if sanctionedResp := utils.RejectIfCompanySanctioned(ctx, companyRecord); sanctionedResp != nil {
+			log.WithFields(f).Warnf("company %s is sanctioned - rejecting EclaAutoCreate", companyRecord.CompanyID)
+			return sanctionedResp
 		}
 
 		err = v2SignatureService.EclaAutoCreate(ctx, cclaSignature.SignatureID, eacp.Body.AutoCreateEcla)
@@ -1536,7 +1678,7 @@ func isUserHaveAccessOfSignedSignaturePDF(ctx context.Context, authUser *auth.Us
 
 	// In case the project tree didn't pass, let's check the project list individually - if any has access, we return true
 	for _, proj := range projects {
-		if utils.IsUserAuthorizedForProject(ctx, authUser, proj.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
+		if utils.IsUserAuthorizedForProjectOnly(ctx, authUser, proj.ProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
 			log.WithFields(f).Debugf("user is authorized for %s scope for project ID: %s", utils.ProjectScope, proj.ProjectSFID)
 			return true, nil
 		}
@@ -1642,7 +1784,7 @@ func isUserHaveAccessToCLAGroupProjects(ctx context.Context, authUser *auth.User
 		log.WithFields(f).Debug("user has access to parent foundation tree...")
 		return true
 	}
-	if utils.IsUserAuthorizedForProject(ctx, authUser, foundationSFID, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForProjectOnly(ctx, authUser, foundationSFID, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debug("user has access to parent foundation...")
 		return true
 	}
@@ -1651,12 +1793,32 @@ func isUserHaveAccessToCLAGroupProjects(ctx context.Context, authUser *auth.User
 	projectSFIDs := getProjectIDsFromModels(f, foundationSFID, projectCLAGroupModels)
 	f["projectIDs"] = strings.Join(projectSFIDs, ",")
 	log.WithFields(f).Debug("testing if user has access to any projects")
-	if utils.IsUserAuthorizedForAnyProjects(ctx, authUser, projectSFIDs, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForAnyProjectsOnly(ctx, authUser, projectSFIDs, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debug("user has access to at least of of the projects...")
 		return true
 	}
 
 	log.WithFields(f).Debug("exhausted project checks - user does not have access to project")
+	return false
+}
+
+// isUserHaveAccessToCLAGroupCompany admits the user when isUserHaveAccessToCLAProjectOrganization passes for the CLA Group's
+// foundation or for any of its projects (project-level CLA managers hold project|organization scopes, not foundation ones)
+func isUserHaveAccessToCLAGroupCompany(ctx context.Context, authUser *auth.User, entries []*projects_cla_groups.ProjectClaGroup, organizationSFID string, projectClaGroupsRepo projects_cla_groups.Repository) bool {
+	if len(entries) == 0 {
+		return false
+	}
+	if isUserHaveAccessToCLAProjectOrganization(ctx, authUser, entries[0].FoundationSFID, organizationSFID, projectClaGroupsRepo) {
+		return true
+	}
+	for _, entry := range entries {
+		if entry.ProjectSFID == "" || entry.ProjectSFID == entries[0].FoundationSFID {
+			continue
+		}
+		if isUserHaveAccessToCLAProjectOrganization(ctx, authUser, entry.ProjectSFID, organizationSFID, projectClaGroupsRepo) {
+			return true
+		}
+	}
 	return false
 }
 
@@ -1672,7 +1834,7 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 	}
 
 	log.WithFields(f).Debugf("testing if user %s/%s has access to project SFID: %s...", authUser.UserName, authUser.Email, projectSFID)
-	if utils.IsUserAuthorizedForProject(ctx, authUser, projectSFID, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForProjectOnly(ctx, authUser, projectSFID, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debugf("user %s/%s has access to project SFID: %s...", authUser.UserName, authUser.Email, projectSFID)
 		return true
 	}
@@ -1696,7 +1858,7 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 	}
 
 	log.WithFields(f).Debugf("testing if user %s/%s has access to organization SFID...", authUser.UserName, authUser.Email)
-	if utils.IsUserAuthorizedForOrganization(ctx, authUser, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForOrganizationOnly(ctx, authUser, organizationSFID, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debugf("user %s/%s has access to organization SFID...", authUser.UserName, authUser.Email)
 		return true
 	}
@@ -1718,7 +1880,7 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 	// Check the foundation permissions
 	f["foundationSFID"] = projectCLAGroupModel.FoundationSFID
 	log.WithFields(f).Debugf("testing if user %s/%s has access to parent foundation SFID: %s...", authUser.UserName, authUser.Email, projectCLAGroupModel.FoundationSFID)
-	if utils.IsUserAuthorizedForProject(ctx, authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForProjectOnly(ctx, authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debugf("user %s/%s has access to parent foundation SFID: %s...", authUser.UserName, authUser.Email, projectCLAGroupModel.FoundationSFID)
 		return true
 	}
@@ -1755,7 +1917,7 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 	f["projectIDs"] = projectSFIDsCSV
 
 	log.WithFields(f).Debugf("testing if user %s/%s has access to any cla group projects: %s", authUser.UserName, authUser.Email, projectSFIDsCSV)
-	if utils.IsUserAuthorizedForAnyProjects(ctx, authUser, projectSFIDs, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForAnyProjectsOnly(ctx, authUser, projectSFIDs, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debugf("user %s/%s has access to at least of of the projects: %s...", authUser.UserName, authUser.Email, projectSFIDsCSV)
 		return true
 	}
@@ -1768,4 +1930,37 @@ func isUserHaveAccessToCLAProjectOrganization(ctx context.Context, authUser *aut
 
 	log.WithFields(f).Debugf("exhausted project checks - user %s/%s does not have access to project", authUser.UserName, authUser.Email)
 	return false
+}
+
+var errNotSignatureManager = errors.New("caller is not a cla manager of the signature")
+
+// requireSignatureManager loads the signature and refuses a caller outside its ACL before a v4 approval
+// list write (lfx-self-serve-ops#979) - the rule the v3 writes apply through utils.CurrentUserInACL.
+func requireSignatureManager(ctx context.Context, f logrus.Fields, sigService signatureService.SignatureService, signatureID string, authUser *auth.User) (*v1Models.Signature, error) {
+	if authUser == nil || strings.TrimSpace(authUser.UserName) == "" {
+		log.WithFields(f).Warn("no LF username on the request - refusing the approval list change")
+		return nil, errNotSignatureManager
+	}
+	signatureModel, err := sigService.GetSignature(ctx, signatureID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to load the signature - refusing the approval list change")
+		return nil, err
+	}
+	if signatureModel == nil {
+		log.WithFields(f).Warn("signature not found - refusing the approval list change")
+		return nil, errNotSignatureManager
+	}
+	if !utils.CurrentUserInACL(authUser, signatureModel.SignatureACL) {
+		// the hydrated ACL drops entries without a user record - the stored signature_acl decides
+		row, rowErr := sigService.GetItemSignature(ctx, signatureID)
+		if rowErr != nil {
+			log.WithFields(f).WithError(rowErr).Warn("unable to read the stored signature ACL - refusing the approval list change")
+			return nil, rowErr
+		}
+		if row == nil || !utils.StringInSlice(authUser.UserName, row.SignatureACL) {
+			log.WithFields(f).Warnf("caller is not a CLA manager of signature %s - refusing the approval list change", signatureID)
+			return nil, errNotSignatureManager
+		}
+	}
+	return signatureModel, nil
 }

@@ -19,4 +19,8 @@ properties:
     type: boolean
     default: false
     description: Status describing if organization has signed CCLA
+  has_b2b_account:
+    type: boolean
+    default: false
+    description: True when the organization is linked to a Salesforce B2B account
 

@@ -126,6 +126,12 @@ func (s *service) AddGithubRepository(ctx context.Context, externalProjectID str
 	}
 
 	if existingModel != nil {
+		// Never re-bind a repository record that was registered under another project - the caller is only
+		// authorized for projectSFID (lfx-self-serve-ops#751)
+		if bindErr := repositoryBoundToOtherProject(existingModel, projectSFID); bindErr != nil {
+			log.WithFields(f).WithError(bindErr).Warn("existing repository belongs to another project - refusing to re-bind it")
+			return nil, bindErr
+		}
 		log.WithFields(f).Debug("existing repository found - enabling it...")
 		enableErr := s.EnableRepositoryWithCLAGroupID(ctx, existingModel.RepositoryID, utils.StringValue(input.RepositoryProjectID))
 		if enableErr != nil {
@@ -136,8 +142,52 @@ func (s *service) AddGithubRepository(ctx context.Context, externalProjectID str
 		return s.repo.GitHubGetRepository(ctx, existingModel.RepositoryID)
 	}
 
+	// GitHubAddRepository re-uses (and re-binds) a disabled record found by external ID even when the supplied name
+	// differs from the stored one, so apply the same project-binding guard to that record (lfx-self-serve-ops#751)
+	existingByExternalID, err := s.repo.GitHubGetRepositoryByExternalID(ctx, utils.StringValue(input.RepositoryExternalID))
+	if guardErr := externalIDRecordReusable(existingByExternalID, err, utils.StringValue(input.RepositoryExternalID), projectSFID); guardErr != nil {
+		log.WithFields(f).WithError(guardErr).Warn("repository with this external ID cannot be re-used for this project - refusing to add it")
+		return nil, guardErr
+	}
+
 	// Doesn't exist - create it
 	return s.repo.GitHubAddRepository(ctx, externalProjectID, projectSFID, input)
+}
+
+// externalIDRecordReusable validates the GitHubGetRepositoryByExternalID result before GitHubAddRepository may re-use
+// the record: not-found means there is nothing to re-bind, any other lookup error is returned as-is, a record that
+// could not be converted (nil without error, e.g. a non-numeric stored external ID) is refused rather than silently
+// re-bound, and a record bound to another project is refused by repositoryBoundToOtherProject.
+func externalIDRecordReusable(existing *models.GithubRepository, lookupErr error, externalID, projectSFID string) error {
+	if lookupErr != nil {
+		if _, ok := lookupErr.(*utils.GitHubRepositoryNotFound); ok {
+			return nil
+		}
+		return lookupErr
+	}
+	if existing == nil {
+		return fmt.Errorf("github repository with external id %s has an invalid stored record", externalID)
+	}
+	return repositoryBoundToOtherProject(existing, projectSFID)
+}
+
+// repositoryBoundToOtherProject returns an error when the stored repository record carries a project binding that
+// differs from the project the caller is authorized for; records without any project binding are left untouched.
+// project_sfid is the owning project; repository_sfdc_id is only consulted when project_sfid is empty because v2
+// stores the parent foundation there (v2/repositories/service.go passes the foundation as externalProjectID)
+func repositoryBoundToOtherProject(existing *models.GithubRepository, projectSFID string) error {
+	if existing == nil {
+		return nil
+	}
+	boundProjectSFID := existing.RepositoryProjectSfid
+	if boundProjectSFID == "" {
+		boundProjectSFID = existing.RepositorySfdcID
+	}
+	if boundProjectSFID != "" && boundProjectSFID != projectSFID {
+		return fmt.Errorf("github repository %s is already registered under project %s and cannot be added to project %s",
+			existing.RepositoryName, boundProjectSFID, projectSFID)
+	}
+	return nil
 }
 
 func (s *service) EnableRepository(ctx context.Context, repositoryID string) error {
@@ -219,4 +269,14 @@ func (s *service) GetRepositoriesByCLAGroup(ctx context.Context, claGroupID stri
 // GetRepositoriesByOrganizationName get repositories by organization name
 func (s *service) GetRepositoriesByOrganizationName(ctx context.Context, gitHubOrgName string) ([]*models.GithubRepository, error) {
 	return s.repo.GitHubGetRepositoriesByOrganizationName(ctx, gitHubOrgName)
+}
+
+// RepositoryBoundToOtherProject exposes repositoryBoundToOtherProject to the v4 enrollment path (lfx-self-serve-ops#982, #747).
+func RepositoryBoundToOtherProject(existing *models.GithubRepository, projectSFID string) error {
+	return repositoryBoundToOtherProject(existing, projectSFID)
+}
+
+// ExternalIDRecordReusable exposes externalIDRecordReusable to the v4 enrollment path (lfx-self-serve-ops#982, #747).
+func ExternalIDRecordReusable(existing *models.GithubRepository, lookupErr error, externalID, projectSFID string) error {
+	return externalIDRecordReusable(existing, lookupErr, externalID, projectSFID)
 }

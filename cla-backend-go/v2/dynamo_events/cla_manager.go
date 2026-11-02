@@ -15,6 +15,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	v2AcsService "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
 	v2OrgService "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
 	v2UserService "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
 	"github.com/sirupsen/logrus"
 )
@@ -151,6 +152,15 @@ func (s *service) SetInitialCLAManagerACSPermissions(ctx context.Context, signat
 	return nil
 }
 
+// claManagerRoleIDLookup and claManagerRoleScopeCreator are assignCLAManager's seams onto ACS and the organization service (tests)
+var (
+	claManagerRoleIDLookup = func() (string, error) { return v2AcsService.GetClient().GetRoleID(utils.CLAManagerRole) }
+
+	claManagerRoleScopeCreator = func(ctx context.Context, email, projectSFID, companySFID, roleID string) error {
+		return v2OrgService.GetClient().CreateOrgUserRoleOrgScopeProjectOrg(ctx, email, projectSFID, companySFID, roleID)
+	}
+)
+
 func (s service) assignCLAManager(ctx context.Context, email, username, companySFID string, projectList []*projects_cla_groups.ProjectClaGroup) error {
 	f := logrus.Fields{
 		"functionName":   "assignCLAManager",
@@ -178,15 +188,12 @@ func (s service) assignCLAManager(ctx context.Context, email, username, companyS
 	// 	return signedErr
 	// }
 
-	acsClient := v2AcsService.GetClient()
 	log.WithFields(f).Debugf("locating role ID for role: %s", utils.CLAManagerRole)
-	claManagerRoleID, roleErr := acsClient.GetRoleID(utils.CLAManagerRole)
+	claManagerRoleID, roleErr := claManagerRoleIDLookup()
 	if roleErr != nil {
 		log.WithFields(f).Warnf("problem looking up details for role: %s, error: %+v", utils.CLAManagerRole, roleErr)
 		return roleErr
 	}
-
-	orgService := v2OrgService.GetClient()
 
 	projectSFIDList := utils.NewStringSet()
 	for _, p := range projectList {
@@ -194,6 +201,7 @@ func (s service) assignCLAManager(ctx context.Context, email, username, companyS
 	}
 
 	var assignErr error
+	var assignMu sync.Mutex
 	var wg sync.WaitGroup
 	wg.Add(len(projectSFIDList.List()))
 
@@ -202,13 +210,20 @@ func (s service) assignCLAManager(ctx context.Context, email, username, companyS
 		go func(projectSFID string) {
 			defer wg.Done()
 			log.WithFields(f).Debugf("assigning role: %s to user: %s with email: %s for project: %s", utils.CLAManagerRole, username, email, projectSFID)
-			err := orgService.CreateOrgUserRoleOrgScopeProjectOrg(ctx, email, projectSFID, companySFID, claManagerRoleID)
+			err := claManagerRoleScopeCreator(ctx, email, projectSFID, companySFID, claManagerRoleID)
 			if err != nil {
+				// the signer may already hold cla-manager for this project|organization (re-sign, prior designation):
+				// not a failure, and failing here would skip the cla-manager-designee cleanup that follows
+				var conflict *organizations.CreateOrgUsrRoleScopesConflict
+				if errors.As(err, &conflict) {
+					log.WithFields(f).Debugf("%s role already assigned for project: %s, company: %s - keeping it", utils.CLAManagerRole, projectSFID, companySFID)
+					return
+				}
 				log.WithFields(f).Warnf("unable to add %s scope for project: %s, company: %s using roleID: %s for user email: %s. error = %s",
 					utils.CLAManagerRole, projectSFID, companySFID, claManagerRoleID, email, err)
-				if err != nil {
-					assignErr = err
-				}
+				assignMu.Lock()
+				assignErr = err
+				assignMu.Unlock()
 			}
 		}(projectSFID)
 	}

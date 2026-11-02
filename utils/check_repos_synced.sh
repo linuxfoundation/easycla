@@ -14,11 +14,39 @@
 # For 'easycla' both 'main' and 'dev' are pulled, ending on 'dev'.
 # NOSYNC=1 - report only, don't switch branches and don't pull.
 # NOFETCH=1 - skip 'git fetch' (faster, but pending pull info may be stale).
-# REPOS='...' - override the default repos list.
+# By default, check only the curated core repos below for daily use.
+# ALL_REPOS=1 - also discover sibling clones whose origin is
+# linuxfoundation/<directory-name> on GitHub for an extended sync.
+# Discovery uses existing local clones, not a new GitHub activity scan. This
+# avoids publishing private repo names and skips differently named copies.
+# REPOS='...' - override the entire default repos list, including discovery.
 set -u
 
 base="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-repos="${REPOS:-easycla easyclav2-migration-planning acs-cli lfx-corp-cla-console lfx-gateway lfx-v2-auth-service lfx-v2-persona-service traefik auth0-terraform easycla-contributor-console lfx-easycla-terraform lfx-gateway-terraform lfx-sanctions-screening lfx-self-serve lfx-v2-helm lfx-v2-project-service auth0-user-proxy easycla-landing-page lfx-pcc lfx-secrets-management lfx-self-serve-design-docs lfx-v2-argocd lfx-v2-opentofu}"
+repos="${REPOS:-easycla easyclav2-migration-planning acs-cli lfx-corp-cla-console lfx-gateway lfx-v2-auth-service lfx-v2-persona-service traefik auth0-terraform easycla-contributor-console lfx-easycla-terraform lfx-gateway-terraform lfx-sanctions-screening lfx-self-serve lfx-v2-helm lfx-v2-project-service auth0-user-proxy easycla-landing-page lfx-pcc lfx-secrets-management lfx-self-serve-design-docs lfx-v2-argocd lfx-v2-opentofu lfx-crowdfunding}"
+
+if [ "${ALL_REPOS:-}" = "1" ] && [ -z "${REPOS:-}" ]
+then
+  for dir in "$base"/*
+  do
+    [ -d "$dir/.git" ] || continue
+    repo="${dir##*/}"
+    case " $repos " in
+      *" $repo "*) continue ;;
+    esac
+    if ! origin="$(git -C "$dir" remote get-url origin 2>/dev/null)"
+    then
+      echo "$repo: WARNING (cannot read origin; not auto-discovered)" >&2
+      continue
+    fi
+    origin="${origin%.git}"
+    case "$origin" in
+      "https://github.com/linuxfoundation/$repo"|"git@github.com:linuxfoundation/$repo"|"ssh://git@github.com/linuxfoundation/$repo")
+        repos="$repos $repo"
+        ;;
+    esac
+  done
+fi
 
 not_synced=0
 checked=0

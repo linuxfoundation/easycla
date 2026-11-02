@@ -50,7 +50,7 @@ func DocusignMiddleware(next http.Handler) http.Handler {
 		}
 		r.Body.Close()
 		r.Body = io.NopCloser(bytes.NewBuffer(iclaGitHubPayload))
-		log.WithFields(f).Debugf("docusign middleware...payload: %s", string(iclaGitHubPayload))
+		log.WithFields(f).Debugf("docusign middleware...payload: %d bytes", len(iclaGitHubPayload))
 		// call the next middleware
 		next.ServeHTTP(w, r)
 	})
@@ -71,7 +71,7 @@ func CCLADocusignMiddleware(next http.Handler) http.Handler {
 		}
 		r.Body.Close()
 		r.Body = io.NopCloser(bytes.NewBuffer(cclaDocusignPayload))
-		log.WithFields(f).Debugf("docusign middleware...payload: %s", string(cclaDocusignPayload))
+		log.WithFields(f).Debugf("docusign middleware...payload: %d bytes", len(cclaDocusignPayload))
 		// call the next middleware
 		next.ServeHTTP(w, r)
 	})
@@ -129,6 +129,10 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 
 			resp, err := service.RequestCorporateSignature(ctx, utils.StringValue(params.XUSERNAME), params.Authorization, params.Input)
 			if err != nil {
+				var sanctionedErr *utils.SanctionedCompanyError
+				if errors.As(err, &sanctionedErr) {
+					return utils.CompanySanctionedResponder(reqID, sanctionedErr)
+				}
 				if strings.Contains(err.Error(), "does not exist") {
 					return sign.NewRequestCorporateSignatureNotFound().WithPayload(errorResponse(reqID, err))
 				}
@@ -315,6 +319,10 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 			log.WithFields(f).Debug("ccla callback")
 			err := service.SignedCorporateCallback(ctx, cclaDocusignPayload, params.CompanyID, params.ProjectID)
 			if err != nil {
+				var sanctionedErr *utils.SanctionedCompanyError
+				if errors.As(err, &sanctionedErr) {
+					return utils.CompanySanctionedResponder(reqId, sanctionedErr)
+				}
 				return sign.NewCclaCallbackBadRequest()
 			}
 			return sign.NewCclaCallbackOK()

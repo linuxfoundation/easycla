@@ -240,8 +240,8 @@ def main():
             with open(script_path, 'w') as f:
                 f.write(content)
             
-            # Make executable
-            os.chmod(script_path, 0o755)
+            # Make executable for the owner only (maintainer-local script; CodeQL py/overly-permissive-file)
+            os.chmod(script_path, 0o700)
             
             print(f"Created: {api['tag']}/{api['script_name']}")
             created_count += 1

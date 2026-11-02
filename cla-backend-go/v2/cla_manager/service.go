@@ -41,6 +41,7 @@ import (
 	v2OrgService "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
 	v2ProjectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 	v2UserService "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
+	v2UserModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/models"
 )
 
 var (
@@ -66,7 +67,11 @@ var (
 	ErrClaGroupBadRequest = errors.New("cla group bad request")
 
 	errRequestNotFound = errors.New("cla manager request not found")
+	// ErrCLAManagerRequestAlreadyDecided when the request is no longer pending
+	ErrCLAManagerRequestAlreadyDecided = errors.New("cla manager request already decided")
 )
+
+const pendingRequestStatus = "pending"
 
 const (
 	// used for filtering when fetching contributor email
@@ -97,7 +102,7 @@ type Service interface {
 	CreateCLAManagerDesigneeByGroup(ctx context.Context, params cla_manager.CreateCLAManagerDesigneeByGroupParams, projectCLAGroups []*projects_cla_groups.ProjectClaGroup) ([]*models.ClaManagerDesignee, string, error)
 	ProjectCompanySignedOrNot(ctx context.Context, signedAtFoundation bool, projectCLAGroups []*projects_cla_groups.ProjectClaGroup, companyModel *v1Models.Company) error
 	IsCLAManagerDesignee(ctx context.Context, companySFID, claGroupID, userLFID string) (*models.UserRoleStatus, error)
-	GetCLAManagerRequests(ctx context.Context, companyModel *v1Models.Company, claGroupID string) (*models.ClaManagerRequestList, error)
+	GetCLAManagerRequests(ctx context.Context, companyModel *v1Models.Company, claGroupID string, pageSize, offset *int64) (*models.ClaManagerRequestList, error)
 	GetCLAManagerRequest(ctx context.Context, companyModel *v1Models.Company, claGroupID, requestID string) (*models.ClaManagerRequest, error)
 	ApproveCLAManagerRequest(ctx context.Context, authUser *auth.User, companyModel *v1Models.Company, claGroupID, requestID string) (*models.ClaManagerRequest, error)
 	DenyCLAManagerRequest(ctx context.Context, authUser *auth.User, companyModel *v1Models.Company, claGroupID, requestID string) (*models.ClaManagerRequest, error)
@@ -197,42 +202,11 @@ func (s *service) CreateCLAManager(ctx context.Context, authUser *auth.User, cla
 
 	// Check if user exists in easyCLA DB, if not add User
 	log.WithFields(f).Debugf("Checking user: %+v in EasyCLA database...", user)
-	claUser, claUserErr := s.easyCLAUserService.GetUserByLFUserName(user.Username)
-	if claUserErr != nil {
-		msg := fmt.Sprintf("Problem getting claUser by :%s, error: %+v ", user.Username, claUserErr)
-		log.WithFields(f).Warn(msg)
+	if _, provisionErr := s.ensureCLAManagerUser(f, v1CompanyModel, user, *params.Body.FirstName, *params.Body.LastName); provisionErr != nil {
 		return nil, &models.ErrorResponse{
-			Message: msg,
+			Message: provisionErr.Error(),
 			Code:    "400",
 		}
-	}
-
-	if claUser == nil {
-		msg := fmt.Sprintf("User not found when searching by LF Login: %s and shall be created", user.Username)
-		log.WithFields(f).Debug(msg)
-		userName := fmt.Sprintf("%s %s", *params.Body.FirstName, *params.Body.LastName)
-		_, currentTimeString := utils.CurrentTime()
-		claUserModel := &v1Models.User{
-			CompanyID:      v1CompanyModel.CompanyID,
-			UserExternalID: v1CompanyModel.CompanyExternalID,
-			LfEmail:        strfmt.Email(*user.Emails[0].EmailAddress),
-			Admin:          true,
-			LfUsername:     user.Username,
-			DateCreated:    currentTimeString,
-			DateModified:   currentTimeString,
-			Username:       userName,
-			Version:        "v1",
-		}
-		newUserModel, userModelErr := s.easyCLAUserService.CreateUser(claUserModel, nil)
-		if userModelErr != nil {
-			msg := fmt.Sprintf("Failed to create user : %+v", claUserModel)
-			log.WithFields(f).Warn(msg)
-			return nil, &models.ErrorResponse{
-				Message: msg,
-				Code:    "400",
-			}
-		}
-		log.WithFields(f).Debugf("Created easyCLAUser %+v ", newUserModel)
 	}
 
 	// GetSFProject
@@ -345,7 +319,7 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 	projectClient := v2ProjectService.GetClient()
 
 	log.WithFields(f).Debugf("loading company by ID...")
-	v1CompanyModel, companyErr := s.companyService.GetCompany(ctx, companyID)
+	v1CompanyModel, companyErr := s.companyService.ResolveCompany(ctx, companyID)
 	if companyErr != nil {
 		log.WithFields(f).Warnf("company not found, error: %+v", companyErr)
 		return nil, companyErr
@@ -572,8 +546,7 @@ func (s *service) IsCLAManagerDesignee(ctx context.Context, companySFID, claGrou
 				}, nil
 			}
 		}
-		log.WithFields(f).Debugf("User %s has %s role at project level", userLFID, utils.CLADesigneeRole)
-		hasRole = true
+		log.WithFields(f).Debugf("User %s does not have %s role for any of the %d projects", userLFID, utils.CLADesigneeRole, len(pcgs))
 
 	}
 
@@ -596,9 +569,9 @@ func (s *service) CreateCLAManagerDesigneeByGroup(ctx context.Context, params cl
 	var designeeScopes []*models.ClaManagerDesignee
 	userEmail := params.Body.UserEmail.String()
 
-	// Lookup the company by internal ID
-	log.WithFields(f).Debugf("looking up company by internal ID...")
-	v1CompanyModel, err := s.companyService.GetCompany(ctx, params.CompanyID)
+	// Lookup the company by internal ID or SFID (virtual company when no row exists yet)
+	log.WithFields(f).Debugf("looking up company by ID...")
+	v1CompanyModel, err := s.companyService.ResolveCompany(ctx, params.CompanyID)
 	if err != nil || v1CompanyModel == nil {
 		msg := fmt.Sprintf("unable to lookup company by ID: %s", params.CompanyID)
 		log.WithFields(f).WithError(err).Warn(msg)
@@ -683,7 +656,7 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 
 	log.WithFields(f).Debugf("loading company by external ID...")
 	// Search for salesForce Company aka external Company
-	v1CompanyModel, companyErr := s.companyService.GetCompany(ctx, companyID)
+	v1CompanyModel, companyErr := s.companyService.ResolveCompany(ctx, companyID)
 	if companyErr != nil {
 		msg := fmt.Sprintf("EasyCLA - 400 Bad Request - %s", companyErr)
 		log.Warn(msg)
@@ -926,7 +899,7 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 
 	// Get company
 	log.WithFields(f).Debugf("Get company for companyID: %s ", companyID)
-	companyModel, companyErr := s.companyService.GetCompany(ctx, companyID)
+	companyModel, companyErr := s.companyService.ResolveCompany(ctx, companyID)
 	if companyErr != nil {
 		msg := fmt.Sprintf("Problem getting company for companyID: %s ", companyID)
 		log.Warn(msg)
@@ -1223,6 +1196,10 @@ func (s *service) NotifyCLAManagers(ctx context.Context, notifyCLAManagers *mode
 	for _, pcg := range pcgs {
 		projectSFIDs = append(projectSFIDs, pcg.ProjectSFID)
 	}
+	if len(projectSFIDs) == 0 {
+		log.WithFields(f).Warnf("no project mappings found for claGroupID: %s", notifyCLAManagers.ClaGroupID)
+		return fmt.Errorf("no project mappings found for CLA group ID: %s", notifyCLAManagers.ClaGroupID)
+	}
 
 	log.Debugf("Sending notification emails to CLA Managers: %+v", notifyCLAManagers.List)
 	pullRequestURL := sanitizePullRequestURL(ctx, notifyCLAManagers.PullRequestURL)
@@ -1388,4 +1365,46 @@ func GetNonNoReplyUserEmail(userEmails []string) string {
 	}
 
 	return ""
+}
+
+// ensureCLAManagerUser returns the EasyCLA record of the new CLA manager, created without the admin flag
+// when none exists; an existing record, administrator or not, is returned untouched
+// (lfx-self-serve-ops#978). The error text is the response message.
+func (s *service) ensureCLAManagerUser(f logrus.Fields, company *v1Models.Company, platformUser *v2UserModels.User, firstName, lastName string) (*v1Models.User, error) {
+	claUser, claUserErr := s.easyCLAUserService.GetUserByLFUserName(platformUser.Username)
+	if claUserErr != nil {
+		msg := fmt.Sprintf("Problem getting claUser by :%s, error: %+v ", platformUser.Username, claUserErr)
+		log.WithFields(f).Warn(msg)
+		return nil, errors.New(msg)
+	}
+	if claUser != nil {
+		return claUser, nil
+	}
+	log.WithFields(f).Debugf("User not found when searching by LF Login: %s and shall be created", platformUser.Username)
+	_, currentTimeString := utils.CurrentTime()
+	claUserModel := claManagerUserRecord(company, platformUser.Username, *platformUser.Emails[0].EmailAddress, fmt.Sprintf("%s %s", firstName, lastName), currentTimeString)
+	newUserModel, userModelErr := s.easyCLAUserService.CreateUser(claUserModel, nil)
+	if userModelErr != nil {
+		msg := fmt.Sprintf("Failed to create user : %+v", claUserModel)
+		log.WithFields(f).Warn(msg)
+		return nil, errors.New(msg)
+	}
+	log.WithFields(f).Debugf("Created easyCLAUser %+v ", newUserModel)
+	return newUserModel, nil
+}
+
+// claManagerUserRecord is the EasyCLA user record created for a CLA manager who has none yet; it
+// never carries the EasyCLA admin flag (lfx-self-serve-ops#978).
+func claManagerUserRecord(company *v1Models.Company, lfUsername, lfEmail, displayName, now string) *v1Models.User {
+	return &v1Models.User{
+		CompanyID:      company.CompanyID,
+		UserExternalID: company.CompanyExternalID,
+		LfEmail:        strfmt.Email(lfEmail),
+		Admin:          false,
+		LfUsername:     lfUsername,
+		DateCreated:    now,
+		DateModified:   now,
+		Username:       displayName,
+		Version:        "v1",
+	}
 }

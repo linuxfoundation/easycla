@@ -558,7 +558,7 @@ func isUserHaveAccessToCLAProject(ctx context.Context, authUser *auth.User, pare
 
 	// Check the parent project SFID
 	log.WithFields(f).Debug("testing if user has access to the parent project SFID")
-	if utils.IsUserAuthorizedForProject(ctx, authUser, parentProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForProjectOnly(ctx, authUser, parentProjectSFID, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debugf("user has access to the parent project SFID: %s", parentProjectSFID)
 		return true
 	}
@@ -566,7 +566,7 @@ func isUserHaveAccessToCLAProject(ctx context.Context, authUser *auth.User, pare
 
 	// Check the project SFIDs
 	log.WithFields(f).Debug("testing if user has access to any of the provided project SFIDs")
-	if utils.IsUserAuthorizedForAnyProjects(ctx, authUser, projectSFIDs, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForAnyProjectsOnly(ctx, authUser, projectSFIDs, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debugf("user has access at least one of the provided project SFIDs: %s", strings.Join(projectSFIDs, ","))
 		return true
 	}
@@ -589,7 +589,7 @@ func isUserHaveAccessToCLAProject(ctx context.Context, authUser *auth.User, pare
 		log.WithFields(f).Debug("user has access to parent foundation tree...")
 		return true
 	}
-	if utils.IsUserAuthorizedForProject(ctx, authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForProjectOnly(ctx, authUser, projectCLAGroupModel.FoundationSFID, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debug("user has access to parent foundation...")
 		return true
 	}
@@ -606,7 +606,7 @@ func isUserHaveAccessToCLAProject(ctx context.Context, authUser *auth.User, pare
 	mappedProjectSFIDs := getProjectIDsFromModels(f, projectCLAGroupModel.FoundationSFID, projectCLAGroupModels)
 	f["mappedProjectSFIDs"] = strings.Join(mappedProjectSFIDs, ",")
 	log.WithFields(f).Debug("testing if user has access to any projects")
-	if utils.IsUserAuthorizedForAnyProjects(ctx, authUser, mappedProjectSFIDs, utils.ALLOW_ADMIN_SCOPE) {
+	if utils.IsUserAuthorizedForAnyProjectsOnly(ctx, authUser, mappedProjectSFIDs, utils.ALLOW_ADMIN_SCOPE) {
 		log.WithFields(f).Debug("user has access to at least of of the projects...")
 		return true
 	}

@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io/ioutil"
 	"net/http"
+	"os"
+	"strings"
 
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
@@ -21,12 +23,31 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 )
 
+// githubWebhookSecret returns the GitHub App webhook secret. Both environment
+// variable names are populated from the same SSM parameter by serverless.yml and
+// are the ones the legacy API and the legacy internal trigger already use.
+func githubWebhookSecret() []byte {
+	secret := strings.TrimSpace(os.Getenv("GITHUB_APP_WEBHOOK_SECRET"))
+	if secret == "" {
+		secret = strings.TrimSpace(os.Getenv("GH_APP_WEBHOOK_SECRET"))
+	}
+	return []byte(secret)
+}
+
 // signatureCheckMiddleware is used to get access to raw http request so can do the
 // signature validation properly
 func signatureCheckMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		payload, err := github.ValidatePayload(r, nil)
+		secret := githubWebhookSecret()
+		if len(secret) == 0 {
+			// fail closed: with an empty secret go-github would skip the HMAC check
+			log.Warn("github webhook secret is not configured - rejecting github activity webhook")
+			http.Error(w, "webhook secret is not configured", http.StatusInternalServerError)
+			return
+		}
+		payload, err := github.ValidatePayload(r, secret)
 		if err != nil {
+			log.Warnf("github activity webhook signature check failed: %v", err)
 			http.Error(w, "signature check failure", 401)
 			return
 		}

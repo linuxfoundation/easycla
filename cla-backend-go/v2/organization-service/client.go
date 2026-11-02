@@ -245,6 +245,49 @@ func (osc *Client) CreateOrgUserRoleOrgScopeProjectOrg(ctx context.Context, emai
 	return nil
 }
 
+// CreateOrgUserRoleScopeByUsername assigns a role scope (organization or project|organization) to a
+// user identified by LFID username; an already-assigned role is not an error.
+func (osc *Client) CreateOrgUserRoleScopeByUsername(ctx context.Context, username string, organizationID string, objectType string, objectID string, roleID string) error {
+	f := logrus.Fields{
+		"functionName":   "organization_service.CreateOrgUserRoleScopeByUsername",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"username":       username,
+		"organizationID": organizationID,
+		"objectType":     objectType,
+		"objectID":       objectID,
+		"roleID":         roleID,
+	}
+
+	params := &organizations.CreateOrgUsrRoleScopesParams{
+		CreateRoleScopes: &models.CreateRolescopes{
+			Username:   username,
+			ObjectID:   &objectID,
+			ObjectType: &objectType,
+			RoleID:     &roleID,
+		},
+		SalesforceID: organizationID,
+		Context:      ctx,
+	}
+	tok, err := token.GetToken()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to fetch token")
+		return err
+	}
+
+	clientAuth := runtimeClient.BearerToken(tok)
+	result, err := osc.cl.Organizations.CreateOrgUsrRoleScopes(params, clientAuth)
+	if err != nil {
+		if _, conflict := err.(*organizations.CreateOrgUsrRoleScopesConflict); conflict {
+			log.WithFields(f).Debug("role scope already assigned")
+			return nil
+		}
+		log.WithFields(f).WithError(err).Warn("unable to assign role scope by username")
+		return err
+	}
+	log.WithFields(f).Debugf("result: %#v", result)
+	return nil
+}
+
 // DeleteRolePermissions removes the specified Org/Project user permissions for with the given role
 func (osc *Client) DeleteRolePermissions(ctx context.Context, organizationID, projectID, role string, authUser *auth.User) error {
 	f := logrus.Fields{
@@ -308,7 +351,7 @@ func (osc *Client) DeleteRolePermissions(ctx context.Context, organizationID, pr
 	return nil
 }
 
-// DeleteOrgUserRoleOrgScopeProjectOrg removes role scope for user
+// DeleteOrgUserRoleOrgScopeProjectOrg removes the user's role grant; scopeID is the ACS grant id (org-service exposes grant_id as ScopeID)
 func (osc *Client) DeleteOrgUserRoleOrgScopeProjectOrg(ctx context.Context, organizationID string, roleID string, scopeID string, userName *string, userEmail *string) error {
 	f := logrus.Fields{
 		"functionName":   "organization_service.DeleteOrgUserRoleOrgScopeProjectOrg",
@@ -556,19 +599,9 @@ func (osc *Client) CreateOrg(ctx context.Context, companyName, signingEntityName
 	}
 
 	if lookupOrg != nil && lookupOrg.Payload.ID != "" {
-		// Get org based on ID
-		var updateErr error
-		existingOrg, existingOrgErr := osc.GetOrganization(ctx, lookupOrg.Payload.ID)
-		if existingOrgErr != nil {
-			log.WithFields(f).WithError(existingOrgErr).Warnf("unable to get organization : %s ", lookupOrg.Payload.ID)
-			return nil, existingOrgErr
-		}
-		org, updateErr = osc.UpdateOrg(ctx, existingOrg, signingEntityName)
-		if updateErr != nil {
-			log.WithFields(f).WithError(updateErr).Warn("unable to update for existing company")
-			return nil, updateErr
-		}
-
+		// an existing organization is never updated or handed to the caller (lfx-self-serve-ops#343)
+		log.WithFields(f).Warnf("organization %s already owns the website domain of %s - refusing to create or attach to it", lookupOrg.Payload.ID, companyWebsite)
+		return nil, &organizations.CreateOrgConflict{Payload: &models.ErrorResponse{Message: fmt.Sprintf("organization %s already exists for website %s", lookupOrg.Payload.ID, companyWebsite)}}
 	} else {
 		// use linux foundation logo as default
 		linuxFoundation, err := osc.SearchOrganization(ctx, utils.TheLinuxFoundation, "", "")

@@ -20,6 +20,8 @@ import (
 )
 
 // Configure setups handlers on api with service
+//
+//nolint:gocyclo // complexity is acceptable for now (ownership guards on the user update/delete handlers)
 func Configure(api *operations.ClaAPI, service Service, eventsService events.Service) {
 
 	// Create user handler
@@ -94,6 +96,24 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 
 			// Found it!
 			if userModel != nil {
+				// The record may only be updated by its owner: the record must already carry the caller's LF login
+				// (v3 tokens carry no GitHub identity, so an unlinked GitHub record cannot be claimed here) and the body
+				// must never name another LF login (Save resolves the target by lfUsername first)
+				if claUser.LFUsername == "" {
+					return users.NewUpdateUserUnauthorized().WithPayload(errorResponse(
+						fmt.Errorf("user: %+v not authorized to update user with GitHub username: %s - missing LF login", claUser, params.Body.GithubUsername)))
+				}
+				ownsRecord := userModel.LfUsername == claUser.LFUsername
+				namesOtherLogin := params.Body.LfUsername != "" && params.Body.LfUsername != claUser.LFUsername
+				if namesOtherLogin || !ownsRecord {
+					msg := fmt.Sprintf("EasyCLA - 403 Forbidden - user %s is not authorized to update the user record of GitHub user %s", claUser.LFUsername, params.Body.GithubUsername)
+					log.WithFields(f).Warn(msg)
+					return users.NewUpdateUserForbidden().WithPayload(&models.ErrorResponse{
+						Code:    "403",
+						Message: msg,
+					})
+				}
+
 				// Update the record base on the specified values
 				log.WithFields(f).Debugf("found user by GitHubUsername: %s - updating record",
 					params.Body.GithubUsername)
@@ -146,28 +166,22 @@ func Configure(api *operations.ClaAPI, service Service, eventsService events.Ser
 
 	// Delete User Handler
 	api.UsersDeleteUserHandler = users.DeleteUserHandlerFunc(func(params users.DeleteUserParams, claUser *user.CLAUser) middleware.Responder {
-		/*
-				if claUser.UserID == "" {
-					return users.NewDeleteUserUnauthorized().WithPayload(errorResponse(
-						fmt.Errorf("auth - UsersDeleteUserHandler - user %+v not authorized to delete users - missing UserID", claUser)))
-				}
-
-
-			// Let's lookup the authenticated user in our database - we need to see if they have admin access
-			claUserModel, err := service.GetUser(claUser.UserID)
-			if err != nil || claUserModel == nil {
-				return users.NewUpdateUserUnauthorized().WithPayload(errorResponse(
-					fmt.Errorf("error looking up current user permissions to determine if delete is allowed, id: %s, error: %+v",
-						params.UserID, err)))
+		// Only the user themselves or an EasyCLA admin (users table admin flag) may delete a user record
+		if claUser == nil || claUser.UserID == "" {
+			return users.NewDeleteUserUnauthorized().WithPayload(errorResponse(
+				fmt.Errorf("auth - UsersDeleteUserHandler - user %+v not authorized to delete users - missing UserID", claUser)))
+		}
+		if params.UserID != claUser.UserID {
+			claUserModel, lookupErr := service.GetUser(claUser.UserID)
+			if lookupErr != nil || claUserModel == nil || !claUserModel.Admin {
+				msg := fmt.Sprintf("EasyCLA - 403 Forbidden - user %s is not authorized to delete user %s - must be admin", claUser.UserID, params.UserID)
+				log.Warn(msg)
+				return users.NewDeleteUserForbidden().WithPayload(&models.ErrorResponse{
+					Code:    "403",
+					Message: msg,
+				})
 			}
-
-			// Should be an admin to delete
-			if !claUserModel.Admin {
-				return users.NewUpdateUserUnauthorized().WithPayload(errorResponse(
-					fmt.Errorf("user with id: %s is not authorized to delete users - must be admin",
-						params.UserID)))
-			}
-		*/
+		}
 
 		err := service.Delete(params.UserID, claUser)
 		if err != nil {

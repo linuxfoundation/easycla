@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -219,6 +220,11 @@ func (usc *Client) SearchUsers(firstName string, lastName string, email string) 
 	return nil, errors.New("user not found")
 }
 
+// usersByUsernameURL is the user-service lookup URL with the LF username query-encoded
+func usersByUsernameURL(apiGwURL, lfUsername string) string {
+	return fmt.Sprintf("https://%s/user-service/v1/users?username=%s", apiGwURL, url.QueryEscape(lfUsername))
+}
+
 // ListUsersByUsername returns the username
 func (usc *Client) ListUsersByUsername(lfUsername string) (*models.User, error) {
 	f := logrus.Fields{
@@ -232,8 +238,7 @@ func (usc *Client) ListUsersByUsername(lfUsername string) (*models.User, error) 
 		return nil, err
 	}
 
-	url := fmt.Sprintf("https://%s/user-service/v1/users?username=%s", usc.apiGwURL, lfUsername)
-	request, err := http.NewRequest("GET", url, nil)
+	request, err := http.NewRequest("GET", usersByUsernameURL(usc.apiGwURL, lfUsername), nil)
 
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem building new request")
@@ -292,8 +297,7 @@ func (usc *Client) GetUserByUsernameContext(ctx context.Context, lfUsername stri
 		return nil, err
 	}
 
-	url := fmt.Sprintf("https://%s/user-service/v1/users?username=%s", usc.apiGwURL, lfUsername)
-	request, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	request, err := http.NewRequestWithContext(ctx, "GET", usersByUsernameURL(usc.apiGwURL, lfUsername), nil)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem building new request")
 		return nil, err

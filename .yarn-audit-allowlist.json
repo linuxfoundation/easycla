@@ -1,5 +1,23 @@
 {
   "minSeverity": "high",
-  "allowlist": [],
-  "notes": {}
+  "allowlist": [
+    "1122670",
+    "1240094",
+    "1240991",
+    "1240992",
+    "1241198",
+    "1241199",
+    "1241200",
+    "1242216"
+  ],
+  "notes": {
+    "1122670": "decompress (GHSA-mp2f-45pm-3cg9): no patched release; transitive via serverless 3 deploy tooling only, not deployed code",
+    "1240094": "decompress (GHSA-hrh2-vp3x-79xf): no patched release; transitive via serverless 3 deploy tooling only, not deployed code",
+    "1240991": "http-cache-semantics (GHSA-ch52-4w7c-c8xp): no patched release; transitive via serverless 3 deploy tooling only, not deployed code",
+    "1240992": "braces (GHSA-vfj7-8cjw-p6xm): no patched release; transitive via serverless 3 deploy tooling only, not deployed code",
+    "1241198": "@simple-git/argv-parser (GHSA-v5rq-49vh-5v5c): fix needs simple-git 4.x, which breaks @serverless/dashboard-plugin (serverless 3 hard dependency); deploy tooling only, not deployed code",
+    "1241199": "simple-git (GHSA-x6jw-m9v5-85vh): fix needs simple-git 4.x, which breaks @serverless/dashboard-plugin (serverless 3 hard dependency); deploy tooling only, not deployed code",
+    "1241200": "simple-git (GHSA-g4wm-2vf7-vfgr): fix needs simple-git 4.x, which breaks @serverless/dashboard-plugin (serverless 3 hard dependency); deploy tooling only, not deployed code",
+    "1242216": "simple-git (GHSA-858h-whjf-mvg5): fix needs simple-git 4.x, which breaks @serverless/dashboard-plugin (serverless 3 hard dependency); deploy tooling only, not deployed code"
+  }
 }

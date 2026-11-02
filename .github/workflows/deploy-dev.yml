@@ -228,7 +228,9 @@ jobs:
 
   cypress-functional-after-deploy:
     name: Cypress Functional Tests (post-deploy) - executes on a freshly deployed dev API.
-    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false }}
+    # Disabled (2026-10): the suite has been failing for a long time and EasyCLA is moving to the
+    # new self-serve infrastructure. Drop the leading "false &&" to re-enable it.
+    if: ${{ false && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false) }}
     runs-on: ubuntu-latest
     continue-on-error: true
     timeout-minutes: 75

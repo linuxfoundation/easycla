@@ -189,6 +189,7 @@ func TestSearchByClaGroupName(t *testing.T) {
 	assert.Equal(t, "a09-kube", kube.ProjectExternalID)
 	assert.True(t, kube.IclaEnabled)
 	assert.True(t, kube.CclaEnabled)
+	assert.Equal(t, []models.CompanyClaGroupProject{{ProjectSFID: "sfid-kube", ProjectName: "Kubernetes"}}, kube.Projects)
 }
 
 func TestSearchByProjectName(t *testing.T) {
@@ -347,6 +348,45 @@ func TestSearchAmbiguousMultiProjectClaGroupOmitsProjectFields(t *testing.T) {
 	// the CLA group record is absent from the projects table, the mapping supplies the name
 	assert.Equal(t, "Shared CLA", list.Results[0].ClaGroupName)
 	assert.Equal(t, []models.ClaSearchOrg{}, list.Results[0].Organizations)
+	assert.Equal(t, []models.CompanyClaGroupProject{
+		{ProjectSFID: "sfid-a", ProjectName: "Shared Project A"},
+		{ProjectSFID: "sfid-b", ProjectName: "Shared Project B"},
+	}, list.Results[0].Projects)
+}
+
+func TestSearchFoundationLevelClaGroupCarriesItsFoundationProject(t *testing.T) {
+	onap := resultByID(mustSearch(t, "onap cla"), "cg-onap")
+	require.NotNil(t, onap)
+	assert.Equal(t, "ONAP", onap.ProjectName)
+	assert.Equal(t, "sfid-onap-f", onap.ProjectSFID)
+	assert.Equal(t, []models.CompanyClaGroupProject{{ProjectSFID: "sfid-onap-f", ProjectName: "ONAP Foundation Level"}}, onap.Projects)
+}
+
+func TestSearchProjectsListsEveryMappedProjectSorted(t *testing.T) {
+	repo := &fakeRepo{
+		mappings: []*ProjectMappingRow{
+			{ClaGroupID: "cg-fam", ClaGroupName: "Family CLA", ProjectSFID: "sfid-b", ProjectName: "Family Child", FoundationSFID: "sfid-parent", FoundationName: "Family"},
+			{ClaGroupID: "cg-fam", ClaGroupName: "Family CLA", ProjectSFID: "sfid-parent", ProjectName: "Family", FoundationSFID: "sfid-parent", FoundationName: "Family"},
+			{ClaGroupID: "cg-fam", ClaGroupName: "Family CLA", ProjectSFID: "sfid-a", ProjectName: "Family Child", FoundationSFID: "sfid-parent", FoundationName: "Family"},
+		},
+	}
+	list, err := NewService(repo).Search(context.Background(), "family", 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"cg-fam"}, ids(list))
+	assert.Equal(t, []models.CompanyClaGroupProject{
+		{ProjectSFID: "sfid-parent", ProjectName: "Family"},
+		{ProjectSFID: "sfid-a", ProjectName: "Family Child"},
+		{ProjectSFID: "sfid-b", ProjectName: "Family Child"},
+	}, list.Results[0].Projects)
+	assert.Equal(t, "Family", list.Results[0].ProjectName)
+	assert.Equal(t, "sfid-parent", list.Results[0].ProjectSFID)
+}
+
+func TestSearchClaGroupWithoutMappingsHasEmptyProjects(t *testing.T) {
+	list, err := NewService(sampleRepo()).Search(context.Background(), "kubernetes edge", 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"cg-orphan"}, ids(list))
+	assert.Equal(t, []models.CompanyClaGroupProject{}, list.Results[0].Projects)
 }
 
 func TestSearchIsCaseInsensitiveAndTrimmed(t *testing.T) {
@@ -625,4 +665,56 @@ func TestSearchPastedURLOnAnUnknownHostFallsBackToTheOrganizationOfThatHost(t *t
 	require.NoError(t, err)
 	require.Equal(t, []string{"cg-gerrit"}, ids(list))
 	assert.Equal(t, []string{matchOrganization}, list.Results[0].MatchTypes)
+}
+
+func TestGetAgreesWithSearchOnTheSignableProject(t *testing.T) {
+	svc := NewService(sampleRepo())
+	list, err := svc.Search(context.Background(), "kubernetes", 0)
+	require.NoError(t, err)
+	var searched *models.ClaSearchResult
+	for i := range list.Results {
+		if list.Results[i].ClaGroupID == "cg-kube" {
+			searched = &list.Results[i]
+		}
+	}
+	require.NotNil(t, searched)
+
+	got, err := svc.Get(context.Background(), "cg-kube")
+	require.NoError(t, err)
+	assert.Equal(t, searched.ProjectSFID, got.ProjectSFID)
+	assert.Equal(t, searched.ProjectName, got.ProjectName)
+	assert.Equal(t, searched.ClaGroupName, got.ClaGroupName)
+	assert.Equal(t, searched.CclaEnabled, got.CclaEnabled)
+	assert.Equal(t, "sfid-kube", got.ProjectSFID)
+	assert.True(t, got.CclaEnabled)
+}
+
+func TestGetResolvesAFoundationLevelGroupToItsFoundation(t *testing.T) {
+	got, err := NewService(sampleRepo()).Get(context.Background(), "cg-onap")
+	require.NoError(t, err)
+	assert.Equal(t, "sfid-onap-f", got.ProjectSFID)
+	assert.Equal(t, "ONAP", got.ProjectName)
+	assert.False(t, got.CclaEnabled)
+}
+
+func TestGetLeavesAMultiProjectGroupUnresolved(t *testing.T) {
+	got, err := NewService(sampleRepo()).Get(context.Background(), "cg-multi")
+	require.NoError(t, err)
+	assert.Equal(t, "Shared CLA", got.ClaGroupName)
+	assert.Empty(t, got.ProjectSFID)
+	assert.Empty(t, got.ProjectName)
+}
+
+func TestGetReturnsAGroupWithNoProjectMapping(t *testing.T) {
+	got, err := NewService(sampleRepo()).Get(context.Background(), "cg-orphan")
+	require.NoError(t, err)
+	assert.Equal(t, "Kubernetes Edge CLA", got.ClaGroupName)
+	assert.Empty(t, got.ProjectSFID)
+}
+
+func TestGetUnknownIDIsNotFound(t *testing.T) {
+	_, err := NewService(sampleRepo()).Get(context.Background(), "cg-missing")
+	require.ErrorIs(t, err, ErrNotFound)
+	_, err = NewService(sampleRepo()).Get(context.Background(), "  ")
+	require.ErrorIs(t, err, ErrNotFound)
 }

@@ -342,7 +342,7 @@ func (s *service) getEnvelopeRecipients(ctx context.Context, envelopeID string) 
 		return nil, err
 	}
 
-	log.WithFields(f).Debugf("access token: %s", accessToken)
+	log.WithFields(f).Debugf("access token acquired (%d bytes)", len(accessToken))
 
 	// Create the request
 	url := fmt.Sprintf("%s/accounts/%s/envelopes/%s/recipients", utils.GetProperty("DOCUSIGN_ROOT_URL"), utils.GetProperty("DOCUSIGN_ACCOUNT_ID"), envelopeID)
@@ -418,7 +418,7 @@ func (s *service) PrepareSignRequest(ctx context.Context, signRequest *DocuSignE
 		return nil, err
 	}
 
-	log.WithFields(f).Debugf("access token: %s", accessToken)
+	log.WithFields(f).Debugf("access token acquired (%d bytes)", len(accessToken))
 
 	// Create the request
 	url := fmt.Sprintf("%s/accounts/%s/envelopes", utils.GetProperty("DOCUSIGN_ROOT_URL"), utils.GetProperty("DOCUSIGN_ACCOUNT_ID"))

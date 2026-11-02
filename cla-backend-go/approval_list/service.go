@@ -138,10 +138,13 @@ func (s service) AddCclaApprovalListRequest(ctx context.Context, companyID strin
 	sortOrder := utils.SortOrderAscending
 	pageSize := int64(5)
 	sig, sigErr := s.signatureRepo.GetProjectCompanySignatures(ctx, companyID, claGroupID, &signed, &approved, nil, &sortOrder, &pageSize)
-	if sigErr != nil || sig == nil || sig.Signatures == nil {
+	if sigErr != nil || sig == nil || len(sig.Signatures) == 0 {
 		log.WithFields(f).Warnf("unable to lookup signature by company id: %s project id: %s - (or no managers), sig: %+v, error: %+v",
-			companyID, claGroupID, sig, err)
-		return "", err
+			companyID, claGroupID, sig, sigErr)
+		if sigErr != nil {
+			return "", sigErr
+		}
+		return "", errors.New("no signed and approved CCLA signature found for the company and CLA group")
 	}
 
 	requestID, addErr := s.repo.AddCclaApprovalRequest(companyModel, claGroupModel, userModel, args.ContributorName, args.ContributorEmail)
@@ -251,6 +254,21 @@ func (s service) RejectCclaApprovalListRequest(ctx context.Context, companyID, c
 		"requestID":    requestID,
 	}
 
+	// The rejection email needs the company's signed CCLA (its first CLA manager is named in it): resolve it before
+	// persisting the rejection, so a missing signature is reported to the caller instead of silently skipping the email
+	signed, approved := true, true
+	sortOrder := utils.SortOrderAscending
+	pageSize := int64(5)
+	sig, sigErr := s.signatureRepo.GetProjectCompanySignatures(ctx, companyID, claGroupID, &signed, &approved, nil, &sortOrder, &pageSize)
+	if sigErr != nil || sig == nil || len(sig.Signatures) == 0 {
+		log.WithFields(f).WithError(sigErr).Warnf("unable to lookup signature by company id: %s project id: %s - (or no managers), sig: %+v, error: %+v",
+			companyID, claGroupID, sig, sigErr)
+		if sigErr != nil {
+			return sigErr
+		}
+		return errors.New("no signed and approved CCLA signature found for the company and CLA group")
+	}
+
 	err := s.repo.RejectCclaApprovalListRequest(requestID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("problem updating approved list with 'rejected' status for request: %s, error: %+v", requestID, err)
@@ -271,16 +289,6 @@ func (s service) RejectCclaApprovalListRequest(ctx context.Context, companyID, c
 	claGroupModel, err := s.projectRepo.GetCLAGroupByID(ctx, claGroupID, DontLoadRepoDetails)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to lookup project by id: %s, error: %+v", claGroupID, err)
-		return err
-	}
-
-	signed, approved := true, true
-	sortOrder := utils.SortOrderAscending
-	pageSize := int64(5)
-	sig, sigErr := s.signatureRepo.GetProjectCompanySignatures(ctx, companyID, claGroupID, &signed, &approved, nil, &sortOrder, &pageSize)
-	if sigErr != nil || sig == nil || sig.Signatures == nil {
-		log.WithFields(f).WithError(sigErr).Warnf("unable to lookup signature by company id: %s project id: %s - (or no managers), sig: %+v, error: %+v",
-			companyID, claGroupID, sig, err)
 		return err
 	}
 

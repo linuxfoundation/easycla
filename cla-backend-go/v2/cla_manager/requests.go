@@ -6,6 +6,7 @@ package cla_manager
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/aws/aws-sdk-go/aws"
@@ -20,7 +21,7 @@ import (
 )
 
 // GetCLAManagerRequests returns the list of CLA manager requests for the given company and CLA group
-func (s *service) GetCLAManagerRequests(ctx context.Context, companyModel *v1Models.Company, claGroupID string) (*models.ClaManagerRequestList, error) {
+func (s *service) GetCLAManagerRequests(ctx context.Context, companyModel *v1Models.Company, claGroupID string, pageSize, offset *int64) (*models.ClaManagerRequestList, error) {
 	requestList, err := s.managerService.GetRequests(companyModel.CompanyID, claGroupID)
 	if err != nil {
 		return nil, err
@@ -30,6 +31,20 @@ func (s *service) GetCLAManagerRequests(ctx context.Context, companyModel *v1Mod
 	for i := range result.Requests {
 		result.Requests[i].CompanyExternalID = companyModel.CompanyExternalID
 	}
+	if pageSize != nil || offset != nil {
+		// deterministic order so the optional pageSize/offset windows are stable - the
+		// unpaged response keeps the stored (GSI) order
+		sort.Slice(result.Requests, func(i, j int) bool {
+			if result.Requests[i].Created != result.Requests[j].Created {
+				return result.Requests[i].Created < result.Requests[j].Created
+			}
+			return result.Requests[i].RequestID < result.Requests[j].RequestID
+		})
+	}
+	result.TotalCount = int64(len(result.Requests))
+	start, end := utils.PageBounds(len(result.Requests), pageSize, offset)
+	result.Requests = result.Requests[start:end]
+	result.ResultCount = int64(len(result.Requests))
 	return result, nil
 }
 
@@ -64,6 +79,9 @@ func (s *service) ApproveCLAManagerRequest(ctx context.Context, authUser *auth.U
 	if existingRequest == nil || existingRequest.CompanyID != companyModel.CompanyID || existingRequest.ProjectID != claGroupID {
 		return nil, errRequestNotFound
 	}
+	if existingRequest.Status != pendingRequestStatus {
+		return nil, ErrCLAManagerRequestAlreadyDecided
+	}
 
 	claGroupModel, err := s.projectService.GetCLAGroupByID(ctx, claGroupID)
 	if err != nil {
@@ -93,12 +111,25 @@ func (s *service) ApproveCLAManagerRequest(ctx context.Context, authUser *auth.U
 
 	request, err := s.managerService.ApproveRequest(companyModel.CompanyID, claGroupID, requestID)
 	if err != nil {
+		if _, revertErr := s.managerService.PendingRequest(companyModel.CompanyID, claGroupID, requestID); revertErr != nil {
+			log.WithFields(f).WithError(revertErr).Warnf("unable to revert request %s to pending after the status update failed: %v", requestID, err)
+		}
 		return nil, err
 	}
 
-	_, aclErr := s.signatureService.AddCLAManager(ctx, sigModel.SignatureID, request.UserID)
-	if aclErr != nil {
-		return nil, aclErr
+	if !aclContainsUser(claManagers, request.UserID) {
+		_, aclErr := s.signatureService.AddCLAManager(ctx, sigModel.SignatureID, request.UserID)
+		if aclErr != nil {
+			stored, readErr := s.signatureService.GetSignature(ctx, sigModel.SignatureID)
+			if readErr == nil && stored != nil && aclContainsUser(stored.SignatureACL, request.UserID) {
+				log.WithFields(f).WithError(aclErr).Warn("ACL update reported an error but the requester is in the signature ACL - keeping the approval")
+			} else {
+				if _, revertErr := s.managerService.PendingRequest(companyModel.CompanyID, claGroupID, requestID); revertErr != nil {
+					log.WithFields(f).WithError(revertErr).Warnf("unable to revert request %s to pending after the ACL update failed: %v", requestID, aclErr)
+				}
+				return nil, aclErr
+			}
+		}
 	}
 
 	s.eventService.LogEventWithContext(ctx, &events.LogEventArgs{
@@ -160,6 +191,9 @@ func (s *service) DenyCLAManagerRequest(ctx context.Context, authUser *auth.User
 	if existingRequest == nil || existingRequest.CompanyID != companyModel.CompanyID || existingRequest.ProjectID != claGroupID {
 		return nil, errRequestNotFound
 	}
+	if existingRequest.Status != pendingRequestStatus {
+		return nil, ErrCLAManagerRequestAlreadyDecided
+	}
 
 	claGroupModel, err := s.projectService.GetCLAGroupByID(ctx, claGroupID)
 	if err != nil {
@@ -189,6 +223,9 @@ func (s *service) DenyCLAManagerRequest(ctx context.Context, authUser *auth.User
 
 	request, err := s.managerService.DenyRequest(companyModel.CompanyID, claGroupID, requestID)
 	if err != nil {
+		if _, revertErr := s.managerService.PendingRequest(companyModel.CompanyID, claGroupID, requestID); revertErr != nil {
+			log.WithFields(f).WithError(revertErr).Warnf("unable to revert request %s to pending after the status update failed: %v", requestID, err)
+		}
 		return nil, err
 	}
 
@@ -339,4 +376,13 @@ func sendRequestDeniedEmailToRequester(emailSvc emails.EmailTemplateService, ema
 	} else {
 		log.Debugf("sent email with subject: %s to recipients: %+v", subject, recipients)
 	}
+}
+
+func aclContainsUser(acl []v1Models.User, userID string) bool {
+	for _, manager := range acl {
+		if manager.UserID == userID || manager.LfUsername == userID {
+			return true
+		}
+	}
+	return false
 }

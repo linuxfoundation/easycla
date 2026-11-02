@@ -71,6 +71,8 @@ const (
 var (
 	ErrCCLANotEnabled        = errors.New("corporate license agreement is not enabled with this project")
 	ErrTemplateNotConfigured = errors.New("cla template not configured for this project")
+	ErrCLAGroupRequired      = errors.New("cla_group_id is required")
+	ErrCLAGroupMismatch      = errors.New("cla_group_id does not match the project's signing CLA group")
 	ErrNotInOrg              error
 	ErrIclaInvalidated       = errors.New("an individual CLA for this CLA Group was invalidated by an administrator - signing a new individual CLA for this CLA Group is not permitted")
 )
@@ -92,6 +94,7 @@ type Service interface {
 
 	ClearCaches(ctx context.Context) (*models.ClearCacheOutput, error)
 	RequestCorporateSignature(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error)
+	RequestCorporateSignatureForCLAGroup(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput, expectedCLAGroupID string) (*models.CorporateSignatureOutput, error)
 	RequestIndividualSignature(ctx context.Context, input *models.IndividualSignatureInput, preferredEmail string) (*models.IndividualSignatureOutput, error)
 	RequestIndividualSignatureGerrit(ctx context.Context, input *models.IndividualSignatureInput) (*models.IndividualSignatureOutput, error)
 	SignedIndividualCallbackGithub(ctx context.Context, payload []byte, installationID, changeRequestID, repositoryID string) error
@@ -217,18 +220,37 @@ func (s *service) ClearCaches(ctx context.Context) (*models.ClearCacheOutput, er
 	}, nil
 }
 
-func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error) { // nolint
+func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput) (*models.CorporateSignatureOutput, error) {
+	return s.requestCorporateSignatureWithExpectedCLAGroup(ctx, lfUsername, authorizationHeader, input, "")
+}
+
+// RequestCorporateSignatureForCLAGroup binds a Self Serve request to the selected group while
+// retaining the console's project-resolution rules. The legacy entrypoint has no such expectation.
+func (s *service) RequestCorporateSignatureForCLAGroup(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput, expectedCLAGroupID string) (*models.CorporateSignatureOutput, error) {
+	expectedCLAGroupID = strings.TrimSpace(expectedCLAGroupID)
+	if expectedCLAGroupID == "" {
+		log.WithFields(logrus.Fields{
+			"functionName":   "sign.RequestCorporateSignatureForCLAGroup",
+			utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		}).Warn(ErrCLAGroupRequired.Error())
+		return nil, ErrCLAGroupRequired
+	}
+	return s.requestCorporateSignatureWithExpectedCLAGroup(ctx, lfUsername, authorizationHeader, input, expectedCLAGroupID)
+}
+
+func (s *service) requestCorporateSignatureWithExpectedCLAGroup(ctx context.Context, lfUsername string, authorizationHeader string, input *models.CorporateSignatureInput, expectedCLAGroupID string) (*models.CorporateSignatureOutput, error) { // nolint
 	f := logrus.Fields{
-		"functionName":      "sign.RequestCorporateSignature",
-		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
-		"lfUsername":        lfUsername,
-		"projectSFID":       input.ProjectSfid,
-		"companySFID":       input.CompanySfid,
-		"signingEntityName": input.SigningEntityName,
-		"authorityName":     input.AuthorityName,
-		"authorityEmail":    input.AuthorityEmail.String(),
-		"sendAsEmail":       input.SendAsEmail,
-		"returnURL":         input.ReturnURL,
+		"functionName":       "sign.RequestCorporateSignature",
+		utils.XREQUESTID:     ctx.Value(utils.XREQUESTID),
+		"lfUsername":         lfUsername,
+		"projectSFID":        input.ProjectSfid,
+		"companySFID":        input.CompanySfid,
+		"signingEntityName":  input.SigningEntityName,
+		"authorityName":      input.AuthorityName,
+		"authorityEmail":     input.AuthorityEmail.String(),
+		"sendAsEmail":        input.SendAsEmail,
+		"returnURL":          input.ReturnURL,
+		"expectedCLAGroupID": expectedCLAGroupID,
 	}
 
 	/**
@@ -245,24 +267,13 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		return nil, err
 	}
 
-	// 1. Ensure Company Exists
-	var comp *v1Models.Company
-	// Backwards compatible - if the signing entity name is not set, then we fall back to using the CompanySFID lookup
-	// which will return the company record where the company name == signing entity name
-	if input.SigningEntityName == "" {
-		comp, err = s.companyRepo.GetCompanyByExternalID(ctx, utils.StringValue(input.CompanySfid))
-		if err != nil {
-			log.WithFields(f).WithError(err).Warn("unable to fetch company records by signing entity name value")
-			return nil, err
-		}
-	} else {
-		// Big change here - since we can have multiple EasyCLA Company records with the same external SFID, we now
-		// switch over to query by the signing entity name.
-		comp, err = s.companyRepo.GetCompanyBySigningEntityName(ctx, input.SigningEntityName)
-		if err != nil {
-			log.WithFields(f).WithError(err).Warn("unable to fetch company records by signing entity name value")
-			return nil, err
-		}
+	// 1. Resolve the company: the persisted row, or a transient (not yet persisted) model backed by the
+	// platform organization when this is the organization's first CCLA - the row is created later, inside
+	// requestCorporateSignature, only after every validation passed (#2751)
+	comp, err := ResolveSigningCompany(ctx, s.companyRepo, utils.StringValue(input.CompanySfid), input.SigningEntityName)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to resolve the signing company")
+		return nil, err
 	}
 
 	// 1.5 Check if company is sanctioned
@@ -283,13 +294,20 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		if !wasSanctioned {
 			s.logCompanySanctionedEvent(ctx, comp, nil, lfUsername)
 		}
-		if input.CompanySfid != nil {
-			err = fmt.Errorf("company %s requires further review for trade compliance", *input.CompanySfid)
-		} else {
-			err = fmt.Errorf("company requires further review for trade compliance")
+		sanctionedErr := &utils.SanctionedCompanyError{
+			CompanyID:   comp.CompanyID,
+			CompanySFID: comp.CompanyExternalID,
+			CompanyName: comp.CompanyName,
+			Guidance:    utils.CompanySanctionedSigningGuidance,
 		}
-		log.WithFields(f).WithError(err).Error("company requires further review for trade compliance")
-		return nil, err
+		if sanctionedErr.CompanySFID == "" {
+			sanctionedErr.CompanySFID = utils.StringValue(input.CompanySfid)
+		}
+		if sanctionedErr.CompanyName == "" {
+			sanctionedErr.CompanyName = sanctionedErr.CompanySFID
+		}
+		log.WithFields(f).WithError(sanctionedErr).Error("company requires further review for trade compliance")
+		return nil, sanctionedErr
 	}
 
 	// 2. Ensure this is a valid project
@@ -306,7 +324,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		// this is root project
 		cgmlist, perr := s.projectClaGroupsRepo.GetProjectsIdsForFoundation(ctx, utils.StringValue(input.ProjectSfid))
 		if perr != nil {
-			log.WithFields(f).WithError(err).Warn("unable to lookup other projects associated with this project SFID")
+			log.WithFields(f).WithError(perr).Warn("unable to lookup other projects associated with this project SFID")
 			return nil, perr
 		}
 		if len(cgmlist) == 0 {
@@ -315,14 +333,17 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 		}
 		claGroups := utils.NewStringSet()
 		for _, cg := range cgmlist {
+			// ensure that cla group for project is a foundation level cla group
+			if cg.ProjectSFID != utils.StringValue(input.ProjectSfid) {
+				continue
+			}
 			claGroup, claGroupErr := s.claGroupService.GetCLAGroup(ctx, cg.ClaGroupID)
-			if err != nil {
+			if claGroupErr != nil {
 				log.WithFields(f).WithError(claGroupErr).Warn("unable to lookup cla group")
-				return nil, err
+				return nil, claGroupErr
 			}
 
-			// ensure that cla group for project is a foundation level cla group
-			if claGroup != nil && cg.ProjectSFID == utils.StringValue(input.ProjectSfid) {
+			if claGroup != nil {
 				claGroups.Add(cg.ClaGroupID)
 			}
 		}
@@ -332,23 +353,50 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 			// so we can not determine which cla-group to use
 			return nil, errors.New("invalid project_sfid. multiple cla-groups are associated with this project_sfid")
 		}
+		if claGroups.Length() == 0 {
+			if expectedCLAGroupID != "" {
+				log.WithFields(f).Warn(ErrCLAGroupMismatch.Error())
+				return nil, ErrCLAGroupMismatch
+			}
+			return nil, projects_cla_groups.ErrProjectNotAssociatedWithClaGroup
+		}
 		claGroupID = (claGroups.List())[0]
 
 	} else {
 		cgm, perr := s.projectClaGroupsRepo.GetClaGroupIDForProject(ctx, utils.StringValue(input.ProjectSfid))
 		if perr != nil {
-			log.WithFields(f).WithError(err).Warn("unable to lookup CLA Group ID for this project SFID")
+			log.WithFields(f).WithError(perr).Warn("unable to lookup CLA Group ID for this project SFID")
 			return nil, perr
+		}
+		if expectedCLAGroupID != "" && cgm == nil {
+			log.WithFields(f).Warn(projects_cla_groups.ErrProjectNotAssociatedWithClaGroup.Error())
+			return nil, projects_cla_groups.ErrProjectNotAssociatedWithClaGroup
 		}
 		claGroupID = cgm.ClaGroupID
 	}
 
 	f["claGroupID"] = claGroupID
+	// Validate this resolution, not only the wrapper's earlier lookup: a mapping can change
+	// between the two reads. Everything below must use the group checked here.
+	if expectedCLAGroupID != "" && claGroupID != expectedCLAGroupID {
+		log.WithFields(f).Warn(ErrCLAGroupMismatch.Error())
+		return nil, ErrCLAGroupMismatch
+	}
 	log.WithFields(f).Debug("loading CLA Group by ID...")
 	proj, err := s.projectRepo.GetCLAGroupByID(ctx, claGroupID, DontLoadRepoDetails)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to lookup CLA Group by CLA Group ID")
 		return nil, err
+	}
+	if expectedCLAGroupID != "" {
+		if proj == nil {
+			log.WithFields(f).Warn(projects_cla_groups.ErrCLAGroupDoesNotExist.Error())
+			return nil, projects_cla_groups.ErrCLAGroupDoesNotExist
+		}
+		if proj.ProjectID != expectedCLAGroupID {
+			log.WithFields(f).WithField("resolvedCLAGroupID", proj.ProjectID).Warn(ErrCLAGroupMismatch.Error())
+			return nil, ErrCLAGroupMismatch
+		}
 	}
 	if !proj.ProjectCCLAEnabled {
 		log.WithFields(f).Warn("unable to request corporate signature - CCLA is not enabled for this CLA Group")
@@ -375,10 +423,11 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 	}
 
 	// Email flow
+	var authoritySignatoryGranted, directSignatoryGranted bool
 	if input.SendAsEmail {
 		log.WithFields(f).Debugf("Sending request as an email to: %s...", input.AuthorityEmail.String())
 		// this would be used only in case of cla-signatory
-		err = prepareUserForSigning(ctx, input.AuthorityEmail.String(), utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid), input.SigningEntityName)
+		authoritySignatoryGranted, err = prepareUserForSigningFn(ctx, input.AuthorityEmail.String(), utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid), input.SigningEntityName)
 		if err != nil {
 			// Ignore conflict - role has already been assigned
 			if _, ok := err.(*organizations.CreateOrgUsrRoleScopesConflict); !ok {
@@ -388,7 +437,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 	} else {
 		// Direct to DocuSign flow...
 
-		err = prepareUserForSigning(ctx, currentUserEmail, utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid), input.SigningEntityName)
+		directSignatoryGranted, err = prepareUserForSigningFn(ctx, currentUserEmail, utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid), input.SigningEntityName)
 		if err != nil {
 			// Ignore conflict - role has already been assigned
 			if _, ok := err.(*organizations.CreateOrgUsrRoleScopesConflict); !ok {
@@ -410,13 +459,7 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 	}, comp, proj, lfUsername, currentUserEmail)
 
 	if err != nil {
-		if input.AuthorityEmail.String() != "" {
-			// remove role
-			removeErr := removeSignatoryRole(ctx, input.AuthorityEmail.String(), utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid))
-			if removeErr != nil {
-				log.WithFields(f).WithError(removeErr).Warnf("failed to remove signatory role. companySFID :%s, email :%s error: %+v", *input.CompanySfid, input.AuthorityEmail.String(), removeErr)
-			}
-		}
+		rollbackSignatoryGrants(ctx, f, input.AuthorityEmail.String(), currentUserEmail, utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid), authoritySignatoryGranted, directSignatoryGranted)
 		log.WithFields(f).WithError(err).Warnf("unable to request corporate signature")
 		return nil, err
 	}
@@ -433,6 +476,88 @@ func (s *service) RequestCorporateSignature(ctx context.Context, lfUsername stri
 	return &models.CorporateSignatureOutput{
 		SignURL:     signature.SignatureSignURL,
 		SignatureID: signature.SignatureID,
+		CompanyID:   comp.CompanyID,
+	}, nil
+}
+
+// SigningCompanyReader is the company lookup surface ResolveSigningCompany needs
+type SigningCompanyReader interface {
+	GetCompanyByExternalID(ctx context.Context, companySFID string) (*v1Models.Company, error)
+	GetCompanyBySigningEntityName(ctx context.Context, signingEntityName string) (*v1Models.Company, error)
+}
+
+// ResolveSigningCompany returns the company a corporate signature request refers to: the persisted row
+// (by SFID, or by signing entity name) when one exists, otherwise a transient model with an empty
+// CompanyID built from the platform organization. Nothing is persisted here. A requested signing entity
+// name must be the organization name or one of its signing entity names. The transient model carries
+// the organization ID the platform returns (as the former create path persisted it), and a parent row
+// stored under that ID wins over a transient model.
+func ResolveSigningCompany(ctx context.Context, companyRepo SigningCompanyReader, companySFID, signingEntityName string) (*v1Models.Company, error) {
+	f := logrus.Fields{
+		"functionName":      "sign.ResolveSigningCompany",
+		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
+		"companySFID":       companySFID,
+		"signingEntityName": signingEntityName,
+	}
+	var comp *v1Models.Company
+	var err error
+	if signingEntityName == "" {
+		comp, err = companyRepo.GetCompanyByExternalID(ctx, companySFID)
+	} else {
+		comp, err = companyRepo.GetCompanyBySigningEntityName(ctx, signingEntityName)
+	}
+	if err == nil {
+		return comp, nil
+	}
+	if _, notFound := err.(*utils.CompanyNotFound); !notFound || companySFID == "" {
+		return nil, err
+	}
+
+	orgClient := organizationService.GetClient()
+	if orgClient == nil {
+		return nil, err
+	}
+	org, orgErr := orgClient.GetOrganization(ctx, companySFID)
+	if orgErr != nil {
+		if _, ok := orgErr.(*organizations.GetOrgNotFound); ok {
+			log.WithFields(f).Debug("no company row and no organization for the SFID")
+			return nil, err
+		}
+		log.WithFields(f).WithError(orgErr).Warn("problem loading the organization")
+		return nil, orgErr
+	}
+	orgID := strings.TrimSpace(org.ID)
+	if orgID == "" {
+		orgID = companySFID
+	}
+	if signingEntityName == "" && orgID != companySFID {
+		stored, storedErr := companyRepo.GetCompanyByExternalID(ctx, orgID)
+		if storedErr == nil {
+			return stored, nil
+		}
+		if _, notFound := storedErr.(*utils.CompanyNotFound); !notFound {
+			return nil, storedErr
+		}
+	}
+	entityName := strings.TrimSpace(org.Name)
+	if signingEntityName != "" {
+		entityName = ""
+		for _, candidate := range append([]string{org.Name}, org.SigningEntityName...) {
+			if strings.EqualFold(strings.TrimSpace(candidate), strings.TrimSpace(signingEntityName)) {
+				entityName = strings.TrimSpace(candidate)
+				break
+			}
+		}
+		if entityName == "" {
+			log.WithFields(f).Debug("the signing entity name does not belong to the organization")
+			return nil, err
+		}
+	}
+	log.WithFields(f).Debugf("no company row yet - using a transient company for organization %s", org.Name)
+	return &v1Models.Company{
+		CompanyExternalID: orgID,
+		CompanyName:       strings.TrimSpace(org.Name),
+		SigningEntityName: entityName,
 	}, nil
 }
 
@@ -452,13 +577,13 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 
 	log.WithFields(f).Debug("processing signed individual callback...")
 
-	var info DocuSignEnvelopeInformation
-
-	err := xml.Unmarshal(payload, &info)
+	// the callback is reachable without a token - reject an envelope missing recipient or document statuses before indexing
+	parsed, err := parseEnvelope(payload)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to unmarshal xml payload")
 		return err
 	}
+	info := *parsed
 
 	envelopeID := info.EnvelopeStatus.EnvelopeID
 	signatureID := info.EnvelopeStatus.RecipientStatuses[0].ClientUserId
@@ -480,6 +605,9 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 	if signature == nil {
 		log.WithFields(f).WithError(err).Warn("unable to lookup signature by ID - signature not found")
 		return errors.New("unable to lookup signature by ID - signature not found")
+	}
+	if ignored, guardErr := s.completionIgnored(ctx, f, signature.SignatureID, envelopeID); guardErr != nil || ignored {
+		return guardErr
 	}
 
 	if status == DocusignCompleted {
@@ -513,28 +641,7 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 
 		// Update the repository provider with this change - this will update the comment (if necessary)
 		// and the status - do this early in the flow as the user will be immediately redirected back
-		installtionIDInt, err := strconv.Atoi(installationID)
-		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("unable to convert installation ID to int: %s", installationID)
-			return err
-		}
-
-		repositoryIDInt, err := strconv.Atoi(repositoryID)
-		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("unable to convert repository ID to int: %s", repositoryID)
-			return err
-		}
-
-		changeRequestIDInt, err := strconv.Atoi(changeRequestID)
-		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("unable to convert change request ID to int: %s", changeRequestID)
-			return err
-		}
-
-		log.WithFields(f).Debugf("updating change request for installation ID: %d, repository ID: %d, change request ID: %d", installtionIDInt, repositoryIDInt, changeRequestIDInt)
-		err = s.updateChangeRequest(ctx, int64(installtionIDInt), int64(repositoryIDInt), int64(changeRequestIDInt), signature.ProjectID)
-		if err != nil {
-			log.WithFields(f).WithError(err).Warnf("unable to update change request: %s", changeRequestID)
+		if err = s.refreshChangeRequest(ctx, f, installationID, repositoryID, changeRequestID, signature.ProjectID); err != nil {
 			return err
 		}
 
@@ -699,6 +806,104 @@ func fetchFullName(info DocuSignEnvelopeInformation) string {
 	return fullName
 }
 
+// signatureRow reads the raw signature row (API projections deliberately never carry the envelope) (lfx-self-serve-ops#347)
+func (s *service) signatureRow(ctx context.Context, f logrus.Fields, signatureID string) (*signatures.ItemSignature, error) {
+	item, itemErr := s.signatureService.GetItemSignature(ctx, signatureID)
+	if itemErr != nil {
+		log.WithFields(f).WithError(itemErr).Warn("unable to lookup signature row by ID")
+		return nil, itemErr
+	}
+	if item == nil {
+		log.WithFields(f).Warn("unable to lookup signature row by ID - signature not found")
+		return nil, errors.New("unable to lookup signature by ID - signature not found")
+	}
+	return item, nil
+}
+
+// completionIgnored reports whether the callback must be ignored because its envelope is not the stored one
+func (s *service) completionIgnored(ctx context.Context, f logrus.Fields, signatureID, envelopeID string) (bool, error) {
+	item, err := s.signatureRow(ctx, f, signatureID)
+	if err != nil {
+		return false, err
+	}
+	if reason := ignoredCompletion(signatureID, item.SignatureEnvelopeID, envelopeID); reason != "" {
+		log.WithFields(f).Warn(reason)
+		return true, nil
+	}
+	return false, nil
+}
+
+// corporateCompletionIgnored additionally requires the signature to belong to the CLA group and company named by the
+// corporate callback route (lfx-self-serve-ops#347)
+func (s *service) corporateCompletionIgnored(ctx context.Context, f logrus.Fields, signatureID, projectID, companyID, envelopeID string) (bool, error) {
+	item, err := s.signatureRow(ctx, f, signatureID)
+	if err != nil {
+		return false, err
+	}
+	if !rowOnRoute(item, projectID, companyID) {
+		log.WithFields(f).Warnf("signature %s does not belong to CLA group %s / company %s - ignoring the callback", signatureID, projectID, companyID)
+		return true, nil
+	}
+	if reason := ignoredCompletion(signatureID, item.SignatureEnvelopeID, envelopeID); reason != "" {
+		log.WithFields(f).Warn(reason)
+		return true, nil
+	}
+	return false, nil
+}
+
+// rowOnRoute reports whether the signature row belongs to the CLA group and company of the corporate callback route
+func rowOnRoute(item *signatures.ItemSignature, projectID, companyID string) bool {
+	if item.SignatureProjectID != projectID {
+		return false
+	}
+	switch item.SignatureReferenceType {
+	case utils.SignatureReferenceTypeCompany:
+		return item.SignatureReferenceID == companyID
+	case utils.SignatureReferenceTypeUser:
+		return item.SignatureUserCompanyID == companyID
+	}
+	return false
+}
+
+// ignoredCompletion names why a completion callback must not be applied: the envelope is not the one this
+// signature was sent with (lfx-self-serve-ops#347); a repeated completion is re-processed so retries finish
+func ignoredCompletion(signatureID, storedEnvelopeID, envelopeID string) string {
+	if envelopeID == "" || storedEnvelopeID == "" || envelopeID != storedEnvelopeID {
+		return fmt.Sprintf("envelope mismatch for signature %s - ignoring the callback", signatureID)
+	}
+	return ""
+}
+
+// refreshChangeRequest posts the PR status/comment; a repository that is not bound to the CLA group only logs
+func (s *service) refreshChangeRequest(ctx context.Context, f logrus.Fields, installationID, repositoryID, changeRequestID, projectID string) error {
+	installtionIDInt, err := strconv.Atoi(installationID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to convert installation ID to int: %s", installationID)
+		return err
+	}
+	repositoryIDInt, err := strconv.Atoi(repositoryID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to convert repository ID to int: %s", repositoryID)
+		return err
+	}
+	changeRequestIDInt, err := strconv.Atoi(changeRequestID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to convert change request ID to int: %s", changeRequestID)
+		return err
+	}
+	log.WithFields(f).Debugf("updating change request for installation ID: %d, repository ID: %d, change request ID: %d", installtionIDInt, repositoryIDInt, changeRequestIDInt)
+	err = s.updateChangeRequest(ctx, int64(installtionIDInt), int64(repositoryIDInt), int64(changeRequestIDInt), projectID)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, errRepositoryNotBound) {
+		log.WithFields(f).WithError(err).Warnf("unable to update change request: %s", changeRequestID)
+		return err
+	}
+	log.WithFields(f).WithError(err).Warnf("no status posted on change request %s - the repository is not bound to this CLA group", changeRequestID)
+	return nil
+}
+
 func (s *service) SignedIndividualCallbackGitlab(ctx context.Context, payload []byte, userID, organizationID, repositoryID, mergeRequestID string) error {
 	f := logrus.Fields{
 		"functionName":   "sign.SignedIndividualCallbackGitlab",
@@ -710,13 +915,12 @@ func (s *service) SignedIndividualCallbackGitlab(ctx context.Context, payload []
 	}
 
 	log.WithFields(f).Debug("processing signed individual callback...")
-	var info DocuSignEnvelopeInformation
-
-	err := xml.Unmarshal(payload, &info)
+	parsed, err := parseEnvelope(payload)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to unmarshal xml payload")
 		return err
 	}
+	info := *parsed
 
 	envelopeID := info.EnvelopeStatus.EnvelopeID
 	signatureID := info.EnvelopeStatus.RecipientStatuses[0].ClientUserId
@@ -738,6 +942,10 @@ func (s *service) SignedIndividualCallbackGitlab(ctx context.Context, payload []
 	if signature == nil {
 		log.WithFields(f).WithError(err).Warn("unable to lookup signature by ID - signature not found")
 		return errors.New("unable to lookup signature by ID - signature not found")
+	}
+
+	if ignored, guardErr := s.completionIgnored(ctx, f, signature.SignatureID, envelopeID); guardErr != nil || ignored {
+		return guardErr
 	}
 
 	if status == DocusignCompleted {
@@ -937,6 +1145,16 @@ func (s *service) SignedIndividualCallbackGitlab(ctx context.Context, payload []
 }
 
 func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []byte, userID string) error {
+	_, err := s.signedIndividualCallbackGerrit(ctx, payload, userID)
+	return err
+}
+
+// completeIndividualGerrit is the Self Serve wrapper's seam onto signedIndividualCallbackGerrit (tests)
+var completeIndividualGerrit = (*service).signedIndividualCallbackGerrit
+
+// signedIndividualCallbackGerrit returns the signature only when a Completed envelope was processed; nil when the
+// envelope was ignored or is not completed
+func (s *service) signedIndividualCallbackGerrit(ctx context.Context, payload []byte, userID string) (*v1Models.Signature, error) {
 	f := logrus.Fields{
 		"functionName":   "sign.SignedIndividualCallbackGerrit",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -944,13 +1162,12 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 	}
 
 	log.WithFields(f).Debug("processing signed individual callback...")
-	var info DocuSignEnvelopeInformation
-
-	err := xml.Unmarshal(payload, &info)
+	parsed, err := parseEnvelope(payload)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to unmarshal xml payload")
-		return err
+		return nil, err
 	}
+	info := *parsed
 
 	envelopeID := info.EnvelopeStatus.EnvelopeID
 	signatureID := info.EnvelopeStatus.RecipientStatuses[0].ClientUserId
@@ -966,12 +1183,16 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 	signature, err := s.signatureService.GetSignature(ctx, signatureID)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to lookup signature by ID")
-		return err
+		return nil, err
 	}
 
 	if signature == nil {
 		log.WithFields(f).WithError(err).Warn("unable to lookup signature by ID - signature not found")
-		return errors.New("unable to lookup signature by ID - signature not found")
+		return nil, errors.New("unable to lookup signature by ID - signature not found")
+	}
+
+	if ignored, guardErr := s.completionIgnored(ctx, f, signature.SignatureID, envelopeID); guardErr != nil || ignored {
+		return nil, guardErr
 	}
 
 	if status == DocusignCompleted {
@@ -988,7 +1209,7 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 		err = s.signatureService.UpdateSignature(ctx, signatureID, updates)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to update signature record with envelope ID: %s", envelopeID)
-			return err
+			return nil, err
 		}
 
 		log.WithFields(f).Debugf("updated signature record: %s", signatureID)
@@ -996,7 +1217,7 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 		claUser, userErr := s.userService.GetUser(signature.SignatureReferenceID)
 		if userErr != nil {
 			log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by ID: %s", signature.SignatureReferenceID)
-			return userErr
+			return nil, userErr
 		}
 
 		if claUser.Username == "" {
@@ -1009,7 +1230,7 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 				_, err = s.userService.UpdateUser(signature.SignatureReferenceID, updates)
 				if err != nil {
 					log.WithFields(f).WithError(err).Warnf("unable to update user with username: %s", fullName)
-					return err
+					return nil, err
 				}
 			}
 		}
@@ -1019,7 +1240,7 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 		signedDocument, err := s.GetSignedDocument(ctx, envelopeID, documentID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to get signed document for envelope ID: %s", envelopeID)
-			return err
+			return nil, err
 		}
 
 		log.WithFields(f).Debugf("getting claGroupID: %s", signature.ProjectID)
@@ -1027,7 +1248,7 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 		claGroup, err := s.claGroupService.GetCLAGroup(ctx, signature.ProjectID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to lookup CLA Group by ID: %s", signature.ProjectID)
-			return err
+			return nil, err
 		}
 
 		log.WithFields(f).Debugf("claGroup: %+s found", claGroup.ProjectID)
@@ -1045,7 +1266,7 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 		email := utils.GetBestEmail(claUser)
 		if email == "" {
 			log.WithFields(f).Warnf("unable to find email for user: %+v", claUser)
-			return errors.New("unable to find email for user")
+			return nil, errors.New("unable to find email for user")
 		}
 
 		recipients := []string{utils.GetBestEmail(claUser)}
@@ -1053,7 +1274,7 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 		body, err := emails.RenderDocumentSignedTemplate(s.emailTemplateService, claGroup.Version, signature.ProjectID, claGroup.ProjectExternalID, emailParams)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to render document signed template for project version: %s, project ID: %s", claGroup.Version, claGroup.ProjectID)
-			return err
+			return nil, err
 		}
 
 		// send email to user
@@ -1062,13 +1283,13 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to send email to user: %s", claUser.Username)
-			return err
+			return nil, err
 		}
 
 		log.WithFields(f).Debugf("email sent to user: %s", claUser.Username)
 
 		if claUser.UserID == "" {
-			return fmt.Errorf("user id is empty for user: %s", claUser.Username)
+			return nil, fmt.Errorf("user id is empty for user: %s", claUser.Username)
 		}
 
 		// store document on S3
@@ -1076,7 +1297,7 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 		err = utils.UploadToS3(signedDocument, signature.ProjectID, utils.ClaTypeICLA, claUser.UserID, signature.SignatureID)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warnf("unable to store signed document on S3")
-			return err
+			return nil, err
 		}
 
 		// event data
@@ -1108,11 +1329,11 @@ func (s *service) SignedIndividualCallbackGerrit(ctx context.Context, payload []
 		//			log.WithFields(f).Warnf("user LF username is empty")
 		//		}
 
-	} else {
-		log.WithFields(f).Debugf("envelope not signed - status: %s", status)
+		return signature, nil
 	}
 
-	return nil
+	log.WithFields(f).Debugf("envelope not signed - status: %s", status)
+	return nil, nil
 }
 
 // SignedIndividualCallbackSelfServe handles the DocuSign callback of an individual signature
@@ -1127,30 +1348,38 @@ func (s *service) SignedIndividualCallbackSelfServe(ctx context.Context, payload
 
 	// This callback is reachable without a token, and the shared processing indexes the envelope's
 	// recipient and document statuses - reject a payload missing either before delegating
-	info, err := parseEnvelope(payload)
-	if err != nil {
+	if _, err := parseEnvelope(payload); err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to process the docusign payload")
 		return err
 	}
 
-	if err := s.SignedIndividualCallbackGerrit(ctx, payload, userID); err != nil {
+	signature, err := completeIndividualGerrit(s, ctx, payload, userID)
+	if err != nil {
 		return err
 	}
 
 	// The Gerrit callback leaves the session in place because the Gerrit flow never writes one -
-	// a Self Serve session does, so remove it here once the envelope is complete
-	if info.EnvelopeStatus.RecipientStatuses[0].Status != DocusignCompleted {
+	// a Self Serve session does, so remove it here, but only for a completion that was actually
+	// processed and only for the signer's own session (the route user ID is unauthenticated input)
+	if signature == nil {
+		return nil
+	}
+	if signature.SignatureReferenceID != userID {
+		log.WithFields(f).Warnf("completed signature %s belongs to user %s, not the route user %s - leaving the session in place", signature.SignatureID, signature.SignatureReferenceID, userID)
 		return nil
 	}
 
-	log.WithFields(f).Debugf("removing active signature metadata for user: %s", userID)
-	if err := s.storeRepository.DeleteActiveSignatureMetaData(ctx, fmt.Sprintf("active_signature:%s", userID)); err != nil {
-		log.WithFields(f).WithError(err).Warnf("unable to remove active signature metadata for user: %s", userID)
+	log.WithFields(f).Debugf("removing active signature metadata for user: %s", signature.SignatureReferenceID)
+	if err := s.storeRepository.DeleteActiveSignatureMetaData(ctx, fmt.Sprintf("active_signature:%s", signature.SignatureReferenceID)); err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to remove active signature metadata for user: %s", signature.SignatureReferenceID)
 		return err
 	}
 	return nil
 }
 
+// SignedCorporateCallback handles the DocuSign completion callback for a corporate (CCLA) envelope.
+//
+//nolint:gocyclo // complexity is acceptable for now (31 vs. 30 after the nil corporate-signature guard)
 func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, companyID, projectID string) error {
 	f := logrus.Fields{
 		"functionName":   "sign.SignedCorporateCallback",
@@ -1160,13 +1389,12 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 	}
 
 	log.WithFields(f).Debug("processing signed corporate callback...")
-	var info DocuSignEnvelopeInformation
-
-	err := xml.Unmarshal(payload, &info)
+	parsed, err := parseEnvelope(payload)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to unmarshal xml payload")
 		return err
 	}
+	info := *parsed
 
 	envelopeID := info.EnvelopeStatus.EnvelopeID
 
@@ -1212,6 +1440,10 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 		// 	return errors.New("unable to lookup corporate signatures by company ID - not found")
 		// }
 		// signature = getLatestSignature(signatures)
+		if signature == nil {
+			log.WithFields(f).Warnf("unable to lookup corporate signature by company ID: %s, project ID: %s - not found", companyID, projectID)
+			return errors.New("unable to lookup corporate signature by company ID and project ID - not found")
+		}
 		log.WithFields(f).Debugf("signature: %+v", signature)
 		signatureID = signature.SignatureID
 	} else {
@@ -1228,6 +1460,9 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 	}
 
 	log.WithFields(f).Debugf("signatureID: %s", signatureID)
+	if ignored, guardErr := s.corporateCompletionIgnored(ctx, f, signature.SignatureID, projectID, companyID, envelopeID); guardErr != nil || ignored {
+		return guardErr
+	}
 	var user *v1Models.User
 	if signature.SignatureReferenceType == utils.SignatureReferenceTypeUser {
 		log.WithFields(f).Debugf("looking up user by ID: %s", signature.SignatureReferenceID)
@@ -1272,8 +1507,20 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 			if !wasSanctioned {
 				s.logCompanySanctionedEvent(ctx, companyModel, user, "")
 			}
-			log.WithFields(f).Warnf("company %s requires further review for trade compliance; refusing to finalize corporate CLA in callback", companyID)
-			return fmt.Errorf("company %s requires further review for trade compliance; corporate CLA cannot be finalized", companyID)
+			sanctionedErr := &utils.SanctionedCompanyError{
+				CompanyID:   companyModel.CompanyID,
+				CompanySFID: companyModel.CompanyExternalID,
+				CompanyName: companyModel.CompanyName,
+				Guidance:    utils.CompanySanctionedSigningGuidance,
+			}
+			if sanctionedErr.CompanyID == "" {
+				sanctionedErr.CompanyID = companyID
+			}
+			if sanctionedErr.CompanyName == "" {
+				sanctionedErr.CompanyName = companyID
+			}
+			log.WithFields(f).WithError(sanctionedErr).Warnf("company %s requires further review for trade compliance; refusing to finalize corporate CLA in callback", companyID)
+			return sanctionedErr
 		}
 
 		_, currentTime := utils.CurrentTime()
@@ -1980,6 +2227,7 @@ func (s *service) populateSignURL(ctx context.Context,
 
 	userSignatureName = userDetails.userSignatureName
 	userSignatureEmail = userDetails.userSignatureEmail
+	companyModel = userDetails.company
 
 	log.WithFields(f).Debugf("userSignatureName: %s, userSignatureEmail: %s", userSignatureName, userSignatureEmail)
 
@@ -2299,6 +2547,7 @@ func (s *service) populateSignURL(ctx context.Context,
 type UserSignDetails struct {
 	userSignatureName  string
 	userSignatureEmail string
+	company            *v1Models.Company
 }
 
 func (s *service) populateUserDetails(ctx context.Context, signatureReferenceType string, latestSignature *signatures.ItemSignature, claManagerName, claManagerEmail string, sendAsEmail bool, preferredEmail string) (*UserSignDetails, error) {
@@ -2321,6 +2570,7 @@ func (s *service) populateUserDetails(ctx context.Context, signatureReferenceTyp
 			log.WithFields(f).WithError(err).Warnf("unable to lookup company by ID: %s", latestSignature.SignatureReferenceID)
 			return nil, errors.New("no CLA manager lookup error")
 		}
+		userSignDetails.company = companyModel
 		userSignDetails.userSignatureEmail = claManagerEmail
 		userSignDetails.userSignatureName = claManagerName
 
@@ -2830,6 +3080,15 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 		return nil, errors.New("unable to lookup latest corporate document for project")
 	}
 
+	// 3.5 First CCLA for this organization: create (or adopt) the company row now that the request is valid
+	if comp.CompanyID == "" {
+		if ensureErr := s.ensureSigningCompanyRow(ctx, comp, claUser, lfUsername); ensureErr != nil {
+			return nil, ensureErr
+		}
+		input.CompanyID = comp.CompanyID
+		f["CompanyID"] = input.CompanyID
+	}
+
 	// 4. Check for active corporate signature record for this project/company combination
 	approved := true
 	log.WithFields(f).Debug("requestCorporateSignature...")
@@ -2963,6 +3222,31 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 	}, nil
 }
 
+// test seams for the ACS-backed helpers below
+var (
+	prepareUserForSigningFn = prepareUserForSigning
+	removeSignatoryRoleFn   = removeSignatoryRole
+)
+
+// signatoryRollbackTimeout bounds the grant cleanup, which must outlive a canceled request context
+const signatoryRollbackTimeout = 30 * time.Second
+
+// rollbackSignatoryGrants removes the cla-signatory grants that this failed corporate signature request created
+func rollbackSignatoryGrants(ctx context.Context, f logrus.Fields, authorityEmail, currentUserEmail, companySFID, projectSFID string, authoritySignatoryGranted, directSignatoryGranted bool) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), signatoryRollbackTimeout)
+	defer cancel()
+	if authorityEmail != "" && authoritySignatoryGranted {
+		if removeErr := removeSignatoryRoleFn(ctx, authorityEmail, companySFID, projectSFID); removeErr != nil {
+			log.WithFields(f).WithError(removeErr).Warnf("failed to remove signatory role. companySFID :%s, email :%s error: %+v", companySFID, authorityEmail, removeErr)
+		}
+	}
+	if directSignatoryGranted && currentUserEmail != "" && (!authoritySignatoryGranted || !strings.EqualFold(currentUserEmail, authorityEmail)) {
+		if removeErr := removeSignatoryRoleFn(ctx, currentUserEmail, companySFID, projectSFID); removeErr != nil {
+			log.WithFields(f).WithError(removeErr).Warnf("failed to remove the signatory role granted for this request. companySFID :%s, email :%s error: %+v", companySFID, currentUserEmail, removeErr)
+		}
+	}
+}
+
 func removeSignatoryRole(ctx context.Context, userEmail string, companySFID string, projectSFID string) error {
 	f := logrus.Fields{"functionName": "removeSignatoryRole", "user_email": userEmail, "company_sfid": companySFID, "project_sfid": projectSFID}
 	log.WithFields(f).Debug("removing role for user")
@@ -2986,7 +3270,7 @@ func removeSignatoryRole(ctx context.Context, userEmail string, companySFID stri
 	// Get scope id
 	log.WithFields(f).Debug("getting scope id")
 	orgClient := organizationService.GetClient()
-	scopeID, scopeErr := orgClient.GetScopeID(ctx, companySFID, projectSFID, "cla-signatory", "project|organization", user.Username)
+	scopeID, scopeErr := acsClient.FindUserGrantID(ctx, companySFID, projectSFID, "cla-signatory", user.Username)
 
 	if scopeErr != nil {
 		log.WithFields(f).Debug("Failed to get scope id for cla-signatory role")
@@ -3006,7 +3290,8 @@ func removeSignatoryRole(ctx context.Context, userEmail string, companySFID stri
 
 }
 
-func prepareUserForSigning(ctx context.Context, userEmail string, companySFID, projectSFID, signedEntityName string) error {
+// prepareUserForSigning assigns the cla-signatory role; created is true only when this call made the grant
+func prepareUserForSigning(ctx context.Context, userEmail string, companySFID, projectSFID, signedEntityName string) (created bool, err error) {
 	f := logrus.Fields{
 		"functionName":     "sign.prepareUserForSigning",
 		utils.XREQUESTID:   ctx.Value(utils.XREQUESTID),
@@ -3024,7 +3309,7 @@ func prepareUserForSigning(ctx context.Context, userEmail string, companySFID, p
 	user, err := usc.SearchUsersByEmail(userEmail)
 	if err != nil {
 		log.WithFields(f).WithError(err).Debugf("User with email: %s does not have an LF login", userEmail)
-		return nil
+		return false, nil
 	}
 
 	ac := acsService.GetClient()
@@ -3032,7 +3317,7 @@ func prepareUserForSigning(ctx context.Context, userEmail string, companySFID, p
 	roleID, err := ac.GetRoleID(role)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("getting role_id for %s failed: %v", role, err.Error())
-		return err
+		return false, err
 	}
 	log.WithFields(f).Debugf("fetched role %s, role_id %s", role, roleID)
 	// assign user role of cla signatory for this project
@@ -3053,9 +3338,10 @@ func prepareUserForSigning(ctx context.Context, userEmail string, companySFID, p
 		} else {
 			log.WithFields(f).WithError(err).Warnf("assigning user role of %s failed: %v", role, err)
 		}
+		return false, nil
 	}
 
-	return nil
+	return true, nil
 }
 
 func claSignatoryEmailContent(params ClaSignatoryEmailParams) (string, string) {
@@ -3194,6 +3480,43 @@ func (s *service) GetUserActiveSignature(ctx context.Context, userID string) (*m
 
 // checkCompanyCompliance queries the Sanctions Screening Service for the given company
 // and persists the result. Returns (sanctioned, error).
+// ensureSigningCompanyRow creates (or adopts) the company row for a transient signing company and
+// copies it into comp; an adopted row that is sanctioned stops the request (#2751)
+func (s *service) ensureSigningCompanyRow(ctx context.Context, comp *v1Models.Company, claUser *v1Models.User, lfUsername string) error {
+	f := logrus.Fields{
+		"functionName":      "sign.ensureSigningCompanyRow",
+		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
+		"companySFID":       comp.CompanyExternalID,
+		"signingEntityName": comp.SigningEntityName,
+	}
+	ensured, created, err := s.companyRepo.EnsureCompanyForExternalID(ctx, comp.CompanyExternalID, comp.CompanyName, comp.SigningEntityName)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to create the company record for the signing organization")
+		return err
+	}
+	if !created {
+		// a row appeared since the request was resolved - its stored compliance state decides
+		wasSanctioned := ensured.IsSanctioned
+		sanctioned, sanctionErr := s.checkCompanyCompliance(ctx, ensured)
+		if sanctionErr != nil {
+			return sanctionErr
+		}
+		if sanctioned {
+			if !wasSanctioned {
+				s.logCompanySanctionedEvent(ctx, ensured, claUser, lfUsername)
+			}
+			return &utils.SanctionedCompanyError{
+				CompanyID:   ensured.CompanyID,
+				CompanySFID: ensured.CompanyExternalID,
+				CompanyName: ensured.CompanyName,
+				Guidance:    utils.CompanySanctionedSigningGuidance,
+			}
+		}
+	}
+	*comp = *ensured
+	return nil
+}
+
 func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.Company) (bool, error) {
 	sssMode := "optional"
 	if s.sssRequired {
@@ -3304,7 +3627,10 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 	// Persist result and reflect it on the in-memory model so downstream gates in this
 	// same request (e.g. ProcessEmployeeSignature) see the just-updated state instead of
 	// the stale value loaded before this check ran.
-	if sanctioned {
+	if company.CompanyID == "" {
+		// transient company (no row yet): nothing to persist, the decision lives on the model and in the cache
+		s.applyComplianceToModel(company, sanctioned)
+	} else if sanctioned {
 		log.WithFields(f).Warnf("SSS returned flagged status for company %s, persisting sanction with origin=sss", company.CompanyID)
 		if persistErr := s.companyRepo.UpdateCompanySanctionStatus(ctx, company.CompanyID, true, sanctionOriginSSS); persistErr != nil {
 			log.WithFields(f).WithError(persistErr).Warnf("failed to persist sanction status for company %s", company.CompanyID)

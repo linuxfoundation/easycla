@@ -53,7 +53,7 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				}
 				config := config.GetConfig()
 
-				log.WithFields(f).Debugf("Loading session : %+v", session)
+				log.WithFields(f).Debugf("Loaded session with %d values", len(session.Values))
 
 				log.WithFields(f).Debug("Initiating sign request..")
 
@@ -73,13 +73,14 @@ func Configure(api *operations.EasyclaAPI, service Service, eventService events.
 				gitlabAuthToken, ok := session.Values["gitlab_oauth2_token"].(string)
 				if ok {
 					session.Save(srp.HTTPRequest, rw)
-					log.WithFields(f).Debugf("using existing Gitlab Ouath2 Token: %s ", gitlabAuthToken)
+					log.WithFields(f).Debug("using the existing GitLab OAuth2 token from the session")
 					gitlabClient, err := gitlabApi.NewGitlabOauthClientFromAccessToken(gitlabAuthToken)
 
 					if err != nil {
-						msg := fmt.Sprintf("problem creating gitlab client with token : %s ", gitlabAuthToken)
-						log.WithFields(f).Debug(msg)
+						msg := "problem creating gitlab client with the session token"
+						log.WithFields(f).WithError(err).Warn(msg)
 						http.Error(rw, msg, http.StatusInternalServerError)
+						return
 					}
 
 					log.WithFields(f).Debugf("Initiating Gitlab sign request for : %+v ", srp)

@@ -13,6 +13,7 @@ GITLAB_REPO_CHECK_BIN = gitlab-repository-check-lambda
 FUNCTIONAL_TESTS_BIN = functional-tests
 USER_SUBSCRIBE_BIN = user-subscribe-lambda
 REPOSITORY_UPDATE_BIN = repository-update-tool
+ORG_IMPORT_BIN = org-import
 MAKEFILE_DIR:=$(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 GOPRIVATE=github.com/LF-Engineering/*
 BUILD_TIME=$(shell sh -c 'date -u +%FT%T%z')
@@ -35,6 +36,8 @@ ifeq "$(shell uname -s)" "Linux"
 endif
 
 LINT_TOOL=$(shell go env GOPATH)/bin/golangci-lint
+# extra golangci-lint flags, e.g. LINT_ARGS="--concurrency 4" on shared/low-memory machines
+LINT_ARGS ?=
 # LINT_VERSION=v1.51.2
 LINT_VERSION=v1.64.8
 SWAGGER_DIR=$(ROOT_DIR)/swagger
@@ -328,6 +331,17 @@ build-gitlab-repository-check-lambda-mac: deps build-prep
 	env CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(GITLAB_REPO_CHECK_BIN)-mac cmd/gitlab_repository_check/main.go
 	@chmod +x $(BIN_DIR)/$(GITLAB_REPO_CHECK_BIN)-mac
 
+build-org-import: build-org-import-linux
+build-org-import-linux: deps build-prep
+	@echo "==> Building the org import tool (Linux amd64)..."
+	env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN_DIR)/$(ORG_IMPORT_BIN) cmd/org_import/main.go
+	@chmod +x $(BIN_DIR)/$(ORG_IMPORT_BIN)
+
+build-org-import-mac: deps build-prep
+	@echo "==> Building the org import tool (Mac OSX)..."
+	env CGO_ENABLED=0 GOOS=darwin GOARCH=$(BUILD_ARCH) go build $(LDFLAGS) -o $(BIN_DIR)/$(ORG_IMPORT_BIN)-mac cmd/org_import/main.go
+	@chmod +x $(BIN_DIR)/$(ORG_IMPORT_BIN)-mac
+
 build-functional-tests: build-functional-tests-linux
 build-functional-tests-linux: deps build-prep
 	@echo "==> Building Functional Tests for Linux amd64 binary..."
@@ -351,5 +365,5 @@ build-repository-update-mac: deps build-prep
 	@chmod +x $(BIN_DIR)/$(REPOSITORY_UPDATE_BIN)-mac
 
 lint:
-	@cd $(MAKEFILE_DIR) && $(LINT_TOOL) version && echo "==> Running lint..." && $(LINT_TOOL) run --timeout 30m --exclude="this method will not auto-escape HTML. Verify data is well formed" --allow-parallel-runners --config=.golangci.yaml ./... && echo "==> Lint check passed."
+	@cd $(MAKEFILE_DIR) && $(LINT_TOOL) version && echo "==> Running lint..." && $(LINT_TOOL) run --timeout 30m --exclude="this method will not auto-escape HTML. Verify data is well formed" --allow-parallel-runners --config=.golangci.yaml $(LINT_ARGS) ./... && echo "==> Lint check passed."
 	@cd $(MAKEFILE_DIR) && ./check-headers.sh

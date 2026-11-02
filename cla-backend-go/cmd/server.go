@@ -327,6 +327,9 @@ func server(localMode bool) http.Handler {
 	}
 
 	configFile := ini.GetConfig()
+	if configFile.SSS.ReadError != "" {
+		log.WithFields(f).Fatalf("SSS configuration unreadable: %s", configFile.SSS.ReadError)
+	}
 
 	swaggerSpec, err := loads.Analyzed(restapi.SwaggerJSON, "")
 	if err != nil {
@@ -438,6 +441,7 @@ func server(localMode bool) http.Handler {
 	v2RepositoriesService := v2Repositories.NewService(gitV1Repository, gitV2Repository, v1ProjectClaGroupRepo, githubOrganizationsRepo, gitlabOrganizationRepo, eventsService)
 	githubOrganizationsService := github_organizations.NewService(githubOrganizationsRepo, gitV1Repository, v1ProjectClaGroupRepo)
 	gitlabOrganizationsService := gitlab_organizations.NewService(gitlabOrganizationRepo, v2RepositoriesService, v1ProjectClaGroupRepo, storeRepository, usersService, signaturesRepo, v1CompanyRepo)
+	signatures.SetGitLabGroupMembersResolver(gitlab_organizations.GroupMemberUsernames(gitlabOrganizationsService))
 	v1SignaturesService := signatures.NewService(signaturesRepo, v1CompanyService, usersService, eventsService, githubOrgValidation, v1RepositoriesService, githubOrganizationsService, v1ProjectService, gitlabApp, configFile.ClaV1ApiURL, configFile.CLALandingPage, configFile.CLALogoURL)
 	v2SignatureService := v2Signatures.NewService(awsSession, configFile.SignatureFilesBucket, v1ProjectService, v1CompanyService, v1SignaturesService, v1ProjectClaGroupRepo, signaturesRepo, usersService, approvalsRepo)
 	// Initialize SSS (Sanctions Screening Service) client if configured.
@@ -459,7 +463,7 @@ func server(localMode bool) http.Handler {
 
 	v2ClaSearchService := v2ClaSearch.NewService(v2ClaSearch.NewRepository(awsSession, stage))
 	v2MyClasService := v2MyClas.NewService(v2MyClas.NewRepository(awsSession, stage), user_service.GetClient(), v2MyClas.NewAuth0IdentityService(configFile.Auth0Platform.URL, configFile.Auth0Platform.ClientID, configFile.Auth0Platform.ClientSecret), v1SignaturesService, v1CompanyRepo, v1ProjectClaGroupRepo, project_service.GetClient(), eventsService, v2MyClas.NewSanctionsScreener(sssClient, sssEnabled, sssRequired))
-	trustedCallerVerifier, err := auth.NewTrustedCallerVerifier(configFile.Auth0.Domain, configFile.Auth0.Algorithm, configFile.SelfServe.TrustedClientIDs)
+	trustedCallerVerifier, err := auth.NewTrustedCallerVerifier(configFile.Auth0.Domain, configFile.Auth0.Algorithm, configFile.SelfServe.TrustedClientIDs, configFile.Auth0Platform.Audience)
 	if err != nil {
 		logrus.Panic(err)
 	}
@@ -508,7 +512,7 @@ func server(localMode bool) http.Handler {
 	version.Configure(api, Version, Commit, Branch, BuildDate)
 	v2Version.Configure(v2API, Version, Commit, Branch, BuildDate)
 	events.Configure(api, eventsService)
-	v2Events.Configure(v2API, eventsService, v1CompanyRepo, v1ProjectClaGroupRepo, v1ProjectService)
+	v2Events.Configure(v2API, eventsService, v1CompanyService, v1ProjectClaGroupRepo, v1ProjectService)
 	v2Metrics.Configure(v2API, v2MetricsService, v1CompanyRepo)
 	github_organizations.Configure(api, githubOrganizationsService, eventsService)
 	v2GithubOrganizations.Configure(v2API, v2GithubOrganizationsService, eventsService)
@@ -521,7 +525,7 @@ func server(localMode bool) http.Handler {
 	v2Gerrits.Configure(v2API, gerritService, v1ProjectService, eventsService, v1ProjectClaGroupRepo)
 	v2Company.Configure(v2API, v2CompanyService, v1ProjectClaGroupRepo, configFile.LFXPortalURL)
 	v2CurrentUser.Configure(v2API, v2CurrentUserService)
-	v2SelfServeSign.Configure(v2API, v2SelfServeSignService)
+	v2SelfServeSign.Configure(v2API, v2SelfServeSignService, trustedCallerVerifier)
 	v2ClaSearch.Configure(v2API, v2ClaSearchService)
 	v2MyClas.Configure(v2API, v2MyClasService, trustedCallerVerifier)
 	cla_manager.Configure(api, v1ClaManagerService, v1CompanyService, v1ProjectService, usersService, v1SignaturesService, eventsService, emailTemplateService)

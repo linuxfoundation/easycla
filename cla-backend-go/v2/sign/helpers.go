@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/github"
@@ -49,9 +50,20 @@ func (s service) updateChangeRequest(ctx context.Context, installationID, reposi
 		ghOrg, ghOrgErr = s.githubOrgService.GetGitHubOrganizationByName(ctx, *githubRepository.Owner.Login)
 		if ghOrgErr != nil {
 			log.WithFields(f).WithError(ghOrgErr).Warnf("unable to lookup GitHub organization by name: %s - unable to update GitHub status", *githubRepository.Owner.Login)
+			return ghOrgErr
 		}
 	}
 
+	// the status may only be posted on a repository enrolled in this CLA group under this installation (lfx-self-serve-ops#347)
+	enrolled, enrolledErr := s.repositoryService.GetRepositoryByExternalID(ctx, strconv.FormatInt(repositoryID, 10))
+	if enrolledErr != nil {
+		log.WithFields(f).WithError(enrolledErr).Warn("unable to load the EasyCLA repository record - no status update")
+		return repositoryLookupError(enrolledErr)
+	}
+	if bindErr := repositoryBoundToCLAGroup(enrolled, ghOrg, repositoryID, installationID, projectID); bindErr != nil {
+		log.WithFields(f).WithError(bindErr).Warn("repository is not bound to the signature's CLA group - no status update")
+		return bindErr
+	}
 	gitHubOrgName := utils.StringValue(githubRepository.Owner.Login)
 	gitHubRepoName := utils.StringValue(githubRepository.Name)
 
@@ -137,7 +149,7 @@ func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID
 		companyAffiliation = true
 
 		// Get employee signature
-		log.WithFields(f).Debugf("ECLA signature check - user has a company: %s - looking for user's employee acknowledgement...", companyID)
+		log.WithFields(f).Debugf("ECLA signature check - user has a company: %s - looking for user's employee acknowledgment...", companyID)
 
 		// Load the company - make sure it is valid
 		companyModel, compModelErr := s.companyService.GetCompany(ctx, companyID)
@@ -151,7 +163,7 @@ func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID
 			return &hasSigned, &companyAffiliation, compModelErr
 		}
 
-		// Check if company is sanctioned before allowing ECLA acknowledgement
+		// Check if company is sanctioned before allowing ECLA acknowledgment
 		wasSanctioned := companyModel.IsSanctioned
 		sanctioned, sanctionErr := s.checkCompanyCompliance(ctx, companyModel)
 		if sanctionErr != nil {
@@ -189,4 +201,38 @@ func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID
 	}
 
 	return &hasSigned, &companyAffiliation, nil
+}
+
+// errRepositoryNotBound marks a callback whose repository or installation does not belong to the signature's CLA group
+var errRepositoryNotBound = errors.New("repository is not bound to the signature's CLA group")
+
+// repositoryLookupError marks a missing repository record as unbound; any other lookup failure is returned as is so the
+// callback is retried
+func repositoryLookupError(err error) error {
+	var notFound *utils.GitHubRepositoryNotFound
+	if errors.As(err, &notFound) {
+		return fmt.Errorf("%w: %v", errRepositoryNotBound, err)
+	}
+	return err
+}
+
+// repositoryBoundToCLAGroup refuses a status update unless the repository is an enabled EasyCLA repository of projectID
+// whose GitHub organization owns installationID (lfx-self-serve-ops#347)
+func repositoryBoundToCLAGroup(repo *models.GithubRepository, ghOrg *models.GithubOrganization, repositoryID, installationID int64, projectID string) error {
+	if repo == nil {
+		return fmt.Errorf("%w: repository %d is not registered in EasyCLA", errRepositoryNotBound, repositoryID)
+	}
+	if !repo.Enabled {
+		return fmt.Errorf("%w: repository %d is disabled", errRepositoryNotBound, repositoryID)
+	}
+	if repo.RepositoryClaGroupID != projectID {
+		return fmt.Errorf("%w: repository %d belongs to CLA group %s, not %s", errRepositoryNotBound, repositoryID, repo.RepositoryClaGroupID, projectID)
+	}
+	if ghOrg == nil {
+		return fmt.Errorf("%w: github organization of repository %d is not registered in EasyCLA", errRepositoryNotBound, repositoryID)
+	}
+	if ghOrg.OrganizationInstallationID != installationID {
+		return fmt.Errorf("%w: installation %d is not the installation of organization %s (%d)", errRepositoryNotBound, installationID, ghOrg.OrganizationName, ghOrg.OrganizationInstallationID)
+	}
+	return nil
 }

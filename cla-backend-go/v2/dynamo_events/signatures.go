@@ -13,6 +13,7 @@ import (
 	acs_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
 	organization_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
 	user_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
+	userModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/models"
 	"github.com/sirupsen/logrus"
 	"golang.org/x/sync/errgroup"
 
@@ -292,6 +293,12 @@ func (s *service) SignatureAddSigTypeSignedApprovedID(event events.DynamoDBEvent
 		if err != nil {
 			return err
 		}
+	case newSig.SignatureType == ECLASignatureType && newSig.SignatureUserCompanyID != "":
+		// auto-created employee acknowledgment (approval-list auto_create_ecla flow -
+		// signatures/repository.go CreateProjectCompanyEmployeeSignature); same GSI value
+		// shape as the DocuSign employee-ecla case above (ecla#signed#approved#companyID)
+		sigType = ECLASignatureType
+		id = newSig.SignatureUserCompanyID
 	default:
 		log.WithFields(f).Warnf("setting sigtype_signed_approved_id for signature: %s failed", newSig.SignatureID)
 		return errors.New("invalid signature in SignatureAddSigTypeSignedApprovedID")
@@ -330,6 +337,11 @@ func (s *service) SignatureAddUsersDetails(event events.DynamoDBEventRecord) err
 }
 
 // signature function should be invoked when signature ACL is updated
+// claManagerPermissionUpdater applies one ACL entry (test seam); each entry gets only its own add or delete (lfx-self-serve-ops#346)
+var claManagerPermissionUpdater = func(s *service, signature Signature, managers []string, action string) error {
+	return s.updateCLAManagerPermissions(signature, managers, action)
+}
+
 func (s *service) UpdateCLAPermissions(event events.DynamoDBEventRecord) error {
 	f := logrus.Fields{
 		"functionName": "v2.dynamo_events.UpdateCLAPermissions",
@@ -358,32 +370,32 @@ func (s *service) UpdateCLAPermissions(event events.DynamoDBEventRecord) error {
 
 	log.WithFields(f).Debug("processing signature ACL to identify added/removed managers...")
 	managers := utils.SliceDifference(oldSignature.SignatureACL, newSignature.SignatureACL)
-	if len(managers) > 0 {
-		log.WithFields(f).Debugf("managers to be added/deleted : %+v", managers)
-		for _, entry := range managers {
-			log.WithFields(f).Debugf("processing difference: %s", entry)
-			if utils.StringInSlice(entry, newSignature.SignatureACL) {
-				// Assign CLA Manager role
-				log.WithFields(f).Debugf("Assigning user %s to the %s role", entry, utils.CLAManagerRole)
-				updateErr := s.updateCLAManagerPermissions(newSignature, managers, AddCLAManager)
-				if updateErr != nil {
-					log.WithFields(f).WithError(updateErr).Warn("problem assigning CLA Manager role")
-					return updateErr
-				}
-			} else {
-				// Remove CLA Manager role
-				log.WithFields(f).Debugf("Unassigning user %s from the %s role", entry, utils.CLAManagerRole)
-				updateErr := s.updateCLAManagerPermissions(newSignature, managers, DeleteCLAManager)
-				if updateErr != nil {
-					log.WithFields(f).WithError(updateErr).Warn("problem removing CLA Manager role")
-					return updateErr
-				}
+	if len(managers) == 0 {
+		log.WithFields(f).Debugf("No changes in ACL : %+v versus %+v", oldSignature.SignatureACL, newSignature.SignatureACL)
+		return nil
+	}
+	log.WithFields(f).Debugf("managers to be added/deleted : %+v", managers)
+	// every entry is attempted; a failing one must not leave the later ones unprocessed
+	var errs []error
+	for _, entry := range managers {
+		log.WithFields(f).Debugf("processing difference: %s", entry)
+		if utils.StringInSlice(entry, newSignature.SignatureACL) {
+			// Assign CLA Manager role
+			log.WithFields(f).Debugf("Assigning user %s to the %s role", entry, utils.CLAManagerRole)
+			if updateErr := claManagerPermissionUpdater(s, newSignature, []string{entry}, AddCLAManager); updateErr != nil {
+				log.WithFields(f).WithError(updateErr).Warn("problem assigning CLA Manager role")
+				errs = append(errs, updateErr)
+			}
+		} else {
+			// Remove CLA Manager role
+			log.WithFields(f).Debugf("Unassigning user %s from the %s role", entry, utils.CLAManagerRole)
+			if updateErr := claManagerPermissionUpdater(s, newSignature, []string{entry}, DeleteCLAManager); updateErr != nil {
+				log.WithFields(f).WithError(updateErr).Warn("problem removing CLA Manager role")
+				errs = append(errs, updateErr)
 			}
 		}
-	} else {
-		log.WithFields(f).Debugf("No changes in ACL : %+v versus %+v", oldSignature.SignatureACL, newSignature.SignatureACL)
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func (s *service) assignContributor(ctx context.Context, newSignature Signature, f logrus.Fields) error {
@@ -437,12 +449,52 @@ func (s *service) assignContributor(ctx context.Context, newSignature Signature,
 				newSignature.SignatureProjectID)
 			return nil
 		}
+		if newSignature.UserEmail == "" {
+			log.WithFields(f).Debugf("no user e-mail on the signature - skipping the contributor association for company: %s", companyModel.CompanyExternalID)
+			return nil
+		}
 		_, _, err = s.companyService.AssociateContributorByGroup(ctx, companyModel.CompanyExternalID, newSignature.UserEmail, projectCLAGroups, newSignature.SignatureProjectID)
 
 		if err != nil {
 			log.WithFields(f).Errorf("unable to create contributor association for user: %s and company: %s ", newSignature.UserEmail, companyModel.CompanyExternalID)
 		}
 		return nil
+	}
+	return nil
+}
+
+// managerUser resolves a CLA manager's LFX user and its first e-mail address; a lookup failure or a user
+// without an e-mail is an error so the ACL change is reported, not silently skipped
+func managerUser(f logrus.Fields, userClient *user_service.Client, mgr string) (*userModels.User, *string, error) {
+	lfUser, userErr := userClient.GetUserByUsername(mgr)
+	if userErr != nil {
+		log.WithFields(f).WithError(userErr).Warnf("Failed to get salesforce user for user: %s", mgr)
+		return nil, nil, userErr
+	}
+	if lfUser != nil {
+		for _, e := range lfUser.Emails {
+			if e != nil && e.EmailAddress != nil && *e.EmailAddress != "" {
+				return lfUser, e.EmailAddress, nil
+			}
+		}
+	}
+	msg := fmt.Sprintf("no LFX user with an email address found for user: %s", mgr)
+	log.WithFields(f).Warn(msg)
+	return nil, nil, errors.New(msg)
+}
+
+// deleteFoundationCLAManager revokes mgr's foundation-level cla-manager grant; the grant id is read fresh from ACS and a
+// missing grant is reported instead of deleting with an empty id (lfx-self-serve#3515)
+func deleteFoundationCLAManager(ctx context.Context, f logrus.Fields, orgSFID, foundationSFID, roleID, mgr string, email *string) error {
+	scopeID, scopeErr := acs_service.GetClient().FindUserGrantID(ctx, orgSFID, foundationSFID, utils.CLAManagerRole, mgr)
+	if scopeErr != nil {
+		log.WithFields(f).WithError(scopeErr).Warnf("failed to get scopeID for foundation: %s , organization: %s, manager: %s and role: %s ", foundationSFID, orgSFID, mgr, utils.CLAManagerRole)
+		return scopeErr
+	}
+	deleteErr := organization_service.GetClient().DeleteOrgUserRoleOrgScopeProjectOrg(ctx, orgSFID, roleID, scopeID, &mgr, email)
+	if deleteErr != nil {
+		log.WithFields(f).WithError(deleteErr).Warnf("Failed to remove CLA Manager from user: %s ", mgr)
+		return deleteErr
 	}
 	return nil
 }
@@ -518,26 +570,18 @@ func (s *service) updateCLAManagerPermissions(signature Signature, managers []st
 	for i := range managers {
 		// Get User
 		mgr := managers[i]
-		lfUser, userErr := userClient.GetUserByUsername(mgr)
+		lfUser, email, userErr := managerUser(f, userClient, mgr)
 		if userErr != nil {
-			log.WithFields(f).WithError(userErr).Warnf("Failed to get salesforce user for user: %s", mgr)
-			continue
+			return userErr
 		}
-		// Get User email
-		email := lfUser.Emails[0].EmailAddress
 		if signedAtFoundation {
-			scopeID, scopeErr := orgClient.GetScopeID(ctx, org.ID, foundationSFID, utils.CLAManagerRole, utils.ProjectOrgScope, mgr)
-			if scopeErr != nil {
-				log.WithFields(f).WithError(scopeErr).Warnf("failed to get scopeID for foundation: %s , organization: %s, manager: %s and role: %s ", foundationSFID, org.Name, mgr, utils.CLAManagerRole)
-				continue
-			}
 			if action == AddCLAManager {
 				log.WithFields(f).Debugf("Adding CLA Manager permissions...")
 
 				hasScope, scopeErr := orgClient.IsUserHaveRoleScope(ctx, utils.CLAManagerRole, lfUser.ID, org.ID, foundationSFID)
 				if scopeErr != nil {
 					log.WithFields(f).WithError(scopeErr).Warnf("Failed to get scope for role: %s , user:%s , foundation: %s and org: %s ", utils.CLAManagerRole, lfUser.ID, foundationSFID, org.ID)
-					continue
+					return scopeErr
 				}
 				if hasScope {
 					log.WithFields(f).Warnf("User: %s already has scope ", mgr)
@@ -546,14 +590,12 @@ func (s *service) updateCLAManagerPermissions(signature Signature, managers []st
 				createErr := orgClient.CreateOrgUserRoleOrgScopeProjectOrg(ctx, *email, foundationSFID, org.ID, roleID)
 				if createErr != nil {
 					log.WithFields(f).WithError(createErr).Warnf("failed to create CLA Manager role for user: %s ", *email)
-					return scopeErr
+					return createErr
 				}
 
 			} else if action == DeleteCLAManager {
 				log.WithFields(f).Debugf("Deleting CLA Manager permissions...")
-				deleteErr := orgClient.DeleteOrgUserRoleOrgScopeProjectOrg(ctx, org.ID, roleID, scopeID, &mgr, email)
-				if deleteErr != nil {
-					log.WithFields(f).WithError(deleteErr).Warn("Failed to remove CLA Manager from user: &s ", mgr)
+				if deleteErr := deleteFoundationCLAManager(ctx, f, org.ID, foundationSFID, roleID, mgr, email); deleteErr != nil {
 					return deleteErr
 				}
 			}
@@ -581,17 +623,22 @@ func (s *service) updateCLAManagerPermissions(signature Signature, managers []st
 				log.WithFields(f).Debugf("waiting for create role assignment to complete for %d projects...", len(projectSFIDList.List()))
 				if loadErr := eg.Wait(); loadErr != nil {
 					log.WithFields(f).Warn(loadErr)
-					continue
+					return loadErr
 				}
 			} else if action == DeleteCLAManager {
 				log.WithFields(f).Debugf("Deleting CLA Manager permissions...")
+				grants, grantsErr := acsClient.ListOrgGrants(ctx, org.ID)
+				if grantsErr != nil {
+					log.WithFields(f).WithError(grantsErr).Warnf("failed to list ACS grants for organization: %s - nothing revoked for manager: %s", org.ID, mgr)
+					return grantsErr
+				}
 				var eg errgroup.Group
 				// remove user as cla-manager for all projects of cla-group
 				for _, projectSfid := range projectSFIDList.List() {
 					// ensure that following goroutine gets a copy of projectSFID
 					projectSFID := projectSfid
 					eg.Go(func() error {
-						scopeID, scopeErr := orgClient.GetScopeID(ctx, org.ID, projectSFID, utils.CLAManagerRole, utils.ProjectOrgScope, mgr)
+						scopeID, scopeErr := acs_service.GrantIDFor(grants, projectSFID+"|"+org.ID, utils.CLAManagerRole, mgr)
 						if scopeErr != nil {
 							log.WithFields(f).Warn(scopeErr)
 							return scopeErr
@@ -609,7 +656,7 @@ func (s *service) updateCLAManagerPermissions(signature Signature, managers []st
 				log.WithFields(f).Debugf("waiting for delete role assignment to complete for %d projects...", len(projectSFIDList.List()))
 				if loadErr := eg.Wait(); loadErr != nil {
 					log.WithFields(f).Warn(loadErr)
-					continue
+					return loadErr
 				}
 			}
 		}

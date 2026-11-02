@@ -310,11 +310,13 @@ func TestService_InvalidateICLA(t *testing.T) {
 
 	mockProjectService := mock_project.NewMockService(ctrl)
 	mockProjectService.EXPECT().GetCLAGroupByID(ctx, "cla-group-1").
-		Return(&v1Models.ClaGroup{ProjectName: "My Project", Version: "v2"}, nil)
+		Return(&v1Models.ClaGroup{ProjectID: "cla-group-1", ProjectName: "My Project", Version: "v2"}, nil)
 
 	mockUserService := mock_users.NewMockService(ctrl)
-	mockUserService.EXPECT().GetUser("user-1").
-		Return(&v1Models.User{UserID: "user-1", LfUsername: "contributor", Username: "Contributor"}, nil)
+	contributor := &v1Models.User{UserID: "user-1", LfUsername: "contributor", Username: "Contributor", GithubID: "12345", GithubUsername: "Contributor-GH"}
+	mockUserService.EXPECT().GetUser("user-1").Return(contributor, nil)
+
+	cachedKey := seedCachedPRCheckDecision(t, contributor, "12345", "contributor-gh", "contributor@example.com")
 
 	mockRepo := mock_v1_signatures.NewMockSignatureRepository(ctrl)
 	var gotNote string
@@ -342,6 +344,7 @@ func TestService_InvalidateICLA(t *testing.T) {
 	input := &models.IclaInvalidationInput{Reason: "compliance", Note: "per legal\r\nreview\x07"}
 	err = service.InvalidateICLA(ctx, "cla-group-1", "user-1", &auth.User{UserName: "admin-user"}, mockEvents, eventArgs, input)
 	assert.Nil(t, err)
+	assert.False(t, cachedPRCheckDecisionExists(cachedKey), "the contributor's cached PR-check decision is evicted")
 
 	assert.Contains(t, gotNote, "Signature invalidated (approved set to false) by admin-user for Contributor")
 	if assert.NotNil(t, gotMetadata) {

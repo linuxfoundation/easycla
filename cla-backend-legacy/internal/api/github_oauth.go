@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/legacy/github"
+	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/middleware"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/respond"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/store"
@@ -164,6 +165,13 @@ func sessionGetMap(s middleware.Session, key string) map[string]any {
 	return nil
 }
 
+// isEnterpriseManagedLogin reports whether a github.com login belongs to an Enterprise Managed User. Public
+// logins may only contain alphanumerics and single hyphens; an underscore occurs only in EMU logins
+// (`<handle>_<enterprise shortcode>`), and EMU accounts cannot contribute to public repositories (easycla#5165).
+func isEnterpriseManagedLogin(login string) bool {
+	return strings.Contains(login, "_")
+}
+
 func uniqueLowerEmails(emails []string) []string {
 	seen := make(map[string]struct{}, len(emails))
 	out := make([]string, 0, len(emails))
@@ -220,6 +228,24 @@ func (h *Handlers) githubGetOrCreateUser(ctx context.Context, sess middleware.Se
 		return nil, &httpErr{status: http.StatusBadRequest, payload: map[string]any{"errors": "GitHub OAuth error, please try again.", "details": "missing github user id"}, err: errors.New("missing github user id")}
 	}
 
+	githubLogin, _ := userData["login"].(string)
+	githubLogin = strings.TrimSpace(githubLogin)
+	if isEnterpriseManagedLogin(githubLogin) {
+		// easycla#5165: an Enterprise Managed User can never author a public pull request, so a CLA bound to that
+		// account would never authorize anything. Reject before any lookup or write, and drop the OAuth token so the
+		// next click on the sign link restarts the GitHub authorization (githubSignRequest short-circuits to the
+		// console whenever a token is already in the session) instead of binding this account again.
+		sessionDel(sess, "github_oauth2_state")
+		sessionDel(sess, "github_oauth2_token")
+		logging.Warnf("github oauth: rejected GitHub Enterprise Managed User login %q (easycla#5165)", githubLogin)
+		return nil, &httpErr{status: http.StatusForbidden, payload: map[string]any{
+			"errors": "GitHub Enterprise Managed User accounts cannot sign EasyCLA CLAs",
+			"details": "The GitHub account '" + githubLogin + "' is an Enterprise Managed User account (its login contains '_'). " +
+				"Such accounts cannot contribute to public GitHub repositories, so a CLA signed with it would never authorize your pull request. " +
+				"Sign out of GitHub, sign in with the public github.com account that authored the pull request and open the sign link again.",
+		}, err: errors.New("github enterprise managed user login rejected")}
+	}
+
 	emails, err := h.github.GetOAuthVerifiedEmails(ctx, tokMap)
 	if err != nil {
 		return nil, &httpErr{status: http.StatusBadGateway, payload: map[string]any{"errors": "Unable to retrieve GitHub emails", "details": err.Error()}, err: err}
@@ -262,9 +288,7 @@ func (h *Handlers) githubGetOrCreateUser(ctx context.Context, sess middleware.Se
 		}
 	}
 
-	githubLogin, _ := userData["login"].(string)
 	githubName, _ := userData["name"].(string)
-	githubLogin = strings.TrimSpace(githubLogin)
 	githubName = strings.TrimSpace(githubName)
 
 	now := time.Now().UTC()

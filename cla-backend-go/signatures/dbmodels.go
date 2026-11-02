@@ -3,6 +3,21 @@
 
 package signatures
 
+import (
+	"strings"
+
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+)
+
+// ApprovalListRemovalReasonPrefix starts the invalidation_reason recorded by an approval list removal
+const ApprovalListRemovalReasonPrefix = "approved list removal ("
+
+// legacyInvalidationNotePrefix opens every note verifyUserApprovals has written since 2021
+const legacyInvalidationNotePrefix = "Signature invalidated (approved set to false) by "
+
+var approvalListRemovalCriteria = []string{utils.EmailDomainCriteria, utils.EmailCriteria, utils.GitHubUsernameCriteria,
+	utils.GitHubOrgCriteria, utils.GitlabUsernameCriteria, utils.GitlabOrgCriteria}
+
 // ItemSignature database model
 type ItemSignature struct {
 	SignatureID                   string   `json:"signature_id"` // No omitempty, always included
@@ -67,6 +82,41 @@ type ItemSignature struct {
 	Note                    string `json:"note,omitempty"`
 	Version                 string `json:"version,omitempty"`
 	ApproxDateCreated       string `json:"approx_date_created,omitempty"`
+}
+
+// InvalidatedByApprovalListRemoval reports whether the approval was revoked by an approval list removal: the reason
+// prefix, or on records predating the attribution attributes the exact note verifyUserApprovals writes
+// ("Signature invalidated (approved set to false) by <manager> due to <criteria>  removal")
+func (s *ItemSignature) InvalidatedByApprovalListRemoval() bool {
+	if s == nil || s.SignatureApproved {
+		return false
+	}
+	if s.InvalidationReason != "" {
+		return strings.HasPrefix(s.InvalidationReason, ApprovalListRemovalReasonPrefix)
+	}
+	return approvalListRemovalNote(s.Note)
+}
+
+// InvalidatedOnlyByApprovalListRemoval reports whether an approval list removal is the only invalidation evidence on
+// the record: a later invalidation recorded with first-write-wins attribution keeps the removal reason but replaces
+// the note, and such a record must not be treated as removal-only
+func (s *ItemSignature) InvalidatedOnlyByApprovalListRemoval() bool {
+	return s.InvalidatedByApprovalListRemoval() && s.InvalidationNote == "" &&
+		(strings.TrimSpace(s.Note) == "" || approvalListRemovalNote(s.Note))
+}
+
+// approvalListRemovalNote reports whether the note is the one verifyUserApprovals writes
+func approvalListRemovalNote(note string) bool {
+	note = strings.Join(strings.Fields(note), " ")
+	if !strings.HasPrefix(note, legacyInvalidationNotePrefix) {
+		return false
+	}
+	for _, criteria := range approvalListRemovalCriteria {
+		if strings.HasSuffix(note, " due to "+criteria+" removal") {
+			return true
+		}
+	}
+	return false
 }
 
 // DBManagersModel is a database model for only the ACL/Manager column

@@ -115,7 +115,7 @@ func Configure(api *operations.ClaAPI, clientID, clientSecret, accessToken strin
 					return
 				}
 
-				log.WithFields(f).Debugf("GH Login Handler loaded the http session (%s): %v", session.Name(), session)
+				log.WithFields(f).Debugf("GH Login Handler loaded the http session (%s) with %d values", session.Name(), len(session.Values))
 
 				// Store the callback url so we can redirect back to it once logged in.
 				session.Values["callback"] = params.Callback
@@ -138,7 +138,7 @@ func Configure(api *operations.ClaAPI, clientID, clientSecret, accessToken strin
 					return
 				}
 
-				log.Debugf("GH Login handler saved the http session: %v", session)
+				log.Debugf("GH Login handler saved the http session (%s)", session.Name())
 				log.Debugf("redirecting flow to %s", oauthConfig.AuthCodeURL(state.String()))
 				http.Redirect(w, params.HTTPRequest, oauthConfig.AuthCodeURL(state.String()), http.StatusFound)
 			})

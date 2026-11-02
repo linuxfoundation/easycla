@@ -53,6 +53,16 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 			})
 		}
 
+		// The access request is filed in the caller's own name - the body must not name another LFID
+		if params.Body.UserLFID != claUser.LFUsername {
+			msg := fmt.Sprintf("EasyCLA - 403 Forbidden - user %s is not authorized to create a CLA Manager request for %s", claUser.LFUsername, params.Body.UserLFID)
+			log.Warn(msg)
+			return cla_manager.NewCreateCLAManagerRequestForbidden().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
+				Message: msg,
+				Code:    "403",
+			})
+		}
+
 		companyModel, companyErr := companyService.GetCompany(ctx, params.CompanyID)
 		if companyErr != nil || companyModel == nil {
 			msg := buildErrorMessage("company lookup error", params, companyErr)
@@ -101,7 +111,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 			NextKey:     nil,
 			PageSize:    aws.Int64(5),
 		})
-		if sigErr != nil || sigModels == nil {
+		if sigErr != nil || sigModels == nil || len(sigModels.Signatures) == 0 {
 			msg := buildErrorMessage("signature lookup error", params, sigErr)
 			log.Warn(msg)
 			return cla_manager.NewCreateCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
@@ -304,7 +314,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 			NextKey:     nil,
 			PageSize:    aws.Int64(5),
 		})
-		if sigErr != nil || sigModels == nil {
+		if sigErr != nil || sigModels == nil || len(sigModels.Signatures) == 0 {
 			msg := buildErrorMessageForApprove(params, sigErr)
 			log.WithFields(f).Warn(msg)
 			return cla_manager.NewApproveCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
@@ -431,7 +441,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 			NextKey:     nil,
 			PageSize:    aws.Int64(5),
 		})
-		if sigErr != nil || sigModels == nil {
+		if sigErr != nil || sigModels == nil || len(sigModels.Signatures) == 0 {
 			msg := buildErrorMessageForDeny(params, sigErr)
 			log.WithFields(f).Warn(msg)
 			return cla_manager.NewApproveCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
@@ -565,7 +575,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 			NextKey:     nil,
 			PageSize:    aws.Int64(5),
 		})
-		if sigErr != nil || sigModels == nil {
+		if sigErr != nil || sigModels == nil || len(sigModels.Signatures) == 0 {
 			msg := buildErrorMessageForDelete(params, sigErr)
 			log.WithFields(f).Warn(msg)
 			return cla_manager.NewDeleteCLAManagerRequestBadRequest().WithXRequestID(reqID).WithPayload(
@@ -696,7 +706,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 			NextKey:     nil,
 			PageSize:    aws.Int64(5),
 		})
-		if sigErr != nil || sigModels == nil {
+		if sigErr != nil || sigModels == nil || len(sigModels.Signatures) == 0 {
 			msg := buildErrorMessageAddManager("Add CLA Manager - signature lookup error", params, sigErr)
 			log.Warn(msg)
 			return cla_manager.NewAddCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(
@@ -804,7 +814,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 			NextKey:     nil,
 			PageSize:    aws.Int64(5),
 		})
-		if sigErr != nil || sigModels == nil {
+		if sigErr != nil || sigModels == nil || len(sigModels.Signatures) == 0 {
 			msg := buildErrorMessageDeleteManager("Delete CLA Manager - Signature Lookup Error", params, sigErr)
 			log.Warn(msg)
 			return cla_manager.NewDeleteCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{

@@ -40,7 +40,7 @@ func getSSMString(ssmClient *ssm.SSM, key string) (string, error) {
 }
 
 // loadSSMConfig fetches all the configuration values and populates the response Config model
-func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
+func loadSSMConfig(awsSession *session.Session, stage string) (Config, error) { //nolint
 	f := logrus.Fields{
 		"functionName": "loadSSMConfig",
 		"stage":        stage,
@@ -270,16 +270,20 @@ func loadSSMConfig(awsSession *session.Session, stage string) Config { //nolint
 		}
 	}
 
-	// Sanctions Screening Service (SSS) configuration is loaded leniently - the
-	// keys may not be provisioned in every environment yet, so look them up
-	// best-effort (non-fatal) rather than aborting startup like the keys above.
-	// This is only a rollout convenience: SSS is required by policy in deployed
-	// environments, and the caller must enforce that (see config.SSS).
-	loadOptionalSSSConfig(ssmClient, stage, &config, f)
+	// Missing SSS keys keep the rollout defaults; an unreadable policy must not
+	// be mistaken for an absent one.
+	if err := loadOptionalSSSConfig(ssmClient, stage, &config, f); err != nil {
+		log.WithFields(f).WithError(err).Error("SSS configuration unreadable")
+		config.SSS = SSS{ReadError: err.Error()}
+	}
 
 	loadOptionalSelfServeConfig(ssmClient, stage, &config, f)
 
-	return config
+	config.MemberService.BaseURL = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-member-service-base-url-%s", stage), f)
+	config.MemberService.Audience = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-member-service-auth0-audience-%s", stage), f)
+	loadCLAAdminsFlag(ssmClient, stage, &config, f)
+
+	return config, nil
 }
 
 // loadOptionalSelfServeConfig fetches the comma-separated allow-list of trusted LFX Self Serve
@@ -331,11 +335,50 @@ func parseTrustedClientIDs(value string) []string {
 // are missing, so the SSM parameters can be provisioned before the feature is
 // switched on. A stage that requires SSS must reject an empty configuration at
 // the call site rather than silently skipping the screening check.
-func loadOptionalSSSConfig(ssmClient *ssm.SSM, stage string, config *Config, f logrus.Fields) {
-	config.SSS.BaseURL = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-sss-base-url-%s", stage), f)
-	config.SSS.Audience = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-sss-auth0-audience-%s", stage), f)
-	config.SSS.Required = getOptionalSSMBool(ssmClient, fmt.Sprintf("cla-sss-required-%s", stage), f)
-	config.SSS.Enabled = getOptionalSSMBoolDefault(ssmClient, fmt.Sprintf("cla-sss-enabled-%s", stage), true, f)
+func loadOptionalSSSConfig(ssmClient *ssm.SSM, stage string, config *Config, f logrus.Fields) error {
+	keys := []string{
+		fmt.Sprintf("cla-sss-base-url-%s", stage),
+		fmt.Sprintf("cla-sss-auth0-audience-%s", stage),
+		fmt.Sprintf("cla-sss-required-%s", stage),
+		fmt.Sprintf("cla-sss-enabled-%s", stage),
+	}
+	values := make(map[string]string, len(keys))
+	for _, key := range keys {
+		out, err := ssmClient.GetParameter(&ssm.GetParameterInput{
+			Name:           aws.String(key),
+			WithDecryption: aws.Bool(false),
+		})
+		if err != nil {
+			if isParameterNotFound(err) {
+				log.WithFields(f).Debugf("optional SSM key %s not provisioned", key)
+				continue
+			}
+			return fmt.Errorf("unable to read SSS parameter %s: %w", key, err)
+		}
+		if out == nil || out.Parameter == nil || out.Parameter.Value == nil {
+			return fmt.Errorf("SSM returned an incomplete SSS parameter %s", key)
+		}
+		values[key] = strings.TrimSpace(*out.Parameter.Value)
+	}
+	boolValue := func(key string, fallback bool) bool {
+		value, ok := values[key]
+		if !ok {
+			return fallback
+		}
+		parsed, parseErr := strconv.ParseBool(value)
+		if parseErr != nil {
+			log.WithFields(f).WithError(parseErr).Warnf("unable to parse optional SSM key %s as boolean - using default value %t", key, fallback)
+			return fallback
+		}
+		return parsed
+	}
+	config.SSS = SSS{
+		BaseURL:  values[keys[0]],
+		Audience: values[keys[1]],
+		Required: boolValue(keys[2], false),
+		Enabled:  boolValue(keys[3], true),
+	}
+	return nil
 }
 
 // getOptionalSSMString fetches a parameter that may legitimately be absent while
@@ -343,6 +386,42 @@ func loadOptionalSSSConfig(ssmClient *ssm.SSM, stage string, config *Config, f l
 // reported at debug (an expected, benign state), while any other failure - IAM,
 // throttling, etc. - is reported as a warning with the underlying error so it is
 // not silently misattributed to "not set". Returns "" when the value is unreadable.
+// loadCLAAdminsFlag reads the publisher switch: a missing parameter is off; an unreadable or malformed one is
+// recorded in CLAAdminsFlagError for the publisher paths to refuse, without failing every other binary
+func loadCLAAdminsFlag(ssmClient *ssm.SSM, stage string, config *Config, f logrus.Fields) {
+	enabled, err := getOptionalSSMBool(ssmClient, fmt.Sprintf("cla-member-service-cla-admins-enabled-%s", stage), f)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("CLA-manager publisher flag unreadable - its consumers fail closed")
+		config.MemberService.CLAAdminsFlagError = err.Error()
+	}
+	config.MemberService.CLAAdminsEnabled = enabled
+}
+
+// getOptionalSSMBool reads an optional flag: a missing parameter is false, any other read failure is an error so
+// a worker never starts with the feature silently off
+func getOptionalSSMBool(ssmClient *ssm.SSM, key string, f logrus.Fields) (bool, error) {
+	out, err := ssmClient.GetParameter(&ssm.GetParameterInput{
+		Name:           aws.String(key),
+		WithDecryption: aws.Bool(false),
+	})
+	if err != nil {
+		if isParameterNotFound(err) {
+			log.WithFields(f).Debugf("optional SSM key %s not provisioned - the feature depending on it stays disabled until it is set", key)
+			return false, nil
+		}
+		return false, fmt.Errorf("unable to read optional SSM key %s: %w", key, err)
+	}
+	if out == nil || out.Parameter == nil || out.Parameter.Value == nil {
+		return false, fmt.Errorf("incomplete response for optional SSM key %s", key)
+	}
+	value := strings.ToLower(strings.TrimSpace(*out.Parameter.Value))
+	enabled, parseErr := strconv.ParseBool(value)
+	if parseErr != nil || strconv.FormatBool(enabled) != value {
+		return false, fmt.Errorf("optional SSM key %s must be true or false", key)
+	}
+	return enabled, nil
+}
+
 func getOptionalSSMString(ssmClient *ssm.SSM, key string, f logrus.Fields) string {
 	out, err := ssmClient.GetParameter(&ssm.GetParameterInput{
 		Name:           aws.String(key),
@@ -350,44 +429,12 @@ func getOptionalSSMString(ssmClient *ssm.SSM, key string, f logrus.Fields) strin
 	})
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == ssm.ErrCodeParameterNotFound {
-			log.WithFields(f).Debugf("optional SSM key %s not provisioned - sanctions screening disabled until it is set", key)
+			log.WithFields(f).Debugf("optional SSM key %s not provisioned - the feature depending on it stays disabled until it is set", key)
 		} else {
-			log.WithFields(f).WithError(err).Warnf("unable to read optional SSM key %s - sanctions screening disabled", key)
+			log.WithFields(f).WithError(err).Warnf("unable to read optional SSM key %s - the feature depending on it stays disabled", key)
 		}
 		return ""
 	}
 
 	return strings.TrimSpace(*out.Parameter.Value)
-}
-
-// getOptionalSSMBool fetches an optional boolean parameter, returning false (the default)
-// when the value is unreadable, absent, or malformed.
-func getOptionalSSMBool(ssmClient *ssm.SSM, key string, f logrus.Fields) bool {
-	return getOptionalSSMBoolDefault(ssmClient, key, false, f)
-}
-
-// getOptionalSSMBoolDefault is getOptionalSSMBool with a caller-supplied default for a
-// missing/unreadable parameter - used for cla-sss-enabled, which must default to true so a
-// not-yet-provisioned key never silently disables screening.
-func getOptionalSSMBoolDefault(ssmClient *ssm.SSM, key string, def bool, f logrus.Fields) bool {
-	out, err := ssmClient.GetParameter(&ssm.GetParameterInput{
-		Name:           aws.String(key),
-		WithDecryption: aws.Bool(false),
-	})
-	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok && aerr.Code() == ssm.ErrCodeParameterNotFound {
-			log.WithFields(f).Debugf("optional SSM key %s not provisioned - using default value %t", key, def)
-		} else {
-			log.WithFields(f).WithError(err).Warnf("unable to read optional SSM key %s - using default value %t", key, def)
-		}
-		return def
-	}
-
-	boolVal, err := strconv.ParseBool(strings.TrimSpace(*out.Parameter.Value))
-	if err != nil {
-		log.WithFields(f).WithError(err).Warnf("unable to parse optional SSM key %s as boolean - using default value %t", key, def)
-		return def
-	}
-
-	return boolVal
 }

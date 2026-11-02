@@ -37,7 +37,45 @@ func isValidUser(claUser *user.CLAUser) bool {
 	return claUser != nil && claUser.UserID != "" && claUser.LFUsername != "" && claUser.LFEmail != ""
 }
 
+// hasLFLogin reports whether the authorizer supplied a user with an LF login (needed for project_acl checks)
+func hasLFLogin(claUser *user.CLAUser) bool {
+	return claUser != nil && claUser.LFUsername != ""
+}
+
+// missingLFLoginError is the 401 payload returned when no authenticated LF user is available
+func missingLFLoginError() *models.ErrorResponse {
+	return &models.ErrorResponse{
+		Code:    "401",
+		Message: "EasyCLA - 401 Unauthorized - missing authenticated LF user",
+	}
+}
+
+// claUserInProjectACL reports whether the authenticated user is listed in the CLA group's project_acl (LF usernames)
+func claUserInProjectACL(claUser *user.CLAUser, projectACL []string) bool {
+	if !hasLFLogin(claUser) {
+		return false
+	}
+	for _, lfUsername := range projectACL {
+		if lfUsername == claUser.LFUsername {
+			return true
+		}
+	}
+	return false
+}
+
+// projectACLForbidden builds the 403 payload used when the caller is not a CLA group manager
+func projectACLForbidden(claUser *user.CLAUser, claGroupID, action string) *models.ErrorResponse {
+	msg := fmt.Sprintf("EasyCLA - 403 Forbidden - user %s is not authorized to %s CLA group %s - not in project ACL", claUser.LFUsername, action, claGroupID)
+	log.Warn(msg)
+	return &models.ErrorResponse{
+		Code:    "403",
+		Message: msg,
+	}
+}
+
 // Configure establishes the middleware handlers for the project service
+//
+//nolint:gocyclo // complexity is acceptable for now (project ACL guards on the update/delete handlers)
 func Configure(api *operations.ClaAPI, service service.Service, eventsService events.Service, gerritService gerrits.Service, repositoryService repositories.Service, signatureService signatures.SignatureService) {
 	// Create CLA Group/Project Handler
 	api.ProjectCreateProjectHandler = project.CreateProjectHandlerFunc(func(params project.CreateProjectParams, claUser *user.CLAUser) middleware.Responder {
@@ -177,6 +215,9 @@ func Configure(api *operations.ClaAPI, service service.Service, eventsService ev
 	api.ProjectDeleteProjectByIDHandler = project.DeleteProjectByIDHandlerFunc(func(params project.DeleteProjectByIDParams, claUser *user.CLAUser) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		if !hasLFLogin(claUser) {
+			return project.NewDeleteProjectByIDUnauthorized().WithXRequestID(reqID).WithPayload(missingLFLoginError())
+		}
 		f := logrus.Fields{
 			"functionName":                "ProjectDeleteProjectByIDHandler",
 			utils.XREQUESTID:              ctx.Value(utils.XREQUESTID),
@@ -193,6 +234,14 @@ func Configure(api *operations.ClaAPI, service service.Service, eventsService ev
 				return project.NewDeleteProjectByIDNotFound().WithXRequestID(reqID)
 			}
 			return project.NewDeleteProjectByIDBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(err))
+		}
+		if claGroupModel == nil {
+			return project.NewDeleteProjectByIDNotFound().WithXRequestID(reqID)
+		}
+
+		// Only CLA group managers (project_acl) may delete the CLA group
+		if !claUserInProjectACL(claUser, claGroupModel.ProjectACL) {
+			return project.NewDeleteProjectByIDForbidden().WithXRequestID(reqID).WithPayload(projectACLForbidden(claUser, params.ProjectID, "delete"))
 		}
 
 		// Delete gerrit repositories
@@ -284,6 +333,9 @@ func Configure(api *operations.ClaAPI, service service.Service, eventsService ev
 	api.ProjectUpdateProjectHandler = project.UpdateProjectHandlerFunc(func(projectParams project.UpdateProjectParams, claUser *user.CLAUser) middleware.Responder {
 		reqID := utils.GetRequestID(projectParams.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		if !hasLFLogin(claUser) {
+			return project.NewUpdateProjectUnauthorized().WithXRequestID(reqID).WithPayload(missingLFLoginError())
+		}
 
 		existingModel, getErr := service.GetCLAGroupByID(ctx, projectParams.Body.ProjectID)
 		if getErr != nil {
@@ -308,6 +360,11 @@ func Configure(api *operations.ClaAPI, service service.Service, eventsService ev
 		var oldCLAGroupName, oldCLAGroupDescription string
 		oldCLAGroupName = existingModel.ProjectName
 		oldCLAGroupDescription = existingModel.ProjectDescription
+
+		// Only CLA group managers (project_acl) may update the CLA group
+		if !claUserInProjectACL(claUser, existingModel.ProjectACL) {
+			return project.NewUpdateProjectForbidden().WithXRequestID(reqID).WithPayload(projectACLForbidden(claUser, projectParams.Body.ProjectID, "update"))
+		}
 
 		claGroupModel, err := service.UpdateCLAGroup(ctx, &projectParams.Body)
 		if err != nil {

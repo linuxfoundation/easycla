@@ -1,6 +1,6 @@
 # Milestone 5 — EasyCLA API as a V2 Kubernetes Service; DynamoDB → Postgres Evaluation
 
-**Status**: Draft — **decision milestone**, not committed scope | **Depends on**: M1–M4 (UI-first sequencing confirmed; hybrid-strangler alternative noted below) | **Retires**: Lambda/API-GW deployment (including the legacy `/v1`/`/v2` Go surface, deployed from the same `cla-backend` serverless stack) | **Effort**: XL without DB migration; XXL with
+**Status**: **Not planned** — design option only, not committed scope | **Depends on**: M1–M4 (UI-first sequencing confirmed; hybrid-strangler alternative noted below) | **Retires**: Lambda/API-GW deployment (including the legacy `/v1`/`/v2` Go surface, deployed from the same `cla-backend` serverless stack) | **Effort**: XL without DB migration; XXL with
 **Spec**: [spec.md](spec.md) | **Overview**: [00-overview-fable.md](00-overview-fable.md)
 
 > **Not planned.** The program aims to complete **M1–M3**; M4 and M5 are not scheduled and may never be implemented. This document is a design option retained for reference, not committed scope.

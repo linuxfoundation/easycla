@@ -30,13 +30,13 @@ fi
 if [ -z "${USE_FILE}" ]
 then
   object=$(aws --profile lfproduct-prod dynamodb get-item --table-name cla-prod-${table} --key "{\"${key_column}\": {\"S\": \"${key_value}\"}}" | jq -c .Item)
-  command="aws --profile lfproduct-dev dynamodb put-item --table-name \"cla-dev-${table}\" --item '${object}'"
   if [ ! -z "$DEBUG" ]
   then
     echo "${object}" | jq .
-    echo "${command}"
+    echo "aws --profile lfproduct-dev dynamodb put-item --table-name cla-dev-${table} --item '${object}'"
   fi
-  eval $command
+  # pass the item straight to aws (no eval): a quote inside a prod attribute must never be re-parsed by the shell
+  aws --profile lfproduct-dev dynamodb put-item --table-name "cla-dev-${table}" --item "${object}"
 else
   tmp_file=$(mktemp)
   trap 'rm -f "${tmp_file}"' EXIT

@@ -4,7 +4,7 @@
 type: object
 x-nullable: false
 title: My CLA List
-description: The signed ICLAs and ECLAs matching the provided user identity
+description: The signed ICLAs and employee acknowledgments matching the provided user identity
 properties:
   lfUsername:
     type: string
@@ -35,6 +35,11 @@ properties:
     format: int64
     x-omitempty: false
     description: Number of CLA records returned
+  totalCount:
+    type: integer
+    format: int64
+    x-omitempty: false
+    description: Total number of CLA records before optional pageSize/offset paging was applied
   clas:
     type: array
     x-omitempty: false

@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/project/service"
 
@@ -27,6 +28,7 @@ import (
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	v2Sigs "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/signatures"
+	"github.com/linuxfoundation/easycla/cla-backend-go/github"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
 	"github.com/linuxfoundation/easycla/cla-backend-go/users"
@@ -46,10 +48,10 @@ var (
 	ErrZipNotPresent = errors.New("zip file not present")
 
 	errEclaNotFound           = errors.New("ecla signature not found")
-	errNotEcla                = errors.New("signature is not an employee acknowledgement (ECLA)")
+	errNotEcla                = errors.New("signature is not an employee acknowledgment (ecla)")
 	errEclaWrongClaGroup      = errors.New("ecla does not belong to the specified cla group")
 	errEclaAlreadyInvalidated = errors.New("ecla already invalidated")
-	errEclaForbidden          = errors.New("not authorized for the ecla company and project scope")
+	errEclaForbidden          = errors.New("not authorized to invalidate this employee acknowledgment")
 )
 
 // ServiceInterface contains method of v2 signature service
@@ -145,17 +147,28 @@ func eclaSigCsvLine(sig *v1Models.CorporateContributor) string {
 // GetClaGroupCorporateContributorsCsv returns the CLA Group corporate contributors as a CSV
 func (s *Service) GetClaGroupCorporateContributorsCsv(ctx context.Context, claGroupID string, companyID string) ([]byte, error) {
 	var b bytes.Buffer
-	result, err := s.v1SignatureService.GetClaGroupCorporateContributors(ctx, claGroupID, &companyID, nil, nil, nil)
-	if err != nil {
-		return nil, err
+	var contributors []*v1Models.CorporateContributor
+	var nextKey *string
+	// one page per export: the v1 lookup recounts the whole CLA group on every call
+	batchSize := HugePageSize
+	for {
+		result, err := s.v1SignatureService.GetClaGroupCorporateContributors(ctx, claGroupID, &companyID, &batchSize, nextKey, nil)
+		if err != nil {
+			return nil, err
+		}
+		contributors = append(contributors, result.List...)
+		if result.NextKey == "" || (nextKey != nil && result.NextKey == *nextKey) {
+			break
+		}
+		nextKey = &result.NextKey
 	}
 
-	if len(result.List) == 0 {
+	if len(contributors) == 0 {
 		return nil, errors.New("not Found")
 	}
 
 	b.WriteString(`GitHub ID,LF_ID,Name,Email,Date Signed`)
-	for _, sig := range result.List {
+	for _, sig := range contributors {
 		b.WriteString(eclaSigCsvLine(sig))
 	}
 	return b.Bytes(), nil
@@ -358,6 +371,23 @@ func (s *Service) GetClaGroupCorporateContributors(ctx context.Context, params v
 	return &resp, nil
 }
 
+// evictCachedPRCheckDecisions drops this instance's cached PR-check decisions for the user in the CLA group after an
+// invalidation, so a warm instance does not keep authorizing commits from a positive entry cached before it - the same
+// best-effort, per-instance eviction the approval list removal path performs. Entries are matched by the resolved
+// EasyCLA user they cache (the PR check may have resolved the user by GitHub login or email only, so the key need not
+// carry the GitHub identity stored on the user record) and, when the record carries both, by exact GitHub id + login.
+func evictCachedPRCheckDecisions(f logrus.Fields, projectID string, user *v1Models.User) {
+	if user == nil {
+		return
+	}
+	evicted := github.ModelProjectUserCache.InvalidateByUserID(projectID, user.UserID)
+	githubID, githubLogin := strings.TrimSpace(user.GithubID), strings.TrimSpace(user.GithubUsername)
+	if githubID != "" && githubLogin != "" {
+		evicted += github.ModelProjectUserCache.InvalidateByUser(projectID, githubID, githubLogin)
+	}
+	log.WithFields(f).Infof("evicted %d cached PR-check decisions for user %s (github id %q, login %q) in project %s after invalidation", evicted, user.UserID, githubID, githubLogin, projectID)
+}
+
 // InvalidateICLA invalidates the specified signature record using the supplied parameters -
 // input optionally carries the invalidation reason and note recorded on the record
 func (s *Service) InvalidateICLA(ctx context.Context, claGroupID string, userID string, authUser *auth.User, eventsService events.Service, eventArgs *events.LogEventArgs, input *models.IclaInvalidationInput) error {
@@ -414,6 +444,7 @@ func (s *Service) InvalidateICLA(ctx context.Context, claGroupID string, userID 
 		log.WithFields(f).Debug("unable to invalidate icla record")
 		return err
 	}
+	evictCachedPRCheckDecisions(f, claGroup.ProjectID, user)
 	// send email
 	email := utils.GetBestEmail(user)
 	log.WithFields(f).Debugf("sending invalidation email to : %s ", email)
@@ -450,7 +481,7 @@ func (s *Service) InvalidateICLA(ctx context.Context, claGroupID string, userID 
 	return nil
 }
 
-// InvalidateECLA invalidates the specified employee acknowledgement (ECLA) signature record -
+// InvalidateECLA invalidates the specified employee acknowledgment (ECLA) signature record -
 // input optionally carries the invalidation reason and note recorded on the record
 func (s *Service) InvalidateECLA(ctx context.Context, claGroupID string, signatureID string, authUser *auth.User, eventsService events.Service, eventArgs *events.LogEventArgs, input *models.EclaInvalidationInput) (*models.EclaInvalidateResult, error) {
 	f := logrus.Fields{
@@ -498,8 +529,21 @@ func (s *Service) InvalidateECLA(ctx context.Context, claGroupID string, signatu
 		return nil, errEclaForbidden
 	}
 
+	if cclaErr := s.requireParentCCLAManager(ctx, f, claGroupID, sig.SignatureUserCompanyID, authUser); cclaErr != nil {
+		return nil, cclaErr
+	}
+
+	if sanctionedErr := utils.CheckCompanySanctioned(companyModel); sanctionedErr != nil {
+		log.WithFields(f).Warnf("company %s is sanctioned - rejecting InvalidateECLA", companyModel.CompanyID)
+		return nil, sanctionedErr
+	}
+
+	reinvalidation := false
 	if !sig.SignatureApproved {
-		return nil, errEclaAlreadyInvalidated
+		if !sig.InvalidatedByApprovalListRemoval() {
+			return nil, errEclaAlreadyInvalidated
+		}
+		reinvalidation = true
 	}
 
 	user, userErr := s.usersService.GetUser(sig.SignatureReferenceID)
@@ -514,6 +558,9 @@ func (s *Service) InvalidateECLA(ctx context.Context, claGroupID string, signatu
 	if claGrpErr != nil {
 		return nil, claGrpErr
 	}
+	if claGroup == nil {
+		return nil, fmt.Errorf("cla group not found for claGroupID: %s", claGroupID)
+	}
 
 	log.WithFields(f).Debug("invalidating signature record ...")
 	note := fmt.Sprintf("Signature invalidated (approved set to false) by %s for %s ", authUser.UserName, utils.GetBestUsername(user))
@@ -524,14 +571,26 @@ func (s *Service) InvalidateECLA(ctx context.Context, claGroupID string, signatu
 		metadata.Reason = input.Reason
 		metadata.Note = utils.SanitizePlainText(input.Note)
 	}
-	if err := s.v1SignatureRepo.InvalidateProjectRecordWithMetadata(ctx, sig.SignatureID, note, metadata); err != nil {
-		log.WithFields(f).Debug("unable to invalidate ecla record")
-		return nil, err
+	var invalidateErr error
+	if reinvalidation {
+		log.WithFields(f).Debug("ecla was voided by an approval list removal - recording the deliberate invalidation over it")
+		invalidateErr = s.v1SignatureRepo.ReinvalidateProjectRecordWithMetadata(ctx, sig, note, metadata)
+		if errors.Is(invalidateErr, signatures.ErrSignatureModifiedConcurrently) {
+			log.WithFields(f).Warn("ecla changed concurrently - reporting a conflict")
+			return nil, errEclaAlreadyInvalidated
+		}
+	} else {
+		invalidateErr = s.v1SignatureRepo.InvalidateProjectRecordWithMetadata(ctx, sig.SignatureID, note, metadata)
 	}
+	if invalidateErr != nil {
+		log.WithFields(f).Debug("unable to invalidate ecla record")
+		return nil, invalidateErr
+	}
+	evictCachedPRCheckDecisions(f, claGroup.ProjectID, user)
 
 	email := utils.GetBestEmail(user)
 	log.WithFields(f).Debugf("sending invalidation email to : %s ", email)
-	subject := fmt.Sprintf("EasyCLA: ECLA invalidated for %s ", claGroup.ProjectName)
+	subject := fmt.Sprintf("EasyCLA: Employee acknowledgment invalidated for %s", claGroup.ProjectName)
 	params := signatures.InvalidateSignatureTemplateParams{
 		RecipientName: utils.GetBestUsername(user),
 		CLAGroupName:  claGroup.ProjectName,
@@ -546,15 +605,17 @@ func (s *Service) InvalidateECLA(ctx context.Context, claGroupID string, signatu
 		}
 	}
 
-	eventArgs.UserName = utils.GetBestUsername(user)
-	eventArgs.UserModel = user
-	eventArgs.UserID = user.UserID
+	// the cla manager is the event user; the contributor is named in the text (easycla#5252)
+	eventArgs.LfUsername = authUser.UserName
 	eventArgs.ProjectName = claGroup.ProjectName
 	eventArgs.CLAGroupID = claGroupID
+	eventArgs.CLAGroupName = claGroup.ProjectName
 	eventArgs.CompanyID = sig.SignatureUserCompanyID
 	eventArgs.CompanyName = companyModel.CompanyName
-	if eventData, ok := eventArgs.EventData.(*events.SignatureProjectInvalidatedEventData); ok {
-		eventData.SignatureID = sig.SignatureID
+	if eventData, ok := eventArgs.EventData.(*events.ECLAInvalidatedEventData); ok {
+		eventData.Contributor = utils.GetBestUsername(user)
+		eventData.CompanyName = companyModel.CompanyName
+		eventData.CLAGroupName = claGroup.ProjectName
 		eventData.InvalidatedBy = authUser.UserName
 		eventData.Reason = metadata.Reason
 		eventData.InvalidationNote = metadata.Note
@@ -570,6 +631,21 @@ func (s *Service) InvalidateECLA(ctx context.Context, claGroupID string, signatu
 }
 
 // EclaAutoCreate this routine updates the CCLA signature record by adjusting the auto_create_ecla column to the specified value
+
+// requireParentCCLAManager refuses callers outside the approved, signed parent ccla's acl (lfx-self-serve#3127)
+func (s *Service) requireParentCCLAManager(ctx context.Context, f logrus.Fields, claGroupID, companyID string, authUser *auth.User) error {
+	approved, signed := true, true
+	ccla, err := s.v1SignatureRepo.GetCorporateSignature(ctx, claGroupID, companyID, &approved, &signed)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to load the parent ccla signature")
+		return err
+	}
+	if ccla == nil || !utils.CurrentUserInACL(authUser, ccla.SignatureACL) {
+		log.WithFields(f).Debug("caller is not a cla manager of the parent ccla - rejecting InvalidateECLA")
+		return errEclaForbidden
+	}
+	return nil
+}
 func (s *Service) EclaAutoCreate(ctx context.Context, signatureID string, autoCreateECLA bool) error {
 	f := logrus.Fields{
 		"functionName":   "v2.signatures.service.EclaAutoCreate",

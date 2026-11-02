@@ -153,11 +153,11 @@ describe('To Validate & test Company APIs via API call (V1)', function () {
           headers: { Authorization: `Bearer ${bearerToken}` },
         },
         {
-          title: 'POST /company (method not allowed) - returns 401 unauthorized',
+          title: 'POST /company (retired) - returns 410 gone',
           method: 'POST',
           url: `${claEndpoint}company`,
           body: {},
-          expectedStatus: 401, // V1 API returns 401 for unauthorized POST requests
+          expectedStatus: 410, // was 401 — endpoint retired per #2055, now unconditional
         },
         {
           title: 'PUT /company (method not allowed)',

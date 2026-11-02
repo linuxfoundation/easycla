@@ -104,6 +104,23 @@ type Config struct {
 
 	// SelfServe holds the LFX Self Serve trusted-caller configuration
 	SelfServe SelfServe `json:"self_serve"`
+
+	// MemberService holds the LFX v2 member-service client configuration (org import tool only)
+	MemberService MemberService `json:"member_service"`
+}
+
+// MemberService holds the LFX v2 member-service configuration used by the org import tool to
+// register organizations as B2B orgs. It reuses the shared Auth0Platform M2M credentials; only the
+// base URL (cla-member-service-base-url-{stage}) and audience (cla-member-service-auth0-audience-{stage})
+// are configured here, both optional: when empty the register route is unavailable.
+type MemberService struct {
+	BaseURL  string `json:"base_url"`
+	Audience string `json:"audience"`
+	// CLAAdminsEnabled (cla-member-service-cla-admins-enabled-{stage} = true) switches on the CLA-manager
+	// publisher of the signatures stream and the org_import cla-admins --apply (lfx-self-serve#4435)
+	CLAAdminsEnabled bool `json:"cla_admins_enabled"`
+	// CLAAdminsFlagError is why that flag could not be read or parsed (runtime only); only the publisher paths act on it
+	CLAAdminsFlagError string `json:"-"`
 }
 
 // SelfServe holds the LFX Self Serve trusted-caller configuration: the Auth0 azp (client ID)
@@ -154,7 +171,8 @@ type SSS struct {
 	Required bool `json:"required"`
 	// Enabled is the SSS kill switch (cla-sss-enabled-{stage}, default true): when false,
 	// checkCompanyCompliance skips the live SSS check; persisted is_sanctioned still blocks elsewhere.
-	Enabled bool `json:"enabled"`
+	Enabled   bool   `json:"enabled"`
+	ReadError string `json:"-"`
 }
 
 // Docraptor model
@@ -222,7 +240,7 @@ func LoadConfig(configFilePath string, awsSession *session.Session, awsStage str
 	} else if awsSession != nil {
 		// Read from SSM
 		log.Info("Loading SSM config...")
-		easyCLAConfig = loadSSMConfig(awsSession, awsStage)
+		easyCLAConfig, err = loadSSMConfig(awsSession, awsStage)
 
 	} else {
 		return Config{}, errors.New("config not found")

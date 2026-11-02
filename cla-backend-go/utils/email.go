@@ -50,6 +50,15 @@ type snsEmail struct {
 	senderEmailAddress string
 }
 
+// NewSnsEmailSender returns an SNS-backed sender without installing it as the default one
+func NewSnsEmailSender(awsSession *session.Session, snsEventTopicARN string, senderEmailAddress string) EmailSender {
+	return &snsEmail{
+		snsClient:          sns.New(awsSession),
+		snsEventTopicARN:   snsEventTopicARN,
+		senderEmailAddress: senderEmailAddress,
+	}
+}
+
 // SetSnsEmailSender set sns as mechanism to send email
 func SetSnsEmailSender(awsSession *session.Session, snsEventTopicARN string, senderEmailAddress string) {
 	emailSender = &snsEmail{

@@ -36,8 +36,8 @@ import (
 
 // errors
 var (
-	ErrUserIDRequired    = errors.New("UserID cannot be empty")    //nolint
-	ErrEventTypeRequired = errors.New("EventType cannot be empty") //nolint
+	ErrUserIDRequired    = errors.New("UserID or LfUsername must be set") //nolint
+	ErrEventTypeRequired = errors.New("EventType cannot be empty")        //nolint
 )
 
 // indexes
@@ -103,7 +103,7 @@ func (repo *repository) CreateEvent(event *models.Event) error {
 		"functionName": "v1.events.repository.CreateEvent",
 	}
 
-	if event.UserID == "" {
+	if event.UserID == "" && event.LfUsername == "" {
 		return ErrUserIDRequired
 	}
 	if event.EventType == "" {

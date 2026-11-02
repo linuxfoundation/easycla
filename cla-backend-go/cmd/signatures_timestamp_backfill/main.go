@@ -764,9 +764,6 @@ func pickEarliest(cands []pair) pair {
 	if init {
 		return best
 	}
-	if len(cands) > 0 {
-		return cands[0]
-	}
 	return pair{}
 }
 
@@ -787,9 +784,6 @@ func pickLatest(cands []pair) pair {
 	}
 	if init {
 		return best
-	}
-	if len(cands) > 0 {
-		return cands[0]
 	}
 	return pair{}
 }
@@ -1135,9 +1129,14 @@ func buildAwsCliUpdate(region, stage, table, sigID, updateExpr string, names map
 	}
 
 	return fmt.Sprintf(
-		"aws --profile lfproduct-%s --region %s dynamodb update-item --table-name %s --key '%s' --update-expression '%s' --expression-attribute-names '%s' --expression-attribute-values '%s' --condition-expression '%s'",
-		stage, region, table, kb, updateExpr, nb, vb, condExpr,
+		"aws --profile lfproduct-%s --region %s dynamodb update-item --table-name %s --key %s --update-expression %s --expression-attribute-names %s --expression-attribute-values %s --condition-expression %s",
+		stage, region, table, shellQuote(string(kb)), shellQuote(updateExpr), shellQuote(string(nb)), shellQuote(string(vb)), shellQuote(condExpr),
 	)
+}
+
+// shellQuote wraps v in single quotes so bash treats it as one literal word (lfx-self-serve-ops#344)
+func shellQuote(v string) string {
+	return "'" + strings.ReplaceAll(v, "'", `'\''`) + "'"
 }
 
 func printStats(stats UpdateStats) {

@@ -5,6 +5,7 @@ package gitlab_activity
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"regexp"
@@ -188,10 +189,16 @@ func (s *service) ProcessMergeActivity(ctx context.Context, secretToken string, 
 		return fmt.Errorf("fetching internal gitlab org for following path : %s failed : %v", repositoryPath, err)
 	}
 
-	// log.WithFields(f).Debugf("checking gitlab org : %s auth state agains the webhook secret token", gitlabOrg.OrganizationName)
-	// if gitlabOrg.AuthState != secretToken {
-	// 	return secretTokenMismatch
-	// }
+	// The hook secret EasyCLA registers on every enrolled project is the org AuthState (dynamo_events/gitlab_webhooks.go).
+	// Warn-only for now (lfx-self-serve-ops#780): a missing or different X-Gitlab-Token is logged (no secret values) and
+	// the event is processed exactly as before; enforcement follows once the logs prove every enrolled hook carries the
+	// current token.
+	switch {
+	case secretToken == "":
+		log.WithFields(f).Warnf("webhook secret token missing for gitlab org : %s:%s", gitlabOrg.OrganizationID, gitlabOrg.OrganizationName)
+	case subtle.ConstantTimeCompare([]byte(gitlabOrg.AuthState), []byte(secretToken)) != 1:
+		log.WithFields(f).Warnf("webhook secret token mismatch for gitlab org : %s:%s", gitlabOrg.OrganizationID, gitlabOrg.OrganizationName)
+	}
 
 	log.WithFields(f).Debugf("internal gitlab org : %s:%s is associated with external path : %s", gitlabOrg.OrganizationID, gitlabOrg.OrganizationName, repositoryPath)
 
@@ -444,7 +451,13 @@ func (s *service) getGitlabRepoByName(ctx context.Context, repoNameWithPath stri
 		return nil, fmt.Errorf("unable to locate GitLab repo for repoNameWithPath : %s, failed : %v", repoNameWithPath, err)
 	}
 
-	return gitlabRepo.ToGitHubModel(), nil
+	// ToGitHubModel returns nil when the stored external id is not numeric
+	repoModel := gitlabRepo.ToGitHubModel()
+	if repoModel == nil {
+		return nil, fmt.Errorf("GitLab repo for repoNameWithPath : %s has an invalid external id : %s", repoNameWithPath, gitlabRepo.RepositoryExternalID)
+	}
+
+	return repoModel, nil
 }
 
 type UserSigned struct {
@@ -728,6 +741,9 @@ func getParams(regEx, url string) (paramsMap map[string]string) {
 	return paramsMap
 }
 
+// newGitLabClient builds the merge request gate's GitLab client; tests point it at a fake API
+var newGitLabClient = gitlab_api.NewGitlabOauthClient
+
 func (s *service) checkGitLabGroupApproval(ctx context.Context, userName, URL string) (bool, error) {
 	f := logrus.Fields{
 		"functionName": "checkGitLabGroupApproval",
@@ -752,21 +768,19 @@ func (s *service) checkGitLabGroupApproval(ctx context.Context, userName, URL st
 			return false, err
 		}
 
-		gitlabClient, clientErr := gitlab_api.NewGitlabOauthClient(*oauthResponse, s.gitLabApp)
+		gitlabClient, clientErr := newGitLabClient(*oauthResponse, s.gitLabApp)
 		if clientErr != nil {
 			log.WithFields(f).WithError(clientErr).Warnf("problem getting gitLabClient for org: %s ", gitlabOrg.OrganizationName)
 			return false, clientErr
 		}
-		members, err := gitlab_api.ListGroupMembers(ctx, gitlabClient, int(gitlabOrg.OrganizationExternalID))
+		isMember, err := gitlab_api.IsDirectGroupMember(ctx, gitlabClient, int(gitlabOrg.OrganizationExternalID), userName)
 		if err != nil {
 			log.WithFields(f).WithError(err).Warn("problem getting gitlab group members")
 			return false, err
 		}
-		for _, member := range members {
-			if userName == member.Username {
-				log.WithFields(f).Debugf("%s is a member of group: %s ", userName, URL)
-				return true, nil
-			}
+		if isMember {
+			log.WithFields(f).Debugf("%s is a member of group: %s ", userName, URL)
+			return true, nil
 		}
 	}
 

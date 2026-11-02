@@ -4,6 +4,8 @@
 package emails
 
 import (
+	"errors"
+
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 )
 
@@ -41,7 +43,9 @@ const (
 
 // RenderV2ContributorApprovalRequestTemplate renders V2ContributorApprovalRequestTemplate
 func RenderV2ContributorApprovalRequestTemplate(svc EmailTemplateService, projectSFIDs []string, params V2ContributorApprovalRequestTemplateParams) (string, error) {
-
+	if len(projectSFIDs) == 0 {
+		return "", errors.New("projectSFIDs list is empty")
+	}
 	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(utils.V2, projectSFIDs[0])
 	if err != nil {
 		return "", err
@@ -112,6 +116,9 @@ const (
 
 // RenderV2ContributorToOrgAdminTemplate renders V2ContributorToOrgAdminTemplate
 func RenderV2ContributorToOrgAdminTemplate(svc EmailTemplateService, projectSFIDs []string, params V2ContributorToOrgAdminTemplateParams) (string, error) {
+	if len(projectSFIDs) == 0 {
+		return "", errors.New("projectSFIDs list is empty")
+	}
 	// prefill the projects data
 	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(utils.V2, projectSFIDs[0])
 	if err != nil {
@@ -187,6 +194,9 @@ const (
 
 // RenderV2ToCLAManagerDesigneeTemplate renders V2ToCLAManagerDesigneeTemplate
 func RenderV2ToCLAManagerDesigneeTemplate(svc EmailTemplateService, projectSFIDs []string, params V2ToCLAManagerDesigneeTemplateParams, template string, templateName string) (string, error) {
+	if len(projectSFIDs) == 0 {
+		return "", errors.New("projectSFIDs list is empty")
+	}
 	claGroupParams, err := svc.GetCLAGroupTemplateParamsFromProjectSFID(utils.V2, projectSFIDs[0])
 	if err != nil {
 		return "", err

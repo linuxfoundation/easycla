@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"html/template"
 	"io"
 	"net/http"
 	stdmail "net/mail"
@@ -20,18 +21,15 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"text/template"
+	"sync"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/ssm"
-	ssmTypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/sirupsen/logrus"
 
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/auth"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/contracts"
@@ -81,6 +79,12 @@ type Handlers struct {
 	sssClient         *sss.Client
 	sssRequired       bool
 	sssEnabled        bool
+	sssConfigMu       sync.Mutex
+	sssConfigClient   sssParameterClient
+	sssConfigStage    string
+	sssConfigErr      error
+
+	sssConfigRetryAfter time.Time
 }
 
 func NewHandlers() *Handlers {
@@ -207,88 +211,16 @@ func NewHandlers() *Handlers {
 		logging.Fatalf("failed to create SSM client: %v", err)
 	}
 
-	stage := store.StageFromEnv()
-	f := logrus.Fields{
-		"stage": stage,
-	}
-
-	// SSS parameters are named according to the Go backend convention: cla-sss-<key>-<stage>
-	sssBaseURL := getOptionalSSMString(ctx, ssmClient, fmt.Sprintf("cla-sss-base-url-%s", stage), f)
-	sssAudience := getOptionalSSMString(ctx, ssmClient, fmt.Sprintf("cla-sss-auth0-audience-%s", stage), f)
-	sssRequired := getOptionalSSMBool(ctx, ssmClient, fmt.Sprintf("cla-sss-required-%s", stage), f)
-	sssEnabled := getOptionalSSMBoolDefault(ctx, ssmClient, fmt.Sprintf("cla-sss-enabled-%s", stage), true, f)
-
-	auth0ClientID := strings.TrimSpace(os.Getenv("PLATFORM_AUTH0_CLIENT_ID"))
-	auth0ClientSecret := strings.TrimSpace(os.Getenv("PLATFORM_AUTH0_CLIENT_SECRET"))
-	auth0URL := strings.TrimSpace(os.Getenv("PLATFORM_AUTH0_URL"))
-
-	h.sssRequired = sssRequired
-	h.sssEnabled = sssEnabled
-	if sssBaseURL != "" && sssAudience != "" {
-		sssClient, err := sss.NewClientFromPlatformCredentials(sssBaseURL, sssAudience, auth0URL, auth0ClientID, auth0ClientSecret)
-		if err != nil {
-			if sssEnabled && sssRequired {
-				logging.Fatalf("failed to initialize required SSS client: %v", err)
-			}
-			logging.Warnf("failed to initialize optional SSS client, screening will be unavailable: %v", err)
-			h.sssClient = nil
-		} else if sssClient != nil {
-			h.sssClient = sssClient
+	h.sssConfigClient = ssmClient
+	h.sssConfigStage = store.StageFromEnv()
+	if err := h.initializeSSS(ctx); err != nil {
+		if h.sssConfigErr == nil {
+			logging.Fatalf("failed to initialize required SSS client: %v", err)
 		}
-	}
-
-	if sssEnabled && sssRequired && h.sssClient == nil {
-		logging.Fatalf("SSS is required but not configured (base URL or audience missing in SSM)")
+		logging.WithError(err).Error("SSS configuration unreadable at startup; signing will fail closed until configuration is recovered on first use")
 	}
 
 	return h
-}
-
-// getOptionalSSMString retrieves a string parameter from SSM.
-// It returns an empty string if the parameter is missing or unreadable.
-func getOptionalSSMString(ctx context.Context, ssmClient *ssm.Client, key string, f logrus.Fields) string {
-	out, err := ssmClient.GetParameter(ctx, &ssm.GetParameterInput{
-		Name:           &key,
-		WithDecryption: nil,
-	})
-	if err != nil {
-		var pnf *ssmTypes.ParameterNotFound
-		if errors.As(err, &pnf) {
-			logging.WithFields(f).Debugf("optional SSM key %s not provisioned - sanctions screening disabled until it is set", key)
-		} else {
-			logging.WithFields(f).WithError(err).Warnf("unable to read optional SSM key %s - sanctions screening disabled", key)
-		}
-		return ""
-	}
-
-	if out.Parameter == nil || out.Parameter.Value == nil {
-		return ""
-	}
-
-	return strings.TrimSpace(*out.Parameter.Value)
-}
-
-// getOptionalSSMBool retrieves a boolean parameter from SSM.
-// It returns false (the safe default) when the value is unreadable, absent, or malformed.
-func getOptionalSSMBool(ctx context.Context, ssmClient *ssm.Client, key string, f logrus.Fields) bool {
-	return getOptionalSSMBoolDefault(ctx, ssmClient, key, false, f)
-}
-
-// getOptionalSSMBoolDefault is getOptionalSSMBool with a caller-supplied default for a
-// missing parameter - used for cla-sss-enabled, which must default to true so a
-// not-yet-provisioned key never silently disables screening. A malformed value also
-// falls back to the default rather than being treated as false.
-func getOptionalSSMBoolDefault(ctx context.Context, ssmClient *ssm.Client, key string, def bool, f logrus.Fields) bool {
-	val := strings.TrimSpace(getOptionalSSMString(ctx, ssmClient, key, f))
-	if val == "" {
-		return def
-	}
-	boolVal, err := strconv.ParseBool(val)
-	if err != nil {
-		logging.Warnf("unable to parse optional SSM key %s=%q as boolean - using default value %t", key, val, def)
-		return def
-	}
-	return boolVal
 }
 
 // formatPynamoDateTimeUTC formats timestamps the way Python's pynamodb
@@ -335,6 +267,19 @@ func getAttrBool(item map[string]types.AttributeValue, key string) bool {
 	default:
 		return false
 	}
+}
+
+// isSalesforceID reports whether id has the 15- or 18-character alphanumeric Salesforce ID shape.
+func isSalesforceID(id string) bool {
+	if len(id) != 15 && len(id) != 18 {
+		return false
+	}
+	for _, r := range id {
+		if !(r >= '0' && r <= '9' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z') {
+			return false
+		}
+	}
+	return true
 }
 
 func getAttrString(item map[string]types.AttributeValue, key string) string {
@@ -691,6 +636,89 @@ func (h *Handlers) checkUserAuthorization(ctx context.Context, username, sfid st
 		}
 	}
 	return false, map[string]any{"errors": map[string]any{"user is not authorized for this Salesforce ID.": sfid}}
+}
+
+// githubOrgOwningSFID returns the Salesforce project ID a stored GitHub org record belongs to
+// (organization_sfid, falling back to project_sfid as DeleteOrganizationV1 does).
+func githubOrgOwningSFID(item map[string]types.AttributeValue) string {
+	sfid := strings.TrimSpace(getAttrString(item, "organization_sfid"))
+	if sfid == "" {
+		sfid = strings.TrimSpace(getAttrString(item, "project_sfid"))
+	}
+	return sfid
+}
+
+// repositoryOwningSFID returns the Salesforce project ID a stored repository record is bound to: project_sfid
+// (the owning project) first, falling back to repository_sfdc_id, which v4 fills with the parent foundation.
+func repositoryOwningSFID(item map[string]types.AttributeValue) string {
+	sfid := strings.TrimSpace(getAttrString(item, "project_sfid"))
+	if sfid == "" {
+		sfid = strings.TrimSpace(getAttrString(item, "repository_sfdc_id"))
+	}
+	return sfid
+}
+
+// authorizeProjectWrite returns (0, nil) when username may modify records that belong to a Salesforce project
+// (lfx-self-serve-ops#774, #777). Admins always may; otherwise the caller's user permissions must contain the
+// project's SFID (checkUserAuthorization, as PostRepositoryV1 requires). When sfid is empty it is resolved from
+// the CLA group's project_external_id; an unknown CLA group yields the legacy
+// {"errors": {<claGroupParam>: "Project not found"}} reply. Any other value is the HTTP status and body to send.
+func (h *Handlers) authorizeProjectWrite(ctx context.Context, username, sfid, claGroupID, claGroupParam string) (int, map[string]any) {
+	if isAdminUser(username) {
+		return 0, nil
+	}
+	if sfid == "" && strings.TrimSpace(claGroupID) != "" {
+		projectItem, found, err := h.projects.GetByID(ctx, strings.TrimSpace(claGroupID))
+		if err != nil {
+			return http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}}
+		}
+		if !found {
+			return http.StatusOK, map[string]any{"errors": map[string]any{claGroupParam: "Project not found"}}
+		}
+		sfid = strings.TrimSpace(getAttrString(projectItem, "project_external_id"))
+	}
+	if ok, errMap := h.checkUserAuthorization(ctx, username, sfid); !ok {
+		return http.StatusForbidden, errMap
+	}
+	return 0, nil
+}
+
+// signatureWriteAuthorized reports whether username may modify or delete the loaded signature record
+// (lfx-self-serve-ops#738, #775). Admins always may; signature_acl members may for company signatures only
+// (the CCLA managers, as AddClaManagerV1 requires); CLA group managers (project_acl of signature_project_id)
+// may for either kind. Neither the referenced user nor the signature_acl of a user signature grants access:
+// user signatures carry the signer's own LF username in signature_acl (v2 Gerrit ICLAs), so either would let a
+// contributor re-approve their own invalidated ICLA/ECLA. The error is a store failure, not a decision.
+func (h *Handlers) signatureWriteAuthorized(ctx context.Context, username string, sig map[string]types.AttributeValue) (bool, error) {
+	username = strings.TrimSpace(username)
+	if username == "" {
+		return false, nil
+	}
+	if isAdminUser(username) {
+		return true, nil
+	}
+	if strings.TrimSpace(getAttrString(sig, "signature_reference_type")) == "company" &&
+		stringSliceContainsExact(getAttrStringSlice(sig, "signature_acl"), username) {
+		return true, nil
+	}
+	if claGroupID := strings.TrimSpace(getAttrString(sig, "signature_project_id")); claGroupID != "" {
+		project, found, err := h.projects.GetByID(ctx, claGroupID)
+		if err != nil {
+			return false, err
+		}
+		if found && stringSliceContainsExact(getAttrStringSlice(project, "project_acl"), username) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// insufficientPermissionsBody is the legacy project_acl_verify / company ACL 403 payload.
+func insufficientPermissionsBody() map[string]any {
+	return map[string]any{
+		"title":       "Unauthorized",
+		"description": "Provided Token credentials does not have sufficient permissions to access resource",
+	}
 }
 
 // putAuditEventBestEffort mirrors (a minimal subset of) cla.models.dynamo_models.Event.create_event().
@@ -1976,8 +2004,7 @@ func (h *Handlers) GetUserSignaturesV1(w http.ResponseWriter, r *http.Request) {
 		if getAttrString(it, "signature_reference_type") != "user" {
 			continue
 		}
-		m := store.ItemToInterfaceMap(it)
-		delete(m, "user_docusign_raw_xml")
+		m := publicSignatureItem(it)
 		out = append(out, m)
 	}
 
@@ -2140,22 +2167,7 @@ func (h *Handlers) RequestCompanyAllowlistV2(w http.ResponseWriter, r *http.Requ
 	subject := fmt.Sprintf("EasyCLA: Request to Authorize %s for %s", userName, projectName)
 	corpURL := corporateCompanyURL(companyID)
 	companyStr := pythonCompanyString(company)
-	message := messageVal
-	msg := fmt.Sprintf("<p>%s included the following message in the request:</p><p>%s</p>", userName, message)
-	body := fmt.Sprintf(`
-<p>Hello %s,</p> \
-<p>This is a notification email from EasyCLA regarding the project %s.</p> \
-<p>%s (%s) has requested to be added to the Approved List as an authorized contributor from \
-%s to the project %s. You are receiving this message as a CLA Manager from %s for \
-%s.</p> \
-%s \
-<p>If you want to add them to the Approved List, please \
-<a href="%s" target="_blank">log into the EasyCLA Corporate \
-Console</a>, where you can approve this user's request by selecting the 'Manage Approved List' and adding the \
-contributor's email, the contributor's entire email domain, their GitHub ID or the entire GitHub Organization for the \
-repository. This will permit them to begin contributing to %s on behalf of %s.</p> \
-<p>If you are not certain whether to add them to the Approved List, please reach out to them directly to discuss.</p> 
-`, recipientNameVal, projectName, userName, userEmail, companyName, projectName, companyStr, projectName, msg, corpURL, projectName, companyStr)
+	body := requestCompanyAllowlistBody(recipientNameVal, projectName, userName, userEmail, companyName, companyStr, messageVal, corpURL)
 	body = appendEmailHelpSignOffContent(body, getAttrString(project, "version"))
 
 	svc, err := email.NewFromEnv(ctx)
@@ -2653,6 +2665,46 @@ func appendEmailHelpSignOffContent(body string, projectVersion string) string {
 	return body + emailHelpContent(showV2) + emailSignOffContent()
 }
 
+// publicSignatureItem serializes a signature item without the DocuSign envelope XML (lfx-self-serve-ops#350) nor the DocuSign envelope id, which the completion callback guard treats as the binding secret (lfx-self-serve-ops#347)
+func publicSignatureItem(item map[string]types.AttributeValue) map[string]interface{} {
+	out := store.ItemToInterfaceMap(item)
+	delete(out, "user_docusign_raw_xml")
+	delete(out, "signature_envelope_id")
+	return out
+}
+
+// requestCompanyAllowlistBody renders the approval-request e-mail; the anonymous /v2 caller supplies the
+// recipient name, user name, user e-mail and message, so they are escaped (lfx-self-serve-ops#352); the stored
+// project and company strings are escaped the same way
+func requestCompanyAllowlistBody(recipientName, projectName, userName, userEmail, companyName, companyStr, message, corpURL string) string {
+	projectName, companyName, companyStr = emailField(projectName, 255), emailField(companyName, 255), emailField(companyStr, 1024)
+	userHTML := emailField(userName, 60)
+	msg := fmt.Sprintf("<p>%s included the following message in the request:</p><p>%s</p>", userHTML, emailField(message, 4000))
+	return fmt.Sprintf(`
+<p>Hello %s,</p> \
+<p>This is a notification email from EasyCLA regarding the project %s.</p> \
+<p>%s (%s) has requested to be added to the Approved List as an authorized contributor from \
+%s to the project %s. You are receiving this message as a CLA Manager from %s for \
+%s.</p> \
+%s \
+<p>If you want to add them to the Approved List, please \
+<a href="%s" target="_blank">log into the EasyCLA Corporate \
+Console</a>, where you can approve this user's request by selecting the 'Manage Approved List' and adding the \
+contributor's email, the contributor's entire email domain, their GitHub ID or the entire GitHub Organization for the \
+repository. This will permit them to begin contributing to %s on behalf of %s.</p> \
+<p>If you are not certain whether to add them to the Approved List, please reach out to them directly to discuss.</p>
+`, emailField(recipientName, 60), projectName, userHTML, emailField(userEmail, 254), companyName, projectName, companyStr, projectName, msg, corpURL, projectName, companyStr)
+}
+
+// emailField makes a caller-supplied string safe for the HTML e-mail body (lfx-self-serve-ops#352)
+func emailField(value string, maxLen int) string {
+	value = strings.TrimSpace(value)
+	if len(value) > maxLen {
+		value = strings.ToValidUTF8(value[:maxLen], "")
+	}
+	return html.EscapeString(value)
+}
+
 func sendEmailToCLAManager(ctx context.Context, project map[string]types.AttributeValue, contributorName string, contributorEmail string, claManagerName string, claManagerEmail string, companyName string, accountExists bool) error {
 	_ = accountExists // Legacy Python accepts this flag but does not currently vary content.
 	projectName := getAttrString(project, "project_name")
@@ -2663,6 +2715,7 @@ func sendEmailToCLAManager(ctx context.Context, project map[string]types.Attribu
 	if strings.TrimSpace(companyName) == "" {
 		companyName = "your company"
 	}
+	projectHTML := emailField(projectName, 255)
 
 	body := fmt.Sprintf(`
 <p>Hello %s,</p> \
@@ -2679,7 +2732,7 @@ sign the CLA yourself on behalf of your company; if not, the signature process w
 else who is authorized to sign the CLA.</p> \
 %s
 %s
-`, claManagerName, projectName, projectName, contributorName, contributorEmail, companyName, projectName, projectName, projectName, projectName, landing, emailHelpContent(strings.TrimSpace(strings.ToLower(projectVersion)) == "v2"), emailSignOffContent())
+`, emailField(claManagerName, 60), projectHTML, projectHTML, emailField(contributorName, 60), emailField(contributorEmail, 254), emailField(companyName, 255), projectHTML, projectHTML, projectHTML, projectHTML, landing, emailHelpContent(strings.TrimSpace(strings.ToLower(projectVersion)) == "v2"), emailSignOffContent())
 
 	svc, err := email.NewFromEnv(ctx)
 	if err != nil {
@@ -3184,7 +3237,7 @@ func (h *Handlers) GetUserProjectLastSignatureV2(w http.ResponseWriter, r *http.
 	latestMajorStr := strconv.Itoa(maj)
 	latestMinorStr := strconv.Itoa(min)
 
-	out := store.ItemToInterfaceMap(latest)
+	out := publicSignatureItem(latest)
 	out["latest_document_major_version"] = latestMajorStr
 	out["latest_document_minor_version"] = latestMinorStr
 
@@ -3265,7 +3318,7 @@ func (h *Handlers) GetUserProjectCompanyLastSignatureV1(w http.ResponseWriter, r
 	latestMajorStr := strconv.Itoa(maj)
 	latestMinorStr := strconv.Itoa(min)
 
-	out := store.ItemToInterfaceMap(latest)
+	out := publicSignatureItem(latest)
 	out["latest_document_major_version"] = latestMajorStr
 	out["latest_document_minor_version"] = latestMinorStr
 
@@ -3303,9 +3356,7 @@ func (h *Handlers) GetSignatureV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := store.ItemToInterfaceMap(item)
-	// Python Signature.to_dict() filters out raw DocuSign XML.
-	delete(out, "user_docusign_raw_xml")
+	out := publicSignatureItem(item)
 
 	respond.JSON(w, http.StatusOK, out)
 }
@@ -3556,7 +3607,7 @@ func (h *Handlers) PostSignatureV1(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) PutSignatureV1(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	_, authErrResp, err := h.authValidator.Authenticate(r.Header)
+	authUser, authErrResp, err := h.authValidator.Authenticate(r.Header)
 	if err != nil {
 		respond.JSON(w, http.StatusUnauthorized, authErrResp)
 		return
@@ -3621,6 +3672,28 @@ func (h *Handlers) PutSignatureV1(w http.ResponseWriter, r *http.Request) {
 	if !found {
 		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"signature_id": "Signature not found"}})
 		return
+	}
+
+	// Object-level authorization (lfx-self-serve-ops#775): only the signature's managers, the CLA group's
+	// managers or an LF admin may rewrite it.
+	allowed, authzErr := h.signatureWriteAuthorized(ctx, authUser.Username, sig)
+	if authzErr != nil {
+		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": authzErr.Error()}})
+		return
+	}
+	if !allowed {
+		respond.JSON(w, http.StatusForbidden, insufficientPermissionsBody())
+		return
+	}
+	// Only an LF admin may re-point a signature at another user/company or CLA group; for everyone else these
+	// fields are immutable (lfx-self-serve-ops#775) - a manager must not move a record out of their own scope.
+	if !isAdminUser(authUser.Username) {
+		for _, key := range []string{"signature_reference_id", "signature_reference_type", "signature_project_id"} {
+			if v, ok := getString(key); ok && strings.TrimSpace(v) != strings.TrimSpace(getAttrString(sig, key)) {
+				respond.JSON(w, http.StatusForbidden, insufficientPermissionsBody())
+				return
+			}
+		}
 	}
 
 	updateStr := "Updated Signature fields: "
@@ -3839,8 +3912,7 @@ func (h *Handlers) PutSignatureV1(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	out := store.ItemToInterfaceMap(sig)
-	delete(out, "user_docusign_raw_xml")
+	out := publicSignatureItem(sig)
 	respond.JSON(w, http.StatusOK, out)
 }
 
@@ -3856,7 +3928,7 @@ func (h *Handlers) DeleteSignatureV1(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, authErrResp, err := h.authValidator.Authenticate(r.Header)
+	authUser, authErrResp, err := h.authValidator.Authenticate(r.Header)
 	if err != nil {
 		respond.JSON(w, http.StatusUnauthorized, authErrResp)
 		return
@@ -3869,6 +3941,17 @@ func (h *Handlers) DeleteSignatureV1(w http.ResponseWriter, r *http.Request) {
 	}
 	if !found {
 		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"signature_id": "Signature not found"}})
+		return
+	}
+
+	// Object-level authorization (lfx-self-serve-ops#738): same decision as PutSignatureV1.
+	allowed, authzErr := h.signatureWriteAuthorized(ctx, authUser.Username, item)
+	if authzErr != nil {
+		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": authzErr.Error()}})
+		return
+	}
+	if !allowed {
+		respond.JSON(w, http.StatusForbidden, insufficientPermissionsBody())
 		return
 	}
 
@@ -3920,8 +4003,7 @@ func (h *Handlers) GetSignaturesUserV1(w http.ResponseWriter, r *http.Request) {
 		if getAttrString(it, "signature_reference_type") != "user" {
 			continue
 		}
-		m := store.ItemToInterfaceMap(it)
-		delete(m, "user_docusign_raw_xml")
+		m := publicSignatureItem(it)
 		out = append(out, m)
 	}
 	respond.JSON(w, http.StatusOK, out)
@@ -3964,8 +4046,7 @@ func (h *Handlers) GetSignaturesUserProjectV1(w http.ResponseWriter, r *http.Req
 		if getAttrString(it, "signature_reference_id") != userID {
 			continue
 		}
-		m := store.ItemToInterfaceMap(it)
-		delete(m, "user_docusign_raw_xml")
+		m := publicSignatureItem(it)
 		out = append(out, m)
 	}
 
@@ -4041,8 +4122,7 @@ func (h *Handlers) GetSignaturesUserProjectTypeV1(w http.ResponseWriter, r *http
 		if signatureType == "employee" && sigCompanyID == "" {
 			continue
 		}
-		m := store.ItemToInterfaceMap(it)
-		delete(m, "user_docusign_raw_xml")
+		m := publicSignatureItem(it)
 		out = append(out, m)
 	}
 
@@ -4082,8 +4162,7 @@ func (h *Handlers) GetSignaturesCompanyV1(w http.ResponseWriter, r *http.Request
 		if !stringSliceContainsExact(sigACL, authUser.Username) {
 			continue
 		}
-		m := store.ItemToInterfaceMap(it)
-		delete(m, "user_docusign_raw_xml")
+		m := publicSignatureItem(it)
 		out = append(out, m)
 	}
 	respond.JSON(w, http.StatusOK, out)
@@ -4118,8 +4197,7 @@ func (h *Handlers) GetSignaturesProjectV1(w http.ResponseWriter, r *http.Request
 		if !getAttrBool(it, "signature_signed") {
 			continue
 		}
-		m := store.ItemToInterfaceMap(it)
-		delete(m, "user_docusign_raw_xml")
+		m := publicSignatureItem(it)
 		out = append(out, m)
 	}
 
@@ -4154,8 +4232,7 @@ func (h *Handlers) GetSignaturesProjectCompanyV1(w http.ResponseWriter, r *http.
 		if getAttrString(it, "signature_project_id") != projectID {
 			continue
 		}
-		m := store.ItemToInterfaceMap(it)
-		delete(m, "user_docusign_raw_xml")
+		m := publicSignatureItem(it)
 		out = append(out, m)
 	}
 	respond.JSON(w, http.StatusOK, out)
@@ -4190,8 +4267,7 @@ func (h *Handlers) GetProjectEmployeeSignaturesV1(w http.ResponseWriter, r *http
 		if getAttrString(it, "signature_user_ccla_company_id") != companyID {
 			continue
 		}
-		m := store.ItemToInterfaceMap(it)
-		delete(m, "user_docusign_raw_xml")
+		m := publicSignatureItem(it)
 		out = append(out, m)
 	}
 	respond.JSON(w, http.StatusOK, out)
@@ -4781,7 +4857,7 @@ func (h *Handlers) PostRepositoryV1(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) PutRepositoryV1(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	_, authErrResp, err := h.authValidator.Authenticate(r.Header)
+	authUser, authErrResp, err := h.authValidator.Authenticate(r.Header)
 	if err != nil {
 		respond.JSON(w, http.StatusUnauthorized, authErrResp)
 		return
@@ -4832,6 +4908,20 @@ func (h *Handlers) PutRepositoryV1(w http.ResponseWriter, r *http.Request) {
 	if !found {
 		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"repository_id": "Repository not found"}})
 		return
+	}
+
+	// The caller must be authorized for the project the repository currently belongs to and, when re-pointing it,
+	// for the target CLA group's project as well (lfx-self-serve-ops#777).
+	currentCLAGroupID := getAttrString(item, "repository_project_id")
+	if status, errMap := h.authorizeProjectWrite(ctx, authUser.Username, repositoryOwningSFID(item), currentCLAGroupID, "repository_project_id"); status != 0 {
+		respond.JSON(w, status, errMap)
+		return
+	}
+	if req.RepositoryProjectID != nil && *req.RepositoryProjectID != currentCLAGroupID {
+		if status, errMap := h.authorizeProjectWrite(ctx, authUser.Username, "", *req.RepositoryProjectID, "repository_project_id"); status != 0 {
+			respond.JSON(w, status, errMap)
+			return
+		}
 	}
 
 	if req.RepositoryProjectID != nil {
@@ -4899,20 +4989,26 @@ func (h *Handlers) PutRepositoryV1(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) DeleteRepositoryV1(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	_, authErrResp, err := h.authValidator.Authenticate(r.Header)
+	authUser, authErrResp, err := h.authValidator.Authenticate(r.Header)
 	if err != nil {
 		respond.JSON(w, http.StatusUnauthorized, authErrResp)
 		return
 	}
 
 	repositoryID := chi.URLParam(r, "repository_id")
-	_, found, err := h.repos.GetByID(ctx, repositoryID)
+	item, found, err := h.repos.GetByID(ctx, repositoryID)
 	if err != nil {
 		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
 		return
 	}
 	if !found {
 		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"repository_id": "Repository not found"}})
+		return
+	}
+
+	// Removing CLA enforcement requires authorization for the repository's owning project (lfx-self-serve-ops#777).
+	if status, errMap := h.authorizeProjectWrite(ctx, authUser.Username, repositoryOwningSFID(item), getAttrString(item, "repository_project_id"), "repository_project_id"); status != 0 {
+		respond.JSON(w, status, errMap)
 		return
 	}
 
@@ -5091,111 +5187,15 @@ func (h *Handlers) GetUnsignedProjectsForCompanyV1(w http.ResponseWriter, r *htt
 	respond.JSON(w, http.StatusOK, unsigned)
 }
 
-// POST /v1/company
-// Python: cla/routes.py:1189 post_company()
-// Calls: cla.controllers.company.create_company
-
+// POST /v1/company — retired (#2055): this path persisted companies without
+// company_external_id, producing orphans that never sync to Salesforce/org-service.
+// Company creation is v2-only now (v2/company.Service.CreateCompany -> orgClient.CreateOrg,
+// which always sets the external id). Kept registered (not unregistered) so every
+// caller gets an explicit, permanent signal instead of a generic 404/405.
 func (h *Handlers) PostCompanyV1(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	authUser, authErrResp, err := h.authValidator.Authenticate(r.Header)
-	if err != nil {
-		respond.JSON(w, http.StatusUnauthorized, authErrResp)
-		return
-	}
-
-	type request struct {
-		CompanyName string `json:"company_name"`
-		// CompanyManagerUserName, CompanyManagerUserEmail, CompanyManagerID are parsed for
-		// API compatibility but not used in company creation (mirrors Python behavior)
-		IsSanctioned *bool `json:"is_sanctioned"`
-	}
-	var req request
-	body, err := parseFlexibleParams(r)
-	if err != nil {
-		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"body": "invalid json"}})
-		return
-	}
-	if v, ok := flexibleStringParam(r, body, "company_name"); ok {
-		req.CompanyName = v
-	}
-	// Note: company_manager_* fields are parsed for API compatibility but not used in company creation
-	// This mirrors the Python behavior where these fields exist in the API but are not stored
-	if b, ok, err := flexibleBoolParam(r, body, "is_sanctioned"); err != nil {
-		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"is_sanctioned": err.Error()}})
-		return
-	} else if ok {
-		req.IsSanctioned = &b
-	}
-	companyName := strings.TrimSpace(req.CompanyName)
-	if companyName == "" {
-		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"company_name": "Missing required value"}})
-		return
-	}
-
-	isSanctioned := false
-	if req.IsSanctioned != nil {
-		isSanctioned = *req.IsSanctioned
-	}
-
-	// Manager is always the authenticated user in the legacy Python controller.
-	managerItem, _, err := h.getOrCreateUser(ctx, authUser)
-	if err != nil {
-		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
-		return
-	}
-	managerID := getAttrString(managerItem, "user_id")
-
-	// Duplicate check matches Python: iterate all companies and compare company_name exactly.
-	companies, err := h.companies.ScanAll(ctx)
-	if err != nil {
-		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
-		return
-	}
-	for _, c := range companies {
-		if getAttrString(c, "company_name") == companyName {
-			respond.JSON(w, http.StatusConflict, map[string]any{
-				"error":      "Company already exists.",
-				"company_id": getAttrString(c, "company_id"),
-			})
-			return
-		}
-	}
-
-	now := time.Now().UTC()
-	companyID := uuid.New().String()
-	item := map[string]types.AttributeValue{
-		"company_id":          &types.AttributeValueMemberS{Value: companyID},
-		"company_name":        &types.AttributeValueMemberS{Value: companyName},
-		"signing_entity_name": &types.AttributeValueMemberS{Value: companyName},
-		"company_manager_id":  &types.AttributeValueMemberS{Value: managerID},
-		"company_acl":         &types.AttributeValueMemberSS{Value: []string{authUser.Username}},
-		"is_sanctioned":       &types.AttributeValueMemberBOOL{Value: isSanctioned},
-		"date_created":        &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)},
-		"date_modified":       &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)},
-		"version":             &types.AttributeValueMemberS{Value: "v1"},
-	}
-	if isSanctioned {
-		item["sanctioned_date"] = &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)}
-	}
-
-	if err := h.companies.PutItem(ctx, item); err != nil {
-		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
-		return
-	}
-
-	// Audit event (best-effort), matches controller wording.
-	eventData := fmt.Sprintf("User %s created company %s with company_id: %s.", authUser.Username, companyName, companyID)
-	eventSummary := fmt.Sprintf("User %s created company %s.", authUser.Username, companyName)
-	h.putAuditEventBestEffort(ctx, auditEventInput{
-		EventType:      "CreateCompany",
-		EventCompanyID: companyID,
-		EventData:      eventData,
-		EventSummary:   eventSummary,
-		ContainsPII:    false,
+	respond.JSON(w, http.StatusGone, respond.ErrorBody{
+		Message: "This endpoint has been retired and no longer creates companies. Use the EasyCLA v2 API instead: POST /v4/user/{userID}/company (createCompany).",
 	})
-
-	respond.JSON(w, http.StatusOK, store.ItemToInterfaceMap(item))
 }
 
 // PUT /v1/company
@@ -5260,6 +5260,12 @@ func (h *Handlers) PutCompanyV1(w http.ResponseWriter, r *http.Request) {
 			"title":       "Unauthorized",
 			"description": "Provided Token credentials does not have sufficient permissions to access resource",
 		})
+		return
+	}
+	// The sanction block is an LF admin control - company ACL members must not be able to lift (or set) it
+	// (lfx-self-serve-ops#745).
+	if req.IsSanctioned != nil && !isAdminUser(authUser.Username) {
+		respond.JSON(w, http.StatusForbidden, insufficientPermissionsBody())
 		return
 	}
 
@@ -8765,7 +8771,22 @@ func (h *Handlers) employeeSignaturePrecheck(ctx context.Context, projectID, com
 	if err != nil {
 		return nil, nil, nil, nil, nil, err
 	}
-	if !found {
+	// A Salesforce organization ID is an admitted company reference (the Contributor Console
+	// looks companies up by SFID): use the parent row when one exists, otherwise the organization
+	// simply has no CCLA yet
+	rowless := false
+	if !found && isSalesforceID(companyID) {
+		company, found, err = h.companies.QueryByExternalID(ctx, companyID)
+		if err != nil {
+			return nil, nil, nil, nil, nil, err
+		}
+		if found {
+			companyID = getAttrString(company, "company_id")
+		} else {
+			rowless = true
+		}
+	}
+	if !found && !rowless {
 		return project, nil, nil, nil, map[string]any{"errors": map[string]any{"company_id": fmt.Sprintf("Company (%s) does not exist.", companyID)}}, nil
 	}
 
@@ -8775,6 +8796,16 @@ func (h *Handlers) employeeSignaturePrecheck(ctx context.Context, projectID, com
 	}
 	if !found {
 		return project, company, nil, nil, map[string]any{"errors": map[string]any{"user_id": fmt.Sprintf("User (%s) does not exist.", userID)}}, nil
+	}
+
+	if rowless {
+		return project, nil, user, nil, map[string]any{"errors": map[string]any{
+			"missing_ccla":        "Company does not have CCLA with this project.",
+			"company_id":          companyID,
+			"company_name":        "",
+			"signing_entity_name": "",
+			"company_external_id": companyID,
+		}}, nil
 	}
 
 	// Find an approved CCLA signature for (company_id, project_id).
@@ -8938,12 +8969,6 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 	companyName := getAttrString(company, "company_name")
 	companyExternalID := getAttrString(company, "company_external_id")
 
-	sssMode := "optional"
-	if h.sssRequired {
-		sssMode = "required"
-	}
-	logging.Debugf("starting company sanctions screening for company %s (external_id=%s, mode=%s)", companyID, companyExternalID, sssMode)
-
 	// Short-circuit for manually/admin-set blocks (sanction_origin != "sss" or no origin).
 	// SSS-origin blocks fall through so a now-clean result can clear them.
 	isSanctioned := false
@@ -8956,6 +8981,15 @@ func (h *Handlers) checkCompanyCompliance(ctx context.Context, company map[strin
 		logging.Warnf("company has non-SSS sanction block (origin=%q), blocking without SSS call", sanctionOrigin)
 		return true, nil
 	}
+
+	if err := h.retrySSSConfig(ctx); err != nil {
+		return false, fmt.Errorf("checkCompanyCompliance: SSS configuration unavailable: %w", err)
+	}
+	sssMode := "optional"
+	if h.sssRequired {
+		sssMode = "required"
+	}
+	logging.Debugf("starting company sanctions screening for company %s (external_id=%s, mode=%s)", companyID, companyExternalID, sssMode)
 
 	if !h.sssEnabled {
 		logging.Warnf("sanctions screening disabled (cla-sss-enabled=false); skipping SSS check for company %s", companyID)
@@ -9222,7 +9256,7 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 	if _, err := uuid.Parse(req.ProjectID); err != nil {
 		missing["project_id"] = "invalid uuid"
 	}
-	if _, err := uuid.Parse(req.CompanyID); err != nil {
+	if _, err := uuid.Parse(req.CompanyID); err != nil && !isSalesforceID(req.CompanyID) {
 		missing["company_id"] = "invalid uuid"
 	}
 	if _, err := uuid.Parse(req.UserID); err != nil {
@@ -9261,6 +9295,7 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 		respond.JSON(w, http.StatusOK, errResp)
 		return
 	}
+	req.CompanyID = getAttrString(company, "company_id")
 
 	// If the employee signature already exists, return it.
 	existing, err := h.signatures.QueryByProjectAndReference(ctx, req.ProjectID, req.UserID)
@@ -9284,8 +9319,7 @@ func (h *Handlers) RequestEmployeeSignatureV2(w http.ResponseWriter, r *http.Req
 		if av, ok := it["signature_approved"].(*types.AttributeValueMemberBOOL); ok && !av.Value {
 			continue
 		}
-		out := store.ItemToInterfaceMap(it)
-		delete(out, "user_docusign_raw_xml")
+		out := publicSignatureItem(it)
 		respond.JSON(w, http.StatusOK, out)
 		return
 	}
@@ -9599,7 +9633,7 @@ func (h *Handlers) CheckAndPrepareEmployeeSignatureV2(w http.ResponseWriter, r *
 	if _, err := uuid.Parse(req.ProjectID); err != nil {
 		missing["project_id"] = "invalid uuid"
 	}
-	if _, err := uuid.Parse(req.CompanyID); err != nil {
+	if _, err := uuid.Parse(req.CompanyID); err != nil && !isSalesforceID(req.CompanyID) {
 		missing["company_id"] = "invalid uuid"
 	}
 	if _, err := uuid.Parse(req.UserID); err != nil {
@@ -9848,7 +9882,7 @@ var canceledSignatureHTML = template.Must(template.New("canceledSignature").Pars
 </head>
 <body style='margin-top:20;margin-left:0;margin-right:0;'>
     <div class="text-center">
-        <img width=300px"
+        <img width="300px"
          src="https://cla-project-logo-prod.s3.amazonaws.com/lf-horizontal-color.svg"
          alt="community bridge logo"/>
     </div>
@@ -10174,6 +10208,18 @@ func (h *Handlers) ReceivedActivityV2(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// This path triggers PR status updates from the payload, so it requires the
+	// same GitHub App webhook HMAC that /v2/github/activity enforces.
+	valid, verr := githublegacy.ValidateWebhookSignature(body, r.Header.Get("X-Hub-Signature"))
+	if verr != nil || !valid {
+		if verr == nil {
+			verr = errors.New("signature missing or mismatched")
+		}
+		logging.Warnf("repository-provider activity webhook rejected: %v", verr)
+		respond.JSON(w, http.StatusUnauthorized, map[string]any{"status": "Invalid Secret Token"})
+		return
+	}
+
 	if err := h.handleLegacyGithubReceivedActivity(r.Context(), payload); err != nil {
 		respond.JSON(w, http.StatusInternalServerError, map[string]any{"errors": map[string]any{"server": err.Error()}})
 		return
@@ -10375,6 +10421,13 @@ func (h *Handlers) PostGithubOrganizationV1(w http.ResponseWriter, r *http.Reque
 			"enable_co_authors":         &types.AttributeValueMemberM{Value: map[string]types.AttributeValue{}},
 			"date_created":              &types.AttributeValueMemberS{Value: formatPynamoDateTimeUTC(now)},
 			"version":                   &types.AttributeValueMemberS{Value: "v1"},
+		}
+	} else if existingSFID := githubOrgOwningSFID(item); existingSFID != "" && existingSFID != sfid && !isAdminUser(authUser.Username) {
+		// Re-pointing an org that belongs to another project also requires authorization for that project
+		// (lfx-self-serve-ops#773); mirrors the DeleteOrganizationV1 check.
+		if ok, errMap := h.checkUserAuthorization(ctx, authUser.Username, existingSFID); !ok {
+			respond.JSON(w, http.StatusForbidden, errMap)
+			return
 		}
 	}
 
@@ -10638,6 +10691,14 @@ func (h *Handlers) GetGerritInstanceV2(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) CreateGerritInstanceV1(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	// Legacy Python exposed this route without authentication; it rewrites a project's Gerrit CLA configuration,
+	// so require a valid token and project authorization (lfx-self-serve-ops#774).
+	authUser, authErrResp, err := h.authValidator.Authenticate(r.Header)
+	if err != nil {
+		respond.JSON(w, http.StatusUnauthorized, authErrResp)
+		return
+	}
+
 	type request struct {
 		ProjectID   string `json:"project_id"`
 		GerritName  string `json:"gerrit_name"`
@@ -10682,6 +10743,10 @@ func (h *Handlers) CreateGerritInstanceV1(w http.ResponseWriter, r *http.Request
 	}
 	if _, err := uuid.Parse(strings.TrimSpace(req.ProjectID)); err != nil {
 		respond.JSON(w, http.StatusBadRequest, map[string]any{"errors": map[string]any{"project_id": "invalid uuid"}})
+		return
+	}
+	if status, errMap := h.authorizeProjectWrite(ctx, authUser.Username, "", req.ProjectID, "project_id"); status != 0 {
+		respond.JSON(w, status, errMap)
 		return
 	}
 
@@ -10771,13 +10836,24 @@ func (h *Handlers) DeleteGerritInstanceV1(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	_, found, err := h.gerritInstances.GetByID(ctx, gerritID)
+	// Same authentication/authorization as CreateGerritInstanceV1 (lfx-self-serve-ops#774).
+	authUser, authErrResp, err := h.authValidator.Authenticate(r.Header)
+	if err != nil {
+		respond.JSON(w, http.StatusUnauthorized, authErrResp)
+		return
+	}
+
+	item, found, err := h.gerritInstances.GetByID(ctx, gerritID)
 	if err != nil {
 		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"gerrit_id": err.Error()}})
 		return
 	}
 	if !found {
 		respond.JSON(w, http.StatusOK, map[string]any{"errors": map[string]any{"gerrit_id": "Gerrit Instance not found"}})
+		return
+	}
+	if status, errMap := h.authorizeProjectWrite(ctx, authUser.Username, "", getAttrString(item, "project_id"), "project_id"); status != 0 {
+		respond.JSON(w, status, errMap)
 		return
 	}
 

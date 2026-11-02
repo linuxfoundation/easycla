@@ -27,7 +27,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Build JSON payload
 if [ ! -z "$payload_file" ] && [ -f "$payload_file" ]; then
-  PAYLOAD=$(cat "$payload_file")
+  DATA_ARG="--data-binary @\"${payload_file}\""
 else
   PAYLOAD=$(cat <<EOF
 {
@@ -38,10 +38,11 @@ else
 }
 EOF
 )
+  DATA_ARG="-d '${PAYLOAD}'"
 fi
 
 # Set up curl execution
 API="${API_URL}/v4/gitlab/activity"
-CURL_CMD="curl -s -XPOST -H \"Content-Type: application/json\" -H \"X-ACL: ${XACL}\" -H \"Authorization: Bearer ${TOKEN}\" -H \"X-Gitlab-Event: ${event_type}\" -d '${PAYLOAD}'"
+CURL_CMD="curl -s -XPOST -H \"Content-Type: application/json\" -H \"X-ACL: ${XACL}\" -H \"Authorization: Bearer ${TOKEN}\" -H \"X-Gitlab-Event: ${event_type}\" ${DATA_ARG}"
 USE_JQ=true
 . ./utils/shared/handle_curl_execution.sh

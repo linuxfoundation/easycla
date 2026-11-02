@@ -23,7 +23,6 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/company"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/user"
-	orgService "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
 
 	"github.com/go-openapi/runtime/middleware"
 )
@@ -73,21 +72,10 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 	api.CompanyGetCompanyByExternalIDHandler = company.GetCompanyByExternalIDHandlerFunc(func(params company.GetCompanyByExternalIDParams) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
-		// Check for Salesforce org
-		orgClient := orgService.GetClient()
-		org, getErr := orgClient.GetOrganization(ctx, params.CompanySFID)
-
-		if getErr != nil {
-			msg := fmt.Sprintf("Failed to get salesforce org for ID: %s ", params.CompanySFID)
-			log.Warn(msg)
-			return company.NewGetCompanyByExternalIDBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
-				Code:    "400",
-				Message: msg,
-			})
-		}
-		companyModel, err := service.GetCompanyByExternalID(ctx, params.CompanySFID)
+		// Persisted row when it exists, otherwise a non-persisted virtual company backed by the Salesforce org (#2751)
+		companyModel, err := service.ResolveCompany(ctx, params.CompanySFID)
 		if err != nil {
-			msg := fmt.Sprintf("EasyCLA - 400 Bad Request - unable to get associated salesforce Organization: %s using SFID: %s, error: %v", org.Name, params.CompanySFID, err)
+			msg := fmt.Sprintf("EasyCLA - 400 Bad Request - unable to get associated salesforce Organization using SFID: %s, error: %v", params.CompanySFID, err)
 			log.Warnf("%s", msg)
 			return company.NewGetCompanyByExternalIDBadRequest().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{
 				Code:    "400",
@@ -251,6 +239,16 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 	api.CompanyAddUsertoCompanyAccessListHandler = company.AddUsertoCompanyAccessListHandlerFunc(func(params company.AddUsertoCompanyAccessListParams, claUser *user.CLAUser) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+
+		// Only existing company ACL members may add others to the ACL
+		if !claUserHasLFLogin(claUser) {
+			return company.NewAddUsertoCompanyAccessListUnauthorized().WithXRequestID(reqID).WithPayload(missingLFLoginError())
+		}
+		if aclErr := claUserInCompanyACL(ctx, service, params.CompanyID, claUser); aclErr != nil {
+			log.Warnf("company access list update for company id: %s by user %s refused: %v", params.CompanyID, claUser.LFUsername, aclErr)
+			return company.NewAddUsertoCompanyAccessListForbidden().WithXRequestID(reqID).WithPayload(errorResponse(aclErr))
+		}
+
 		err := service.AddUserToCompanyAccessList(ctx, params.CompanyID, params.User.UserLFID)
 		if err != nil {
 			log.Warnf("error adding user to company access list using company id: %s, invite id: %s, and user LFID: %s, error: %v",
@@ -299,6 +297,13 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		log.Debugf("Processing approve company access request for request ID: %s, company ID: %s, by user %+v", params.RequestID, params.CompanyID, claUser)
+		if !claUserHasLFLogin(claUser) {
+			return company.NewApproveCompanyAccessRequestUnauthorized().WithXRequestID(reqID).WithPayload(missingLFLoginError())
+		}
+		if aclErr := companyInviteDecisionAllowed(ctx, service, params.CompanyID, params.RequestID, claUser); aclErr != nil {
+			log.Warnf("approve company access request ID: %s for company id: %s by user %s refused: %v", params.RequestID, params.CompanyID, claUser.LFUsername, aclErr)
+			return company.NewApproveCompanyAccessRequestForbidden().WithXRequestID(reqID).WithPayload(errorResponse(aclErr))
+		}
 		inviteModel, err := service.ApproveCompanyAccessRequest(ctx, params.RequestID)
 		if err != nil {
 			log.Warnf("error approving company access for request ID: %s, company id: %s, error: %v", params.RequestID, params.CompanyID, err)
@@ -324,6 +329,13 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
 		log.Debugf("Processing reject company access request for request ID: %s, company ID: %s, by user %+v", params.RequestID, params.CompanyID, claUser)
+		if !claUserHasLFLogin(claUser) {
+			return company.NewRejectCompanyAccessRequestUnauthorized().WithXRequestID(reqID).WithPayload(missingLFLoginError())
+		}
+		if aclErr := companyInviteDecisionAllowed(ctx, service, params.CompanyID, params.RequestID, claUser); aclErr != nil {
+			log.Warnf("reject company access request ID: %s for company id: %s by user %s refused: %v", params.RequestID, params.CompanyID, claUser.LFUsername, aclErr)
+			return company.NewRejectCompanyAccessRequestForbidden().WithXRequestID(reqID).WithPayload(errorResponse(aclErr))
+		}
 		inviteModel, err := service.RejectCompanyAccessRequest(ctx, params.RequestID)
 		if err != nil {
 			log.Warnf("error rejecting company access for request ID: %s, company id: %s, error: %v", params.RequestID, params.CompanyID, err)
@@ -401,6 +413,71 @@ func errorResponse(err error) *models.ErrorResponse {
 	}
 
 	return &e
+}
+
+// companyACLError is returned by the v3 company ACL guards - it carries the 403 code for errorResponse
+type companyACLError struct {
+	message string
+}
+
+func (e *companyACLError) Error() string { return e.message }
+func (e *companyACLError) Code() string  { return "403" }
+
+// claUserHasLFLogin reports whether the authorizer supplied a user with an LF login (needed for company_acl checks)
+func claUserHasLFLogin(claUser *user.CLAUser) bool {
+	return claUser != nil && claUser.LFUsername != ""
+}
+
+// missingLFLoginError is the 401 payload returned when no authenticated LF user is available
+func missingLFLoginError() *models.ErrorResponse {
+	return &models.ErrorResponse{
+		Code:    "401",
+		Message: "EasyCLA - 401 Unauthorized - missing authenticated LF user",
+	}
+}
+
+// claUserInCompanyACL loads the company and refuses v3 callers whose LF username is not on its company_acl
+func claUserInCompanyACL(ctx context.Context, service IService, companyID string, claUser *user.CLAUser) error {
+	if !claUserHasLFLogin(claUser) {
+		return &companyACLError{message: "EasyCLA - 403 Forbidden - no authenticated LF user"}
+	}
+	companyModel, err := service.GetCompany(ctx, companyID)
+	if err != nil {
+		return &companyACLError{message: fmt.Sprintf("EasyCLA - 403 Forbidden - unable to load company %s: %v", companyID, err)}
+	}
+	if companyModel == nil {
+		return &companyACLError{message: fmt.Sprintf("EasyCLA - 403 Forbidden - company %s not found", companyID)}
+	}
+	for _, lfUsername := range companyModel.CompanyACL {
+		if lfUsername == claUser.LFUsername {
+			return nil
+		}
+	}
+	return &companyACLError{message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s is not a CLA manager of company %s", claUser.LFUsername, companyID)}
+}
+
+// companyInviteDecisionAllowed refuses approve/reject calls unless the caller is on the company ACL, the request
+// belongs to the company named in the path and the caller is not the requester. The service approves by invite ID
+// into the invite's own company, so a request missing from this company's list is refused (fail-closed) rather than
+// trusted; the list is a single-partition query that only pages past 1 MB of invites for one company.
+func companyInviteDecisionAllowed(ctx context.Context, service IService, companyID, requestID string, claUser *user.CLAUser) error {
+	if err := claUserInCompanyACL(ctx, service, companyID, claUser); err != nil {
+		return err
+	}
+	invites, err := service.GetCompanyInviteRequests(ctx, companyID, nil)
+	if err != nil {
+		return &companyACLError{message: fmt.Sprintf("EasyCLA - 403 Forbidden - unable to load access requests of company %s: %v", companyID, err)}
+	}
+	for _, invite := range invites {
+		if invite.InviteID != requestID {
+			continue
+		}
+		if invite.UserLFID == claUser.LFUsername {
+			return &companyACLError{message: fmt.Sprintf("EasyCLA - 403 Forbidden - user %s cannot decide their own access request %s", claUser.LFUsername, requestID)}
+		}
+		return nil
+	}
+	return &companyACLError{message: fmt.Sprintf("EasyCLA - 403 Forbidden - access request %s does not belong to company %s", requestID, companyID)}
 }
 
 func validateParams(params organization.SearchOrganizationParams) (string, string, string) {

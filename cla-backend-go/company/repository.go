@@ -57,6 +57,9 @@ type IRepository interface { //nolint
 	UpdateCompanySanctionStatus(ctx context.Context, companyID string, sanctioned bool, origin string) error
 	ClearCompanySanctionStatusIfSSS(ctx context.Context, companyID string) (bool, error)
 	IsCCLAEnabledForCompany(ctx context.Context, companyID string) (bool, error)
+	EnsureCompanyForExternalID(ctx context.Context, externalID, companyName, signingEntityName string) (*models.Company, bool, error)
+	GetCompanyRecord(ctx context.Context, companyID string) (*DBModel, error)
+	UpdateCompanyExternalID(ctx context.Context, companyID, oldExternalID, newExternalID string) error
 }
 
 type repository struct {

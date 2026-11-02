@@ -31,9 +31,9 @@ import (
 var (
 	// ErrGitHubRepositoryNotFound is returned when github repository is not found
 	ErrGitHubRepositoryNotFound = errors.New("github repository not found")
-	NoreplyIDPattern            = regexp.MustCompile(`^(\d+)\+([a-zA-Z0-9-]+)@users\.noreply\.github\.com$`)
-	NoreplyUserPattern          = regexp.MustCompile(`^([a-zA-Z0-9-]+)@users\.noreply\.github\.com$`)
-	GithubUsernameRegex         = regexp.MustCompile(`^[A-Za-z0-9-]{3,39}$`)
+	NoreplyIDPattern            = regexp.MustCompile(`^(\d+)\+([a-zA-Z0-9-]+(?:\[bot\])?)@users\.noreply\.github\.com$`)
+	NoreplyUserPattern          = regexp.MustCompile(`^([a-zA-Z0-9-]+(?:\[bot\])?)@users\.noreply\.github\.com$`)
+	GithubUsernameRegex         = regexp.MustCompile(`^[A-Za-z0-9-]{3,39}(?:\[bot\])?$`)
 	ListCommitsParallelLimit    = 4
 )
 
@@ -600,6 +600,29 @@ func (c *ProjectUserCache) InvalidateByUser(projectID, id, login string) int {
 	return n
 }
 
+// InvalidateByUserID removes every entry for the given project whose cached
+// (resolved) EasyCLA user record carries the given user ID, whatever commit
+// identity (GitHub id, login, email) the entry was keyed under. Used after a
+// signature invalidation: the PR check may have resolved the user by GitHub
+// login or by email only, so the key need not match the GitHub identity
+// stored on the user record, which may be partial or absent. Negative
+// entries (nil user) are never matched.
+func (c *ProjectUserCache) InvalidateByUserID(projectID, userID string) int {
+	if userID == "" {
+		return 0
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	n := 0
+	for k, entry := range c.data {
+		if k[0] == projectID && entry.value != nil && entry.value.UserID == userID {
+			delete(c.data, k)
+			n++
+		}
+	}
+	return n
+}
+
 var GithubUserCache = NewCache(12 * time.Hour)
 var ModelUserCache = NewUserCache(12 * time.Hour)
 var ModelProjectUserCache = NewProjectUserCache(3 * time.Hour)
@@ -906,15 +929,17 @@ func ExpandWithCoAuthors(
 	return missing
 }
 
-// IsValidGitHubUsername checks if the provided username is a valid GitHub username.
+// IsValidGitHubUsername checks if the provided username is a valid GitHub username
+// (an exact "[bot]" suffix, as carried by GitHub App logins such as "renovate[bot]", is allowed).
 func IsValidGitHubUsername(username string) bool {
 	if !GithubUsernameRegex.MatchString(username) {
 		return false
 	}
-	if strings.HasPrefix(username, "-") || strings.HasSuffix(username, "-") {
+	login := strings.TrimSuffix(username, "[bot]")
+	if strings.HasPrefix(login, "-") || strings.HasSuffix(login, "-") {
 		return false
 	}
-	if strings.Contains(username, "--") {
+	if strings.Contains(login, "--") {
 		return false
 	}
 	return true

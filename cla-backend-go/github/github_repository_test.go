@@ -344,3 +344,106 @@ func TestInvalidateByUserNormalizesLoginCase(t *testing.T) {
 	_, ok = ModelUserCache.Get(uKey)
 	assert.False(t, ok, "user cache entry must be gone")
 }
+
+func TestNoreplyPatternsAcceptBotLogins(t *testing.T) {
+	idCases := []struct {
+		email string
+		id    string
+		login string
+	}{
+		{"29139614+renovate[bot]@users.noreply.github.com", "29139614", "renovate[bot]"},
+		{"49699333+dependabot[bot]@users.noreply.github.com", "49699333", "dependabot[bot]"},
+		{"196905385+lukaszgryglicki2@users.noreply.github.com", "196905385", "lukaszgryglicki2"},
+	}
+	for _, tc := range idCases {
+		matches := NoreplyIDPattern.FindStringSubmatch(tc.email)
+		if assert.NotNil(t, matches, tc.email) {
+			assert.Equal(t, tc.id, matches[1], tc.email)
+			assert.Equal(t, tc.login, matches[2], tc.email)
+		}
+		assert.Nil(t, NoreplyUserPattern.FindStringSubmatch(tc.email), tc.email)
+	}
+
+	userCases := []struct {
+		email string
+		login string
+	}{
+		{"renovate[bot]@users.noreply.github.com", "renovate[bot]"},
+		{"lukaszgryglicki2@users.noreply.github.com", "lukaszgryglicki2"},
+	}
+	for _, tc := range userCases {
+		matches := NoreplyUserPattern.FindStringSubmatch(tc.email)
+		if assert.NotNil(t, matches, tc.email) {
+			assert.Equal(t, tc.login, matches[1], tc.email)
+		}
+		assert.Nil(t, NoreplyIDPattern.FindStringSubmatch(tc.email), tc.email)
+	}
+
+	for _, email := range []string{
+		"x[bot@users.noreply.github.com",
+		"[bot]@users.noreply.github.com",
+		"1+[bot]@users.noreply.github.com",
+		"1+a[bot]x@users.noreply.github.com",
+		"a[bot][bot]@users.noreply.github.com",
+		"a[bot]@users.noreply.github.co",
+		"a[bot]@users.noreply.github.com.evil.example",
+		"1+a[bot]@example.com",
+	} {
+		assert.Nil(t, NoreplyIDPattern.FindStringSubmatch(email), email)
+		assert.Nil(t, NoreplyUserPattern.FindStringSubmatch(email), email)
+	}
+}
+
+// TestInvalidateByUserIDMatchesResolvedUser verifies that InvalidateByUserID
+// evicts every entry of the project that caches the given resolved EasyCLA
+// user, whatever commit identity (id, login, email) keyed it - including
+// login-only and email-only keys that the stored GitHub identity cannot
+// reproduce - while leaving other users, other projects and negative (nil
+// user) entries alone.
+func TestInvalidateByUserIDMatchesResolvedUser(t *testing.T) {
+	ModelProjectUserCache.Clear()
+	t.Cleanup(func() { ModelProjectUserCache.Clear() })
+
+	const (
+		targetProj = "01af041c-0000-0000-0000-000000000000"
+		otherProj  = "ffffffff-1111-2222-3333-444444444444"
+		userID     = "u-1111"
+	)
+	target := &models.User{UserID: userID, GithubID: "12345", GithubUsername: "Target-Login"}
+	other := &models.User{UserID: "u-2222", GithubID: "67890", GithubUsername: "other-login"}
+
+	full := ProjectUserKey(targetProj, "12345", "Target-Login", "target@example.com")
+	loginOnly := ProjectUserKey(targetProj, "", "Target-Login", "12345+target-login@users.noreply.github.com")
+	emailOnly := ProjectUserKey(targetProj, "", "", "target@example.com")
+	otherUser := ProjectUserKey(targetProj, "67890", "other-login", "other@example.com")
+	otherProject := ProjectUserKey(otherProj, "12345", "Target-Login", "target@example.com")
+	negative := ProjectUserKey(targetProj, "", "", "unknown@example.com")
+	ModelProjectUserCache.Set(full, target, true, true)
+	ModelProjectUserCache.Set(loginOnly, target, true, true)
+	ModelProjectUserCache.Set(emailOnly, target, true, false)
+	ModelProjectUserCache.Set(otherUser, other, true, true)
+	ModelProjectUserCache.Set(otherProject, target, true, true)
+	ModelProjectUserCache.SetWithTTL(negative, nil, false, false, NegativeCacheTTL)
+
+	assert.Equal(t, 0, ModelProjectUserCache.InvalidateByUserID(targetProj, ""), "an empty user ID must evict nothing")
+	assert.Equal(t, 3, ModelProjectUserCache.InvalidateByUserID(targetProj, userID), "all three keys caching the target user in the target project must go")
+
+	for name, key := range map[string][4]string{"full": full, "login-only": loginOnly, "email-only": emailOnly} {
+		_, _, _, ok := ModelProjectUserCache.Get(key)
+		assert.False(t, ok, "%s entry of the target user must be gone", name)
+	}
+	for name, key := range map[string][4]string{"other user": otherUser, "other project": otherProject, "negative": negative} {
+		_, _, _, ok := ModelProjectUserCache.Get(key)
+		assert.True(t, ok, "%s entry must NOT be touched", name)
+	}
+	assert.Equal(t, 0, ModelProjectUserCache.InvalidateByUserID(targetProj, userID), "a second pass finds nothing left")
+}
+
+func TestIsValidGitHubUsernameAcceptsBotSuffix(t *testing.T) {
+	for _, username := range []string{"renovate[bot]", "dependabot[bot]", "lukaszgryglicki2", "a-b"} {
+		assert.True(t, IsValidGitHubUsername(username), username)
+	}
+	for _, username := range []string{"[bot]", "ab[bot]", "a[bot]x", "a[bot][bot]", "foo-[bot]", "-foo[bot]", "fo--o[bot]", "renovate[BOT]", "renovate[bot"} {
+		assert.False(t, IsValidGitHubUsername(username), username)
+	}
+}

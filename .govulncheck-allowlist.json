@@ -1,0 +1,34 @@
+{
+  "allowlist": [
+    { "id": "GO-2026-6599", "module": "stdlib" },
+    { "id": "GO-2026-6600", "module": "stdlib" },
+    { "id": "GO-2026-6603", "module": "stdlib" },
+    { "id": "GO-2026-6603", "module": "golang.org/x/net" },
+    { "id": "GO-2026-6605", "module": "stdlib" },
+    { "id": "GO-2026-6607", "module": "stdlib" },
+    { "id": "GO-2026-6608", "module": "stdlib" },
+    { "id": "GO-2026-6610", "module": "stdlib" },
+    { "id": "GO-2026-6611", "module": "stdlib" },
+    { "id": "GO-2026-6611", "module": "golang.org/x/net" },
+    { "id": "GO-2026-6612", "module": "stdlib" },
+    { "id": "GO-2026-6612", "module": "golang.org/x/net" },
+    { "id": "GO-2026-6613", "module": "stdlib" },
+    { "id": "GO-2026-6617", "module": "stdlib" },
+    { "id": "GO-2026-6617", "module": "golang.org/x/net" },
+    { "id": "GO-2026-6809", "module": "stdlib" }
+  ],
+  "notes": {
+    "GO-2026-6599": "html/template in go1.25.14, fixed only in go1.26.9 (Go 1.25 is end-of-life, no backport); removed by the Go 1.26 toolchain follow-up; failing on dev since 2026-10-14",
+    "GO-2026-6600": "html/template in go1.25.14, fixed only in go1.26.9 (Go 1.25 is end-of-life, no backport); removed by the Go 1.26 toolchain follow-up; failing on dev since 2026-10-14",
+    "GO-2026-6603": "net/http HTTP/2 in go1.25.14 (fixed only in go1.26.9) and golang.org/x/net v0.58.0 (fixed in v0.60.0, which requires go 1.26.0); both removed by the Go 1.26 toolchain follow-up; failing on dev since 2026-10-14",
+    "GO-2026-6605": "net/http in go1.25.14, fixed only in go1.26.9 (Go 1.25 is end-of-life, no backport); removed by the Go 1.26 toolchain follow-up; failing on dev since 2026-10-14",
+    "GO-2026-6607": "crypto/tls in go1.25.14, fixed only in go1.26.9 (Go 1.25 is end-of-life, no backport); removed by the Go 1.26 toolchain follow-up; failing on dev since 2026-10-14",
+    "GO-2026-6608": "net/textproto in go1.25.14, fixed only in go1.26.9 (Go 1.25 is end-of-life, no backport); removed by the Go 1.26 toolchain follow-up; failing on dev since 2026-10-14",
+    "GO-2026-6610": "net/http HTTP/2 in go1.25.14, fixed only in go1.26.9 (Go 1.25 is end-of-life, no backport); removed by the Go 1.26 toolchain follow-up; failing on dev since 2026-10-14",
+    "GO-2026-6611": "net/http HTTP/2 in go1.25.14 (fixed only in go1.26.9) and golang.org/x/net v0.58.0 (fixed in v0.60.0, which requires go 1.26.0); both removed by the Go 1.26 toolchain follow-up; failing on dev since 2026-10-14",
+    "GO-2026-6612": "net/http HTTP/2 in go1.25.14 (fixed only in go1.26.9) and golang.org/x/net v0.58.0 (fixed in v0.60.0, which requires go 1.26.0); both removed by the Go 1.26 toolchain follow-up; failing on dev since 2026-10-14",
+    "GO-2026-6613": "net/http in go1.25.14, fixed only in go1.26.9 (Go 1.25 is end-of-life, no backport); removed by the Go 1.26 toolchain follow-up; failing on dev since 2026-10-14",
+    "GO-2026-6617": "net/http HTTP/2 in go1.25.14 (fixed only in go1.26.9) and golang.org/x/net v0.58.0 (fixed in v0.60.0, which requires go 1.26.0); both removed by the Go 1.26 toolchain follow-up; failing on dev since 2026-10-14",
+    "GO-2026-6809": "crypto/x509 chain verification in go1.25.14 (outbound TLS of the legacy GitHub client), fixed only in go1.26.10 (Go 1.25 is end-of-life, no backport); removed by the Go 1.26 toolchain follow-up; published 2026-10-21, failing on dev's scheduled audit since 2026-10-21"
+  }
+}
