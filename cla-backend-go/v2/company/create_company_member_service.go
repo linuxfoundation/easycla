@@ -34,6 +34,12 @@ var ErrCompanyAmbiguousDomain = errors.New("several organizations match the comp
 // ErrCompanyExists reports an EasyCLA company already recorded for the matched Account, or another Account under the same name
 var ErrCompanyExists = errors.New("organization already exists")
 
+// ErrCompanyNotEligible reports a Salesforce account that member-service refuses to register as an organization
+var ErrCompanyNotEligible = errors.New("the organization is not eligible for EasyCLA")
+
+// ErrMemberServiceUnavailable reports a member-service, token or transport failure - not a caller error
+var ErrMemberServiceUnavailable = errors.New("company creation is temporarily unavailable")
+
 var sharedDomains = defaultSharedDomains()
 
 func defaultSharedDomains() orgimport.SharedDomains {
@@ -55,6 +61,7 @@ func (s *service) EnableMemberServiceCreate(client *memberService.Client) {
 // EasyCLA company on its 001 id; only a created account grants company-admin to the creator, and only while the
 // Organization Service already knows it (lfx-self-serve#4992)
 func (s *service) createCompanyViaMemberService(ctx context.Context, f logrus.Fields, companyName, signingEntityName, companyWebsite, userEmail, userID, note string, lfUser *v2UserServiceModels.User) (*models.CompanyOutput, error) {
+	f = memberServiceLogFields(f)
 	if s.members == nil {
 		log.WithFields(f).Warn("the create-company switch is on but the member-service client is not configured - refusing to create the company")
 		return nil, ErrMemberServiceNotConfigured
@@ -65,28 +72,41 @@ func (s *service) createCompanyViaMemberService(ctx context.Context, f logrus.Fi
 		return nil, fmt.Errorf("%w: %s", ErrCompanySharedDomain, companyWebsite)
 	}
 	f["companyDomain"] = domain
+	if takenErr := s.companyNameTaken(ctx, f, companyName); takenErr != nil {
+		return nil, takenErr
+	}
 	b2b, action, err := s.members.FindOrCreateB2BOrg(ctx, companyName, companyWebsite)
 	if err != nil {
-		if errors.Is(err, memberService.ErrAmbiguousDomain) {
+		switch {
+		case errors.Is(err, memberService.ErrAmbiguousDomain):
 			log.WithFields(f).WithError(err).Warn("several Salesforce accounts match the website domain - refusing to create the company")
 			return nil, fmt.Errorf("%w: %s", ErrCompanyAmbiguousDomain, companyWebsite)
+		case errors.Is(err, memberService.ErrNotEligible):
+			log.WithFields(f).WithError(err).Warn("member-service refused to register the account as an organization")
+			return nil, fmt.Errorf("%w: %v", ErrCompanyNotEligible, err)
+		case errors.Is(err, memberService.ErrInvalidRequest):
+			log.WithFields(f).WithError(err).Warn("member-service rejected the company request")
+			return nil, err
+		default:
+			log.WithFields(f).WithError(err).Warn("member-service find-or-create failed")
+			return nil, fmt.Errorf("%w: %v", ErrMemberServiceUnavailable, err)
 		}
-		log.WithFields(f).WithError(err).Warn("member-service find-or-create failed")
-		return nil, err
 	}
 	f["companySFID"], f["memberServiceAction"] = b2b.UID, action
 	if b2b.Name != "" && b2b.Name != companyName {
 		log.WithFields(f).Debugf("the Salesforce account name differs from the request - using %s", b2b.Name)
 		companyName = b2b.Name
+		if takenErr := s.companyNameTaken(ctx, f, companyName); takenErr != nil {
+			return nil, takenErr
+		}
 	}
 	if signingEntityName == "" {
 		signingEntityName = companyName
 	}
 	switch action {
 	case memberService.ActionMatched:
-		existing, lookupErr := s.companyRepo.GetCompanyByExternalID(ctx, b2b.UID)
-		var notFound *utils.CompanyNotFound
-		if lookupErr != nil && !errors.As(lookupErr, &notFound) {
+		existing, lookupErr := s.companyBySFID(ctx, b2b.UID)
+		if lookupErr != nil {
 			log.WithFields(f).WithError(lookupErr).Warn("unable to check whether the matched account is already an EasyCLA company")
 			return nil, lookupErr
 		}
@@ -95,18 +115,21 @@ func (s *service) createCompanyViaMemberService(ctx context.Context, f logrus.Fi
 			return nil, fmt.Errorf("%w: %s", ErrCompanyExists, b2b.UID)
 		}
 	case memberService.ActionCreated:
-		if grantErr := s.grantCreatorIfOrgKnown(ctx, f, b2b.UID, userEmail, lfUser.Username); grantErr != nil {
+		if grantErr := s.grantCreatorIfOrgKnown(ctx, f, b2b.UID, userEmail, userID); grantErr != nil {
 			return nil, grantErr
 		}
 	}
 	row := &v1Models.Company{
 		CompanyExternalID: b2b.UID,
-		CompanyManagerID:  userID,
 		CompanyName:       companyName,
 		SigningEntityName: signingEntityName,
-		CompanyACL:        []string{lfUser.Username},
+		CompanyACL:        []string{},
 		Note:              note,
 		IsSanctioned:      false,
+	}
+	if action == memberService.ActionCreated {
+		row.CompanyManagerID = userID
+		row.CompanyACL = []string{lfUser.Username}
 	}
 	created, createErr := s.companyRepo.CreateCompany(ctx, row)
 	if createErr != nil {
@@ -125,9 +148,50 @@ func (s *service) createCompanyViaMemberService(ctx context.Context, f logrus.Fi
 	}, nil
 }
 
+// memberServiceLogFields copies the caller's fields without the e-mail address: this path logs the user id only
+func memberServiceLogFields(f logrus.Fields) logrus.Fields {
+	out := make(logrus.Fields, len(f))
+	for k, v := range f {
+		if k != "userEmail" {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+// companyNameTaken answers ErrCompanyExists when an EasyCLA company already carries the name (the repository would
+// otherwise silently return that row), before any Salesforce write or grant
+func (s *service) companyNameTaken(ctx context.Context, f logrus.Fields, companyName string) error {
+	existing, err := s.companyRepo.GetCompanyByName(ctx, companyName)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to check whether the company name is already taken")
+		return err
+	}
+	if existing != nil {
+		log.WithFields(f).Warnf("an EasyCLA company named %q already exists - refusing to create another", companyName)
+		return fmt.Errorf("%w: %s", ErrCompanyExists, companyName)
+	}
+	return nil
+}
+
+// companyBySFID finds the EasyCLA company recorded for the account: the canonical 18-character id first, then the
+// 15-character form a legacy row may carry; nil when neither is recorded
+func (s *service) companyBySFID(ctx context.Context, sfid string) (*v1Models.Company, error) {
+	var notFound *utils.CompanyNotFound
+	existing, err := s.companyRepo.GetCompanyByExternalID(ctx, sfid)
+	if err == nil || !errors.As(err, &notFound) || len(sfid) != 18 {
+		return existing, err
+	}
+	existing, err = s.companyRepo.GetCompanyByExternalID(ctx, sfid[:15])
+	if err != nil && errors.As(err, &notFound) {
+		return nil, nil
+	}
+	return existing, err
+}
+
 // grantCreatorIfOrgKnown grants company-admin on a created account exactly as the Organization Service path does,
 // unless the Organization Service does not know the account yet (propagation lag), which only skips the grant
-func (s *service) grantCreatorIfOrgKnown(ctx context.Context, f logrus.Fields, sfid, userEmail, username string) error {
+func (s *service) grantCreatorIfOrgKnown(ctx context.Context, f logrus.Fields, sfid, userEmail, userID string) error {
 	orgClient := orgService.GetClient()
 	_, orgErr := orgClient.GetOrganization(ctx, sfid)
 	switch {
@@ -138,12 +202,12 @@ func (s *service) grantCreatorIfOrgKnown(ctx context.Context, f logrus.Fields, s
 			return adminErr
 		}
 		if scopeErr := orgClient.CreateOrgUserRoleOrgScope(ctx, userEmail, sfid, roleID); scopeErr != nil && !isOrgAssociated(scopeErr) {
-			log.WithFields(f).WithError(scopeErr).Warnf("problem creating the company-admin scope for %s", userEmail)
+			log.WithFields(f).WithError(scopeErr).Warnf("problem creating the company-admin scope for user %s", userID)
 			return scopeErr
 		}
 		return nil
 	case isOrgNotFound(orgErr):
-		log.WithFields(f).Warnf("the Organization Service does not know account %s yet - creating the company without the company-admin grant for %s", sfid, username)
+		log.WithFields(f).Warnf("the Organization Service does not know account %s yet - creating the company without the company-admin grant for user %s", sfid, userID)
 		return nil
 	default:
 		log.WithFields(f).WithError(orgErr).Warn("unable to read the account from the Organization Service")
@@ -152,6 +216,6 @@ func (s *service) grantCreatorIfOrgKnown(ctx context.Context, f logrus.Fields, s
 }
 
 func isOrgNotFound(err error) bool {
-	_, ok := err.(*organizations.GetOrgNotFound)
-	return ok
+	var notFound *organizations.GetOrgNotFound
+	return errors.As(err, &notFound)
 }

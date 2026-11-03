@@ -20,6 +20,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
 	v2CompanyOps "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/company"
+	v2UserServiceModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/models"
 )
 
 func TestCreateCompanyHandlerMapsMemberServiceErrors(t *testing.T) {
@@ -32,6 +33,8 @@ func TestCreateCompanyHandlerMapsMemberServiceErrors(t *testing.T) {
 		"ambiguous domain": {fmt.Errorf("%w: https://acme.example.invalid", ErrCompanyAmbiguousDomain), http.StatusConflict, "company_ambiguous_domain"},
 		"not configured":   {ErrMemberServiceNotConfigured, http.StatusInternalServerError, "500"},
 		"already exists":   {fmt.Errorf("%w: 001410000MemberAQA", ErrCompanyExists), http.StatusConflict, ""},
+		"not eligible":     {fmt.Errorf("%w: person account", ErrCompanyNotEligible), http.StatusUnprocessableEntity, "company_not_eligible"},
+		"unavailable":      {fmt.Errorf("%w: 503", ErrMemberServiceUnavailable), http.StatusInternalServerError, "500"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -58,4 +61,27 @@ func TestCreateCompanyHandlerMapsMemberServiceErrors(t *testing.T) {
 			assert.Contains(t, payload.Message, tc.err.Error())
 		})
 	}
+}
+
+func TestCreateCompanyHandlerMemberServiceOutageIs500(t *testing.T) {
+	previous := lfUserByEmail
+	t.Cleanup(func() { lfUserByEmail = previous })
+	lfUserByEmail = func(string) (*v2UserServiceModels.User, error) {
+		return &v2UserServiceModels.User{Username: testCallerUsername}, nil
+	}
+	fx := newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusServiceUnavailable, memberBody: `{"message":"down"}`}, memberCreateRepo{})
+	api := operations.NewEasyclaAPI(nil)
+	Configure(api, fx.svc, nil, "")
+	params := *memberCreateParams(testCompanySite, "")
+	params.HTTPRequest = httptest.NewRequest(http.MethodPost, "/v4/user/u-jane/company", nil)
+	responder := api.CompanyCreateCompanyHandler.Handle(params, &auth.User{UserName: testCallerUsername, Email: testCallerEmail, ACL: auth.ACL{Allowed: true}})
+	recorder := httptest.NewRecorder()
+	responder.WriteResponse(recorder, runtime.JSONProducer())
+	assert.Equal(t, http.StatusInternalServerError, recorder.Code, recorder.Body.String())
+	var payload models.ErrorResponse
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
+	assert.Equal(t, "500", payload.Code)
+	assert.Contains(t, payload.Message, "temporarily unavailable")
+	assert.Equal(t, 1, fx.transport.count("/b2b_orgs/find-or-create"))
+	assert.Equal(t, 0, fx.transport.count(msOrgPath+"/scopes"))
 }

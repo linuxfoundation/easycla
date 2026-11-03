@@ -17,6 +17,8 @@ import (
 
 	"github.com/go-openapi/strfmt"
 	"github.com/golang/mock/gomock"
+	"github.com/sirupsen/logrus"
+	logrustest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -24,12 +26,14 @@ import (
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	v2CompanyOps "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/company"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/token"
 	mock_users "github.com/linuxfoundation/easycla/cla-backend-go/users/mocks"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	acsService "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
 	memberService "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
 	orgService "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
+	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
 	v2UserServiceModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/models"
 )
 
@@ -47,12 +51,14 @@ const (
 
 // memberCreateHTTP fakes member-service find-or-create and the platform calls of the new create path; any other request fails the test
 type memberCreateHTTP struct {
-	t            *testing.T
-	tokenReady   chan struct{}
-	memberStatus int
-	memberBody   string
-	orgStatus    int
-	scopeStatus  int
+	t                 *testing.T
+	tokenReady        chan struct{}
+	memberStatus      int
+	memberBody        string
+	memberErr         error
+	memberTokenStatus int
+	orgStatus         int
+	scopeStatus       int
 
 	mu       sync.Mutex
 	calls    []string
@@ -71,7 +77,13 @@ func (h *memberCreateHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 		return response, nil
 	case r.URL.Host == msMemberHost && r.URL.Path == msOAuthPath:
 		body = `{"access_token":"member-token","token_type":"Bearer","expires_in":3600}`
+		if h.memberTokenStatus != 0 {
+			response.StatusCode, body = h.memberTokenStatus, `{"error":"token failure"}`
+		}
 	case r.URL.Host == msMemberHost && r.Method == http.MethodPost && r.URL.Path == "/b2b_orgs/find-or-create":
+		if h.memberErr != nil {
+			return nil, h.memberErr
+		}
 		var payload map[string]string
 		require.NoError(h.t, json.NewDecoder(r.Body).Decode(&payload))
 		h.mu.Lock()
@@ -115,11 +127,13 @@ func (h *memberCreateHTTP) count(suffix string) int {
 // memberCreateRepo configures the gomock company repository: the row the repository answers to CreateCompany
 // (nil = the argument itself) and the row an external-ID lookup finds (nil = CompanyNotFound)
 type memberCreateRepo struct {
-	expectRow     bool
-	returnedRow   *v1Models.Company
-	existingBySF  *v1Models.Company
-	expectLookup  bool
-	lookupFailure error
+	expectRow       bool
+	returnedRow     *v1Models.Company
+	existingBySF    *v1Models.Company
+	existingByShort *v1Models.Company
+	existingByName  *v1Models.Company
+	expectLookup    bool
+	lookupFailure   error
 }
 
 type memberCreateFixture struct {
@@ -149,6 +163,12 @@ func newMemberCreateFixture(t *testing.T, transport *memberCreateHTTP, repoCfg m
 	userRepo := mock_users.NewMockUserRepository(ctrl)
 	userRepo.EXPECT().GetUser("u-jane").Return(&v1Models.User{UserID: "u-jane", LfUsername: testCallerUsername}, nil).AnyTimes()
 	companyRepo := mock_company_repo.NewMockIRepository(ctrl) // no CreateCompany expectation = any write fails the test
+	companyRepo.EXPECT().GetCompanyByName(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, name string) (*v1Models.Company, error) {
+		if repoCfg.existingByName != nil && repoCfg.existingByName.CompanyName == name {
+			return repoCfg.existingByName, nil
+		}
+		return nil, nil
+	}).AnyTimes()
 	fx := &memberCreateFixture{transport: transport, svc: &service{userRepo: userRepo, companyRepo: companyRepo}}
 	if repoCfg.expectLookup {
 		companyRepo.EXPECT().GetCompanyByExternalID(gomock.Any(), msAccountSFID).DoAndReturn(func(_ context.Context, sfid string) (*v1Models.Company, error) {
@@ -160,6 +180,12 @@ func newMemberCreateFixture(t *testing.T, transport *memberCreateHTTP, repoCfg m
 			}
 			return repoCfg.existingBySF, nil
 		})
+		companyRepo.EXPECT().GetCompanyByExternalID(gomock.Any(), msAccountSFID[:15]).DoAndReturn(func(_ context.Context, sfid string) (*v1Models.Company, error) {
+			if repoCfg.existingByShort == nil {
+				return nil, &utils.CompanyNotFound{Message: "no company records found for SFID", CompanyID: sfid}
+			}
+			return repoCfg.existingByShort, nil
+		}).AnyTimes()
 	}
 	if repoCfg.expectRow {
 		companyRepo.EXPECT().CreateCompany(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, model *v1Models.Company) (*v1Models.Company, error) {
@@ -275,7 +301,8 @@ func TestCreateCompanyViaMemberService(t *testing.T) {
 		require.NotNil(t, fx.created)
 		assert.Equal(t, "Acme Incorporated", fx.created.CompanyName)
 		assert.Equal(t, "Acme Incorporated", fx.created.SigningEntityName)
-		assert.Equal(t, []string{testCallerUsername}, fx.created.CompanyACL, "the creator still manages the EasyCLA company")
+		assert.Equal(t, []string{}, fx.created.CompanyACL, "a matched website is not authority over the EasyCLA company either")
+		assert.Equal(t, "", fx.created.CompanyManagerID)
 		assert.Equal(t, 0, fx.transport.count(msOrgPath), "no organization read for a matched account")
 		assert.Equal(t, 0, fx.transport.count(msRolesPath), "no role lookup for a matched account")
 		assert.Equal(t, 0, fx.transport.count(msOrgPath+"/scopes"), "a matched website is not authority over the organization")
@@ -329,6 +356,94 @@ func TestCreateCompanyViaMemberService(t *testing.T) {
 		assert.True(t, errors.Is(err, ErrCompanyExists), "%v", err)
 		assert.Nil(t, out)
 		assert.Equal(t, []string{"owner"}, legacy.CompanyACL)
+	})
+
+	t.Run("an existing company name is refused before any member-service call", func(t *testing.T) {
+		taken := &v1Models.Company{CompanyID: "taken-uuid", CompanyExternalID: "001410000LegacyAQA", CompanyName: testCompanyName, CompanyACL: []string{"owner"}}
+		fx := newMemberCreateFixture(t, created(testCompanyName), memberCreateRepo{existingByName: taken})
+		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+		assert.True(t, errors.Is(err, ErrCompanyExists), "%v", err)
+		assert.Equal(t, 0, fx.transport.count("/b2b_orgs/find-or-create"), "no Salesforce account for a taken name")
+		assert.Equal(t, []string{"owner"}, taken.CompanyACL)
+	})
+
+	t.Run("member-service rejections keep their meaning", func(t *testing.T) {
+		fx := newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusBadRequest, memberBody: `{"message":"website is not a valid domain"}`}, memberCreateRepo{})
+		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+		assert.True(t, errors.Is(err, memberService.ErrInvalidRequest), "%v", err)
+		assert.False(t, errors.Is(err, ErrMemberServiceUnavailable))
+
+		fx = newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusUnprocessableEntity, memberBody: `{"message":"person account"}`}, memberCreateRepo{})
+		_, err = fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+		assert.True(t, errors.Is(err, ErrCompanyNotEligible), "%v", err)
+		assert.False(t, errors.Is(err, ErrMemberServiceUnavailable))
+	})
+
+	t.Run("member-service outages are server failures, not caller errors", func(t *testing.T) {
+		for name, transport := range map[string]*memberCreateHTTP{
+			"503":       {memberStatus: http.StatusServiceUnavailable, memberBody: `{"message":"down"}`},
+			"transport": {memberErr: errors.New("connection reset")},
+			"token":     {memberTokenStatus: http.StatusInternalServerError},
+		} {
+			fx := newMemberCreateFixture(t, transport, memberCreateRepo{})
+			_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+			assert.True(t, errors.Is(err, ErrMemberServiceUnavailable), "%s: %v", name, err)
+			assert.False(t, errors.Is(err, memberService.ErrInvalidRequest), name)
+			assert.Equal(t, 0, fx.transport.count(msOrgPath), name)
+			assert.Equal(t, 0, fx.transport.count(msOrgPath+"/scopes"), name)
+		}
+	})
+
+	t.Run("matched account recorded under its 15-character id is a conflict and untouched", func(t *testing.T) {
+		short := &v1Models.Company{CompanyID: "short-uuid", CompanyExternalID: msAccountSFID[:15], CompanyName: "Acme Old Name", CompanyACL: []string{"owner"}}
+		fx := newMemberCreateFixture(t, matched("Acme Incorporated"), memberCreateRepo{expectLookup: true, existingByShort: short})
+		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+		assert.True(t, errors.Is(err, ErrCompanyExists), "%v", err)
+		assert.Equal(t, []string{"owner"}, short.CompanyACL)
+		assert.Equal(t, 0, fx.transport.count(msOrgPath+"/scopes"))
+	})
+
+	t.Run("a canonical-name conflict stops before any grant or local write", func(t *testing.T) {
+		taken := &v1Models.Company{CompanyID: "taken-uuid", CompanyExternalID: "001410000LegacyAQA", CompanyName: "Acme Incorporated", CompanyACL: []string{"owner"}}
+		fx := newMemberCreateFixture(t, created("Acme Incorporated"), memberCreateRepo{existingByName: taken})
+		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+		assert.True(t, errors.Is(err, ErrCompanyExists), "%v", err)
+		assert.Equal(t, 1, fx.transport.count("/b2b_orgs/find-or-create"), "the request name was free, the account's name is not")
+		assert.Equal(t, 0, fx.transport.count(msOrgPath), "no grant attempt")
+		assert.Equal(t, 0, fx.transport.count(msOrgPath+"/scopes"))
+		assert.Equal(t, []string{"owner"}, taken.CompanyACL)
+	})
+
+	t.Run("the new path never logs the caller's e-mail or username", func(t *testing.T) {
+		hook := logrustest.NewLocal(log.GetLogger())
+		t.Cleanup(hook.Reset)
+		fx := newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusCreated, memberBody: accountJSON(testCompanyName), orgStatus: http.StatusOK, scopeStatus: http.StatusInternalServerError}, memberCreateRepo{})
+		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+		require.Error(t, err)
+		fx = newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusCreated, memberBody: accountJSON(testCompanyName), orgStatus: http.StatusNotFound}, memberCreateRepo{expectRow: true})
+		_, err = fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+		require.NoError(t, err)
+		checked := 0
+		for _, entry := range hook.AllEntries() {
+			if !strings.Contains(entry.Message, "company-admin") && !strings.Contains(entry.Message, "member-service") && !strings.Contains(entry.Message, "Organization Service") {
+				continue
+			}
+			checked++
+			_, hasEmail := entry.Data["userEmail"]
+			assert.False(t, hasEmail, "%s carries userEmail", entry.Message)
+			assert.NotContains(t, entry.Message, testCallerEmail)
+			assert.NotContains(t, strings.ReplaceAll(entry.Message, "u-jane", ""), testCallerUsername, "only the user id is logged")
+			assert.Equal(t, "u-jane", entry.Data["userID"], entry.Message)
+		}
+		assert.GreaterOrEqual(t, checked, 2, "the scope failure and the lag warnings were logged")
+		filtered := memberServiceLogFields(logrus.Fields{"userEmail": testCallerEmail, "userID": "u-jane", "companyName": testCompanyName})
+		assert.Equal(t, logrus.Fields{"userID": "u-jane", "companyName": testCompanyName}, filtered)
+	})
+
+	t.Run("a wrapped organization not-found still counts as lag", func(t *testing.T) {
+		assert.True(t, isOrgNotFound(fmt.Errorf("fetching org: %w", &organizations.GetOrgNotFound{})))
+		assert.True(t, isOrgNotFound(&organizations.GetOrgNotFound{}))
+		assert.False(t, isOrgNotFound(errors.New("organization not found")))
 	})
 
 	t.Run("switch off keeps the organization service path", func(t *testing.T) {
