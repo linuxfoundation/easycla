@@ -33,8 +33,8 @@ func TestCreateCompanyHandlerMapsMemberServiceErrors(t *testing.T) {
 		"ambiguous domain": {fmt.Errorf("%w: https://acme.example.invalid", ErrCompanyAmbiguousDomain), http.StatusConflict, "company_ambiguous_domain"},
 		"not configured":   {ErrMemberServiceNotConfigured, http.StatusInternalServerError, "500"},
 		"already exists":   {fmt.Errorf("%w: 001410000MemberAQA", ErrCompanyExists), http.StatusConflict, ""},
-		"not eligible":     {fmt.Errorf("%w: person account", ErrCompanyNotEligible), http.StatusUnprocessableEntity, "company_not_eligible"},
-		"unavailable":      {fmt.Errorf("%w: 503", ErrMemberServiceUnavailable), http.StatusInternalServerError, "500"},
+		"not eligible":     {fmt.Errorf("%w: member-service: person account", ErrCompanyNotEligible), http.StatusUnprocessableEntity, "company_not_eligible"},
+		"unavailable":      {fmt.Errorf("%w: member-service: POST returned 503: upstream body", ErrCompanyDependencyFailed), http.StatusInternalServerError, "500"},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -58,30 +58,67 @@ func TestCreateCompanyHandlerMapsMemberServiceErrors(t *testing.T) {
 				assert.Contains(t, payload.Message, "organization already exists", "same body as the legacy conflict")
 				return
 			}
+			if errors.Is(tc.err, ErrCompanyNotEligible) || errors.Is(tc.err, ErrCompanyDependencyFailed) {
+				assert.NotContains(t, payload.Message, "member-service", "no upstream detail in the body")
+				assert.NotContains(t, payload.Message, "upstream body")
+				assert.NotContains(t, payload.Message, "person account")
+				if errors.Is(tc.err, ErrCompanyNotEligible) {
+					assert.Equal(t, ErrCompanyNotEligible.Error(), payload.Message)
+				} else {
+					assert.Contains(t, payload.Message, "temporarily unavailable")
+				}
+				return
+			}
 			assert.Contains(t, payload.Message, tc.err.Error())
 		})
 	}
 }
 
-func TestCreateCompanyHandlerMemberServiceOutageIs500(t *testing.T) {
+func TestCreateCompanyHandlerDependencyFailuresAre500(t *testing.T) {
 	previous := lfUserByEmail
 	t.Cleanup(func() { lfUserByEmail = previous })
 	lfUserByEmail = func(string) (*v2UserServiceModels.User, error) {
 		return &v2UserServiceModels.User{Username: testCallerUsername}, nil
 	}
-	fx := newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusServiceUnavailable, memberBody: `{"message":"down"}`}, memberCreateRepo{})
-	api := operations.NewEasyclaAPI(nil)
-	Configure(api, fx.svc, nil, "")
-	params := *memberCreateParams(testCompanySite, "")
-	params.HTTPRequest = httptest.NewRequest(http.MethodPost, "/v4/user/u-jane/company", nil)
-	responder := api.CompanyCreateCompanyHandler.Handle(params, &auth.User{UserName: testCallerUsername, Email: testCallerEmail, ACL: auth.ACL{Allowed: true}})
-	recorder := httptest.NewRecorder()
-	responder.WriteResponse(recorder, runtime.JSONProducer())
-	assert.Equal(t, http.StatusInternalServerError, recorder.Code, recorder.Body.String())
-	var payload models.ErrorResponse
-	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
-	assert.Equal(t, "500", payload.Code)
-	assert.Contains(t, payload.Message, "temporarily unavailable")
-	assert.Equal(t, 1, fx.transport.count("/b2b_orgs/find-or-create"))
-	assert.Equal(t, 0, fx.transport.count(msOrgPath+"/scopes"))
+	accountJSON := `{"uid":"` + msAccountSFID + `","name":"` + testCompanyName + `","website":"` + testCompanySite + `"}`
+	call := func(t *testing.T, fx *memberCreateFixture) (int, models.ErrorResponse) {
+		t.Helper()
+		api := operations.NewEasyclaAPI(nil)
+		Configure(api, fx.svc, nil, "")
+		params := *memberCreateParams(testCompanySite, "")
+		params.HTTPRequest = httptest.NewRequest(http.MethodPost, "/v4/user/u-jane/company", nil)
+		responder := api.CompanyCreateCompanyHandler.Handle(params, &auth.User{UserName: testCallerUsername, Email: testCallerEmail, ACL: auth.ACL{Allowed: true}})
+		recorder := httptest.NewRecorder()
+		responder.WriteResponse(recorder, runtime.JSONProducer())
+		var payload models.ErrorResponse
+		require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload), recorder.Body.String())
+		return recorder.Code, payload
+	}
+	for name, tc := range map[string]struct {
+		transport *memberCreateHTTP
+		repo      memberCreateRepo
+		leaked    string
+	}{
+		"member-service 503":      {&memberCreateHTTP{memberStatus: http.StatusServiceUnavailable, memberBody: `{"message":"upstream body"}`}, memberCreateRepo{}, "upstream body"},
+		"name lookup failure":     {&memberCreateHTTP{memberStatus: http.StatusCreated, memberBody: accountJSON}, memberCreateRepo{nameFailure: errors.New("dynamodb unavailable")}, "dynamodb"},
+		"scope failure after row": {&memberCreateHTTP{memberStatus: http.StatusCreated, memberBody: accountJSON, orgStatus: http.StatusOK, scopeStatus: http.StatusInternalServerError}, memberCreateRepo{expectRow: true}, "scope failure"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fx := newMemberCreateFixture(t, tc.transport, tc.repo)
+			code, payload := call(t, fx)
+			assert.Equal(t, http.StatusInternalServerError, code)
+			assert.Equal(t, "500", payload.Code)
+			assert.Contains(t, payload.Message, "temporarily unavailable")
+			assert.NotContains(t, payload.Message, tc.leaked, "no upstream or repository detail in the body")
+			assert.NotContains(t, payload.Message, "member-service")
+		})
+	}
+
+	t.Run("switch off keeps the legacy mapping", func(t *testing.T) {
+		fx := newMemberCreateFixture(t, &memberCreateHTTP{}, memberCreateRepo{})
+		fx.svc.createViaMemberService, fx.svc.members = false, nil
+		code, _ := call(t, fx)
+		assert.Equal(t, http.StatusBadRequest, code, "the Organization Service path still answers as today")
+		assert.Equal(t, 1, fx.transport.count(msLookupPath))
+	})
 }

@@ -58,6 +58,7 @@ type memberCreateHTTP struct {
 	memberErr         error
 	memberTokenStatus int
 	orgStatus         int
+	rolesStatus       int
 	scopeStatus       int
 
 	mu       sync.Mutex
@@ -97,6 +98,9 @@ func (h *memberCreateHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 	case r.URL.Host == msPlatformHost && r.URL.Path == msRolesPath:
 		body = `[{"role_id":"role-company-admin","role_name":"company-admin"}]`
+		if h.rolesStatus != 0 {
+			response.StatusCode, body = h.rolesStatus, `{"Message":"acs failure"}`
+		}
 	case r.URL.Host == msPlatformHost && r.Method == http.MethodPost && r.URL.Path == msOrgPath+"/scopes":
 		response.StatusCode = h.scopeStatus
 		if h.scopeStatus >= http.StatusBadRequest {
@@ -134,6 +138,8 @@ type memberCreateRepo struct {
 	existingByName  *v1Models.Company
 	expectLookup    bool
 	lookupFailure   error
+	nameFailure     error
+	createFailure   error
 }
 
 type memberCreateFixture struct {
@@ -164,6 +170,9 @@ func newMemberCreateFixture(t *testing.T, transport *memberCreateHTTP, repoCfg m
 	userRepo.EXPECT().GetUser("u-jane").Return(&v1Models.User{UserID: "u-jane", LfUsername: testCallerUsername}, nil).AnyTimes()
 	companyRepo := mock_company_repo.NewMockIRepository(ctrl) // no CreateCompany expectation = any write fails the test
 	companyRepo.EXPECT().GetCompanyByName(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, name string) (*v1Models.Company, error) {
+		if repoCfg.nameFailure != nil {
+			return nil, repoCfg.nameFailure
+		}
 		if repoCfg.existingByName != nil && repoCfg.existingByName.CompanyName == name {
 			return repoCfg.existingByName, nil
 		}
@@ -190,6 +199,9 @@ func newMemberCreateFixture(t *testing.T, transport *memberCreateHTTP, repoCfg m
 	if repoCfg.expectRow {
 		companyRepo.EXPECT().CreateCompany(gomock.Any(), gomock.Any()).DoAndReturn(func(_ context.Context, model *v1Models.Company) (*v1Models.Company, error) {
 			fx.created = model
+			if repoCfg.createFailure != nil {
+				return nil, repoCfg.createFailure
+			}
 			if repoCfg.returnedRow != nil {
 				return repoCfg.returnedRow, nil
 			}
@@ -320,8 +332,20 @@ func TestCreateCompanyViaMemberService(t *testing.T) {
 	t.Run("matched lookup outage fails before any write", func(t *testing.T) {
 		fx := newMemberCreateFixture(t, matched(testCompanyName), memberCreateRepo{expectLookup: true, lookupFailure: errors.New("dynamodb unavailable")})
 		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
-		require.Error(t, err)
+		assert.True(t, errors.Is(err, ErrCompanyDependencyFailed), "%v", err)
 		assert.False(t, errors.Is(err, ErrCompanyExists))
+	})
+
+	t.Run("repository failures are dependency failures", func(t *testing.T) {
+		fx := newMemberCreateFixture(t, created(testCompanyName), memberCreateRepo{nameFailure: errors.New("dynamodb unavailable")})
+		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+		assert.True(t, errors.Is(err, ErrCompanyDependencyFailed), "%v", err)
+		assert.Equal(t, 0, fx.transport.count("/b2b_orgs/find-or-create"), "no Salesforce write when the name cannot be checked")
+
+		fx = newMemberCreateFixture(t, created(testCompanyName), memberCreateRepo{expectRow: true, createFailure: errors.New("dynamodb unavailable")})
+		_, err = fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+		assert.True(t, errors.Is(err, ErrCompanyDependencyFailed), "%v", err)
+		assert.Equal(t, 0, fx.transport.count(msOrgPath+"/scopes"), "the row is written before any grant, so a failed write grants nothing")
 	})
 
 	t.Run("organization service lag skips the grant but creates the company", func(t *testing.T) {
@@ -335,18 +359,33 @@ func TestCreateCompanyViaMemberService(t *testing.T) {
 		assert.Equal(t, 0, fx.transport.count(msOrgPath+"/scopes"))
 	})
 
-	t.Run("organization service outage is not treated as lag", func(t *testing.T) {
-		fx := newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusCreated, memberBody: accountJSON(testCompanyName), orgStatus: http.StatusInternalServerError}, memberCreateRepo{})
-		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
-		require.Error(t, err)
-		assert.Equal(t, 0, fx.transport.count(msOrgPath+"/scopes"))
+	t.Run("grant dependency failures keep the creator-owned row and fail typed", func(t *testing.T) {
+		for name, transport := range map[string]*memberCreateHTTP{
+			"organization service outage": {memberStatus: http.StatusCreated, memberBody: accountJSON(testCompanyName), orgStatus: http.StatusInternalServerError},
+			"role lookup failure":         {memberStatus: http.StatusCreated, memberBody: accountJSON(testCompanyName), orgStatus: http.StatusOK, rolesStatus: http.StatusInternalServerError},
+			"scope failure":               {memberStatus: http.StatusCreated, memberBody: accountJSON(testCompanyName), orgStatus: http.StatusOK, scopeStatus: http.StatusInternalServerError},
+		} {
+			fx := newMemberCreateFixture(t, transport, memberCreateRepo{expectRow: true})
+			out, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+			assert.True(t, errors.Is(err, ErrCompanyDependencyFailed), "%s: %v", name, err)
+			assert.Nil(t, out, name)
+			require.NotNil(t, fx.created, "%s: the creator-owned row is persisted before the grant", name)
+			assert.Equal(t, []string{testCallerUsername}, fx.created.CompanyACL, name)
+			assert.Equal(t, "u-jane", fx.created.CompanyManagerID, name)
+			assert.Equal(t, msAccountSFID, fx.created.CompanyExternalID, name)
+		}
 	})
 
-	t.Run("grant failure fails the request", func(t *testing.T) {
-		fx := newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusCreated, memberBody: accountJSON(testCompanyName), orgStatus: http.StatusOK, scopeStatus: http.StatusInternalServerError}, memberCreateRepo{})
-		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
-		require.Error(t, err)
-		assert.False(t, errors.Is(err, ErrCompanyAmbiguousDomain))
+	t.Run("a retry after a failed grant finds the owned row instead of creating an unowned one", func(t *testing.T) {
+		first := newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusCreated, memberBody: accountJSON(testCompanyName), orgStatus: http.StatusOK, scopeStatus: http.StatusInternalServerError}, memberCreateRepo{expectRow: true})
+		_, err := first.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+		assert.True(t, errors.Is(err, ErrCompanyDependencyFailed), "%v", err)
+		require.NotNil(t, first.created)
+		retry := newMemberCreateFixture(t, matched(testCompanyName), memberCreateRepo{expectLookup: true, existingBySF: first.created})
+		_, err = retry.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+		assert.True(t, errors.Is(err, ErrCompanyExists), "%v", err)
+		assert.Equal(t, []string{testCallerUsername}, first.created.CompanyACL, "the creator keeps the row")
+		assert.Equal(t, 0, retry.transport.count(msOrgPath+"/scopes"))
 	})
 
 	t.Run("a legacy row under the same name is a conflict, never claimed as the new account", func(t *testing.T) {
@@ -371,12 +410,12 @@ func TestCreateCompanyViaMemberService(t *testing.T) {
 		fx := newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusBadRequest, memberBody: `{"message":"website is not a valid domain"}`}, memberCreateRepo{})
 		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
 		assert.True(t, errors.Is(err, memberService.ErrInvalidRequest), "%v", err)
-		assert.False(t, errors.Is(err, ErrMemberServiceUnavailable))
+		assert.False(t, errors.Is(err, ErrCompanyDependencyFailed))
 
 		fx = newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusUnprocessableEntity, memberBody: `{"message":"person account"}`}, memberCreateRepo{})
 		_, err = fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
 		assert.True(t, errors.Is(err, ErrCompanyNotEligible), "%v", err)
-		assert.False(t, errors.Is(err, ErrMemberServiceUnavailable))
+		assert.False(t, errors.Is(err, ErrCompanyDependencyFailed))
 	})
 
 	t.Run("member-service outages are server failures, not caller errors", func(t *testing.T) {
@@ -387,7 +426,7 @@ func TestCreateCompanyViaMemberService(t *testing.T) {
 		} {
 			fx := newMemberCreateFixture(t, transport, memberCreateRepo{})
 			_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
-			assert.True(t, errors.Is(err, ErrMemberServiceUnavailable), "%s: %v", name, err)
+			assert.True(t, errors.Is(err, ErrCompanyDependencyFailed), "%s: %v", name, err)
 			assert.False(t, errors.Is(err, memberService.ErrInvalidRequest), name)
 			assert.Equal(t, 0, fx.transport.count(msOrgPath), name)
 			assert.Equal(t, 0, fx.transport.count(msOrgPath+"/scopes"), name)
@@ -417,7 +456,7 @@ func TestCreateCompanyViaMemberService(t *testing.T) {
 	t.Run("the new path never logs the caller's e-mail or username", func(t *testing.T) {
 		hook := logrustest.NewLocal(log.GetLogger())
 		t.Cleanup(hook.Reset)
-		fx := newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusCreated, memberBody: accountJSON(testCompanyName), orgStatus: http.StatusOK, scopeStatus: http.StatusInternalServerError}, memberCreateRepo{})
+		fx := newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusCreated, memberBody: accountJSON(testCompanyName), orgStatus: http.StatusOK, scopeStatus: http.StatusInternalServerError}, memberCreateRepo{expectRow: true})
 		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
 		require.Error(t, err)
 		fx = newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusCreated, memberBody: accountJSON(testCompanyName), orgStatus: http.StatusNotFound}, memberCreateRepo{expectRow: true})

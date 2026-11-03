@@ -442,10 +442,10 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(errorResponse(reqID, errors.New("organization already exists")))
 				}
 				if errors.Is(err, ErrCompanyNotEligible) {
-					return company.NewCreateCompanyUnprocessableEntity().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{Code: "company_not_eligible", Message: err.Error(), XRequestID: reqID})
+					return company.NewCreateCompanyUnprocessableEntity().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{Code: "company_not_eligible", Message: ErrCompanyNotEligible.Error(), XRequestID: reqID})
 				}
-				if errors.Is(err, ErrMemberServiceUnavailable) {
-					return company.NewCreateCompanyInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, "company creation is temporarily unavailable", err))
+				if errors.Is(err, ErrCompanyDependencyFailed) {
+					return company.NewCreateCompanyInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerError(reqID, ErrCompanyDependencyFailed.Error()))
 				}
 				if errors.Is(err, ErrMemberServiceNotConfigured) {
 					return company.NewCreateCompanyInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerError(reqID, err.Error()))
