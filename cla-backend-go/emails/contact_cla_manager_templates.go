@@ -16,8 +16,10 @@ type ContactClaManagerTemplateParams struct {
 	CompanyName         string
 	ProjectName         string
 	CLAGroupName        string
-	OptionalMessage     string
-	ContactOnly         bool
+	// OrgLensURL is the CLA Group's Organization lens page; empty keeps the Corporate Console copy
+	OrgLensURL      string
+	OptionalMessage string
+	ContactOnly     bool
 }
 
 const (
@@ -44,8 +46,9 @@ under the {{.CompanyName}} corporate CLA. You are receiving this message as a CL
 <p>The contributor included the following message in the request:</p>
 <p>{{.OptionalMessage}}</p>
 {{end}}
-<p>To act on this request, please log into the EasyCLA Corporate Console and update the Approved List for {{.CompanyName}} accordingly.
-No change has been made automatically.</p>
+{{if .OrgLensURL}}<p>To act on this request, please open <a href="{{.OrgLensURL}}" target="_blank">{{.CLAGroupName}} in the Organization lens</a> and update the Approved List for {{.CompanyName}} accordingly.
+No change has been made automatically.</p>{{else}}<p>To act on this request, please log into the EasyCLA Corporate Console and update the Approved List for {{.CompanyName}} accordingly.
+No change has been made automatically.</p>{{end}}
 {{end}}
 `
 )

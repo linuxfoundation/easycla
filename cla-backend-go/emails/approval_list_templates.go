@@ -111,11 +111,13 @@ const (
 <p>{{.ContributorName}} included the following message in the request:</p>
 <br/><p>{{.OptionalMessage}}</p><br/>
 {{end}}
-<p>If you want to add them to the Approved List, please
+{{with .OrgLensURL .CompanySFID}}<p>If you want to add them to the Approved List, please open <a href="{{.}}" target="_blank">{{$.CLAGroupName}} in the Organization lens</a>, where you can approve this user's request by
+adding the contributor's email, the contributor's entire email domain, their GitHub ID or the entire GitHub Organization for the
+repository to the approval list. This will permit them to begin contributing to {{$.Project.ExternalProjectName}} on behalf of {{$.CompanyName}}.</p>{{else}}<p>If you want to add them to the Approved List, please
 <a href="{{.CorporateConsole}}#/company/{{.CompanyID}}" target="_blank">log into the EasyCLA Corporate
 Console</a>, where you can approve this user's request by selecting the 'Manage Approved List' and adding the
 contributor's email, the contributor's entire email domain, their GitHub ID or the entire GitHub Organization for the
-repository. This will permit them to begin contributing to {{.Project.ExternalProjectName}} on behalf of {{.CompanyName}}.</p>
+repository. This will permit them to begin contributing to {{.Project.ExternalProjectName}} on behalf of {{.CompanyName}}.</p>{{end}}
 <p>If you are not certain whether to add them to the Approved List, please reach out to them directly to discuss.</p>
 `
 )

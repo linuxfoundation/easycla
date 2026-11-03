@@ -430,7 +430,7 @@ func server(localMode bool) http.Handler {
 	healthService := health.New(Version, Commit, Branch, BuildDate)
 	templateService := template.NewService(stage, templateRepo, docraptorClient, awsSession)
 	v1ProjectService := service.NewService(v1CLAGroupRepo, gitV1Repository, gerritRepo, v1ProjectClaGroupRepo, usersRepo)
-	emailTemplateService := emails.NewEmailTemplateService(v1CLAGroupRepo, v1ProjectClaGroupRepo, v1ProjectService, configFile.CorporateConsoleV2URL, configFile.CorporateConsoleV2URL)
+	emailTemplateService := emails.NewEmailTemplateService(v1CLAGroupRepo, v1ProjectClaGroupRepo, v1ProjectService, configFile.CorporateConsoleV2URL, configFile.CorporateConsoleV2URL, configFile.OrgLensURL)
 	emailService := emails.NewService(emailTemplateService, v1ProjectService)
 	v2ProjectService := v2Project.NewService(v1ProjectService, v1CLAGroupRepo, v1ProjectClaGroupRepo)
 	v1CompanyService := v1Company.NewService(v1CompanyRepo, configFile.CorporateConsoleV2URL, userRepo, usersService)

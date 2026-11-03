@@ -493,6 +493,7 @@ func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller,
 			CompanyName:         details.companyName,
 			ProjectName:         details.projectName,
 			CLAGroupName:        details.claGroupName,
+			OrgLensURL:          utils.GetOrgLensURL(details.companySFID, details.claGroupID),
 			OptionalMessage:     message,
 			ContactOnly:         requestType == models.MyClaManagerRequestRequestTypeContact,
 		})
@@ -582,9 +583,11 @@ func (s *service) findOwnedEcla(ctx context.Context, caller *Caller, requested *
 }
 
 type managerDetails struct {
+	claGroupID      string
 	claGroupName    string
 	projectName     string
 	companyName     string
+	companySFID     string
 	managers        []models.MyClaManager
 	callerIsManager bool
 }
@@ -625,12 +628,14 @@ func (s *service) eclaManagerDetails(ctx context.Context, identity *Identity, si
 	}
 
 	details := &managerDetails{
+		claGroupID:   sig.SignatureProjectID,
 		claGroupName: claGroupName,
 		projectName:  project.name,
 		managers:     []models.MyClaManager{},
 	}
 	if companyModel != nil {
 		details.companyName = companyModel.CompanyName
+		details.companySFID = companyModel.CompanyExternalID
 	}
 	if ccla == nil {
 		return details, nil

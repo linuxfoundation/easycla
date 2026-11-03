@@ -67,6 +67,7 @@ type EmailToCLAManagerModel struct {
 	CLAManagerName      string
 	CLAManagerEmail     string
 	CompanyName         string
+	CompanySFID         string
 	CLAGroupName        string
 	CorporateConsoleURL string
 	PullRequestURL      string
@@ -75,6 +76,7 @@ type EmailToCLAManagerModel struct {
 // ToCLAManagerDesigneeCorporateModel data model for sending emails
 type ToCLAManagerDesigneeCorporateModel struct {
 	companyName   string
+	companySFID   string
 	projectSFID   string
 	projectName   string
 	designeeEmail string
@@ -88,6 +90,7 @@ type ToCLAManagerDesigneeModel struct {
 	designeeName     string
 	designeeEmail    string
 	companyName      string
+	companySFID      string
 	projectNames     []string
 	projectSFIDs     []string
 	contributorModel emails.Contributor
@@ -124,6 +127,7 @@ type EmailToOrgAdminModel struct {
 	adminEmail  string
 	adminName   string
 	companyName string
+	companySFID string
 	projectName string
 	projectSFID string
 	senderName  string
@@ -135,6 +139,7 @@ type ContributorEmailToOrgAdminModel struct {
 	adminEmail     string
 	adminName      string
 	companyName    string
+	companySFID    string
 	projectSFIDs   []string
 	contributor    *v1Models.User
 	userDetails    string
@@ -165,6 +170,7 @@ func (s *service) SendEmailToCLAManager(ctx context.Context, input *EmailToCLAMa
 		CommonEmailParams: emails.CommonEmailParams{
 			RecipientName: input.CLAManagerName,
 			CompanyName:   input.CompanyName,
+			CompanySFID:   input.CompanySFID,
 		},
 		SigningEntityName: input.CompanyName,
 		UserDetails:       getFormattedUserDetails(input.Contributor),
@@ -204,6 +210,7 @@ func (s *service) SendEmailToOrgAdmin(ctx context.Context, input EmailToOrgAdmin
 		CommonEmailParams: emails.CommonEmailParams{
 			RecipientName: input.adminName,
 			CompanyName:   input.companyName,
+			CompanySFID:   input.companySFID,
 		},
 		SenderName:  input.senderName,
 		SenderEmail: input.senderEmail,
@@ -242,6 +249,7 @@ func (s *service) ContributorEmailToOrgAdmin(ctx context.Context, input Contribu
 		CommonEmailParams: emails.CommonEmailParams{
 			RecipientName: input.adminName,
 			CompanyName:   input.companyName,
+			CompanySFID:   input.companySFID,
 		},
 		UserDetails:    input.userDetails,
 		PullRequestURL: input.pullRequestURL,
@@ -276,6 +284,7 @@ func (s *service) SendEmailToCLAManagerDesigneeCorporate(ctx context.Context, in
 		CommonEmailParams: emails.CommonEmailParams{
 			RecipientName: input.designeeName,
 			CompanyName:   input.companyName,
+			CompanySFID:   input.companySFID,
 		},
 		SenderName:  input.senderName,
 		SenderEmail: input.senderEmail,
@@ -312,6 +321,7 @@ func (s *service) SendEmailToCLAManagerDesignee(ctx context.Context, input ToCLA
 			CommonEmailParams: emails.CommonEmailParams{
 				RecipientName: input.designeeName,
 				CompanyName:   input.companyName,
+				CompanySFID:   input.companySFID,
 			},
 			Contributor: input.contributorModel,
 		}, emails.V2ToCLAManagerDesigneeTemplate, emails.V2ToCLAManagerDesigneeTemplateName)
@@ -348,6 +358,7 @@ func (s *service) SendDesigneeEmailToUserWithNoLFID(ctx context.Context, input D
 			CommonEmailParams: emails.CommonEmailParams{
 				RecipientName: input.userWithNoLFIDName,
 				CompanyName:   input.companyName,
+				CompanySFID:   input.organizationID,
 			},
 			Contributor: input.contributorModel,
 		}, emails.V2DesigneeToUserWithNoLFIDTemplate, emails.V2DesigneeToUserWithNoLFIDTemplateName)
@@ -390,6 +401,7 @@ func (s *service) SendDesigneeEmailToUserWithNoLFID(ctx context.Context, input D
 			CommonEmailParams: emails.CommonEmailParams{
 				RecipientName: input.userWithNoLFIDName,
 				CompanyName:   input.companyName,
+				CompanySFID:   input.organizationID,
 			},
 			Contributor: input.contributorModel,
 		}, emails.V2DesigneeToUserWithNoLFIDTemplate, emails.V2DesigneeToUserWithNoLFIDTemplateName)
@@ -442,6 +454,7 @@ func (s *service) SendEmailToUserWithNoLFID(ctx context.Context, input EmailToUs
 		CommonEmailParams: emails.CommonEmailParams{
 			RecipientName: input.userWithNoLFIDName,
 			CompanyName:   input.companyName,
+			CompanySFID:   input.organizationID,
 		},
 		RequesterUserName: input.requesterUsername,
 		RequesterEmail:    input.requesterEmail,
@@ -484,6 +497,7 @@ func (s *service) SendEmailToUserWithNoLFID(ctx context.Context, input EmailToUs
 		CommonEmailParams: emails.CommonEmailParams{
 			RecipientName: input.userWithNoLFIDName,
 			CompanyName:   input.companyName,
+			CompanySFID:   input.organizationID,
 		},
 		RequesterUserName: input.requesterUsername,
 		RequesterEmail:    input.requesterEmail,

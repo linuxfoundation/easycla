@@ -458,6 +458,13 @@ func (s service) sendRequestAccessEmail(ctx context.Context, companyModel *model
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: New Company Manager Access Request for %s", companyName)
 	recipients := []string{recipientAddress}
+	getStarted := fmt.Sprintf(`<p>To get started, please log into the <a href="%s" target="_blank">EasyCLA Corporate Console</a>, and select your
+company.You can choose to accept or deny the request.
+</p>`, utils.GetCorporateURL())
+	if lensURL := utils.GetOrgLensURL(companyModel.CompanyExternalID, ""); lensURL != "" {
+		getStarted = fmt.Sprintf(`<p>To get started, please open <a href="%s" target="_blank">your company's EasyCLA page in the Organization lens</a>.
+</p>`, lensURL)
+	}
 	body := fmt.Sprintf(`
 <p>Hello %s,</p>
 <p>This is a notification email from EasyCLA regarding the company %s.</p>
@@ -465,12 +472,10 @@ func (s service) sendRequestAccessEmail(ctx context.Context, companyModel *model
 By approving this request the user could view and apply for CLA Manager
 status on projects associated with your company. </p>
 %s
-<p>To get started, please log into the <a href="%s" target="_blank">EasyCLA Corporate Console</a>, and select your
-company.You can choose to accept or deny the request.
-</p>
+%s
 %s
 %s`,
-		recipientName, companyName, companyName, requestedUserInfo, utils.GetCorporateURL(),
+		recipientName, companyName, companyName, requestedUserInfo, getStarted,
 		utils.GetEmailHelpContent(false), utils.GetEmailSignOffContent())
 
 	err := utils.SendEmail(subject, body, recipients)
@@ -491,6 +496,16 @@ func (s service) sendRequestApprovedEmailToRecipient(ctx context.Context, compan
 	}
 	companyName := companyModel.CompanyName
 
+	getStarted := fmt.Sprintf(`<p>To get started, please log into the <a href="%s" target="_blank">EasyCLA Corporate Console</a>, and select your
+company. From there you will be able to view the list of projects which have EasyCLA configured and apply for CLA
+Manager status.
+</p>`, utils.GetCorporateURL())
+	if lensURL := utils.GetOrgLensURL(companyModel.CompanyExternalID, ""); lensURL != "" {
+		getStarted = fmt.Sprintf(`<p>To get started, please open <a href="%s" target="_blank">your company's EasyCLA page in the Organization lens</a>.
+From there you will be able to view the CLA Groups your company takes part in.
+</p>`, lensURL)
+	}
+
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: Company Manager Access Approved for %s", companyName)
 	recipients := []string{recipientAddress}
@@ -501,13 +516,10 @@ func (s service) sendRequestApprovedEmailToRecipient(ctx context.Context, compan
 This means that you can now view and apply for CLA Manager status on
 projects associated with your company.
 </p>
-<p>To get started, please log into the <a href="%s" target="_blank">EasyCLA Corporate Console</a>, and select your
-company. From there you will be able to view the list of projects which have EasyCLA configured and apply for CLA
-Manager status.
-</p>
+%s
 %s
 %s`,
-		recipientName, companyName, companyName, utils.GetCorporateURL(),
+		recipientName, companyName, companyName, getStarted,
 		utils.GetEmailHelpContent(false), utils.GetEmailSignOffContent())
 
 	err := utils.SendEmail(subject, body, recipients)

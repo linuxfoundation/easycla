@@ -724,6 +724,7 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 					adminEmail:  userService.GetPrimaryEmail(adminUser),
 					adminName:   admin.Contact.Name,
 					companyName: v1CompanyModel.CompanyName,
+					companySFID: v1CompanyModel.CompanyExternalID,
 					projectName: projectSF.Name,
 					projectSFID: projectSF.ID,
 					senderName:  authUser.UserName,
@@ -806,6 +807,7 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 	designeeName := fmt.Sprintf("%s %s", lfxUser.FirstName, lfxUser.LastName)
 	s.SendEmailToCLAManagerDesigneeCorporate(ctx, ToCLAManagerDesigneeCorporateModel{
 		companyName:   v1CompanyModel.CompanyName,
+		companySFID:   v1CompanyModel.CompanyExternalID,
 		projectSFID:   projectSF.ID,
 		projectName:   projectSF.Name,
 		designeeEmail: userEmail,
@@ -988,6 +990,7 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 				adminEmail:     userService.GetPrimaryEmail(adminUser),
 				adminName:      admin.Contact.Name,
 				companyName:    organization.Name,
+				companySFID:    organization.ID,
 				projectSFIDs:   projectSFIDs,
 				contributor:    userModel,
 				userDetails:    getFormattedUserDetails(userModel),
@@ -1080,6 +1083,7 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 			designeeName:     user.Name,
 			designeeEmail:    userEmail,
 			companyName:      organization.Name,
+			companySFID:      organization.ID,
 			projectNames:     projectSFs,
 			projectSFIDs:     projectSFIDs,
 			contributorModel: contributorModel,
@@ -1090,6 +1094,7 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 			designeeName:     user.Name,
 			designeeEmail:    userEmail,
 			companyName:      organization.Name,
+			companySFID:      organization.ID,
 			projectNames:     projectSFs,
 			projectSFIDs:     projectSFIDs,
 			contributorModel: contributorModel,
@@ -1203,18 +1208,39 @@ func (s *service) NotifyCLAManagers(ctx context.Context, notifyCLAManagers *mode
 
 	log.Debugf("Sending notification emails to CLA Managers: %+v", notifyCLAManagers.List)
 	pullRequestURL := sanitizePullRequestURL(ctx, notifyCLAManagers.PullRequestURL)
+	companySFID := s.notifyCompanySFID(ctx, f, notifyCLAManagers)
 	for _, claManager := range notifyCLAManagers.List {
 		s.SendEmailToCLAManager(ctx, &EmailToCLAManagerModel{
 			Contributor:         userModel,
 			CLAManagerName:      claManager.Name,
 			CLAManagerEmail:     claManager.Email.String(),
 			CompanyName:         notifyCLAManagers.CompanyName,
+			CompanySFID:         companySFID,
 			CorporateConsoleURL: CorporateConsoleV2URL,
 			PullRequestURL:      pullRequestURL,
 		}, projectSFIDs)
 	}
 
 	return nil
+}
+
+// notifyCompanySFID resolves the company SFID for the Organization lens link in the approval request email.
+// The request names the company only by signing entity name; when the lookup fails the email still
+// sends, with the lens link falling back to the lens home.
+func (s *service) notifyCompanySFID(ctx context.Context, f logrus.Fields, notifyCLAManagers *models.NotifyClaManagerList) string {
+	signingEntityName := notifyCLAManagers.SigningEntityName
+	if signingEntityName == "" {
+		signingEntityName = notifyCLAManagers.CompanyName
+	}
+	if signingEntityName == "" || s.companyService == nil {
+		return ""
+	}
+	companyModel, err := s.companyService.GetCompanyBySigningEntityName(ctx, signingEntityName, "")
+	if err != nil || companyModel == nil {
+		log.WithFields(f).WithError(err).Warn("unable to resolve the company SFID for the Organization lens link")
+		return ""
+	}
+	return companyModel.CompanyExternalID
 }
 
 // getBestUserName is a helper function to extract what information we can from the user record for purposes of displaying the user's name
