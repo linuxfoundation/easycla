@@ -180,6 +180,10 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 				msg := fmt.Sprintf("Conflict assigning cla manager role for Project SFID: %s ", params.ProjectSFID)
 				return cla_manager.NewCreateCLAManagerDesigneeByGroupConflict().WithXRequestID(reqID).WithPayload(utils.ErrorResponseConflictWithError(reqID, msg, err))
 			}
+			var notReady *CompanyNotReadyError
+			if errors.As(err, &notReady) {
+				return companyNotReadyResponder(reqID, notReady)
+			}
 			msg := fmt.Sprintf("user :%s, error: %+v ", authUser.Email, err)
 			return cla_manager.NewCreateCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 		}
@@ -240,6 +244,10 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 				if err == ErrCLAManagerDesigneeConflict {
 					return cla_manager.NewCreateCLAManagerDesigneeByGroupConflict().WithXRequestID(reqID).WithPayload(utils.ErrorResponseConflictWithError(reqID, msg, err))
 				}
+				var notReady *CompanyNotReadyError
+				if errors.As(err, &notReady) {
+					return companyNotReadyResponder(reqID, notReady)
+				}
 				return cla_manager.NewCreateCLAManagerDesigneeByGroupBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
 
@@ -292,6 +300,10 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 		claManagerDesignees, err := service.InviteCompanyAdmin(ctx, params.Body.ContactAdmin, params.Body.CompanyID, *params.Body.ClaGroupID, params.Body.UserEmail.String(), params.Body.Name, &user, params.Body.PullRequestURL)
 
 		if err != nil {
+			var notReady *CompanyNotReadyError
+			if errors.As(err, &notReady) {
+				return companyNotReadyResponder(reqID, notReady)
+			}
 			statusCode := buildErrorStatusCode(err)
 			if statusCode == NotFound {
 				return cla_manager.NewInviteCompanyAdminNotFound().WithXRequestID(reqID).WithPayload(
@@ -377,6 +389,10 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			*params.Body.FullName, authUser)
 
 		if err != nil {
+			var notReady *CompanyNotReadyError
+			if errors.As(err, &notReady) {
+				return companyNotReadyResponder(reqID, notReady)
+			}
 			statusCode := buildErrorStatusCode(err)
 			if statusCode == NotFound {
 				return cla_manager.NewCreateCLAManagerRequestNotFound().WithXRequestID(reqID).WithPayload(

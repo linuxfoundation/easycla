@@ -37,6 +37,19 @@ var ErrConflict = errors.New("member-service: concurrent update")
 // ErrInvalidRequest is returned when member-service rejects a request body (400) other than the SFID.
 var ErrInvalidRequest = errors.New("member-service: request rejected")
 
+// ErrAmbiguousDomain is returned when several Salesforce accounts share the website domain (find-or-create 409).
+var ErrAmbiguousDomain = errors.New("member-service: several accounts match the website domain")
+
+// Action is the find-or-create outcome (lfx-self-serve#4998).
+type Action string
+
+const (
+	// ActionCreated means the Salesforce account was created.
+	ActionCreated Action = "created"
+	// ActionMatched means an existing Salesforce account was matched by website domain.
+	ActionMatched Action = "matched"
+)
+
 // CLAAdmin is one CLA manager of the organization's cla_admins list (lfx-self-serve#4362).
 type CLAAdmin struct {
 	Username string `json:"username"`
@@ -212,6 +225,61 @@ func (c *Client) RegisterB2BOrg(ctx context.Context, sfid string) (*B2BOrg, erro
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	return c.do(req, tok, "POST /b2b_orgs")
+}
+
+// FindOrCreateB2BOrg matches the Salesforce account by website domain or creates it, registers it as a B2B org
+// and returns the record with whether it was created (201) or matched (200); 409 means the domain is ambiguous.
+func (c *Client) FindOrCreateB2BOrg(ctx context.Context, name, website string) (*B2BOrg, Action, error) {
+	name, website = strings.TrimSpace(name), strings.TrimSpace(website)
+	if name == "" || website == "" {
+		return nil, "", fmt.Errorf("%w: name and website are required", ErrInvalidRequest)
+	}
+	tok, err := c.getToken(ctx)
+	if err != nil {
+		return nil, "", err
+	}
+	payload, err := json.Marshal(map[string]string{"name": name, "website": website})
+	if err != nil {
+		return nil, "", err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.BaseURL+"/b2b_orgs/find-or-create?"+url.Values{"v": {"1"}}.Encode(), bytes.NewReader(payload))
+	if err != nil {
+		return nil, "", err
+	}
+	req.Header.Set("Authorization", "Bearer "+tok)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	_ = resp.Body.Close()
+	if readErr != nil {
+		return nil, "", readErr
+	}
+	switch resp.StatusCode {
+	case http.StatusOK, http.StatusCreated:
+		var org B2BOrg
+		if err = json.Unmarshal(body, &org); err != nil {
+			return nil, "", fmt.Errorf("member-service: decoding b2b org response: %w", err)
+		}
+		uid, ok := sfid18(org.UID)
+		if !ok || !strings.HasPrefix(uid, "001") {
+			return nil, "", fmt.Errorf("%w: find-or-create returned %q", ErrInvalidSFID, org.UID)
+		}
+		org.UID = uid
+		if resp.StatusCode == http.StatusCreated {
+			return &org, ActionCreated, nil
+		}
+		return &org, ActionMatched, nil
+	case http.StatusConflict:
+		return nil, "", fmt.Errorf("%w: %s", ErrAmbiguousDomain, responseMessage(body, resp.Status))
+	case http.StatusBadRequest:
+		return nil, "", fmt.Errorf("%w: %s", ErrInvalidRequest, responseMessage(body, resp.Status))
+	default:
+		return nil, "", c.statusError(resp.StatusCode, resp.Status, body, tok, "POST /b2b_orgs/find-or-create")
+	}
 }
 
 // PutB2BOrgCLAAdmins replaces the organization's CLA manager list (PUT /b2b_orgs/{uid}/settings/cla_admins);

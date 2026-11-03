@@ -40,6 +40,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/users"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	acsService "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
+	memberService "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
 	orgModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/models"
 
 	v2Ops "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/company"
@@ -95,6 +96,7 @@ type Service interface {
 	GetCompanyClaGroups(ctx context.Context, companySFID string, pageSize, offset *int64) (*models.CompanyClaGroups, error)
 	CreateCompany(ctx context.Context, params *v2Ops.CreateCompanyParams) (*models.CompanyOutput, error)
 	CreateCompanyFromSFModel(ctx context.Context, orgModel *orgModels.Organization, authUser *auth.User) (*models.CompanyOutput, error)
+	EnableMemberServiceCreate(client *memberService.Client)
 	GetCompanyByName(ctx context.Context, companyName string) (*models.Company, error)
 	GetCompanyBySigningEntityName(ctx context.Context, signingEntityName string) (*models.Company, error)
 	GetCompanyByID(ctx context.Context, companyID string) (*models.Company, error)
@@ -453,6 +455,10 @@ func (s *service) CreateCompany(ctx context.Context, params *v2Ops.CreateCompany
 	}
 	if !strings.EqualFold(userEmail, grantEmail) {
 		log.WithFields(f).Warnf("userEmail %s differs from the signed-in e-mail - ignored; company-admin is granted to the signed-in identity", userEmail)
+	}
+
+	if s.createViaMemberService {
+		return s.createCompanyViaMemberService(ctx, f, companyName, signingEntityName, companyWebsite, grantEmail, userID, note, lfUser)
 	}
 
 	// Create SalesForce company

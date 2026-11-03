@@ -65,6 +65,8 @@ var (
 	ErrClaGroupNotFound = errors.New("cla group not found")
 	//ErrClaGroupBadRequest returns error if cla group bad request
 	ErrClaGroupBadRequest = errors.New("cla group bad request")
+	// ErrCompanyNotReady reports a company whose Salesforce account the Organization Service does not know yet (lfx-self-serve#4992)
+	ErrCompanyNotReady = errors.New("the company is still being set up in the platform - please try again later")
 
 	errRequestNotFound = errors.New("cla manager request not found")
 	// ErrCLAManagerRequestAlreadyDecided when the request is no longer pending
@@ -916,6 +918,9 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 
 	organization, orgErr := orgService.GetOrganization(ctx, companyModel.CompanyExternalID)
 	if orgErr != nil {
+		if notReady := companyNotReady(f, orgErr, companyModel.CompanyID, companyModel.CompanyExternalID); notReady != nil {
+			return nil, notReady
+		}
 		msg := fmt.Sprintf("Problem getting company by ID: %s ", companyID)
 		log.Warn(msg)
 		return nil, orgErr
@@ -1309,6 +1314,9 @@ func (s *service) isSigned(ctx context.Context, companyModel *v1Models.Company, 
 	log.WithFields(f).Debug("loading CLA Managers for company/project")
 	claManagers, err := s.v2CompanyService.GetCompanyProjectCLAManagers(ctx, companyV1toV2(companyModel), projectID)
 	if err != nil {
+		if notReady := companyNotReady(f, err, companyModel.CompanyID, companyModel.CompanyExternalID); notReady != nil {
+			return false, notReady
+		}
 		msg := fmt.Sprintf("EasyCLA - 400 Bad Request : %v", err)
 		log.WithFields(f).Warn(msg)
 		return false, err

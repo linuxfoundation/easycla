@@ -432,6 +432,18 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 				if errors.Is(err, ErrCompanyUserLookup) {
 					return company.NewCreateCompanyInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, "unable to verify the signed-in user", err))
 				}
+				if errors.Is(err, ErrCompanySharedDomain) {
+					return company.NewCreateCompanyUnprocessableEntity().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{Code: "company_shared_domain", Message: err.Error(), XRequestID: reqID})
+				}
+				if errors.Is(err, ErrCompanyAmbiguousDomain) {
+					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{Code: "company_ambiguous_domain", Message: err.Error(), XRequestID: reqID})
+				}
+				if errors.Is(err, ErrCompanyExists) {
+					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(errorResponse(reqID, errors.New("organization already exists")))
+				}
+				if errors.Is(err, ErrMemberServiceNotConfigured) {
+					return company.NewCreateCompanyInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerError(reqID, err.Error()))
+				}
 				return company.NewCreateCompanyBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 			}
 			return company.NewCreateCompanyOK().WithXRequestID(reqID).WithPayload(companyModel)

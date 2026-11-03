@@ -241,6 +241,28 @@ func TestGetOptionalSSMBool(t *testing.T) {
 }
 
 // flagSSMClient answers every GetParameter with the given error code, an incomplete response or the value
+func TestLoadCreateCompanyFlag(t *testing.T) {
+	cases := []struct {
+		name  string
+		code  string
+		value string
+		want  bool
+	}{
+		{name: "not provisioned", code: ssm.ErrCodeParameterNotFound},
+		{name: "enabled", value: "true", want: true},
+		{name: "disabled", value: "false"},
+		{name: "throttled stays off", code: "ThrottlingException"},
+		{name: "malformed stays off", value: "1"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var cfg Config
+			loadCreateCompanyFlag(flagSSMClient(t, tc.code, tc.value, false), "test", &cfg, nil)
+			assert.Equal(t, tc.want, cfg.MemberService.CreateCompanyEnabled)
+		})
+	}
+}
+
 func flagSSMClient(t *testing.T, code, value string, incomplete bool) *ssm.SSM {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

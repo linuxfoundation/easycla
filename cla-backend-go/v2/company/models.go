@@ -9,6 +9,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
 	"github.com/linuxfoundation/easycla/cla-backend-go/users"
+	memberService "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
 )
 
 type service struct {
@@ -19,6 +20,9 @@ type service struct {
 	companyRepo          company.IRepository
 	projectClaGroupsRepo projects_cla_groups.Repository
 	eventService         events.Service
+	// createViaMemberService is the cla-member-service-create-company-enabled switch; members may be nil (explicit failure)
+	createViaMemberService bool
+	members                *memberService.Client
 }
 
 type claGroupModel struct {
