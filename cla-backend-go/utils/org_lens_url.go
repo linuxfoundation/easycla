@@ -5,19 +5,23 @@ package utils
 
 import (
 	"net/url"
+	"regexp"
 	"strings"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/config"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 
+var orgLensAccountIDPattern = regexp.MustCompile(`^001[A-Za-z0-9]{15}$`)
+
 // OrgLensURL returns the Organization lens address for a company's CLA Group page,
-// /org/{companySFID}/easycla/{claGroupID}. Without a CLA Group it is the company's EasyCLA page,
-// and without a company SFID it is the lens home, where the viewer picks the organization.
-// It returns "" when base is empty or unparseable, which callers treat as "no lens configured".
+// /org/{companySFID}/easycla/{claGroupID}. Without a CLA Group it is the company's EasyCLA page.
+// It returns "" when base is empty or unparseable, or when companySFID is not an 18-character
+// Salesforce Account ID, which callers treat as "use the Corporate Console".
 func OrgLensURL(base, companySFID, claGroupID string) string {
 	base = strings.TrimSpace(base)
-	if base == "" {
+	companySFID = strings.TrimSpace(companySFID)
+	if base == "" || !orgLensAccountIDPattern.MatchString(companySFID) {
 		return ""
 	}
 	if !strings.Contains(base, "://") {
@@ -29,14 +33,10 @@ func OrgLensURL(base, companySFID, claGroupID string) string {
 		return ""
 	}
 
-	companySFID = strings.TrimSpace(companySFID)
 	claGroupID = strings.TrimSpace(claGroupID)
-	segments := []string{"org"}
-	if companySFID != "" {
-		segments = append(segments, companySFID, "easycla")
-		if claGroupID != "" {
-			segments = append(segments, claGroupID)
-		}
+	segments := []string{"org", companySFID, "easycla"}
+	if claGroupID != "" {
+		segments = append(segments, claGroupID)
 	}
 	basePath := strings.TrimSuffix(u.EscapedPath(), "/")
 	decoded := []string{strings.TrimSuffix(u.Path, "/")}
@@ -52,8 +52,8 @@ func OrgLensURL(base, companySFID, claGroupID string) string {
 	return u.String()
 }
 
-// GetOrgLensURL returns OrgLensURL for the configured Organization lens base, or "" when
-// cla-org-lens-base-{stage} is not provisioned.
+// GetOrgLensURL returns OrgLensURL for the configured Organization lens base,
+// cla-org-lens-base-{stage}.
 func GetOrgLensURL(companySFID, claGroupID string) string {
 	return OrgLensURL(config.GetConfig().OrgLensURL, companySFID, claGroupID)
 }

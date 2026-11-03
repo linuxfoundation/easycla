@@ -53,10 +53,9 @@ list of employees allowed to contribute to {{.Project.ExternalProjectName}} on b
 your company’s CLA Managers for {{.Project.ExternalProjectName}}.</p>
 <p>{{.RequesterName}} ({{.RequesterEmail}}) has requested to be added as another CLA Manager from {{.CompanyName}} for {{.Project.ExternalProjectName}}. This would permit them to maintain the
 lists of approved contributors and CLA Managers as well.</p>
-{{with .OrgLensURL .CompanySFID}}<p>If you want to permit this, please open <a href="{{.}}" target="_blank">{{$.CLAGroupName}} in the Organization lens</a>, where you can add this user as an
-additional CLA Manager.</p>{{else}}<p>If you want to permit this, please log into the <a href="{{.CorporateConsole}}" target="_blank">EasyCLA Corporate Console</a>,
+<p>If you want to permit this, please log into the <a href="{{.CorporateConsole}}" target="_blank">EasyCLA Corporate Console</a>,
 select your company, then select the {{.Project.ExternalProjectName}} project. From the CLA Manager requests, you can approve this user as an
-additional CLA Manager.</p>{{end}}
+additional CLA Manager.</p>
 `
 )
 

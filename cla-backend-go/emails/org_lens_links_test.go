@@ -45,9 +45,6 @@ func TestCLAManagerEmailsLinkToOrgLens(t *testing.T) {
 		template string
 		params   func(lensBase string) interface{}
 	}{
-		{"request access to CLA managers", RequestAccessToCLAManagersTemplate, func(b string) interface{} {
-			return RequestAccessToCLAManagersTemplateParams{CommonEmailParams: lensTestCommon(), CLAGroupTemplateParams: lensTestCLAGroup(b), RequesterName: "Requester", RequesterEmail: "requester@example.org"}
-		}},
 		{"request approved to requester", RequestApprovedToRequesterTemplate, func(b string) interface{} {
 			return RequestApprovedToRequesterTemplateParams{CommonEmailParams: lensTestCommon(), CLAGroupTemplateParams: lensTestCLAGroup(b)}
 		}},
@@ -78,9 +75,6 @@ func TestCLAManagerEmailsLinkToOrgLens(t *testing.T) {
 		{"request to authorize", RequestToAuthorizeTemplate, func(b string) interface{} {
 			return RequestToAuthorizeTemplateParams{CommonEmailParams: lensTestCommon(), CLAGroupTemplateParams: lensTestCLAGroup(b), ContributorName: "contributor", ContributorEmail: "contributor@example.org", CompanyID: "company-id"}
 		}},
-		{"CCLA signed", DocumentSignedCCLATemplate, func(b string) interface{} {
-			return DocumentSignedTemplateParams{CommonEmailParams: lensTestCommon(), CLAGroupTemplateParams: lensTestCLAGroup(b), PdfLink: "https://api.example.org/pdf"}
-		}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -97,13 +91,36 @@ func TestCLAManagerEmailsLinkToOrgLens(t *testing.T) {
 	}
 }
 
-func TestOrgLensLinkWithoutCompanySFIDOpensLensHome(t *testing.T) {
-	params := ClaManagerAddedEToUserTemplateParams{CommonEmailParams: lensTestCommon(), CLAGroupTemplateParams: lensTestCLAGroup(lensTestBase)}
-	params.CompanySFID = ""
+func TestOrgLensLinkWithoutValidCompanySFIDKeepsCorporateConsole(t *testing.T) {
+	for _, sfid := range []string{"", "lf0000000000000AAA", "001000000000000"} {
+		t.Run(sfid, func(t *testing.T) {
+			params := ClaManagerAddedEToUserTemplateParams{CommonEmailParams: lensTestCommon(), CLAGroupTemplateParams: lensTestCLAGroup(lensTestBase)}
+			params.CompanySFID = sfid
 
-	result, err := RenderTemplate(utils.V2, ClaManagerAddedEToUserTemplateName, ClaManagerAddedEToUserTemplate, params)
+			result, err := RenderTemplate(utils.V2, ClaManagerAddedEToUserTemplateName, ClaManagerAddedEToUserTemplate, params)
+			assert.NoError(t, err)
+			assert.Contains(t, result, lensTestConsole)
+			assert.NotContains(t, result, "Organization lens")
+		})
+	}
+}
+
+func TestPendingCLAManagerRequestEmailKeepsCorporateConsole(t *testing.T) {
+	params := RequestAccessToCLAManagersTemplateParams{CommonEmailParams: lensTestCommon(), CLAGroupTemplateParams: lensTestCLAGroup(lensTestBase), RequesterName: "Requester", RequesterEmail: "requester@example.org"}
+
+	result, err := RenderTemplate(utils.V2, RequestAccessToCLAManagersTemplateName, RequestAccessToCLAManagersTemplate, params)
 	assert.NoError(t, err)
-	assert.Contains(t, result, `<a href="`+lensTestBase+`/org" target="_blank">`)
+	assert.Contains(t, result, lensTestConsole)
+	assert.NotContains(t, result, "Organization lens")
+}
+
+func TestCCLASignedEmailKeepsCorporateConsole(t *testing.T) {
+	params := DocumentSignedTemplateParams{CommonEmailParams: lensTestCommon(), CLAGroupTemplateParams: lensTestCLAGroup(lensTestBase), PdfLink: "https://api.example.org/pdf"}
+
+	result, err := RenderTemplate(utils.V2, "CCLA signed", DocumentSignedCCLATemplate, params)
+	assert.NoError(t, err)
+	assert.Contains(t, result, lensTestConsole)
+	assert.NotContains(t, result, "Organization lens")
 }
 
 func TestContactClaManagerEmailLinksToOrgLens(t *testing.T) {

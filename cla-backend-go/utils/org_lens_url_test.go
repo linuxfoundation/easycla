@@ -25,8 +25,13 @@ func TestOrgLensURL(t *testing.T) {
 		{"base with a path prefix", "https://example.org/lfx/", sfid, claGroupID, "https://example.org/lfx/org/" + sfid + "/easycla/" + claGroupID},
 		{"base query and fragment dropped", "https://app.example.org/?x=1#y", sfid, claGroupID, "https://app.example.org/org/" + sfid + "/easycla/" + claGroupID},
 		{"no CLA Group is the company EasyCLA page", "https://app.example.org", sfid, "", "https://app.example.org/org/" + sfid + "/easycla"},
-		{"no company SFID is the lens home", "https://app.example.org", "", claGroupID, "https://app.example.org/org"},
-		{"ids cannot add path segments", "https://app.example.org", "a/b", "c/../d", "https://app.example.org/org/a%2Fb/easycla/c%2F..%2Fd"},
+		{"surrounding whitespace on the SFID is trimmed", "https://app.example.org", " " + sfid + " ", claGroupID, "https://app.example.org/org/" + sfid + "/easycla/" + claGroupID},
+		{"empty company SFID means no lens link", "https://app.example.org", "", claGroupID, ""},
+		{"Org Service lf ID means no lens link", "https://app.example.org", "lf0000000000000AAA", claGroupID, ""},
+		{"random 18-character ID means no lens link", "https://app.example.org", "a0P000000000000AAA", claGroupID, ""},
+		{"15-character Salesforce ID means no lens link", "https://app.example.org", "001000000000000", claGroupID, ""},
+		{"SFID with a path separator means no lens link", "https://app.example.org", "001000000000/00AAA", claGroupID, ""},
+		{"CLA Group ID cannot add path segments", "https://app.example.org", sfid, "c/../d", "https://app.example.org/org/" + sfid + "/easycla/c%2F..%2Fd"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
