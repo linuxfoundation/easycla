@@ -26,7 +26,7 @@ const (
 	DocumentSignedCCLATemplate = `
 		<p>Hello {{.RecipientName}},</p>
 		<p>This is a notification email from EasyCLA regarding the {{if eq .Version "v2"}}CLA Group {{.CLAGroupName}}{{else}}project {{.Project.ExternalProjectName}}{{end}}.</p>
-		<p>The CLA has now been signed. You can download the signed CLA as a PDF <a href="{{.PdfLink}}" target="_blank" alt="CCLA Document Link">here</a>, or from within the <a href="{{.CorporateConsole}}" target="_blank"> EasyCLA CLA Manager console </a>.</p>
+		<p>The CLA has now been signed. You can download the signed CLA as a PDF <a href="{{.PdfLink}}" target="_blank" alt="CCLA Document Link">here</a>, {{with .OrgLensURL .CompanySFID}}or from <a href="{{.}}" target="_blank">{{$.CLAGroupName}} in the Organization lens</a>.{{else}}or from within the <a href="{{.CorporateConsole}}" target="_blank"> EasyCLA CLA Manager console </a>.{{end}}</p>
 		`
 )
 

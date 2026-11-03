@@ -207,6 +207,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 					RecipientName:    manager.Username,
 					RecipientAddress: manager.LfEmail.String(),
 					CompanyName:      companyModel.CompanyName,
+					CompanySFID:      companyModel.CompanyExternalID,
 				},
 				RequesterName:  params.Body.UserName,
 				RequesterEmail: params.Body.UserEmail,
@@ -383,6 +384,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 					RecipientName:    manager.Username,
 					RecipientAddress: manager.LfEmail.String(),
 					CompanyName:      companyModel.CompanyName,
+					CompanySFID:      companyModel.CompanyExternalID,
 				},
 				RequesterName:  request.UserName,
 				RequesterEmail: request.UserEmail,
@@ -395,6 +397,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 				RecipientName:    request.UserName,
 				RecipientAddress: request.UserEmail,
 				CompanyName:      companyModel.CompanyName,
+				CompanySFID:      companyModel.CompanyExternalID,
 			},
 		}, claGroupModel)
 
@@ -498,6 +501,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 					RecipientName:    manager.Username,
 					RecipientAddress: manager.LfEmail.String(),
 					CompanyName:      companyModel.CompanyName,
+					CompanySFID:      companyModel.CompanyExternalID,
 				},
 				RequesterName:  request.UserName,
 				RequesterEmail: request.UserEmail,
@@ -509,6 +513,7 @@ func Configure(api *operations.ClaAPI, service IService, companyService company.
 			RecipientName:    request.UserName,
 			RecipientAddress: request.UserEmail,
 			CompanyName:      companyModel.CompanyName,
+			CompanySFID:      companyModel.CompanyExternalID,
 		}, claGroupModel)
 
 		return cla_manager.NewCreateCLAManagerRequestOK().WithPayload(request)

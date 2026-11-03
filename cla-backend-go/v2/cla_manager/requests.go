@@ -155,6 +155,7 @@ func (s *service) ApproveCLAManagerRequest(ctx context.Context, authUser *auth.U
 				RecipientName:    manager.Username,
 				RecipientAddress: manager.LfEmail.String(),
 				CompanyName:      companyModel.CompanyName,
+				CompanySFID:      companyModel.CompanyExternalID,
 			},
 			RequesterName:  request.UserName,
 			RequesterEmail: request.UserEmail,
@@ -166,6 +167,7 @@ func (s *service) ApproveCLAManagerRequest(ctx context.Context, authUser *auth.U
 			RecipientName:    request.UserName,
 			RecipientAddress: request.UserEmail,
 			CompanyName:      companyModel.CompanyName,
+			CompanySFID:      companyModel.CompanyExternalID,
 		},
 	}, claGroupModel)
 
@@ -252,6 +254,7 @@ func (s *service) DenyCLAManagerRequest(ctx context.Context, authUser *auth.User
 				RecipientName:    manager.Username,
 				RecipientAddress: manager.LfEmail.String(),
 				CompanyName:      companyModel.CompanyName,
+				CompanySFID:      companyModel.CompanyExternalID,
 			},
 			RequesterName:  request.UserName,
 			RequesterEmail: request.UserEmail,
@@ -262,6 +265,7 @@ func (s *service) DenyCLAManagerRequest(ctx context.Context, authUser *auth.User
 		RecipientName:    request.UserName,
 		RecipientAddress: request.UserEmail,
 		CompanyName:      companyModel.CompanyName,
+		CompanySFID:      companyModel.CompanyExternalID,
 	}, claGroupModel)
 
 	result := v2ClaManagerRequest(request)

@@ -253,6 +253,7 @@ func (s service) AddClaManager(ctx context.Context, authUser *auth.User, company
 				RecipientName:    manager.Username,
 				RecipientAddress: manager.LfEmail.String(),
 				CompanyName:      companyModel.CompanyName,
+				CompanySFID:      companyModel.CompanyExternalID,
 			},
 			Name:        userModel.Username,
 			Email:       userModel.LfEmail.String(),
@@ -264,6 +265,7 @@ func (s service) AddClaManager(ctx context.Context, authUser *auth.User, company
 		RecipientName:    userModel.Username,
 		RecipientAddress: userModel.LfEmail.String(),
 		CompanyName:      companyModel.CompanyName,
+		CompanySFID:      companyModel.CompanyExternalID,
 	}, claGroupModel, projectSFID)
 
 	// Send an event
@@ -378,6 +380,7 @@ func (s service) RemoveClaManager(ctx context.Context, authUser *auth.User, comp
 				RecipientName:    manager.Username,
 				RecipientAddress: manager.LfEmail.String(),
 				CompanyName:      companyModel.CompanyName,
+				CompanySFID:      companyModel.CompanyExternalID,
 			},
 			Name:  userModel.LfUsername,
 			Email: userModel.LfEmail.String(),
@@ -389,6 +392,7 @@ func (s service) RemoveClaManager(ctx context.Context, authUser *auth.User, comp
 		RecipientName:    userModel.LfUsername,
 		RecipientAddress: userModel.LfEmail.String(),
 		CompanyName:      companyModel.CompanyName,
+		CompanySFID:      companyModel.CompanyExternalID,
 	}, claGroupModel, claManagers)
 
 	// Send an event

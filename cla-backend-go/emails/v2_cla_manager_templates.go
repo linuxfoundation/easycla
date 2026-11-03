@@ -36,7 +36,7 @@ const (
 <p>The following contributor would like to submit a contribution to the projects(s): {{.GetProjectsOrProject}} and is requesting to be added to the approval list as a contributor for your organization: </p>
 <p>{{.UserDetails}}</p>
 {{if .PullRequestURL}}<p>Pull request: <a href="{{.PullRequestURL}}" target="_blank">{{.PullRequestURL}}</a></p>{{end}}
-<p> CLA Managers can visit the EasyCLA corporate console page for {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}} and add the contributor to one of the approval lists.</p>
+{{with .OrgLensURL .CompanySFID}}<p> CLA Managers can open <a href="{{.}}" target="_blank">{{$.CLAGroupName}} in the Organization lens</a> and add the contributor to one of the approval lists.</p>{{else}}<p> CLA Managers can visit the EasyCLA corporate console page for {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}} and add the contributor to one of the approval lists.</p>{{end}}
 <p>Please notify the contributor once they are added to the approved list of contributors so that they can complete their contribution.</p>
 `
 )
@@ -75,7 +75,7 @@ const (
 	<li>{{.Project.ExternalProjectName}}</li>
 </ul>
 <p>Before the contribution can be accepted, your organization must sign a CLA. 
-Either you or someone whom to designate from your company can login to the EasyCLA portal and <b>sign the CLA for this project {{.Project.GetProjectFullURL}}</b>. </p>
+{{with .OrgLensURL .CompanySFID}}Either you or someone whom you designate from your company can open <a href="{{.}}" target="_blank">{{$.CLAGroupName}} in the Organization lens</a> and <b>sign the CLA for this project {{$.Project.ExternalProjectName}}</b>, or send it to an authorized signatory for your company. </p>{{else}}Either you or someone whom to designate from your company can login to the EasyCLA portal and <b>sign the CLA for this project {{.Project.GetProjectFullURL}}</b>. </p>{{end}}
 <p>If you are not the CLA Manager, please forward this email to the appropriate person so that they can start the CLA process.</p>
 <p> Please notify the user once CLA setup is complete.</p>
 `
@@ -108,7 +108,7 @@ const (
 <p>The following contributor would like to submit a contribution to {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.ExternalProjectName}}{{end}} and is requesting to be added to the approval list as a contributor for your organization:</p>
 <p>{{.UserDetails}}</p>
 {{if .PullRequestURL}}<p>Pull request: <a href="{{.PullRequestURL}}" target="_blank">{{.PullRequestURL}}</a></p>{{end}}
-<p>Before the contribution can be accepted, your organization must sign a CLA. Either you or someone whom you designate from your company can login to this portal and sign the CLA for any of the project(s): {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}}.</p>
+<p>Before the contribution can be accepted, your organization must sign a CLA. {{with .OrgLensURL .CompanySFID}}Either you or someone whom you designate from your company can open <a href="{{.}}" target="_blank">{{$.CLAGroupName}} in the Organization lens</a> and sign the CLA, or send it to an authorized signatory for your company.</p>{{else}}Either you or someone whom you designate from your company can login to this portal and sign the CLA for any of the project(s): {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}}.</p>{{end}}
 <p>Please notify the contributor once they are added so that they may complete the contribution process.</p>
 
 `
@@ -150,7 +150,7 @@ const (
 	<li>{{.Project.ExternalProjectName}}</li>
 </ul>
 <p>Before the contribution can be accepted, your organization must sign a CLA. 
-Either you or someone whom you designate from your company can login and <b>sign the CLA for this project {{.Project.GetProjectFullURL}}</b> </p>
+{{with .OrgLensURL .CompanySFID}}Either you or someone whom you designate from your company can open <a href="{{.}}" target="_blank">{{$.CLAGroupName}} in the Organization lens</a> and <b>sign the CLA for this project {{$.Project.ExternalProjectName}}</b>, or send it to an authorized signatory for your company.</p>{{else}}Either you or someone whom you designate from your company can login and <b>sign the CLA for this project {{.Project.GetProjectFullURL}}</b> </p>{{end}}
 <p>If you are not the CLA Manager, please forward this email to the appropriate person so that they can start the CLA process.</p>
 <p> Please notify the user once CLA setup is complete.</p>
 `
@@ -185,8 +185,9 @@ const (
 <p>Before the user contribution can be accepted, your organization must sign a Corporate CLA (CCLA).The requester has stated that you would be the initial CLA Manager for this CCLA, to coordinate the signing of the CCLA and then manage the list of employees who are authorized to contribute.</p>
 <p>Please complete the following steps:</p>
 <ol>
-<li>After login, you will be redirected to the portal {{.CorporateConsole}} where you can either sign the CLA for any of the project(s): {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}}, or send it to an authorized signatory for your company.</li>
-<li>After signing the CLA, you will need to add this contributor to the approved list in the CLA Manager console.</li>
+{{with .OrgLensURL .CompanySFID}}<li>Open <a href="{{.}}" target="_blank">{{$.CLAGroupName}} in the Organization lens</a>, where you can either sign the CLA or send it to an authorized signatory for your company.</li>
+<li>After signing the CLA, you will need to add this contributor to the approved list on the same page.</li>{{else}}<li>After login, you will be redirected to the portal {{.CorporateConsole}} where you can either sign the CLA for any of the project(s): {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}}, or send it to an authorized signatory for your company.</li>
+<li>After signing the CLA, you will need to add this contributor to the approved list in the CLA Manager console.</li>{{end}}
 <li>After adding the contributor, please notify them so that they can complete the contribution process.</li>
 </ol>
 `
@@ -220,9 +221,11 @@ organization {{.CompanyName}}. <p>
 The requester has stated that you would be the initial CLA Manager for this CCLA, to coordinate the signing of the CCLA and then manage the list of employees who are authorized to contribute.</p>
 <p>Please complete the following steps:</p>
 <ol>
-<li>Please click on <a href="USERACCEPTLINK">Accept Invite</a> to create your LF Login.This is used to access the EasyCLA CLA Manager console.</li>
+{{with .OrgLensURL .CompanySFID}}<li>Please click on <a href="USERACCEPTLINK">Accept Invite</a> to create your LF Login. This is used to access the Organization lens.</li>
+<li>After login, open <a href="{{.}}" target="_blank">{{$.CLAGroupName}} in the Organization lens</a>, where you can either sign the CLA or send it to an authorized signatory for your company.</li>
+<li>After signing the CLA, you will need to add this contributor to the approved list on the same page.</li>{{else}}<li>Please click on <a href="USERACCEPTLINK">Accept Invite</a> to create your LF Login.This is used to access the EasyCLA CLA Manager console.</li>
 <li>After login, you will be redirected to the portal {{.CorporateConsole}} where you can either sign the CLA for any of the project(s): {{range $index, $projectName := .Projects}}{{if $index}},{{end}}{{$projectName.GetProjectFullURL}}{{end}}, or send it to an authorized signatory for your company.</li>
-<li>After signing the CLA, you will need to add this contributor to the approved list in the CLA Manager console.</li>
+<li>After signing the CLA, you will need to add this contributor to the approved list in the CLA Manager console.</li>{{end}}
 <li>After adding the contributor, please notify them so that they can complete the contribution process.</li>
 </ol>
 `
@@ -247,9 +250,11 @@ const (
 <p>Before the user contribution can be accepted, your organization must sign a Corporate CLA(CCLA).</p>
 <p>Please complete the following steps:</p>
 <ol>
-<li>Please click on <a href="USERACCEPTLINK">Accept Invite</a> to create your LF Login.This is used to access the EasyCLA CLA Manager console.</li>
+{{with .OrgLensURL .CompanySFID}}<li>Please click on <a href="USERACCEPTLINK">Accept Invite</a> to create your LF Login. This is used to access the Organization lens.</li>
+<li>After login, open <a href="{{.}}" target="_blank">{{$.CLAGroupName}} in the Organization lens</a>, where you can either sign the CLA or send it to an authorized signatory for your company.</li>
+<li>After signing the CLA, you will need to add this contributor to the approved list on the same page.</li>{{else}}<li>Please click on <a href="USERACCEPTLINK">Accept Invite</a> to create your LF Login.This is used to access the EasyCLA CLA Manager console.</li>
 <li>After login, you will be redirected to the portal {{.Project.CorporateConsole}} where you can either sign the CLA for the project: {{.Project.GetProjectFullURL}}, or send it to an authorized signatory for your company.</li>
-<li>After signing the CLA, you will need to add this contributor to the approved list in the CLA Manager console.</li>
+<li>After signing the CLA, you will need to add this contributor to the approved list in the CLA Manager console.</li>{{end}}
 <li>After adding the contributor, please notify them so that they can complete the contribution process.</li>
 </ol>
 

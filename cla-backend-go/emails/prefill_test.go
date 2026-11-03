@@ -19,6 +19,7 @@ func TestGetCLAGroupTemplateParamsFromCLAGroupUsesAuthoritativeCLAGroup(t *testi
 		claGroupName = "ACES"
 		v1Console    = "https://legacy-console.example.test"
 		v2Console    = "https://organization.example.test"
+		orgLens      = "https://app.example.test"
 	)
 
 	ctrl := gomock.NewController(t)
@@ -36,7 +37,7 @@ func TestGetCLAGroupTemplateParamsFromCLAGroupUsesAuthoritativeCLAGroup(t *testi
 
 	// Mapping and project services are intentionally nil. The exact CLA Group
 	// lookup must not depend on either service.
-	svc := NewEmailTemplateService(claGroupRepository, nil, nil, v1Console, v2Console)
+	svc := NewEmailTemplateService(claGroupRepository, nil, nil, v1Console, v2Console, orgLens)
 	params, err := svc.GetCLAGroupTemplateParamsFromCLAGroup(claGroupID)
 	if err != nil {
 		t.Fatalf("GetCLAGroupTemplateParamsFromCLAGroup() error = %v", err)
@@ -47,6 +48,9 @@ func TestGetCLAGroupTemplateParamsFromCLAGroupUsesAuthoritativeCLAGroup(t *testi
 	}
 	if params.CorporateConsole != v2Console {
 		t.Errorf("corporate console = %q, want %q", params.CorporateConsole, v2Console)
+	}
+	if want := orgLens + "/org/001000000000000AAA/easycla/" + claGroupID; params.OrgLensURL("001000000000000AAA") != want {
+		t.Errorf("OrgLensURL() = %q, want %q", params.OrgLensURL("001000000000000AAA"), want)
 	}
 	if params.Version != utils.V2 {
 		t.Errorf("version = %q, want %q", params.Version, utils.V2)
@@ -68,7 +72,7 @@ func TestGetCLAGroupTemplateParamsFromCLAGroupPropagatesRepositoryError(t *testi
 		GetCLAGroupByID(gomock.Any(), claGroupID, false).
 		Return(nil, lookupErr)
 
-	svc := NewEmailTemplateService(claGroupRepository, nil, nil, "v1-console", "v2-console")
+	svc := NewEmailTemplateService(claGroupRepository, nil, nil, "v1-console", "v2-console", "")
 	_, err := svc.GetCLAGroupTemplateParamsFromCLAGroup(claGroupID)
 	if !errors.Is(err, lookupErr) {
 		t.Fatalf("GetCLAGroupTemplateParamsFromCLAGroup() error = %v, want %v", err, lookupErr)
