@@ -418,20 +418,6 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			companyModel, err := service.CreateCompany(ctx, &params)
 			if err != nil {
 				log.Warnf("error returned from create company api: %+v", err)
-				if strings.Contains(err.Error(), "website already exists") {
-					formatErr := errors.New("website already exists")
-					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(errorResponse(reqID, formatErr))
-				}
-				if _, ok := err.(*organizations.CreateOrgConflict); ok {
-					formatErr := errors.New("organization already exists")
-					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(errorResponse(reqID, formatErr))
-				}
-				if errors.Is(err, ErrCompanyUserMismatch) || errors.Is(err, ErrCompanyNoGrantTarget) {
-					return company.NewCreateCompanyForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, err.Error()))
-				}
-				if errors.Is(err, ErrCompanyUserLookup) {
-					return company.NewCreateCompanyInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, "unable to verify the signed-in user", err))
-				}
 				if errors.Is(err, ErrCompanySharedDomain) {
 					return company.NewCreateCompanyUnprocessableEntity().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{Code: "company_shared_domain", Message: err.Error(), XRequestID: reqID})
 				}
@@ -449,6 +435,20 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 				}
 				if errors.Is(err, ErrMemberServiceNotConfigured) {
 					return company.NewCreateCompanyInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerError(reqID, err.Error()))
+				}
+				if strings.Contains(err.Error(), "website already exists") {
+					formatErr := errors.New("website already exists")
+					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(errorResponse(reqID, formatErr))
+				}
+				if _, ok := err.(*organizations.CreateOrgConflict); ok {
+					formatErr := errors.New("organization already exists")
+					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(errorResponse(reqID, formatErr))
+				}
+				if errors.Is(err, ErrCompanyUserMismatch) || errors.Is(err, ErrCompanyNoGrantTarget) {
+					return company.NewCreateCompanyForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, err.Error()))
+				}
+				if errors.Is(err, ErrCompanyUserLookup) {
+					return company.NewCreateCompanyInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerErrorWithError(reqID, "unable to verify the signed-in user", err))
 				}
 				return company.NewCreateCompanyBadRequest().WithXRequestID(reqID).WithPayload(errorResponse(reqID, err))
 			}
