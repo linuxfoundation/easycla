@@ -19,8 +19,7 @@ type CommonEmailParams struct {
 	RecipientName    string
 	RecipientAddress string
 	CompanyName      string
-	// CompanySFID names the company in Organization lens links
-	CompanySFID string
+	CompanySFID      string
 }
 
 // ClaManagerInfoParams represents the CLAManagerInfo used inside of the Email Templates
@@ -71,10 +70,9 @@ func (p CLAProjectParams) GetProjectFullURL() template.HTML {
 // CLAGroupTemplateParams includes the params for the CLAGroupTemplateParams
 type CLAGroupTemplateParams struct {
 	CorporateConsole string
-	// OrgLensBase is the Organization lens origin; empty keeps the Corporate Console links
-	OrgLensBase  string
-	CLAGroupID   string
-	CLAGroupName string
+	OrgLensBase      string
+	CLAGroupID       string
+	CLAGroupName     string
 	// ChildProjectCount indicates how many childProjects are under this CLAGroup
 	// this is important for some of the email rendering knowing if claGroup has
 	// multiple children

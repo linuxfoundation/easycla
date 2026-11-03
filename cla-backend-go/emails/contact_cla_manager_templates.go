@@ -16,10 +16,9 @@ type ContactClaManagerTemplateParams struct {
 	CompanyName         string
 	ProjectName         string
 	CLAGroupName        string
-	// OrgLensURL is the CLA Group's Organization lens page; empty keeps the Corporate Console copy
-	OrgLensURL      string
-	OptionalMessage string
-	ContactOnly     bool
+	OrgLensURL          string
+	OptionalMessage     string
+	ContactOnly         bool
 }
 
 const (
