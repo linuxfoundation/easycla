@@ -66,8 +66,6 @@ type Config struct {
 	CorporateConsoleURL   string `json:"corporateConsoleURL"`
 	CorporateConsoleV2URL string `json:"corporateConsoleV2URL"`
 
-	// OrgLensURL is the LFX Self Serve origin hosting the Organization lens. Optional: while it is
-	// empty, CLA manager emails keep linking to the Corporate Console.
 	OrgLensURL string `json:"orgLensURL"`
 
 	CLAContributorv2Base string `json:"cla-contributor-v2-base"`

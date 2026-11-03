@@ -39,8 +39,6 @@ func lensTestCLAGroup(lensBase string) CLAGroupTemplateParams {
 	}
 }
 
-// Every CLA manager email that links to the Corporate Console links to the CLA Group's
-// Organization lens page once the lens base is configured, and is unchanged while it is not.
 func TestCLAManagerEmailsLinkToOrgLens(t *testing.T) {
 	tests := []struct {
 		name     string

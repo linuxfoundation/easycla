@@ -1224,9 +1224,6 @@ func (s *service) NotifyCLAManagers(ctx context.Context, notifyCLAManagers *mode
 	return nil
 }
 
-// notifyCompanySFID resolves the company SFID for the Organization lens link in the approval request email.
-// The request names the company only by signing entity name; when the lookup fails the email still
-// sends, with the lens link falling back to the lens home.
 func (s *service) notifyCompanySFID(ctx context.Context, f logrus.Fields, notifyCLAManagers *models.NotifyClaManagerList) string {
 	signingEntityName := notifyCLAManagers.SigningEntityName
 	if signingEntityName == "" {
