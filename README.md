@@ -16,7 +16,7 @@ This platform supports both GitHub and Gerrit source code repositories. Addition
 
 [EasyCLA](#easycla-architecture)
 
-The EasyCL system leverages the following third party services:
+The EasyCLA system leverages the following third-party services:
 
 * [Docusign](https://www.docusign.com/) for CLA agreement e-sign flow
 * [Docraptor](https://docraptor.com/) for converting CLA templates into PDF files
