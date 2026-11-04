@@ -106,6 +106,10 @@ try {
     }
   }
   if (result !== 0 && Date.now() >= deadline) console.error('consent: timed out without a confirmation page');
+} catch {
+  // Playwright errors can quote the values typed into the page, so the error itself is never printed.
+  console.error('consent: browser interaction failed - approve the printed URL manually or retry');
+  result = 2;
 } finally {
   await browser.close();
 }
