@@ -6593,6 +6593,9 @@ definitions:
         $ref: './common/properties/company-name.yaml'
       signingEntityName:
         $ref: './common/properties/company-signing-entity-name.yaml'
+      companySFID:
+        description: Salesforce ID of the company whose CLA Managers are notified, used for the Organization lens link in the email; omit it and the email links to the Corporate Console
+        $ref: './common/properties/external-id.yaml'
       claGroupID:
         title: CLA Group ID
         description: The CLA Group ID
