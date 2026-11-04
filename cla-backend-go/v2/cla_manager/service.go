@@ -1172,6 +1172,7 @@ func (s *service) NotifyCLAManagers(ctx context.Context, notifyCLAManagers *mode
 		utils.XREQUESTID:    ctx.Value(utils.XREQUESTID),
 		"companyName":       notifyCLAManagers.CompanyName,
 		"signingEntityName": notifyCLAManagers.SigningEntityName,
+		"companySFID":       notifyCLAManagers.CompanySFID,
 		"userID":            notifyCLAManagers.UserID,
 		"claGroupName":      notifyCLAManagers.ClaGroupID,
 	}
@@ -1208,7 +1209,7 @@ func (s *service) NotifyCLAManagers(ctx context.Context, notifyCLAManagers *mode
 
 	log.Debugf("Sending notification emails to CLA Managers: %+v", notifyCLAManagers.List)
 	pullRequestURL := sanitizePullRequestURL(ctx, notifyCLAManagers.PullRequestURL)
-	companySFID := s.notifyCompanySFID(ctx, f, notifyCLAManagers)
+	companySFID := s.notifyCompanySFID(ctx, f, notifyCLAManagers.CompanySFID)
 	for _, claManager := range notifyCLAManagers.List {
 		s.SendEmailToCLAManager(ctx, &EmailToCLAManagerModel{
 			Contributor:         userModel,
@@ -1224,17 +1225,14 @@ func (s *service) NotifyCLAManagers(ctx context.Context, notifyCLAManagers *mode
 	return nil
 }
 
-func (s *service) notifyCompanySFID(ctx context.Context, f logrus.Fields, notifyCLAManagers *models.NotifyClaManagerList) string {
-	signingEntityName := notifyCLAManagers.SigningEntityName
-	if signingEntityName == "" {
-		signingEntityName = notifyCLAManagers.CompanyName
-	}
-	if signingEntityName == "" || s.companyService == nil {
+func (s *service) notifyCompanySFID(ctx context.Context, f logrus.Fields, requestedSFID string) string {
+	requestedSFID = strings.TrimSpace(requestedSFID)
+	if requestedSFID == "" || s.companyService == nil {
 		return ""
 	}
-	companyModel, err := s.companyService.GetCompanyBySigningEntityName(ctx, signingEntityName, "")
+	companyModel, err := s.companyService.GetCompanyByExternalID(ctx, requestedSFID)
 	if err != nil || companyModel == nil {
-		log.WithFields(f).WithError(err).Warn("unable to resolve the company SFID for the Organization lens link")
+		log.WithFields(f).WithError(err).Warn("company SFID does not resolve to an EasyCLA company - keeping the Corporate Console link")
 		return ""
 	}
 	return companyModel.CompanyExternalID
