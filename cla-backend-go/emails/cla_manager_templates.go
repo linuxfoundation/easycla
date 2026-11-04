@@ -121,8 +121,8 @@ const (
 <p>You have now been approved as a CLA Manager from {{.CompanyName}} for the project {{.Project.ExternalProjectName}}.  This means that you can now maintain the
 list of employees allowed to contribute to {{.Project.ExternalProjectName}} on behalf of your company, as well as view and manage the list of your
 company’s CLA Managers for {{.Project.ExternalProjectName}}.</p>
-<p> To get started, please log into the <a href="{{.CorporateConsole}}" target="_blank">EasyCLA Corporate Console</a>, and select your
-company and then the project {{.Project.ExternalProjectName}}. From here you will be able to edit the list of approved employees and CLA Managers.</p>
+{{with .OrgLensURL .CompanySFID}}<p> To get started, please open <a href="{{.}}" target="_blank">{{$.CLAGroupName}} in the Organization lens</a>. From here you will be able to edit the list of approved employees and CLA Managers.</p>{{else}}<p> To get started, please log into the <a href="{{.CorporateConsole}}" target="_blank">EasyCLA Corporate Console</a>, and select your
+company and then the project {{.Project.ExternalProjectName}}. From here you will be able to edit the list of approved employees and CLA Managers.</p>{{end}}
 `
 )
 
@@ -216,8 +216,8 @@ const (
 <p>You have been added as a CLA Manager for the organization {{.CompanyName}} and the CLAGroup {{.CLAGroupName}}.  This means that you can now maintain the
 list of employees allowed to contribute to the CLA Group {{.CLAGroupName}} on behalf of your company, as well as view and manage the list of your
 company’s CLA Managers for the CLA Group {{.CLAGroupName}}.</p>
-<p> To get started, please log into the <a href="{{.CorporateConsole}}" target="_blank">EasyCLA Corporate Console</a>, and select your
-company and then the project {{.CLAGroupName}}. From here you will be able to edit the list of approved employees and CLA Managers.</p>
+{{with .OrgLensURL .CompanySFID}}<p> To get started, please open <a href="{{.}}" target="_blank">{{$.CLAGroupName}} in the Organization lens</a>. From here you will be able to edit the list of approved employees and CLA Managers.</p>{{else}}<p> To get started, please log into the <a href="{{.CorporateConsole}}" target="_blank">EasyCLA Corporate Console</a>, and select your
+company and then the project {{.CLAGroupName}}. From here you will be able to edit the list of approved employees and CLA Managers.</p>{{end}}
 `
 )
 
