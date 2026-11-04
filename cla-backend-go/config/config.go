@@ -66,6 +66,8 @@ type Config struct {
 	CorporateConsoleURL   string `json:"corporateConsoleURL"`
 	CorporateConsoleV2URL string `json:"corporateConsoleV2URL"`
 
+	OrgLensURL string `json:"orgLensURL"`
+
 	CLAContributorv2Base string `json:"cla-contributor-v2-base"`
 	ClaAPIV4Base         string `json:"cla_api_v4_base"`
 

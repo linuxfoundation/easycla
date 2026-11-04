@@ -31,16 +31,18 @@ type emailTemplateServiceProvider struct {
 	projectService     service2.Service
 	corporateConsoleV1 string
 	corporateConsoleV2 string
+	orgLensBase        string
 }
 
 // NewEmailTemplateService creates a new instance of email template service
-func NewEmailTemplateService(claGroupRepository repository.ProjectRepository, repository projects_cla_groups.Repository, projectService service2.Service, corporateConsoleV1, corporateConsoleV2 string) EmailTemplateService {
+func NewEmailTemplateService(claGroupRepository repository.ProjectRepository, repository projects_cla_groups.Repository, projectService service2.Service, corporateConsoleV1, corporateConsoleV2, orgLensBase string) EmailTemplateService {
 	return &emailTemplateServiceProvider{
 		claGroupRepository: claGroupRepository,
 		repository:         repository,
 		projectService:     projectService,
 		corporateConsoleV1: corporateConsoleV1,
 		corporateConsoleV2: corporateConsoleV2,
+		orgLensBase:        orgLensBase,
 	}
 }
 
@@ -112,7 +114,9 @@ func (s *emailTemplateServiceProvider) GetCLAGroupTemplateParamsFromCLAGroup(cla
 
 	params := CLAGroupTemplateParams{}
 	params.CLAGroupName = claGroupModel.ProjectName
+	params.CLAGroupID = claGroupModel.ProjectID
 	params.CorporateConsole = s.corporateConsoleV2
+	params.OrgLensBase = s.orgLensBase
 	params.Version = claGroupModel.Version
 
 	return params, nil
@@ -126,7 +130,9 @@ func (s *emailTemplateServiceProvider) getV2CLAGroupTemplateParamsFromProjectSFI
 
 	params := &CLAGroupTemplateParams{}
 	params.CLAGroupName = projectCLAGroup.ClaGroupName
+	params.CLAGroupID = projectCLAGroup.ClaGroupID
 	params.CorporateConsole = s.corporateConsoleV2
+	params.OrgLensBase = s.orgLensBase
 	params.Version = projectCLAGroup.Version
 
 	projects, err := s.repository.GetProjectsIdsForClaGroup(context.Background(), projectCLAGroup.ClaGroupID)
@@ -170,6 +176,8 @@ func (s *emailTemplateServiceProvider) getV1CLAGroupTemplateParamsFromProjectSFI
 
 	return CLAGroupTemplateParams{
 		CorporateConsole:  s.corporateConsoleV1,
+		OrgLensBase:       s.orgLensBase,
+		CLAGroupID:        claGroup.ProjectID,
 		CLAGroupName:      claGroup.ProjectName,
 		Version:           claGroup.Version,
 		ChildProjectCount: 1,

@@ -240,6 +240,7 @@ func (s service) ApproveCclaApprovalListRequest(ctx context.Context, claUser *us
 			RecipientName:    requestModel.UserName,
 			RecipientAddress: requestModel.UserEmails[0],
 			CompanyName:      companyModel.CompanyName,
+			CompanySFID:      companyModel.CompanyExternalID,
 		}, *claUser, projectSFIDs)
 
 	return nil
@@ -304,6 +305,7 @@ func (s service) RejectCclaApprovalListRequest(ctx context.Context, companyID, c
 		RecipientName:    requestModel.UserName,
 		RecipientAddress: requestModel.UserEmails[0],
 		CompanyName:      companyModel.CompanyName,
+		CompanySFID:      companyModel.CompanyExternalID,
 	}, claGroupModel, sig.Signatures[0])
 
 	return nil
@@ -331,6 +333,7 @@ func (s service) sendRequestSentEmail(companyModel *models.Company, claGroupMode
 				RecipientName:    recipientName,
 				RecipientAddress: recipientEmail,
 				CompanyName:      companyModel.CompanyName,
+				CompanySFID:      companyModel.CompanyExternalID,
 			},
 			ContributorName:  contributorName,
 			ContributorEmail: contributorEmail,
@@ -362,6 +365,7 @@ func (s service) sendRequestSentEmail(companyModel *models.Company, claGroupMode
 					RecipientName:    manager.Username,
 					RecipientAddress: whichEmail,
 					CompanyName:      companyModel.CompanyName,
+					CompanySFID:      companyModel.CompanyExternalID,
 				},
 				ContributorName:  contributorName,
 				ContributorEmail: contributorEmail,

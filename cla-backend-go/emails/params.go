@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 )
 
 // CommonEmailParams are part of almost every email it's sent from the system
@@ -18,6 +19,7 @@ type CommonEmailParams struct {
 	RecipientName    string
 	RecipientAddress string
 	CompanyName      string
+	CompanySFID      string
 }
 
 // ClaManagerInfoParams represents the CLAManagerInfo used inside of the Email Templates
@@ -68,6 +70,8 @@ func (p CLAProjectParams) GetProjectFullURL() template.HTML {
 // CLAGroupTemplateParams includes the params for the CLAGroupTemplateParams
 type CLAGroupTemplateParams struct {
 	CorporateConsole string
+	OrgLensBase      string
+	CLAGroupID       string
 	CLAGroupName     string
 	// ChildProjectCount indicates how many childProjects are under this CLAGroup
 	// this is important for some of the email rendering knowing if claGroup has
@@ -75,6 +79,12 @@ type CLAGroupTemplateParams struct {
 	ChildProjectCount int
 	Projects          []CLAProjectParams
 	Version           string
+}
+
+// OrgLensURL returns the Organization lens page of this CLA Group for the given company, or ""
+// when no lens base is configured, in which case templates render their Corporate Console copy
+func (claParams CLAGroupTemplateParams) OrgLensURL(companySFID string) string {
+	return utils.OrgLensURL(claParams.OrgLensBase, companySFID, claParams.CLAGroupID)
 }
 
 // GetProjectNameOrFoundation returns if the foundationName is set it gets back

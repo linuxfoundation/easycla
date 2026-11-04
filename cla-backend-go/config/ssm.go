@@ -281,6 +281,8 @@ func loadSSMConfig(awsSession *session.Session, stage string) (Config, error) { 
 
 	config.MemberService.BaseURL = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-member-service-base-url-%s", stage), f)
 	config.MemberService.Audience = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-member-service-auth0-audience-%s", stage), f)
+
+	config.OrgLensURL = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-org-lens-base-%s", stage), f)
 	loadCLAAdminsFlag(ssmClient, stage, &config, f)
 
 	return config, nil
