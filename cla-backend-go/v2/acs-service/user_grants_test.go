@@ -141,11 +141,13 @@ func TestUserGrantRejectsWildcardAndCanceledRequests(t *testing.T) {
 }
 
 func TestHasProjectRoleMatchesUserRoleAndScope(t *testing.T) {
+	var reads atomic.Int32
 	acs := userGrantsTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		reads.Add(1)
 		assert.Equal(t, "/acs/v1/api/users/rolescopes/organization", r.URL.Path)
 		assert.Equal(t, "false", r.Header.Get("X-LFX-CACHE"))
 		w.Header().Set("Content-Type", "application/json")
-		_, err := w.Write([]byte(`{"userroles":{"jane":[{"role_id":"role","role_name":"cla-manager-designee","scopes":[{"grant_id":"grant","object_type_name":"project|organization","object_id":"project|org"},{"grant_id":"org-grant","object_type_name":"organization","object_id":"org"}]}]},"metadata":{"TotalSize":1}}`))
+		_, err := w.Write([]byte(`{"userroles":{"jane":[{"role_id":"role","role_name":"cla-manager-designee","scopes":[{"grant_id":"grant","object_type_name":"project|organization","object_id":"project|org"},{"grant_id":"org-grant","object_type_name":"organization","object_id":"forged|org"}]}]},"metadata":{"TotalSize":1}}`))
 		assert.NoError(t, err)
 	})
 	for _, tc := range []struct {
@@ -156,10 +158,19 @@ func TestHasProjectRoleMatchesUserRoleAndScope(t *testing.T) {
 		{"other-user", utils.CLADesigneeRole, "project", false},
 		{"jane", utils.CLAManagerRole, "project", false},
 		{"jane", utils.CLADesigneeRole, "other-project", false},
+		{"jane", utils.CLADesigneeRole, "forged", false},
 		{"jane", utils.CLADesigneeRole, "", false},
 	} {
 		got, err := acs.HasProjectRole(context.Background(), "org", tc.project, tc.role, tc.username)
 		require.NoError(t, err)
 		assert.Equal(t, tc.want, got)
+		got, err = acs.HasAnyProjectRole(context.Background(), "org", []string{"unmapped", tc.project}, tc.role, tc.username)
+		require.NoError(t, err)
+		assert.Equal(t, tc.want, got)
 	}
+	before := reads.Load()
+	got, err := acs.HasAnyProjectRole(context.Background(), "org", nil, utils.CLADesigneeRole, "jane")
+	require.NoError(t, err)
+	assert.False(t, got)
+	assert.Equal(t, before, reads.Load(), "no mapped projects must not fetch organization grants")
 }

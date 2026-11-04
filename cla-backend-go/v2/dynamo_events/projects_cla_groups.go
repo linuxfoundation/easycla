@@ -414,16 +414,23 @@ func (s *service) addCLAManagerDesigneePermissions(ctx context.Context, claGroup
 				email := userScope.Email
 				username := userScope.Username
 				if acsService.DirectCLARolesEnabled() {
+					if strings.TrimSpace(username) == "" {
+						log.WithFields(f).Warn("CLA designee scope has no LFID - not propagating the role")
+						return
+					}
 					lfUser, userErr := userService.GetClient().GetUserByUsername(username)
 					if userErr != nil {
 						log.WithFields(f).WithError(userErr).Warnf("unable to verify platform user %s before assigning a CLA designee role", username)
 						return
 					}
-					if lfUser == nil || lfUser.Username == "" {
+					if lfUser == nil || strings.TrimSpace(lfUser.Username) == "" {
 						log.WithFields(f).Warnf("platform user %s has no LFID - not assigning a CLA designee role", username)
 						return
 					}
-					username = lfUser.Username
+					if lfUser.Username != username {
+						log.WithFields(f).Warnf("platform lookup did not match LFID %s - not assigning a CLA designee role", username)
+						return
+					}
 				}
 
 				// Lookup the organization name

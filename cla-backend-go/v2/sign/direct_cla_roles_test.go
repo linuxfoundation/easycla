@@ -6,8 +6,10 @@ package sign
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,9 +19,12 @@ import (
 	mock_company "github.com/linuxfoundation/easycla/cla-backend-go/company/mocks"
 	"github.com/linuxfoundation/easycla/cla-backend-go/config"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/sss"
 	acsService "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
 	memberService "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
+	"github.com/sirupsen/logrus"
+	logtest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -175,10 +180,14 @@ func TestMemberDomainFallbackPreservesScreeningPolicy(t *testing.T) {
 
 func TestDirectSignatoryGrantRequiresPlatformLFID(t *testing.T) {
 	const roleID, grantID = "11111111-2222-4333-8444-555555555555", "66666666-7777-4888-8999-aaaaaaaaaaaa"
+	const signatoryEmail = "signer+native@example.invalid"
+	lookupFailure := errors.New("user-service transport unavailable")
 	for _, tc := range []struct {
 		name       string
 		userJSON   string
 		userStatus int
+		userErr    error
+		roleStatus int
 		blankEmail bool
 		grantCode  int
 		wantWrite  int
@@ -188,7 +197,9 @@ func TestDirectSignatoryGrantRequiresPlatformLFID(t *testing.T) {
 		{name: "missing LFID is optional", userJSON: `{"Data":[]}`},
 		{name: "contact without LFID is optional", userJSON: `{"Data":[{"ID":"contact"}]}`},
 		{name: "real lookup failure is not missing LFID", userStatus: http.StatusServiceUnavailable, wantErr: true},
+		{name: "transport failure preserves its cause without exposing email", userErr: lookupFailure, wantErr: true},
 		{name: "blank email cannot select an unrelated user", blankEmail: true, wantErr: true},
+		{name: "ACS role lookup failure is a dependency error", userJSON: `{"Data":[{"ID":"contact","Username":"jane"}]}`, roleStatus: http.StatusServiceUnavailable, wantErr: true},
 		{name: "verified LFID owns a newly created grant", userJSON: `{"Data":[{"ID":"contact","Username":"jane"}]}`, grantCode: http.StatusCreated, wantWrite: 1, wantOwned: true},
 		{name: "verified LFID does not own a conflicting grant", userJSON: `{"Data":[{"ID":"contact","Username":"jane"}]}`, grantCode: http.StatusConflict, wantWrite: 1},
 		{name: "ACS failure propagates", userJSON: `{"Data":[{"ID":"contact","Username":"jane"}]}`, grantCode: http.StatusInternalServerError, wantWrite: 1, wantErr: true},
@@ -196,18 +207,33 @@ func TestDirectSignatoryGrantRequiresPlatformLFID(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			base := setupRowlessSigningHTTP(t)
 			acsService.InitClient("https://"+rowlessPlatformHost, "test-api-key")
+			logger := log.GetLogger()
+			oldLevel := logger.GetLevel()
+			oldHooks := logger.ReplaceHooks(make(logrus.LevelHooks))
+			logger.SetLevel(logrus.DebugLevel)
+			t.Cleanup(func() {
+				logger.ReplaceHooks(oldHooks)
+				logger.SetLevel(oldLevel)
+			})
+			hook := logtest.NewLocal(logger)
 			writes := 0
 			rowlessSwitch.set(directCLATransport(func(r *http.Request) (*http.Response, error) {
 				switch {
 				case r.URL.Host == rowlessPlatformHost && r.URL.Path == rowlessUsersPath:
 					assert.False(t, tc.blankEmail, "blank email must not send an unfiltered platform query")
-					assert.Equal(t, "signer+native@example.invalid", r.URL.Query().Get("email"))
+					assert.Equal(t, signatoryEmail, r.URL.Query().Get("email"))
 					assert.Equal(t, "test-api-key", r.Header.Get("X-API-KEY"))
+					if tc.userErr != nil {
+						return nil, tc.userErr
+					}
 					if tc.userStatus != 0 {
 						return directCLAResponse(r, tc.userStatus, `{"Message":"unavailable"}`)
 					}
 					return directCLAResponse(r, http.StatusOK, tc.userJSON)
 				case r.URL.Path == "/acs/v1/api/roles":
+					if tc.roleStatus != 0 {
+						return directCLAResponse(r, tc.roleStatus, `{"message":"role service unavailable"}`)
+					}
 					return directCLAResponse(r, http.StatusOK, `[{"role_id":"`+roleID+`","role_name":"cla-signatory"}]`)
 				case r.URL.Path == "/acs/v1/api/object-types":
 					return directCLAResponse(r, http.StatusOK, `[{"name":"project|organization","type_id":11}]`)
@@ -219,15 +245,37 @@ func TestDirectSignatoryGrantRequiresPlatformLFID(t *testing.T) {
 					return base.RoundTrip(r)
 				}
 			}))
-			email := "signer+native@example.invalid"
+			email := signatoryEmail
 			if tc.blankEmail {
 				email = " "
 			}
 			grant, err := prepareDirectUserForSigning(context.Background(), email, rowlessSFID, rowlessProjectSFID)
 			if tc.wantErr {
 				require.Error(t, err)
+				assert.NotContains(t, err.Error(), signatoryEmail)
+				assert.NotContains(t, err.Error(), url.QueryEscape(signatoryEmail))
 			} else {
 				require.NoError(t, err)
+			}
+			if tc.userErr != nil {
+				assert.ErrorIs(t, err, tc.userErr)
+			}
+			if tc.wantErr {
+				status, _, _ := respondRequestCorporateSignature(t, err)
+				expectedStatus := http.StatusInternalServerError
+				if tc.blankEmail {
+					expectedStatus = http.StatusBadRequest
+					assert.NotErrorIs(t, err, ErrSigningDependencyFailed)
+				} else {
+					assert.ErrorIs(t, err, ErrSigningDependencyFailed)
+				}
+				assert.Equal(t, expectedStatus, status)
+			}
+			for _, entry := range hook.AllEntries() {
+				text, formatErr := entry.String()
+				require.NoError(t, formatErr)
+				assert.NotContains(t, text, signatoryEmail)
+				assert.NotContains(t, text, url.QueryEscape(signatoryEmail))
 			}
 			assert.Equal(t, tc.wantWrite, writes)
 			assert.Zero(t, base.orgCalls, "signatory grants must not query Organization Service")

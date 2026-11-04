@@ -27,14 +27,28 @@ func DirectCLARolesEnabled() bool {
 
 // HasProjectRole reads the exact user's project|organization grant without the ACS cache.
 func (ac *Client) HasProjectRole(ctx context.Context, orgSFID, projectSFID, roleName, username string) (bool, error) {
+	return ac.HasAnyProjectRole(ctx, orgSFID, []string{projectSFID}, roleName, username)
+}
+
+// HasAnyProjectRole checks the mapped project scopes with one fresh organization-grant read.
+func (ac *Client) HasAnyProjectRole(ctx context.Context, orgSFID string, projectSFIDs []string, roleName, username string) (bool, error) {
+	if len(projectSFIDs) == 0 {
+		return false, nil
+	}
 	grants, err := ac.ListOrgGrants(ctx, orgSFID)
 	if err != nil {
 		return false, err
 	}
+	objectIDs := make(map[string]struct{}, len(projectSFIDs))
+	for _, projectSFID := range projectSFIDs {
+		objectIDs[projectSFID+"|"+orgSFID] = struct{}{}
+	}
 	for _, grant := range grants {
 		if grant.Username == username && grant.RoleName == roleName &&
-			grant.ObjectTypeName == utils.ProjectOrgScope && grant.ObjectID == projectSFID+"|"+orgSFID {
-			return true, nil
+			grant.ObjectTypeName == utils.ProjectOrgScope {
+			if _, matched := objectIDs[grant.ObjectID]; matched {
+				return true, nil
+			}
 		}
 	}
 	return false, nil

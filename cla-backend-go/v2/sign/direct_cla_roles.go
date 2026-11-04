@@ -18,6 +18,9 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+// ErrSigningDependencyFailed reports an upstream failure during native signatory preparation.
+var ErrSigningDependencyFailed = errors.New("corporate signing is temporarily unavailable")
+
 var (
 	prepareDirectUserForSigningFn = prepareDirectUserForSigning
 	deleteDirectSignatoryGrantFn  = func(ctx context.Context, roleID, grantID string) error {
@@ -59,22 +62,29 @@ func (s *service) memberOrganizationForScreening(ctx context.Context, companySFI
 func prepareDirectUserForSigning(ctx context.Context, email, companySFID, projectSFID string) (*acsService.OrgGrant, error) {
 	user, err := userService.GetClient().SearchUsersByEmailContext(ctx, email)
 	if errors.Is(err, userService.ErrUserNotFound) {
-		log.WithField("userEmail", email).Debug("signatory has no LFID - no ACS grant required")
+		log.Debug("signatory has no LFID - no ACS grant required")
 		return nil, nil
 	}
 	if err != nil {
-		return nil, err
+		if errors.Is(err, userService.ErrEmailRequired) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: platform user lookup: %w", ErrSigningDependencyFailed, err)
 	}
 	if user == nil || strings.TrimSpace(user.Username) == "" {
-		log.WithField("userEmail", email).Debug("signatory has no LFID - no ACS grant required")
+		log.Debug("signatory has no LFID - no ACS grant required")
 		return nil, nil
 	}
 	acs := acsService.GetClient()
 	roleID, err := acs.GetRoleID(utils.CLASignatoryRole)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: signatory role lookup: %w", ErrSigningDependencyFailed, err)
 	}
-	return acs.CreateProjectRoleGrant(ctx, companySFID, projectSFID, roleID, user.Username)
+	grant, err := acs.CreateProjectRoleGrant(ctx, companySFID, projectSFID, roleID, user.Username)
+	if err != nil {
+		return nil, fmt.Errorf("%w: signatory grant: %w", ErrSigningDependencyFailed, err)
+	}
+	return grant, nil
 }
 
 func rollbackDirectSignatoryGrant(ctx context.Context, fields logrus.Fields, grant *acsService.OrgGrant) {

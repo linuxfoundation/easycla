@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -84,6 +85,14 @@ func TestRequestCorporateSignatureHandlerLegacySanctionMessageStillMapsTo403(t *
 	assert.Equal(t, http.StatusForbidden, status)
 	assert.Contains(t, body, "requires additional trade compliance review")
 	assert.NotContains(t, body, utils.CompanySanctionedCode)
+}
+
+func TestRequestCorporateSignatureHandlerDependencyPrecedesLegacyMatching(t *testing.T) {
+	status, _, body := respondRequestCorporateSignature(t, fmt.Errorf("%w: upstream record does not exist", ErrSigningDependencyFailed))
+
+	assert.Equal(t, http.StatusInternalServerError, status)
+	assert.Contains(t, body, ErrSigningDependencyFailed.Error())
+	assert.NotContains(t, body, "upstream record")
 }
 
 func TestRequestCorporateSignatureHandlerOtherErrorsAreBadRequests(t *testing.T) {

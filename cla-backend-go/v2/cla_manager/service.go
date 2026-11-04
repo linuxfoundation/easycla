@@ -316,6 +316,12 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 		"userEmail":      userEmail,
 	}
 
+	direct := v2AcsService.DirectCLARolesEnabled()
+	if direct && strings.TrimSpace(userEmail) == "" {
+		log.WithFields(f).Warn(v2UserService.ErrEmailRequired)
+		return nil, v2UserService.ErrEmailRequired
+	}
+
 	// integrate user,acs,org and project services
 	acServiceClient := v2AcsService.GetClient()
 	orgClient := v2OrgService.GetClient()
@@ -344,15 +350,21 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 		return nil, ErrProjectSigned
 	}
 
-	userService := v2UserService.GetClient()
 	log.WithFields(f).Debug("searching user in user service...")
 	// This routine is taking 24-29 seconds when running locally -> User service in DEV
 	//lfxUser, userErr := userService.SearchUserByEmail(userEmail)
 	// This routine is taking 4 seconds when running locally -> User service in DEV
-	lfxUser, userErr := userService.SearchUsersByEmail(userEmail)
+	lfxUser, userErr := searchCLADesigneeByEmail(ctx, userEmail)
 	if userErr != nil {
 		log.WithFields(f).Debugf("Failed to get user by email: %s, error: %+v", userEmail, userErr)
+		if direct && !errors.Is(userErr, v2UserService.ErrUserNotFound) {
+			return nil, userErr
+		}
 		return nil, ErrLFXUserNotFound
+	}
+	if direct && (lfxUser == nil || strings.TrimSpace(lfxUser.Username) == "") {
+		log.WithField(utils.XREQUESTID, ctx.Value(utils.XREQUESTID)).Warn(ErrNoLFID)
+		return nil, ErrNoLFID
 	}
 
 	log.WithFields(f).Debugf("user found: %+v", lfxUser)
@@ -478,6 +490,19 @@ func (s *service) IsCLAManagerDesignee(ctx context.Context, companySFID, claGrou
 		return nil, pcgErr
 	}
 
+	if v2AcsService.DirectCLARolesEnabled() && len(pcgs) > 0 {
+		projectSFIDs := make([]string, 0, len(pcgs))
+		for _, pcg := range pcgs {
+			projectSFIDs = append(projectSFIDs, pcg.ProjectSFID)
+		}
+		hasRole, err := v2AcsService.GetClient().HasAnyProjectRole(ctx, companySFID, projectSFIDs, utils.CLADesigneeRole, user.Username)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("unable to check CLA manager designee grants")
+			return nil, err
+		}
+		return &models.UserRoleStatus{HasRole: &hasRole, LfUsername: userLFID}, nil
+	}
+
 	orgClient := v2OrgService.GetClient()
 	//default to false
 	var hasRole = false
@@ -569,6 +594,11 @@ func (s *service) CreateCLAManagerDesigneeByGroup(ctx context.Context, params cl
 		"userEmail":      params.Body.UserEmail.String(),
 	}
 
+	if v2AcsService.DirectCLARolesEnabled() && strings.TrimSpace(params.Body.UserEmail.String()) == "" {
+		log.WithFields(f).Warn(v2UserService.ErrEmailRequired)
+		return nil, v2UserService.ErrEmailRequired.Error(), v2UserService.ErrEmailRequired
+	}
+
 	var designeeScopes []*models.ClaManagerDesignee
 	userEmail := params.Body.UserEmail.String()
 
@@ -652,6 +682,12 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 		"fullName":       fullName,
 		"authUserName":   authUser.UserName,
 		"authUserEmail":  authUser.Email,
+	}
+
+	direct := !contactAdmin && v2AcsService.DirectCLARolesEnabled()
+	if direct && strings.TrimSpace(userEmail) == "" {
+		log.WithFields(f).Warn(v2UserService.ErrEmailRequired)
+		return nil, v2UserService.ErrEmailRequired
 	}
 
 	orgService := v2OrgService.GetClient()
@@ -754,7 +790,10 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 	// This routine is taking 24-29 seconds when running locally -> User service in DEV
 	//lfxUser, userErr := userService.SearchUserByEmail(userEmail)
 	// This routine is taking 4 seconds when running locally -> User service in DEV
-	lfxUser, userErr := userService.SearchUsersByEmail(userEmail)
+	lfxUser, userErr := searchCLADesigneeByEmail(ctx, userEmail)
+	if direct && userErr != nil && !errors.Is(userErr, v2UserService.ErrUserNotFound) {
+		return nil, userErr
+	}
 	if userErr != nil {
 		msg := fmt.Sprintf("User: %s does not have an LF Login", userEmail)
 		log.WithFields(f).Warn(msg)
@@ -871,6 +910,12 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 		"userEmail":      userEmail,
 		"name":           name,
 		"pullRequestURL": pullRequestURL,
+	}
+
+	direct := !contactAdmin && v2AcsService.DirectCLARolesEnabled()
+	if direct && strings.TrimSpace(userEmail) == "" {
+		log.WithFields(f).Warn(v2UserService.ErrEmailRequired)
+		return nil, v2UserService.ErrEmailRequired
 	}
 
 	orgService := v2OrgService.GetClient()
@@ -1025,7 +1070,10 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 	}
 
 	// Get suggested CLA Manager user details
-	user, userErr := userService.SearchUsersByEmail(userEmail)
+	user, userErr := searchCLADesigneeByEmail(ctx, userEmail)
+	if direct && userErr != nil && !errors.Is(userErr, v2UserService.ErrUserNotFound) {
+		return nil, userErr
+	}
 	if userErr != nil || (user != nil && user.Username == "") {
 		var contributorModel emails.Contributor
 		msg := fmt.Sprintf("UserEmail: %s has no LF Login and has been sent an invite email to create an account , error: %+v", userEmail, userErr)
@@ -1163,6 +1211,14 @@ func (s *service) ProjectCompanySignedOrNot(ctx context.Context, signedAtFoundat
 		}
 	}
 	return nil
+}
+
+func searchCLADesigneeByEmail(ctx context.Context, email string) (*v2UserModels.User, error) {
+	client := v2UserService.GetClient()
+	if v2AcsService.DirectCLARolesEnabled() {
+		return client.SearchUsersByEmailContext(ctx, email)
+	}
+	return client.SearchUsersByEmail(email)
 }
 
 func validateInviteCompanyAdmin(contactAdmin bool, userEmail string, name string, contributor *v1User.User) error {

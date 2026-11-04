@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,6 +19,9 @@ import (
 	"time"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
+	"github.com/go-openapi/runtime"
+	"github.com/go-openapi/runtime/middleware"
+	"github.com/go-openapi/strfmt"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -44,24 +48,28 @@ import (
 )
 
 const (
-	notReadyCompanySFID = "001410000DesignAQA"
-	notReadyProjectSFID = "a0941000002wByZAAU"
-	notReadyClaGroupID  = "cla-group-not-ready"
-	notReadyOrgPath     = "/organization-service/v1/orgs/" + notReadyCompanySFID
-	notReadyOAuthPath   = "/oauth/token"
-	notReadyUsersPath   = "/user-service/v1/users"
-	notReadyOrgMissing  = `{"Message":"organization not found"}`
-	notReadyRoleID      = "11111111-2222-4333-8444-555555555555"
+	notReadyCompanySFID   = "001410000DesignAQA"
+	notReadyProjectSFID   = "a0941000002wByZAAU"
+	notReadyClaGroupID    = "cla-group-not-ready"
+	notReadyOrgPath       = "/organization-service/v1/orgs/" + notReadyCompanySFID
+	notReadyOAuthPath     = "/oauth/token"
+	notReadyUsersPath     = "/user-service/v1/users"
+	notReadyOrgMissing    = `{"Message":"organization not found"}`
+	notReadyRoleID        = "11111111-2222-4333-8444-555555555555"
+	notReadyACSGrantsPath = "/acs/v1/api/users/rolescopes/organization"
+	notReadyBlankEmail    = "   "
+	notReadyRequester     = "requester"
 )
 
 // notReadyHTTP fakes the platform calls of the designee and invite paths; the organization read status is
 // configurable and anything else fails the test (no network)
 type notReadyHTTP struct {
-	t         *testing.T
-	orgStatus int
-	users     string
-	acsScopes string
-	grantCode int
+	t          *testing.T
+	orgStatus  int
+	users      string
+	acsScopes  string
+	grantCode  int
+	userStatus int
 
 	mu    sync.Mutex
 	calls []string
@@ -78,6 +86,9 @@ func (h *notReadyHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 		body = `{"access_token":"unit-test-token","token_type":"Bearer","expires_in":3600}`
 		designeeTokenClose.Do(func() { close(designeeTokenServed) })
 	case r.URL.Host == designeePlatformHost && r.URL.Path == notReadyUsersPath:
+		if h.userStatus != 0 {
+			response.StatusCode = h.userStatus
+		}
 		body = `{"Data":[],"Metadata":{"TotalSize":0}}`
 		if h.users != "" {
 			body = h.users
@@ -89,7 +100,7 @@ func (h *notReadyHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 		if h.orgStatus != http.StatusOK {
 			body = notReadyOrgMissing
 		}
-	case r.URL.Host == designeePlatformHost && r.URL.Path == "/acs/v1/api/users/rolescopes/organization":
+	case r.URL.Host == designeePlatformHost && r.URL.Path == notReadyACSGrantsPath:
 		assert.Equal(h.t, http.MethodGet, r.Method)
 		assert.Equal(h.t, "false", r.Header.Get("X-LFX-CACHE"))
 		body = `{"userroles":{},"metadata":{"TotalSize":0}}`
@@ -227,6 +238,78 @@ func TestCreateCLAManagerDesigneeBeforeOrganizationIngestion(t *testing.T) {
 	}
 }
 
+func TestDirectDesigneeHandlersRejectBlankEmail(t *testing.T) {
+	for _, email := range []string{"", notReadyBlankEmail} {
+		for _, byGroup := range []bool{false, true} {
+			t.Run(fmt.Sprintf("email=%q/byGroup=%t", email, byGroup), func(t *testing.T) {
+				withCreateViaMemberService(t, true)
+				transport := &notReadyHTTP{orgStatus: http.StatusNotFound, users: designeeUserJSON(), grantCode: http.StatusCreated}
+				setupNotReadyHTTP(t, transport)
+				svc := newNotReadyService(t)
+				recorder := &directDesigneeEvents{}
+				svc.eventService = recorder
+				api := operations.NewEasyclaAPI(nil)
+				Configure(api, svc, svc.companyService, "", "", svc.projectCGRepo, nil)
+				request := httptest.NewRequest(http.MethodPost, "/", nil)
+				authUser := &auth.User{UserName: notReadyRequester}
+				var response middleware.Responder
+				if byGroup {
+					response = api.ClaManagerCreateCLAManagerDesigneeByGroupHandler.Handle(cla_manager.CreateCLAManagerDesigneeByGroupParams{
+						HTTPRequest: request, CompanyID: notReadyCompany.CompanyID, ClaGroupID: notReadyClaGroupID,
+						Body: cla_manager.CreateCLAManagerDesigneeByGroupBody{UserEmail: strfmt.Email(email)},
+					}, authUser)
+				} else {
+					response = api.ClaManagerCreateCLAManagerDesigneeHandler.Handle(cla_manager.CreateCLAManagerDesigneeParams{
+						HTTPRequest: request, CompanyID: notReadyCompany.CompanyID, ProjectSFID: notReadyProjectSFID,
+						Body: cla_manager.CreateCLAManagerDesigneeBody{UserEmail: strfmt.Email(email)},
+					}, authUser)
+				}
+				output := httptest.NewRecorder()
+				response.WriteResponse(output, runtime.JSONProducer())
+				assert.Equal(t, http.StatusBadRequest, output.Code, output.Body.String())
+				assert.Contains(t, output.Body.String(), "email is required")
+				assert.Zero(t, transport.count("GET "+notReadyUsersPath))
+				assert.Zero(t, transport.count("POST /acs/v1/api/roles/"+notReadyRoleID+"/members/users"))
+				assert.Empty(t, recorder.recorded)
+			})
+		}
+	}
+}
+
+func TestDirectDesigneeEntryPointsRejectInvalidLookupWithoutInviting(t *testing.T) {
+	for _, operation := range []string{opDesignee, opCreateRequest, opInviteAdmin} {
+		for _, email := range []string{"", notReadyBlankEmail, "designee@example.invalid"} {
+			t.Run(fmt.Sprintf("%s/email=%q", operation, email), func(t *testing.T) {
+				withCreateViaMemberService(t, true)
+				transport := &notReadyHTTP{orgStatus: http.StatusNotFound, userStatus: http.StatusServiceUnavailable, users: designeeUserJSON()}
+				setupNotReadyHTTP(t, transport)
+				svc := newNotReadyService(t)
+				var err error
+				switch operation {
+				case opDesignee:
+					_, err = svc.CreateCLAManagerDesignee(context.Background(), notReadyCompany.CompanyID, notReadyProjectSFID, email)
+				case opCreateRequest:
+					_, err = svc.CreateCLAManagerRequest(context.Background(), false, notReadyCompany.CompanyID, notReadyProjectSFID, email, "Designee", &auth.User{UserName: notReadyRequester})
+				case opInviteAdmin:
+					_, err = svc.InviteCompanyAdmin(context.Background(), false, notReadyCompany.CompanyID, notReadyClaGroupID, email, "Designee", &v1User.User{UserID: "contributor"}, "")
+				}
+				require.Error(t, err)
+				if strings.TrimSpace(email) == "" {
+					assert.ErrorIs(t, err, v2UserService.ErrEmailRequired)
+					assert.Zero(t, transport.count("GET "+notReadyUsersPath))
+				} else {
+					assert.ErrorContains(t, err, "503")
+					assert.NotErrorIs(t, err, ErrNoLFID)
+					assert.NotErrorIs(t, err, ErrLFXUserNotFound)
+					assert.Equal(t, 1, transport.count("GET "+notReadyUsersPath))
+				}
+				assert.Zero(t, transport.count("POST /acs/v1/api/roles/"+notReadyRoleID+"/members/users"))
+				assert.Zero(t, transport.count("POST "+notReadyOrgPath+"/scopes"))
+			})
+		}
+	}
+}
+
 func TestDesigneeDoesNotCallUnusableMetadataTemporaryIngestionDelay(t *testing.T) {
 	withCreateViaMemberService(t, true)
 	transport := &notReadyHTTP{orgStatus: http.StatusNotFound}
@@ -256,9 +339,32 @@ func TestIsCLAManagerDesigneeUsesNativeLFIDScope(t *testing.T) {
 			require.NotNil(t, status.HasRole)
 			assert.Equal(t, scopeProject == notReadyProjectSFID, *status.HasRole)
 			assert.Zero(t, transport.count("GET "+notReadyOrgPath))
-			assert.Equal(t, 1, transport.count("GET /acs/v1/api/users/rolescopes/organization"))
+			assert.Equal(t, 1, transport.count("GET "+notReadyACSGrantsPath))
 		})
 	}
+}
+
+func TestIsCLAManagerDesigneeReadsOrganizationOncePerOperation(t *testing.T) {
+	withCreateViaMemberService(t, true)
+	transport := &notReadyHTTP{orgStatus: http.StatusNotFound, users: designeeUserJSON()}
+	setupNotReadyHTTP(t, transport)
+	svc := newDesigneeService(t, designeeMappings("project-a", "project-b", notReadyProjectSFID), nil)
+
+	status, err := svc.IsCLAManagerDesignee(context.Background(), notReadyCompanySFID, designeeClaGroupID, designeeUserLFID)
+	require.NoError(t, err)
+	require.NotNil(t, status)
+	require.NotNil(t, status.HasRole)
+	assert.False(t, *status.HasRole)
+	require.Equal(t, 1, transport.count("GET "+notReadyACSGrantsPath))
+
+	transport.acsScopes = `{"userroles":{"` + designeeUserLFID + `":[{"role_name":"cla-manager-designee","role_id":"` + notReadyRoleID + `","scopes":[{"grant_id":"grant","object_type_name":"project|organization","object_id":"` + notReadyProjectSFID + `|` + notReadyCompanySFID + `"}]}]},"metadata":{"TotalSize":1}}`
+	status, err = svc.IsCLAManagerDesignee(context.Background(), notReadyCompanySFID, designeeClaGroupID, designeeUserLFID)
+	require.NoError(t, err)
+	require.NotNil(t, status)
+	require.NotNil(t, status.HasRole)
+	assert.True(t, *status.HasRole, "the next operation must see fresh grants on any mapped project")
+	assert.Equal(t, 2, transport.count("GET "+notReadyACSGrantsPath))
+	assert.Zero(t, transport.count("GET "+notReadyOrgPath))
 }
 
 // newNotReadyService wires the REAL v2 company service (its CLA-manager lookup reads the organization) behind the
