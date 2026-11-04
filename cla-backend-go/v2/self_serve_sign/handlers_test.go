@@ -397,6 +397,8 @@ func TestSelfServeRequestCorporateSignatureHandlerErrorMapping(t *testing.T) {
 		{"signing entity mismatch", ErrSigningEntityMismatch, http.StatusForbidden, "signing entity name does not belong to the provided company SFID"},
 		{"company unknown", errors.New("company does not exist"), http.StatusNotFound, "company does not exist"},
 		{"platform failure", errors.New("internal server error - docusign unavailable"), http.StatusInternalServerError, "internal server error"},
+		{"native signatory dependency", fmt.Errorf("%w: ACS unavailable", v2Sign.ErrSigningDependencyFailed), http.StatusInternalServerError, v2Sign.ErrSigningDependencyFailed.Error()},
+		{"native signatory dependency with legacy words", fmt.Errorf("%w: upstream record does not exist", v2Sign.ErrSigningDependencyFailed), http.StatusInternalServerError, v2Sign.ErrSigningDependencyFailed.Error()},
 		{"sanctioned company (legacy message)", errors.New("company sanctioned-co requires further review for trade compliance"), http.StatusForbidden, "requires additional trade compliance review"},
 		{"sanctioned company (typed)", &utils.SanctionedCompanyError{CompanyID: "company-1", CompanySFID: testCompanySFID, CompanyName: "Sanctioned Co", Guidance: utils.CompanySanctionedSigningGuidance}, http.StatusForbidden, `"code":"company_sanctioned"`},
 		{"sanctioned company (typed, wrapped)", fmt.Errorf("unable to request the corporate signature: %w", &utils.SanctionedCompanyError{CompanyID: "company-1", CompanySFID: testCompanySFID, CompanyName: "Sanctioned Co"}), http.StatusForbidden, `"company_sfid":"` + testCompanySFID + `"`},
@@ -419,6 +421,10 @@ func TestSelfServeRequestCorporateSignatureHandlerErrorMapping(t *testing.T) {
 			assert.Equal(t, tc.expectedStatus, status)
 			assert.Equal(t, 1, service.calls)
 			assert.Contains(t, body, tc.expectedText)
+			if errors.Is(tc.serviceErr, v2Sign.ErrSigningDependencyFailed) {
+				assert.NotContains(t, body, "ACS unavailable")
+				assert.NotContains(t, body, "upstream record")
+			}
 		})
 	}
 }

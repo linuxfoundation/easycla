@@ -92,6 +92,9 @@ type Config struct {
 	// AcsAPIKey is api key of the acs
 	AcsAPIKey string `json:"acs_api_key"`
 
+	// ACSDirectCLARolesEnabled switches CLA-role operations to ACS independently of company creation.
+	ACSDirectCLARolesEnabled bool `json:"acs_direct_cla_roles_enabled"`
+
 	// LFXPortalURL is url of the LFX UI for the particular environment
 	LFXPortalURL string `json:"lfx_portal_url"`
 
@@ -123,6 +126,9 @@ type MemberService struct {
 	CLAAdminsEnabled bool `json:"cla_admins_enabled"`
 	// CLAAdminsFlagError is why that flag could not be read or parsed (runtime only); only the publisher paths act on it
 	CLAAdminsFlagError string `json:"-"`
+	// CreateCompanyEnabled (cla-member-service-create-company-enabled-{stage} = true) creates v4 companies through
+	// member-service find-or-create (lfx-self-serve#4992); off, missing or unreadable keeps the Organization Service path
+	CreateCompanyEnabled bool `json:"create_company_enabled"`
 }
 
 // SelfServe holds the LFX Self Serve trusted-caller configuration: the Auth0 azp (client ID)

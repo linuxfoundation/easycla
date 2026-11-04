@@ -382,11 +382,27 @@ func TestSearchProjectsListsEveryMappedProjectSorted(t *testing.T) {
 	assert.Equal(t, "sfid-parent", list.Results[0].ProjectSFID)
 }
 
-func TestSearchClaGroupWithoutMappingsHasEmptyProjects(t *testing.T) {
-	list, err := NewService(sampleRepo()).Search(context.Background(), "kubernetes edge", 0)
-	require.NoError(t, err)
-	require.Equal(t, []string{"cg-orphan"}, ids(list))
-	assert.Equal(t, []models.CompanyClaGroupProject{}, list.Results[0].Projects)
+func TestSearchOmitsAClaGroupWithoutAMappedProject(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		mapping *ProjectMappingRow
+	}{
+		{name: "no mapping"},
+		{name: "mapping without project SFID", mapping: &ProjectMappingRow{ClaGroupID: "cg-orphan", ProjectName: "Kubernetes Edge"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := sampleRepo()
+			if tc.mapping != nil {
+				repo.mappings = append(repo.mappings, tc.mapping)
+			}
+			list, err := NewService(repo).Search(context.Background(), "kubernetes edge", 0)
+			require.NoError(t, err)
+			assert.Empty(t, list.Results)
+			assert.NotNil(t, list.Results)
+			assert.Zero(t, list.ResultCount)
+			assert.False(t, list.Truncated)
+		})
+	}
 }
 
 func TestSearchIsCaseInsensitiveAndTrimmed(t *testing.T) {
@@ -398,11 +414,18 @@ func TestSearchIsCaseInsensitiveAndTrimmed(t *testing.T) {
 }
 
 func TestSearchRanksExactBeforePrefixBeforeSubstring(t *testing.T) {
-	repo := &fakeRepo{claGroups: []*ClaGroupRow{
-		{ClaGroupID: "cg-sub", Name: "The Zeta Project"},
-		{ClaGroupID: "cg-exact", Name: "zeta"},
-		{ClaGroupID: "cg-prefix", Name: "Zeta Networking"},
-	}}
+	repo := &fakeRepo{
+		claGroups: []*ClaGroupRow{
+			{ClaGroupID: "cg-sub", Name: "The Zeta Project"},
+			{ClaGroupID: "cg-exact", Name: "zeta"},
+			{ClaGroupID: "cg-prefix", Name: "Zeta Networking"},
+		},
+		mappings: []*ProjectMappingRow{
+			{ClaGroupID: "cg-sub", ProjectSFID: "sfid-sub"},
+			{ClaGroupID: "cg-exact", ProjectSFID: "sfid-exact"},
+			{ClaGroupID: "cg-prefix", ProjectSFID: "sfid-prefix"},
+		},
+	}
 	list, err := NewService(repo).Search(context.Background(), "zeta", 0)
 	require.NoError(t, err)
 	assert.Equal(t, []string{"cg-exact", "cg-prefix", "cg-sub"}, ids(list))
@@ -411,8 +434,11 @@ func TestSearchRanksExactBeforePrefixBeforeSubstring(t *testing.T) {
 func TestSearchTruncatesAtLimit(t *testing.T) {
 	repo := &fakeRepo{}
 	for i := 0; i < 5; i++ {
-		repo.claGroups = append(repo.claGroups, &ClaGroupRow{ClaGroupID: fmt.Sprintf("cg-%d", i), Name: fmt.Sprintf("Zeta %d CLA", i)})
+		id := fmt.Sprintf("cg-%d", i)
+		repo.claGroups = append(repo.claGroups, &ClaGroupRow{ClaGroupID: id, Name: fmt.Sprintf("Zeta %d CLA", i)})
+		repo.mappings = append(repo.mappings, &ProjectMappingRow{ClaGroupID: id, ProjectSFID: fmt.Sprintf("sfid-%d", i)})
 	}
+	repo.claGroups = append(repo.claGroups, &ClaGroupRow{ClaGroupID: "cg-orphan", Name: "zeta"})
 	list, err := NewService(repo).Search(context.Background(), "zeta", 3)
 	require.NoError(t, err)
 	assert.True(t, list.Truncated)
@@ -421,20 +447,30 @@ func TestSearchTruncatesAtLimit(t *testing.T) {
 }
 
 func TestSearchNotTruncatedAtExactlyLimit(t *testing.T) {
-	repo := &fakeRepo{claGroups: []*ClaGroupRow{
-		{ClaGroupID: "cg-0", Name: "Zeta A CLA"},
-		{ClaGroupID: "cg-1", Name: "Zeta B CLA"},
-	}}
+	repo := &fakeRepo{
+		claGroups: []*ClaGroupRow{
+			{ClaGroupID: "cg-0", Name: "Zeta A CLA"},
+			{ClaGroupID: "cg-1", Name: "Zeta B CLA"},
+			{ClaGroupID: "cg-orphan", Name: "Zeta Retired CLA"},
+		},
+		mappings: []*ProjectMappingRow{
+			{ClaGroupID: "cg-0", ProjectSFID: "sfid-0"},
+			{ClaGroupID: "cg-1", ProjectSFID: "sfid-1"},
+		},
+	}
 	list, err := NewService(repo).Search(context.Background(), "zeta", 2)
 	require.NoError(t, err)
 	assert.False(t, list.Truncated)
 	assert.Equal(t, int64(2), list.ResultCount)
+	assert.Equal(t, []string{"cg-0", "cg-1"}, ids(list))
 }
 
 func TestSearchDefaultsLimit(t *testing.T) {
 	repo := &fakeRepo{}
 	for i := 0; i < DefaultLimit+1; i++ {
-		repo.claGroups = append(repo.claGroups, &ClaGroupRow{ClaGroupID: fmt.Sprintf("cg-%02d", i), Name: fmt.Sprintf("Zeta %02d CLA", i)})
+		id := fmt.Sprintf("cg-%02d", i)
+		repo.claGroups = append(repo.claGroups, &ClaGroupRow{ClaGroupID: id, Name: fmt.Sprintf("Zeta %02d CLA", i)})
+		repo.mappings = append(repo.mappings, &ProjectMappingRow{ClaGroupID: id, ProjectSFID: fmt.Sprintf("sfid-%02d", i)})
 	}
 	list, err := NewService(repo).Search(context.Background(), "zeta", 0)
 	require.NoError(t, err)
@@ -473,7 +509,9 @@ func TestSearchRunsSourcesConcurrently(t *testing.T) {
 
 func TestSearchMissingClaTypeFlagsDefaultToEnabled(t *testing.T) {
 	// a CLA Group row without the flag attributes is enabled for both types - the Pynamo default
-	list, err := NewService(sampleRepo()).Search(context.Background(), "kubernetes edge", 0)
+	repo := sampleRepo()
+	repo.mappings = append(repo.mappings, &ProjectMappingRow{ClaGroupID: "cg-orphan", ProjectSFID: "sfid-edge"})
+	list, err := NewService(repo).Search(context.Background(), "kubernetes edge", 0)
 	require.NoError(t, err)
 	require.Equal(t, []string{"cg-orphan"}, ids(list))
 	assert.True(t, list.Results[0].IclaEnabled)
@@ -502,6 +540,7 @@ func autoEnabledRepo() *fakeRepo {
 		},
 		mappings: []*ProjectMappingRow{
 			{ClaGroupID: "cg-mapped", ClaGroupName: "Mapped CLA", ProjectSFID: "sfid-both", ProjectName: "Mapped Project"},
+			{ClaGroupID: "cg-chips", ClaGroupName: "CHIPS Alliance", ProjectSFID: "sfid-chips", ProjectName: "CHIPS Alliance"},
 		},
 		github: []*OrgRow{
 			{Name: "chipsalliance", Source: sourceGitHub, ProjectSFID: "sfid-unmapped", AutoEnabledClaGroupID: "cg-chips"},
@@ -513,7 +552,7 @@ func autoEnabledRepo() *fakeRepo {
 	}
 }
 
-func TestSearchAutoEnabledOrgResolvesClaGroupWithoutAMapping(t *testing.T) {
+func TestSearchAutoEnabledOrgResolvesClaGroupNotMappedToTheOrganizationSFID(t *testing.T) {
 	list, err := NewService(autoEnabledRepo()).Search(context.Background(), "chipsalliance", 0)
 	require.NoError(t, err)
 	require.Equal(t, []string{"cg-chips"}, ids(list))
@@ -548,6 +587,40 @@ func TestSearchOmitsAClaGroupThatResolvesToNothingDisplayable(t *testing.T) {
 	list, err := NewService(autoEnabledRepo()).Search(context.Background(), "dangling-org", 0)
 	require.NoError(t, err)
 	assert.Empty(t, list.Results)
+}
+
+func TestSearchOmitsOrganizationReferencesToUnmappedGroups(t *testing.T) {
+	for _, source := range []string{sourceGitHub, sourceGitLab, sourceGerrit} {
+		t.Run(source, func(t *testing.T) {
+			repo := sampleRepo()
+			org := &OrgRow{Name: "retired-org", Source: source, AutoEnabledClaGroupID: "cg-orphan"}
+			switch source {
+			case sourceGitHub:
+				repo.github = append(repo.github, org)
+			case sourceGitLab:
+				repo.gitlab = append(repo.gitlab, org)
+			case sourceGerrit:
+				org.ClaGroupID, org.AutoEnabledClaGroupID = "cg-orphan", ""
+				repo.gerrit = append(repo.gerrit, org)
+			}
+			list, err := NewService(repo).Search(context.Background(), org.Name, 0)
+			require.NoError(t, err)
+			assert.Empty(t, list.Results)
+			assert.Zero(t, list.ResultCount)
+			assert.False(t, list.Truncated)
+		})
+	}
+}
+
+func TestSearchOmitsMappedGroupsWithoutDisplayNames(t *testing.T) {
+	repo := &fakeRepo{
+		mappings: []*ProjectMappingRow{{ClaGroupID: "cg-unnamed", ProjectSFID: "sfid-unnamed"}},
+		github:   []*OrgRow{{Name: "unnamed-org", Source: sourceGitHub, ProjectSFID: "sfid-unnamed"}},
+	}
+	list, err := NewService(repo).Search(context.Background(), "unnamed-org", 0)
+	require.NoError(t, err)
+	assert.Empty(t, list.Results)
+	assert.Zero(t, list.ResultCount)
 }
 
 func TestRepositoryPath(t *testing.T) {
@@ -587,6 +660,11 @@ func divergentRepo() *fakeRepo {
 			{ClaGroupID: "cg-repo", Name: "Dailies Notes Assistant"},
 			{ClaGroupID: "cg-gitlab", Name: "GitLab Group CLA"},
 		},
+		mappings: []*ProjectMappingRow{
+			{ClaGroupID: "cg-org", ProjectSFID: "sfid-org"},
+			{ClaGroupID: "cg-repo", ProjectSFID: "sfid-repo"},
+			{ClaGroupID: "cg-gitlab", ProjectSFID: "sfid-gitlab"},
+		},
 		github: []*OrgRow{{Name: "aswf", Source: sourceGitHub, AutoEnabledClaGroupID: "cg-org"}},
 		gitlab: []*OrgRow{{Name: "aswf", Source: sourceGitLab, AutoEnabledClaGroupID: "cg-gitlab"}},
 		repos: map[string][]*RepositoryRow{
@@ -612,6 +690,24 @@ func TestSearchPastedURLFallsBackToTheOrganizationWhenTheRepositoryGroupIsGone(t
 	require.Equal(t, []string{"cg-org"}, ids(list))
 	assert.Equal(t, []string{matchOrganization}, list.Results[0].MatchTypes)
 	assert.Empty(t, list.Results[0].MatchedRepositoryName)
+}
+
+func TestSearchPastedURLFallsBackToTheOrganizationWhenTheRepositoryGroupIsUnmapped(t *testing.T) {
+	for _, blankProjectSFID := range []bool{false, true} {
+		t.Run(fmt.Sprintf("blank project SFID=%t", blankProjectSFID), func(t *testing.T) {
+			repo := divergentRepo()
+			repo.claGroups = append(repo.claGroups, &ClaGroupRow{ClaGroupID: "cg-deleted", Name: "Retired CLA"})
+			if blankProjectSFID {
+				repo.mappings = append(repo.mappings, &ProjectMappingRow{ClaGroupID: "cg-deleted", ProjectName: "Retired Project"})
+			}
+			list, err := NewService(repo).Search(context.Background(), "https://github.com/aswf/ghost", 0)
+			require.NoError(t, err)
+			require.Equal(t, []string{"cg-org"}, ids(list))
+			assert.Equal(t, []string{matchOrganization}, list.Results[0].MatchTypes)
+			assert.Empty(t, list.Results[0].MatchedRepositoryName)
+			assert.Empty(t, list.Results[0].MatchedRepositoryURL)
+		})
+	}
 }
 
 func TestSearchPastedURLIgnoresARepositoryOnAnotherForge(t *testing.T) {
@@ -660,6 +756,7 @@ func TestSearchPastedURLOnAnUnknownHostResolvesTheRepositoryOfThatHost(t *testin
 func TestSearchPastedURLOnAnUnknownHostFallsBackToTheOrganizationOfThatHost(t *testing.T) {
 	repo := divergentRepo()
 	repo.claGroups = append(repo.claGroups, &ClaGroupRow{ClaGroupID: "cg-gerrit", Name: "Self Hosted CLA"})
+	repo.mappings = append(repo.mappings, &ProjectMappingRow{ClaGroupID: "cg-gerrit", ProjectSFID: "sfid-gerrit"})
 	repo.gerrit = []*OrgRow{{Name: "aswf", URL: "https://git.aswf.example", Source: sourceGerrit, ClaGroupID: "cg-gerrit"}}
 	list, err := NewService(repo).Search(context.Background(), "https://git.aswf.example/aswf/unknown-repo", 0)
 	require.NoError(t, err)

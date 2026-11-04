@@ -32,6 +32,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/users"
 	mock_users "github.com/linuxfoundation/easycla/cla-backend-go/users/mocks"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	acsService "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
 	organizationService "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
 	projectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 	userService "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
@@ -40,23 +41,27 @@ import (
 )
 
 const (
-	oauthEndpoint       = "/oauth/token"
-	rowlessPlatformHost = "platform.rowless.invalid"
-	rowlessAuthHost     = "auth.rowless.invalid"
-	rowlessSFID         = "0014100000Rowless1"
-	rowlessShortSFID    = "0014100000Rowle"
-	rowlessProjectSFID  = "a09P000000Rowless1"
-	rowlessCompanyID    = "6f1d2c3b-4a5e-4f60-8b7c-9d0e1f2a3b4c"
-	rowlessProjectID    = "1b2c3d4e-5f60-4718-9a0b-1c2d3e4f5a6b"
-	rowlessOrgJSON      = `{"ID":"` + rowlessSFID + `","Name":"Acme Corp","Domains":"acme.invalid","Link":"https://acme.invalid","SigningEntityName":["Acme Labs"]}`
-	rowlessDocuSignHost = "docusign.rowless.invalid"
-	rowlessEnvelopes    = "/accounts/rowless-account/envelopes"
-	rowlessEnvelopeID   = "rowless-envelope"
-	rowlessSignURL      = "https://docusign.rowless.invalid/sign"
-	rowlessProjectsPath = "/project-service/v1/projects/"
-	rowlessUsersPath    = "/user-service/v1/users"
-	rowlessLFUsername   = "lgryglicki"
-	rowlessUserEmail    = "lg@acme.invalid"
+	oauthEndpoint             = "/oauth/token"
+	rowlessPlatformHost       = "platform.rowless.invalid"
+	rowlessAuthHost           = "auth.rowless.invalid"
+	rowlessSSSHost            = "sss.example.com"
+	rowlessSSSStatusPath      = "/api/v1/organizations/status"
+	rowlessSFID               = "0014100000Rowless1"
+	rowlessShortSFID          = "0014100000Rowle"
+	rowlessProjectSFID        = "a09P000000Rowless1"
+	rowlessCompanyID          = "6f1d2c3b-4a5e-4f60-8b7c-9d0e1f2a3b4c"
+	rowlessProjectID          = "1b2c3d4e-5f60-4718-9a0b-1c2d3e4f5a6b"
+	rowlessOrgJSON            = `{"ID":"` + rowlessSFID + `","Name":"Acme Corp","Domains":"acme.invalid","Link":"https://acme.invalid","SigningEntityName":["Acme Labs"]}`
+	rowlessDocuSignHost       = "docusign.rowless.invalid"
+	rowlessEnvelopes          = "/accounts/rowless-account/envelopes"
+	rowlessEnvelopeID         = "rowless-envelope"
+	rowlessSignURL            = "https://docusign.rowless.invalid/sign"
+	rowlessProjectsPath       = "/project-service/v1/projects/"
+	rowlessUsersPath          = "/user-service/v1/users"
+	rowlessACSRolesPath       = "/acs/v1/api/roles"
+	rowlessACSObjectTypesPath = "/acs/v1/api/object-types"
+	rowlessLFUsername         = "lgryglicki"
+	rowlessUserEmail          = "lg@acme.invalid"
 )
 
 // rowlessHTTP stubs the token endpoint, the organization/project/user services, the SSS (auth +
@@ -101,7 +106,7 @@ func (h *rowlessHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 	case r.URL.Host == rowlessDocuSignHost && r.URL.Path == rowlessEnvelopes+"/"+rowlessEnvelopeID+"/views/recipient":
 		response.StatusCode = http.StatusCreated
 		response.Body = io.NopCloser(strings.NewReader(`{"url":"` + rowlessSignURL + `"}`))
-	case r.URL.Host == "sss.example.com" && r.URL.Path == "/api/v1/organizations/status":
+	case r.URL.Host == rowlessSSSHost && r.URL.Path == rowlessSSSStatusPath:
 		h.sssCalls++
 		response.Body = io.NopCloser(strings.NewReader(`{"status":"` + h.sssStatus + `","entity_id":"e1","source":"unit","org_name":"Acme Corp","domain":"acme.invalid"}`))
 	case r.URL.Host == rowlessPlatformHost && strings.HasPrefix(r.URL.Path, "/organization-service/v1/orgs/"):
@@ -716,6 +721,51 @@ func TestRequestCorporateSignatureFirstCCLAEndToEnd(t *testing.T) {
 		assert.Nil(t, out)
 		assert.Zero(t, fx.transport.envelopes)
 	})
+	for _, lookupFails := range []bool{true, false} {
+		t.Run(fmt.Sprintf("native signing tolerates an optional dependency failure lookup=%t", lookupFails), func(t *testing.T) {
+			enableDirectCLARoles(t, true)
+			ctrl := gomock.NewController(t)
+			fx := newFixtures(t, ctrl, rowlessCLAGroup())
+			acsService.InitClient("https://"+rowlessPlatformHost, "test-api-key")
+			fx.companyRepo.EXPECT().GetCompanyByExternalID(gomock.Any(), rowlessSFID).Return(persisted(), nil)
+			saved := expectSigning(fx)
+			const roleID = "11111111-2222-4333-8444-555555555555"
+			lookups, grants := 0, 0
+			rowlessSwitch.set(directCLATransport(func(r *http.Request) (*http.Response, error) {
+				switch {
+				case r.URL.Host == rowlessPlatformHost && r.URL.Path == rowlessUsersPath && r.URL.Query().Get("email") != "":
+					lookups++
+					assert.Equal(t, rowlessUserEmail, r.URL.Query().Get("email"))
+					if lookupFails {
+						return directCLAResponse(r, http.StatusServiceUnavailable, `{"message":"user lookup unavailable"}`)
+					}
+					return directCLAResponse(r, http.StatusOK, `{"Data":[{"Username":"`+rowlessLFUsername+`"}]}`)
+				case r.URL.Host == rowlessPlatformHost && r.URL.Path == rowlessACSRolesPath:
+					return directCLAResponse(r, http.StatusOK, `[{"role_id":"`+roleID+`","role_name":"cla-signatory"}]`)
+				case r.URL.Host == rowlessPlatformHost && r.URL.Path == rowlessACSObjectTypesPath:
+					return directCLAResponse(r, http.StatusOK, `[{"name":"project|organization","type_id":11}]`)
+				case r.URL.Host == rowlessPlatformHost && r.URL.Path == "/acs/v1/api/roles/"+roleID+"/members/users":
+					grants++
+					assert.Equal(t, http.MethodPost, r.Method)
+					return directCLAResponse(r, http.StatusServiceUnavailable, `{"message":"ACS grant unavailable"}`)
+				default:
+					return fx.transport.RoundTrip(r)
+				}
+			}))
+
+			out, err := fx.svc.RequestCorporateSignature(context.Background(), rowlessLFUsername, "unused", signingInput())
+
+			require.NoError(t, err)
+			assertSigned(t, fx, out, saved)
+			assert.Equal(t, 1, lookups)
+			if lookupFails {
+				assert.Zero(t, grants)
+			} else {
+				assert.Equal(t, 1, grants)
+			}
+			assert.Zero(t, fx.transport.orgCalls)
+		})
+	}
 	withSignatorySeams := func(t *testing.T, created bool) (granted, removed *[]string) {
 		granted, removed = &[]string{}, &[]string{}
 		originalPrepare, originalRemove := prepareUserForSigningFn, removeSignatoryRoleFn
@@ -819,6 +869,61 @@ func TestRequestCorporateSignatureFirstCCLAEndToEnd(t *testing.T) {
 		assert.Empty(t, *removed, "a pre-existing authority grant must be left alone")
 		assert.Zero(t, fx.transport.envelopes)
 	})
+	for _, emailFlow := range []bool{false, true} {
+		for _, created := range []bool{false, true} {
+			t.Run(fmt.Sprintf("native failed request email=%t created=%t", emailFlow, created), func(t *testing.T) {
+				enableDirectCLARoles(t, true)
+				ctrl := gomock.NewController(t)
+				fx := newFixtures(t, ctrl, rowlessCLAGroup())
+				fx.companyRepo.EXPECT().GetCompanyByExternalID(gomock.Any(), rowlessSFID).Return(persisted(), nil)
+				fx.companyRepo.EXPECT().GetCompany(gomock.Any(), rowlessCompanyID).Return(persisted(), nil)
+				fx.signatureService.EXPECT().GetCorporateSignatures(gomock.Any(), rowlessProjectID, rowlessCompanyID, gomock.Any(), nil).Return(nil, nil)
+				docuSignErr := errors.New("mock DocuSign transport failure")
+				rowlessSwitch.set(directCLATransport(func(r *http.Request) (*http.Response, error) {
+					if r.URL.Host == rowlessDocuSignHost && r.URL.Path == rowlessEnvelopes {
+						fx.transport.envelopes++
+						return nil, docuSignErr
+					}
+					return fx.transport.RoundTrip(r)
+				}))
+				oldPrepare, oldDelete := prepareDirectUserForSigningFn, deleteDirectSignatoryGrantFn
+				t.Cleanup(func() { prepareDirectUserForSigningFn, deleteDirectSignatoryGrantFn = oldPrepare, oldDelete })
+				input := signingInput()
+				expectedEmail := rowlessUserEmail
+				if emailFlow {
+					input, expectedEmail = emailInput(), authorityEmail
+				}
+				prepareDirectUserForSigningFn = func(_ context.Context, email, companySFID, projectSFID string) (*acsService.OrgGrant, error) {
+					assert.Equal(t, expectedEmail, email)
+					assert.Equal(t, rowlessSFID, companySFID)
+					assert.Equal(t, rowlessProjectSFID, projectSFID)
+					if created {
+						return &acsService.OrgGrant{RoleID: "signatory-role", GrantID: "request-owned-grant"}, nil
+					}
+					return nil, nil
+				}
+				var revoked []string
+				deleteDirectSignatoryGrantFn = func(ctx context.Context, roleID, grantID string) error {
+					assert.NoError(t, ctx.Err())
+					_, bounded := ctx.Deadline()
+					assert.True(t, bounded)
+					assert.Equal(t, "signatory-role", roleID)
+					revoked = append(revoked, grantID)
+					return nil
+				}
+				out, err := fx.svc.RequestCorporateSignature(context.Background(), rowlessLFUsername, "unused", input)
+				require.ErrorContains(t, err, docuSignErr.Error())
+				assert.Nil(t, out)
+				if created {
+					assert.Equal(t, []string{"request-owned-grant"}, revoked)
+				} else {
+					assert.Empty(t, revoked, "pre-existing grants must not be revoked")
+				}
+				assert.Zero(t, fx.transport.orgCalls)
+				assert.Equal(t, 1, fx.transport.envelopes)
+			})
+		}
+	}
 }
 
 func TestCompanyReferencePatternAcceptsRowsAndOrganizations(t *testing.T) {

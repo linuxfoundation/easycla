@@ -2750,6 +2750,8 @@ paths:
           $ref: '#/responses/not-found'
         '409':
           $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
       tags:
         - cla-manager
 
@@ -3266,6 +3268,8 @@ paths:
           $ref: '#/responses/forbidden-or-company-sanctioned'
         '409':
           $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
       tags:
         - cla-manager
 
@@ -3533,6 +3537,8 @@ paths:
           $ref: '#/responses/not-found'
         '409':
           $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
       tags:
         - cla-manager
 
@@ -3577,6 +3583,8 @@ paths:
           $ref: '#/responses/forbidden-or-company-sanctioned'
         '409':
           $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
       tags:
         - cla-manager
 
@@ -7212,4 +7220,3 @@ definitions:
         x-omitempty: false
 
       
-

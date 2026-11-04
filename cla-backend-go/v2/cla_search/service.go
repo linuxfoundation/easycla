@@ -373,19 +373,13 @@ func orgsOnHost(orgs []*OrgRow, host, forge string) []*OrgRow {
 	return matched
 }
 
-// displayableClaGroup reports whether the CLA Group has a record or a mapping to show - a repository
-// pointing at a deleted CLA Group resolves to nothing and must not suppress the organization match
+// displayableClaGroup requires a mapped project so a stale repository link cannot suppress the organization match.
 func displayableClaGroup(src *sources, claGroupID string) bool {
 	if claGroupID == "" {
 		return false
 	}
-	for _, claGroup := range src.claGroups {
-		if claGroup.ClaGroupID == claGroupID {
-			return true
-		}
-	}
 	for _, mapping := range src.mappings {
-		if mapping.ClaGroupID == claGroupID {
+		if mapping.ClaGroupID == claGroupID && mapping.ProjectSFID != "" {
 			return true
 		}
 	}
@@ -475,9 +469,8 @@ func buildList(searchTerm string, limit int64, matches map[string]*match, src *s
 	results := make([]models.ClaSearchResult, 0, len(matches))
 	for claGroupID, m := range matches {
 		result := buildResult(claGroupID, m, claGroupByID[claGroupID], mappingsByClaGroup[claGroupID], orgsByClaGroup[claGroupID])
-		// a CLA Group with neither a record nor a mapping - a deleted one still referenced by an
-		// organization - has nothing to display
-		if result.ClaGroupName == "" && result.ProjectName == "" {
+		// Unmapped CLA Groups are inactive; nameless entries also have nothing to display.
+		if len(result.Projects) == 0 || result.ClaGroupName == "" && result.ProjectName == "" {
 			continue
 		}
 		results = append(results, result)

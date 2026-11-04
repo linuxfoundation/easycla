@@ -31,6 +31,8 @@ import (
 var (
 	// ErrUserNotFound is an error for users not found
 	ErrUserNotFound = errors.New("user not found")
+	// ErrEmailRequired rejects an unfiltered email lookup.
+	ErrEmailRequired = errors.New("email is required for a user lookup")
 )
 
 // Client is client for user_service
@@ -290,6 +292,19 @@ func (usc *Client) GetUserByUsernameContext(ctx context.Context, lfUsername stri
 		"functionName": "GetUserByUsernameContext",
 		"lfUsername":   lfUsername,
 	}
+	return usc.findUserContext(ctx, usersByUsernameURL(usc.apiGwURL, lfUsername), lfUsername, f, false)
+}
+
+func (usc *Client) findUserContext(ctx context.Context, requestURL, identity string, f logrus.Fields, redactQuery bool) (*models.User, error) {
+	redactRequestError := func(err error) error {
+		var requestErr *url.Error
+		if redactQuery && errors.As(err, &requestErr) {
+			sanitized := *requestErr
+			sanitized.URL, _, _ = strings.Cut(requestErr.URL, "?")
+			return &sanitized
+		}
+		return err
+	}
 
 	tok, err := token.GetToken()
 	if err != nil {
@@ -297,8 +312,9 @@ func (usc *Client) GetUserByUsernameContext(ctx context.Context, lfUsername stri
 		return nil, err
 	}
 
-	request, err := http.NewRequestWithContext(ctx, "GET", usersByUsernameURL(usc.apiGwURL, lfUsername), nil)
+	request, err := http.NewRequestWithContext(ctx, "GET", requestURL, nil)
 	if err != nil {
+		err = redactRequestError(err)
 		log.WithFields(f).WithError(err).Warn("problem building new request")
 		return nil, err
 	}
@@ -310,6 +326,7 @@ func (usc *Client) GetUserByUsernameContext(ctx context.Context, lfUsername stri
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 	response, err := httpClient.Do(request)
 	if err != nil {
+		err = redactRequestError(err)
 		log.WithFields(f).WithError(err).Warn("problem searching user")
 		return nil, err
 	}
@@ -329,7 +346,7 @@ func (usc *Client) GetUserByUsernameContext(ctx context.Context, lfUsername stri
 
 	if response.StatusCode != http.StatusOK {
 		log.WithFields(f).Warnf("problem searching user - status: %d", response.StatusCode)
-		return nil, fmt.Errorf("searching user %s failed with status: %d", lfUsername, response.StatusCode)
+		return nil, fmt.Errorf("searching user %s failed with status: %d", identity, response.StatusCode)
 	}
 
 	userList, err := getUsers(data)
@@ -467,6 +484,19 @@ func (usc *Client) SearchUsersByEmail(email string) (*models.User, error) {
 
 	return userList[0], nil
 
+}
+
+// SearchUsersByEmailContext preserves lookup errors instead of treating an upstream failure as a missing user.
+func (usc *Client) SearchUsersByEmailContext(ctx context.Context, email string) (*models.User, error) {
+	f := logrus.Fields{
+		"functionName": "SearchUsersByEmailContext",
+	}
+	if strings.TrimSpace(email) == "" {
+		log.WithFields(f).WithError(ErrEmailRequired).Warn("refusing an unfiltered user lookup")
+		return nil, ErrEmailRequired
+	}
+	requestURL := fmt.Sprintf("https://%s/user-service/v1/users?email=%s", usc.apiGwURL, url.QueryEscape(email))
+	return usc.findUserContext(ctx, requestURL, "by email", f, true)
 }
 
 func getUsers(body []byte) ([]*models.User, error) {
