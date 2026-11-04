@@ -561,7 +561,7 @@ func (s *service) createCompanyForOrg(ctx context.Context, f logrus.Fields, org 
 		if adminErr != nil {
 			if acsService.DirectCLARolesEnabled() {
 				log.WithField(utils.XREQUESTID, ctx.Value(utils.XREQUESTID)).Warn("unable to look up the company-admin role")
-				return nil, fmt.Errorf("%w: %v", ErrCompanyDependencyFailed, adminErr)
+				return nil, ErrCompanyDependencyFailed
 			}
 			msg := "Problem getting companyAdmin role ID for contributor"
 			log.WithFields(f).Warn(msg)
@@ -572,7 +572,7 @@ func (s *service) createCompanyForOrg(ctx context.Context, f logrus.Fields, org 
 		if scopeErr != nil {
 			if acsService.DirectCLARolesEnabled() {
 				log.WithField(utils.XREQUESTID, ctx.Value(utils.XREQUESTID)).Warn("unable to create the company-admin grant")
-				return nil, fmt.Errorf("%w: %v", ErrCompanyDependencyFailed, scopeErr)
+				return nil, ErrCompanyDependencyFailed
 			}
 			msg := fmt.Sprintf("Problem creating Org scope for email: %s , companyID: %s", userEmail, org.ID)
 			log.WithFields(f).Warn(msg)

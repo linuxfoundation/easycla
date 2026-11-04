@@ -65,7 +65,7 @@ func TestCreateCLARoleScopeUsesAnIndependentFlag(t *testing.T) {
 				orgSwitch.set(claRoleTransport(func(r *http.Request) (*http.Response, error) {
 					switch {
 					case r.URL.Path == "/acs/v1/api/object-types":
-						return claRoleResponse(r, http.StatusOK, `[{"name":"project|organization","type_id":11}]`)
+						return claRoleResponse(r, http.StatusOK, `[{"name":"project|organization","type_id":11},{"name":"organization","type_id":12}]`)
 					case r.Method == http.MethodPost && r.URL.Path == "/acs/v1/api/roles/"+roleID+"/members/users":
 						directCalls++
 						return claRoleResponse(r, http.StatusCreated, `[{"grant_id":"native-grant","username":"jane"}]`)
@@ -77,12 +77,13 @@ func TestCreateCLARoleScopeUsesAnIndependentFlag(t *testing.T) {
 					}
 				}))
 				require.NoError(t, GetClient().CreateCLAUserRoleScope(context.Background(), "jane@example.invalid", "jane", projectSFID, orgID, roleID))
+				require.NoError(t, GetClient().CreateCLAOrgUserRoleScope(context.Background(), "jane@example.invalid", "jane", orgID, roleID))
 				if directRoles {
-					assert.Equal(t, 1, directCalls)
+					assert.Equal(t, 2, directCalls)
 					assert.Zero(t, legacyCalls)
 				} else {
 					assert.Zero(t, directCalls)
-					assert.Equal(t, 1, legacyCalls)
+					assert.Equal(t, 2, legacyCalls)
 				}
 			})
 		}

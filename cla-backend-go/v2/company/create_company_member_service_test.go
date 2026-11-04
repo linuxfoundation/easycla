@@ -324,6 +324,7 @@ func TestCompanyCreatorUsesNativeOrganizationGrant(t *testing.T) {
 				}
 				if tc.wantError {
 					require.ErrorIs(t, err, ErrCompanyDependencyFailed)
+					assert.EqualError(t, err, ErrCompanyDependencyFailed.Error())
 					assert.Nil(t, output)
 				} else {
 					require.NoError(t, err)

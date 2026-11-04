@@ -206,6 +206,9 @@ func (s *service) grantCreatorIfOrgKnown(ctx context.Context, f logrus.Fields, s
 				entry = entry.WithError(adminErr)
 			}
 			entry.Warn("problem getting the company-admin role ID")
+			if direct {
+				return ErrCompanyDependencyFailed
+			}
 			return fmt.Errorf("%w: %v", ErrCompanyDependencyFailed, adminErr)
 		}
 		if scopeErr := orgClient.CreateCLAOrgUserRoleScope(ctx, userEmail, username, sfid, roleID); scopeErr != nil && (direct || !isOrgAssociated(scopeErr)) {
@@ -214,6 +217,9 @@ func (s *service) grantCreatorIfOrgKnown(ctx context.Context, f logrus.Fields, s
 				entry = entry.WithError(scopeErr)
 			}
 			entry.Warnf("problem creating the company-admin scope for user %s", userID)
+			if direct {
+				return ErrCompanyDependencyFailed
+			}
 			return fmt.Errorf("%w: %v", ErrCompanyDependencyFailed, scopeErr)
 		}
 		return nil
