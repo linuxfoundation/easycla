@@ -58,8 +58,7 @@ func (s *service) EnableMemberServiceCreate(client *memberService.Client) {
 }
 
 // createCompanyViaMemberService matches or creates the Salesforce account through member-service and creates the
-// EasyCLA company on its 001 id; only a created account grants company-admin to the creator (after the row exists),
-// and only while the Organization Service already knows it (lfx-self-serve#4992)
+// EasyCLA company on its 001 id; only a created account grants company-admin to the creator after the row exists.
 func (s *service) createCompanyViaMemberService(ctx context.Context, f logrus.Fields, companyName, signingEntityName, companyWebsite, userEmail, userID, note string, lfUser *v2UserServiceModels.User) (*models.CompanyOutput, error) {
 	f = memberServiceLogFields(f)
 	if s.members == nil {
@@ -137,7 +136,7 @@ func (s *service) createCompanyViaMemberService(ctx context.Context, f logrus.Fi
 	}
 	// the creator-owned row exists before the grant, so a failed grant leaves an owned row for the retry, not a gap
 	if action == memberService.ActionCreated {
-		if grantErr := s.grantCreatorIfOrgKnown(ctx, f, b2b.UID, userEmail, userID); grantErr != nil {
+		if grantErr := s.grantCreatorIfOrgKnown(ctx, f, b2b.UID, userEmail, userID, lfUser.Username); grantErr != nil {
 			return nil, grantErr
 		}
 	}
@@ -190,20 +189,37 @@ func (s *service) companyBySFID(ctx context.Context, sfid string) (*v1Models.Com
 	return existing, err
 }
 
-// grantCreatorIfOrgKnown grants company-admin on a created account exactly as the Organization Service path does,
-// unless the Organization Service does not know the account yet (propagation lag), which only skips the grant
-func (s *service) grantCreatorIfOrgKnown(ctx context.Context, f logrus.Fields, sfid, userEmail, userID string) error {
+// grantCreatorIfOrgKnown skips the Organization Service readiness probe in ACS-direct mode.
+func (s *service) grantCreatorIfOrgKnown(ctx context.Context, f logrus.Fields, sfid, userEmail, userID, username string) error {
 	orgClient := orgService.GetClient()
-	_, orgErr := orgClient.GetOrganization(ctx, sfid)
+	direct := acsService.DirectCLARolesEnabled()
+	var orgErr error
+	if !direct {
+		_, orgErr = orgClient.GetOrganization(ctx, sfid)
+	}
 	switch {
 	case orgErr == nil:
 		roleID, adminErr := acsService.GetClient().GetRoleID(utils.CompanyAdminRole)
 		if adminErr != nil {
-			log.WithFields(f).WithError(adminErr).Warn("problem getting the company-admin role ID")
+			entry := log.WithFields(f)
+			if !direct {
+				entry = entry.WithError(adminErr)
+			}
+			entry.Warn("problem getting the company-admin role ID")
+			if direct {
+				return ErrCompanyDependencyFailed
+			}
 			return fmt.Errorf("%w: %v", ErrCompanyDependencyFailed, adminErr)
 		}
-		if scopeErr := orgClient.CreateOrgUserRoleOrgScope(ctx, userEmail, sfid, roleID); scopeErr != nil && !isOrgAssociated(scopeErr) {
-			log.WithFields(f).WithError(scopeErr).Warnf("problem creating the company-admin scope for user %s", userID)
+		if scopeErr := orgClient.CreateCLAOrgUserRoleScope(ctx, userEmail, username, sfid, roleID); scopeErr != nil && (direct || !isOrgAssociated(scopeErr)) {
+			entry := log.WithFields(f)
+			if !direct {
+				entry = entry.WithError(scopeErr)
+			}
+			entry.Warnf("problem creating the company-admin scope for user %s", userID)
+			if direct {
+				return ErrCompanyDependencyFailed
+			}
 			return fmt.Errorf("%w: %v", ErrCompanyDependencyFailed, scopeErr)
 		}
 		return nil

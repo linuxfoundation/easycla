@@ -218,7 +218,7 @@ func TestDesigneePropagationRequiresExactLFID(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			updated := originalConfig
-			updated.MemberService.CreateCompanyEnabled = !tc.legacy
+			updated.ACSDirectCLARolesEnabled = !tc.legacy
 			loadConfig(updated)
 			scopeUsername, returnedUsername = tc.requested, tc.returned
 			lookupErr = nil

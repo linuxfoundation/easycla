@@ -92,6 +92,9 @@ type Config struct {
 	// AcsAPIKey is api key of the acs
 	AcsAPIKey string `json:"acs_api_key"`
 
+	// ACSDirectCLARolesEnabled switches CLA-role operations to ACS independently of company creation.
+	ACSDirectCLARolesEnabled bool `json:"acs_direct_cla_roles_enabled"`
+
 	// LFXPortalURL is url of the LFX UI for the particular environment
 	LFXPortalURL string `json:"lfx_portal_url"`
 

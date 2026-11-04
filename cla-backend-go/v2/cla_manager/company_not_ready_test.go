@@ -32,6 +32,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/cla_manager"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	mock_project_service "github.com/linuxfoundation/easycla/cla-backend-go/project/mocks"
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	mock_projects_cla_groups "github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups/mocks"
@@ -45,33 +46,39 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
 	v2ProjectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 	v2UserService "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
+	"github.com/sirupsen/logrus"
+	logtest "github.com/sirupsen/logrus/hooks/test"
 )
 
 const (
-	notReadyCompanySFID   = "001410000DesignAQA"
-	notReadyProjectSFID   = "a0941000002wByZAAU"
-	notReadyClaGroupID    = "cla-group-not-ready"
-	notReadyOrgPath       = "/organization-service/v1/orgs/" + notReadyCompanySFID
-	notReadyOAuthPath     = "/oauth/token"
-	notReadyUsersPath     = "/user-service/v1/users"
-	notReadyOrgMissing    = `{"Message":"organization not found"}`
-	notReadyRoleID        = "11111111-2222-4333-8444-555555555555"
-	notReadyACSGrantsPath = "/acs/v1/api/users/rolescopes/organization"
-	notReadyBlankEmail    = "   "
-	notReadyRequester     = "requester"
+	notReadyCompanySFID    = "001410000DesignAQA"
+	notReadyProjectSFID    = "a0941000002wByZAAU"
+	notReadyClaGroupID     = "cla-group-not-ready"
+	notReadyOrgPath        = "/organization-service/v1/orgs/" + notReadyCompanySFID
+	notReadyOAuthPath      = "/oauth/token"
+	notReadyUsersPath      = "/user-service/v1/users"
+	notReadyOrgMissing     = `{"Message":"organization not found"}`
+	notReadyRoleID         = "11111111-2222-4333-8444-555555555555"
+	notReadyContactRoleID  = "22222222-3333-4444-8555-666666666666"
+	notReadyACSGrantsPath  = "/acs/v1/api/users/rolescopes/organization"
+	notReadyBlankEmail     = "   "
+	notReadyRequester      = "requester"
+	notReadyContactFailure = "private contact failure"
 )
 
 // notReadyHTTP fakes the platform calls of the designee and invite paths; the organization read status is
 // configurable and anything else fails the test (no network)
 type notReadyHTTP struct {
-	t          *testing.T
-	orgStatus  int
-	users      string
-	acsScopes  string
-	acsStatus  int
-	grantCode  int
-	userStatus int
-	userErr    error
+	t                *testing.T
+	orgStatus        int
+	adminStatus      int
+	users            string
+	acsScopes        string
+	acsStatus        int
+	grantCode        int
+	contactGrantCode int
+	userStatus       int
+	userErr          error
 
 	mu    sync.Mutex
 	calls []string
@@ -91,13 +98,7 @@ func (h *notReadyHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 		if h.userErr != nil {
 			return nil, h.userErr
 		}
-		if h.userStatus != 0 {
-			response.StatusCode = h.userStatus
-		}
-		body = `{"Data":[],"Metadata":{"TotalSize":0}}`
-		if h.users != "" {
-			body = h.users
-		}
+		response.StatusCode, body = h.usersResponse()
 	case r.URL.Host == designeePlatformHost && r.URL.Path == "/project-service/v1/projects/"+notReadyProjectSFID:
 		body = `{"ID":"` + notReadyProjectSFID + `","Name":"Not Ready Project"}`
 	case r.URL.Host == designeePlatformHost && r.Method == http.MethodGet && r.URL.Path == notReadyOrgPath:
@@ -105,35 +106,19 @@ func (h *notReadyHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 		if h.orgStatus != http.StatusOK {
 			body = notReadyOrgMissing
 		}
+	case r.URL.Host == designeePlatformHost && r.Method == http.MethodGet && r.URL.Path == notReadyOrgPath+"/adminscopes":
+		response.StatusCode, body = h.adminStatus, `{"userroles":[],"Metadata":{"TotalSize":0}}`
+		if h.adminStatus != http.StatusOK {
+			body = `{"Message":"admin lookup failed"}`
+		}
 	case r.URL.Host == designeePlatformHost && r.URL.Path == notReadyACSGrantsPath:
-		assert.Equal(h.t, http.MethodGet, r.Method)
-		assert.Equal(h.t, "false", r.Header.Get("X-LFX-CACHE"))
-		if h.acsStatus != 0 {
-			response.StatusCode = h.acsStatus
-		}
-		body = `{"userroles":{},"metadata":{"TotalSize":0}}`
-		if h.acsScopes != "" {
-			body = h.acsScopes
-		}
+		response.StatusCode, body = h.grantListResponse(r)
 	case r.URL.Host == designeePlatformHost && r.URL.Path == "/acs/v1/api/roles":
-		roleName := r.URL.Query().Get("search")
-		require.Contains(h.t, []string{utils.CLADesigneeRole, utils.ContactRole}, roleName)
-		body = `[{"role_id":"` + notReadyRoleID + `","role_name":"` + roleName + `"}]`
+		body = h.roleResponse(r)
 	case r.URL.Host == designeePlatformHost && r.URL.Path == "/acs/v1/api/object-types":
-		body = `[{"name":"project|organization","type_id":11}]`
-	case r.URL.Host == designeePlatformHost && r.URL.Path == "/acs/v1/api/roles/"+notReadyRoleID+"/members/users":
-		assert.Equal(h.t, http.MethodPost, r.Method)
-		var payload struct {
-			Usernames    []string `json:"usernames"`
-			ObjectIDs    []string `json:"object_ids"`
-			ObjectTypeID int      `json:"object_type_id"`
-		}
-		require.NoError(h.t, json.NewDecoder(r.Body).Decode(&payload))
-		assert.Equal(h.t, []string{designeeUserLFID}, payload.Usernames)
-		assert.Equal(h.t, []string{notReadyProjectSFID + "|" + notReadyCompanySFID}, payload.ObjectIDs)
-		assert.Equal(h.t, 11, payload.ObjectTypeID)
-		response.StatusCode = h.grantCode
-		body = `[{"grant_id":"66666666-7777-4888-8999-aaaaaaaaaaaa","username":"` + designeeUserLFID + `"}]`
+		body = `[{"name":"project|organization","type_id":11},{"name":"organization","type_id":12}]`
+	case r.URL.Host == designeePlatformHost && (r.URL.Path == "/acs/v1/api/roles/"+notReadyRoleID+"/members/users" || r.URL.Path == "/acs/v1/api/roles/"+notReadyContactRoleID+"/members/users"):
+		response.StatusCode, body = h.grantResponse(r)
 	case r.URL.Host == designeePlatformHost && r.Method == http.MethodPost && r.URL.Path == notReadyOrgPath+"/scopes":
 		response.StatusCode, body = http.StatusNotFound, notReadyOrgMissing
 	default:
@@ -142,6 +127,71 @@ func (h *notReadyHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	response.Body = io.NopCloser(strings.NewReader(body))
 	return response, nil
+}
+
+func (h *notReadyHTTP) usersResponse() (int, string) {
+	status := http.StatusOK
+	if h.userStatus != 0 {
+		status = h.userStatus
+	}
+	body := `{"Data":[],"Metadata":{"TotalSize":0}}`
+	if h.users != "" {
+		body = h.users
+	}
+	return status, body
+}
+
+func (h *notReadyHTTP) grantListResponse(r *http.Request) (int, string) {
+	assert.Equal(h.t, http.MethodGet, r.Method)
+	assert.Equal(h.t, "false", r.Header.Get("X-LFX-CACHE"))
+	status := http.StatusOK
+	if h.acsStatus != 0 {
+		status = h.acsStatus
+	}
+	body := `{"userroles":{},"metadata":{"TotalSize":0}}`
+	if h.acsScopes != "" {
+		body = h.acsScopes
+	}
+	return status, body
+}
+
+func (h *notReadyHTTP) roleResponse(r *http.Request) string {
+	roleName := r.URL.Query().Get("search")
+	require.Contains(h.t, []string{utils.CLADesigneeRole, utils.ContactRole}, roleName)
+	roleID := notReadyRoleID
+	if roleName == utils.ContactRole {
+		roleID = notReadyContactRoleID
+	}
+	return `[{"role_id":"` + roleID + `","role_name":"` + roleName + `"}]`
+}
+
+func (h *notReadyHTTP) grantResponse(r *http.Request) (int, string) {
+	assert.Equal(h.t, http.MethodPost, r.Method)
+	var payload struct {
+		Usernames    []string `json:"usernames"`
+		ObjectIDs    []string `json:"object_ids"`
+		ObjectTypeID int      `json:"object_type_id"`
+	}
+	require.NoError(h.t, json.NewDecoder(r.Body).Decode(&payload))
+	assert.Equal(h.t, []string{designeeUserLFID}, payload.Usernames)
+	contact := strings.Contains(r.URL.Path, notReadyContactRoleID)
+	status := h.grantCode
+	if contact {
+		assert.Equal(h.t, []string{notReadyCompanySFID}, payload.ObjectIDs)
+		assert.Equal(h.t, 12, payload.ObjectTypeID)
+		status = http.StatusCreated
+		if h.contactGrantCode != 0 {
+			status = h.contactGrantCode
+		}
+	} else {
+		assert.Equal(h.t, []string{notReadyProjectSFID + "|" + notReadyCompanySFID}, payload.ObjectIDs)
+		assert.Equal(h.t, 11, payload.ObjectTypeID)
+	}
+	body := `[{"grant_id":"66666666-7777-4888-8999-aaaaaaaaaaaa","username":"` + designeeUserLFID + `"}]`
+	if contact && status >= http.StatusBadRequest {
+		body = `{"message":"` + notReadyContactFailure + `"}`
+	}
+	return status, body
 }
 
 func (h *notReadyHTTP) count(call string) int {
@@ -177,11 +227,8 @@ func setupNotReadyHTTP(t *testing.T, transport *notReadyHTTP) {
 	v2AcsService.InitClient("https://"+designeePlatformHost, "api-key")
 }
 
-func withCreateViaMemberService(t *testing.T, enabled bool) {
+func withDirectCLARoles(t *testing.T, enabled bool) {
 	t.Helper()
-	previous := companyCreateViaMemberService
-	companyCreateViaMemberService = func() bool { return enabled }
-	t.Cleanup(func() { companyCreateViaMemberService = previous })
 	previousConfig := config.GetConfig()
 	configPath := filepath.Join(t.TempDir(), "config.json")
 	load := func(value config.Config) {
@@ -193,7 +240,7 @@ func withCreateViaMemberService(t *testing.T, enabled bool) {
 	}
 	t.Cleanup(func() { load(previousConfig) })
 	updated := previousConfig
-	updated.MemberService.CreateCompanyEnabled = enabled
+	updated.ACSDirectCLARolesEnabled = enabled
 	load(updated)
 }
 
@@ -211,7 +258,7 @@ func (e *directDesigneeEvents) LogEventWithContext(_ context.Context, args *even
 func TestCreateCLAManagerDesigneeBeforeOrganizationIngestion(t *testing.T) {
 	for _, status := range []int{http.StatusCreated, http.StatusConflict, http.StatusInternalServerError} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
-			withCreateViaMemberService(t, true)
+			withDirectCLARoles(t, true)
 			transport := &notReadyHTTP{orgStatus: http.StatusNotFound, users: designeeUserJSON(), acsStatus: http.StatusServiceUnavailable, grantCode: status}
 			setupNotReadyHTTP(t, transport)
 			svc := newNotReadyService(t)
@@ -242,7 +289,55 @@ func TestCreateCLAManagerDesigneeBeforeOrganizationIngestion(t *testing.T) {
 				assert.Zero(t, transport.count("POST "+notReadyOrgPath+"/scopes"))
 			} else {
 				assert.Equal(t, 2, transport.count("GET /acs/v1/api/roles"))
-				assert.Equal(t, 1, transport.count("POST "+notReadyOrgPath+"/scopes"), "the preserved best-effort contact grant may fail without blocking the CLA grant")
+				assert.Zero(t, transport.count("POST "+notReadyOrgPath+"/scopes"))
+				assert.Equal(t, 1, transport.count("POST /acs/v1/api/roles/"+notReadyContactRoleID+"/members/users"))
+			}
+		})
+	}
+}
+
+func TestNativeContactGrantRemainsBestEffort(t *testing.T) {
+	for _, status := range []int{http.StatusConflict, http.StatusServiceUnavailable} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			withDirectCLARoles(t, true)
+			transport := &notReadyHTTP{
+				orgStatus: http.StatusNotFound, users: designeeUserJSON(),
+				grantCode: http.StatusCreated, contactGrantCode: status,
+			}
+			setupNotReadyHTTP(t, transport)
+			logger := log.GetLogger()
+			oldLevel := logger.GetLevel()
+			oldHooks := logger.ReplaceHooks(make(logrus.LevelHooks))
+			logger.SetLevel(logrus.WarnLevel)
+			t.Cleanup(func() {
+				logger.ReplaceHooks(oldHooks)
+				logger.SetLevel(oldLevel)
+			})
+			hook := logtest.NewLocal(logger)
+			svc := newNotReadyService(t)
+			recorder := &directDesigneeEvents{}
+			svc.eventService = recorder
+			designee, err := svc.CreateCLAManagerDesignee(context.Background(), notReadyCompany.CompanyID, notReadyProjectSFID, "designee@example.invalid")
+			require.NoError(t, err)
+			require.NotNil(t, designee)
+			assert.Len(t, recorder.recorded, 1)
+			assert.Equal(t, 1, transport.count("POST /acs/v1/api/roles/"+notReadyRoleID+"/members/users"))
+			assert.Equal(t, 1, transport.count("POST /acs/v1/api/roles/"+notReadyContactRoleID+"/members/users"))
+			assert.Zero(t, transport.count("POST "+notReadyOrgPath+"/scopes"))
+			contactWarnings := 0
+			for _, entry := range hook.AllEntries() {
+				text, formatErr := entry.String()
+				require.NoError(t, formatErr)
+				assert.NotContains(t, text, notReadyContactFailure)
+				if strings.Contains(entry.Message, "continuing without contact role") {
+					contactWarnings++
+					assert.NotContains(t, text, "designee@example.invalid")
+				}
+			}
+			if status == http.StatusServiceUnavailable {
+				assert.Equal(t, 1, contactWarnings)
+			} else {
+				assert.Zero(t, contactWarnings)
 			}
 		})
 	}
@@ -252,7 +347,7 @@ func TestDirectDesigneeHandlersRejectBlankEmail(t *testing.T) {
 	for _, email := range []string{"", notReadyBlankEmail} {
 		for _, byGroup := range []bool{false, true} {
 			t.Run(fmt.Sprintf("email=%q/byGroup=%t", email, byGroup), func(t *testing.T) {
-				withCreateViaMemberService(t, true)
+				withDirectCLARoles(t, true)
 				transport := &notReadyHTTP{orgStatus: http.StatusNotFound, users: designeeUserJSON(), grantCode: http.StatusCreated}
 				setupNotReadyHTTP(t, transport)
 				svc := newNotReadyService(t)
@@ -303,7 +398,7 @@ func TestDirectDesigneeHandlersMapDependencyFailures(t *testing.T) {
 		{operation: opInviteAdmin, grantCode: http.StatusServiceUnavailable, wantUserCalls: 2, wantGrantCalls: 1},
 	} {
 		t.Run(fmt.Sprintf("%s/user=%d/grant=%d", tc.operation, tc.userStatus, tc.grantCode), func(t *testing.T) {
-			withCreateViaMemberService(t, true)
+			withDirectCLARoles(t, true)
 			transport := &notReadyHTTP{orgStatus: http.StatusNotFound, userStatus: tc.userStatus, grantCode: tc.grantCode, users: designeeUserJSON()}
 			setupNotReadyHTTP(t, transport)
 			svc := newNotReadyService(t)
@@ -376,7 +471,7 @@ func TestDesigneeLookupClassifiesDependencyFailures(t *testing.T) {
 		{name: "legacy lookup unchanged", legacy: true, email: testerEmail, users: designeeUserJSON(), status: http.StatusServiceUnavailable},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			withCreateViaMemberService(t, !tc.legacy)
+			withDirectCLARoles(t, !tc.legacy)
 			transport := &notReadyHTTP{users: tc.users, userStatus: tc.status, userErr: tc.transportErr}
 			setupNotReadyHTTP(t, transport)
 
@@ -409,7 +504,7 @@ func TestDirectDesigneeEntryPointsRejectInvalidLookupWithoutInviting(t *testing.
 	for _, operation := range []string{opDesignee, opCreateRequest, opInviteAdmin} {
 		for _, email := range []string{"", notReadyBlankEmail, "designee@example.invalid"} {
 			t.Run(fmt.Sprintf("%s/email=%q", operation, email), func(t *testing.T) {
-				withCreateViaMemberService(t, true)
+				withDirectCLARoles(t, true)
 				transport := &notReadyHTTP{orgStatus: http.StatusNotFound, userStatus: http.StatusServiceUnavailable, users: designeeUserJSON()}
 				setupNotReadyHTTP(t, transport)
 				svc := newNotReadyService(t)
@@ -441,7 +536,7 @@ func TestDirectDesigneeEntryPointsRejectInvalidLookupWithoutInviting(t *testing.
 }
 
 func TestDesigneeDoesNotCallUnusableMetadataTemporaryIngestionDelay(t *testing.T) {
-	withCreateViaMemberService(t, true)
+	withDirectCLARoles(t, true)
 	transport := &notReadyHTTP{orgStatus: http.StatusNotFound}
 	setupNotReadyHTTP(t, transport)
 	svc := newNotReadyService(t)
@@ -451,14 +546,13 @@ func TestDesigneeDoesNotCallUnusableMetadataTemporaryIngestionDelay(t *testing.T
 	_, err := svc.CreateCLAManagerDesignee(context.Background(), company.CompanyID, notReadyProjectSFID, "designee@example.invalid")
 	var missing *organizations.GetOrgNotFound
 	require.ErrorAs(t, err, &missing)
-	assert.NotErrorIs(t, err, ErrCompanyNotReady)
 	assert.Zero(t, transport.count("GET "+notReadyUsersPath))
 }
 
 func TestIsCLAManagerDesigneeUsesNativeLFIDScope(t *testing.T) {
 	for _, scopeProject := range []string{notReadyProjectSFID, "another-project"} {
 		t.Run(scopeProject, func(t *testing.T) {
-			withCreateViaMemberService(t, true)
+			withDirectCLARoles(t, true)
 			scopes := `{"userroles":{"` + designeeUserLFID + `":[{"role_name":"cla-manager-designee","role_id":"` + notReadyRoleID + `","scopes":[{"grant_id":"grant","object_type_name":"project|organization","object_id":"` + scopeProject + `|` + notReadyCompanySFID + `"}]}]},"metadata":{"TotalSize":1}}`
 			transport := &notReadyHTTP{orgStatus: http.StatusNotFound, users: designeeUserJSON(), acsScopes: scopes}
 			setupNotReadyHTTP(t, transport)
@@ -475,7 +569,7 @@ func TestIsCLAManagerDesigneeUsesNativeLFIDScope(t *testing.T) {
 }
 
 func TestIsCLAManagerDesigneeReadsOrganizationOncePerOperation(t *testing.T) {
-	withCreateViaMemberService(t, true)
+	withDirectCLARoles(t, true)
 	transport := &notReadyHTTP{orgStatus: http.StatusNotFound, users: designeeUserJSON()}
 	setupNotReadyHTTP(t, transport)
 	svc := newDesigneeService(t, designeeMappings("project-a", "project-b", notReadyProjectSFID), nil)
@@ -526,46 +620,43 @@ func TestDesigneeCompanyReadiness(t *testing.T) {
 	const orgRead = "GET " + notReadyOrgPath
 
 	t.Run("unknown organization does not block the stored company", func(t *testing.T) {
-		withCreateViaMemberService(t, true)
+		withDirectCLARoles(t, true)
 		transport := &notReadyHTTP{orgStatus: http.StatusNotFound}
 		setupNotReadyHTTP(t, transport)
 
 		designee, err := newNotReadyService(t).CreateCLAManagerDesignee(context.Background(), "company-not-ready", notReadyProjectSFID, "designee@example.invalid")
 
 		require.ErrorIs(t, err, ErrLFXUserNotFound, "the LF user must still be verified before any grant")
-		assert.NotErrorIs(t, err, ErrCompanyNotReady)
 		assert.Nil(t, designee)
 		assert.Equal(t, 1, transport.count(orgRead), "exactly the existing organization read, no extra probe")
 		assert.Equal(t, 1, transport.count("GET "+notReadyUsersPath))
 	})
 
 	t.Run("known organization keeps the ordinary flow and errors", func(t *testing.T) {
-		withCreateViaMemberService(t, true)
+		withDirectCLARoles(t, true)
 		transport := &notReadyHTTP{orgStatus: http.StatusOK}
 		setupNotReadyHTTP(t, transport)
 
 		_, err := newNotReadyService(t).CreateCLAManagerDesignee(context.Background(), "company-not-ready", notReadyProjectSFID, "designee@example.invalid")
 
 		assert.True(t, errors.Is(err, ErrLFXUserNotFound), "the next ordinary step (no LF user) is reached: %v", err)
-		assert.False(t, errors.Is(err, ErrCompanyNotReady))
 	})
 
 	t.Run("switch off keeps the original error and makes no new call", func(t *testing.T) {
-		withCreateViaMemberService(t, false)
+		withDirectCLARoles(t, false)
 		transport := &notReadyHTTP{orgStatus: http.StatusNotFound}
 		setupNotReadyHTTP(t, transport)
 
 		_, err := newNotReadyService(t).CreateCLAManagerDesignee(context.Background(), "company-not-ready", notReadyProjectSFID, "designee@example.invalid")
 
 		require.Error(t, err)
-		assert.False(t, errors.Is(err, ErrCompanyNotReady), "%v", err)
 		var notFound *organizations.GetOrgNotFound
 		assert.True(t, errors.As(err, &notFound), "the wrapped organization-service error is returned unchanged: %v", err)
 		assert.Equal(t, 1, transport.count(orgRead))
 	})
 
 	t.Run("by-group designee does not wait for organization ingestion", func(t *testing.T) {
-		withCreateViaMemberService(t, true)
+		withDirectCLARoles(t, true)
 		transport := &notReadyHTTP{orgStatus: http.StatusNotFound}
 		setupNotReadyHTTP(t, transport)
 		params := cla_manager.CreateCLAManagerDesigneeByGroupParams{CompanyID: "company-not-ready", ClaGroupID: notReadyClaGroupID, Body: cla_manager.CreateCLAManagerDesigneeByGroupBody{UserEmail: "designee@example.invalid"}}
@@ -573,46 +664,40 @@ func TestDesigneeCompanyReadiness(t *testing.T) {
 		designees, _, err := newNotReadyService(t).CreateCLAManagerDesigneeByGroup(context.Background(), params, []*projects_cla_groups.ProjectClaGroup{{ProjectSFID: notReadyProjectSFID, ClaGroupID: notReadyClaGroupID}})
 
 		require.ErrorIs(t, err, ErrLFXUserNotFound)
-		assert.NotErrorIs(t, err, ErrCompanyNotReady)
 		assert.Nil(t, designees)
 	})
 }
 
-func TestInviteCompanyAdminCompanyNotReady(t *testing.T) {
+func TestInviteCompanyAdminUnknownOrganizationHasNoAdmins(t *testing.T) {
 	const orgRead = "GET " + notReadyOrgPath
 	contributor := &v1User.User{UserID: "user-not-ready", LFUsername: "contributor", LFEmail: "contributor@example.invalid", UserName: "Contributor"}
 
-	t.Run("unknown organization is reported as not ready before any invite", func(t *testing.T) {
-		withCreateViaMemberService(t, true)
+	t.Run("unknown organization is reported as no admins before any invite", func(t *testing.T) {
+		withDirectCLARoles(t, true)
 		transport := &notReadyHTTP{orgStatus: http.StatusNotFound}
 		setupNotReadyHTTP(t, transport)
 
 		designees, err := newNotReadyService(t).InviteCompanyAdmin(context.Background(), true, "company-not-ready", notReadyClaGroupID, "admin@example.invalid", "Admin", contributor, "")
 
-		var notReady *CompanyNotReadyError
-		require.True(t, errors.As(err, &notReady), "%v", err)
-		assert.Equal(t, "company-not-ready", notReady.CompanyID)
-		assert.Equal(t, notReadyCompanySFID, notReady.CompanySFID)
+		require.ErrorIs(t, err, ErrNoOrgAdmins)
 		assert.Nil(t, designees)
 		assert.Equal(t, 1, transport.count(orgRead))
 		assert.Equal(t, 0, transport.count("GET /project-service/v1/projects/"+notReadyProjectSFID), "nothing after the readiness failure")
 	})
 
-	t.Run("switch off keeps the original error", func(t *testing.T) {
-		withCreateViaMemberService(t, false)
+	t.Run("switch off also reports no admins", func(t *testing.T) {
+		withDirectCLARoles(t, false)
 		transport := &notReadyHTTP{orgStatus: http.StatusNotFound}
 		setupNotReadyHTTP(t, transport)
 
 		_, err := newNotReadyService(t).InviteCompanyAdmin(context.Background(), true, "company-not-ready", notReadyClaGroupID, "admin@example.invalid", "Admin", contributor, "")
 
-		var notFound *organizations.GetOrgNotFound
-		require.True(t, errors.As(err, &notFound), "%v", err)
-		assert.False(t, errors.Is(err, ErrCompanyNotReady))
+		require.ErrorIs(t, err, ErrNoOrgAdmins)
 	})
 }
 
-func TestInviteCompanyAdminHandlerMapsCompanyNotReady(t *testing.T) {
-	withCreateViaMemberService(t, true)
+func TestInviteCompanyAdminHandlerMapsUnknownOrganizationToNoAdmins(t *testing.T) {
+	withDirectCLARoles(t, true)
 	transport := &notReadyHTTP{orgStatus: http.StatusNotFound}
 	setupNotReadyHTTP(t, transport)
 	svc := newNotReadyService(t)
@@ -629,16 +714,37 @@ func TestInviteCompanyAdminHandlerMapsCompanyNotReady(t *testing.T) {
 	output := httptest.NewRecorder()
 	response.WriteResponse(output, runtime.JSONProducer())
 
-	assert.Equal(t, http.StatusConflict, output.Code, output.Body.String())
+	assert.Equal(t, http.StatusNotFound, output.Code, output.Body.String())
 	assert.Equal(t, testReqID, output.Header().Get(utils.XREQUESTID))
-	var payload map[string]interface{}
+	var payload models.ErrorResponse
 	require.NoError(t, json.Unmarshal(output.Body.Bytes(), &payload))
-	assert.Equal(t, companyNotReadyCode, payload["code"])
-	assert.Equal(t, notReadyCompany.CompanyID, payload["company_id"])
-	assert.Equal(t, notReadyCompanySFID, payload["company_sfid"])
-	assert.Contains(t, payload["message"], "try again later")
-	assert.Equal(t, testReqID, payload["x-request-id"])
+	assert.Equal(t, NotFound, payload.Code)
+	assert.Equal(t, ErrNoOrgAdmins.Error(), payload.Message)
+	assert.Equal(t, testReqID, payload.XRequestID)
+	assert.NotContains(t, output.Body.String(), "company_not_ready")
 	assert.Equal(t, 1, transport.count("GET "+notReadyOrgPath))
 	assert.Zero(t, transport.count("POST "+notReadyOrgPath+"/scopes"))
 	assert.Zero(t, transport.count("POST /acs/v1/api/roles/"+notReadyRoleID+"/members/users"))
+}
+
+func TestInviteCompanyAdminEmptyAdminsAndDependencyFailure(t *testing.T) {
+	for _, status := range []int{http.StatusOK, http.StatusNotFound, http.StatusInternalServerError} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			withDirectCLARoles(t, true)
+			transport := &notReadyHTTP{orgStatus: http.StatusOK, adminStatus: status}
+			setupNotReadyHTTP(t, transport)
+			result, err := newNotReadyService(t).InviteCompanyAdmin(context.Background(), true,
+				notReadyCompany.CompanyID, notReadyClaGroupID, "admin@example.invalid", "Admin", &v1User.User{UserID: notReadyRequester}, "")
+			assert.Nil(t, result)
+			if status == http.StatusInternalServerError {
+				require.Error(t, err)
+				assert.NotErrorIs(t, err, ErrNoOrgAdmins, "an outage must not look like an empty admin list")
+			} else {
+				require.ErrorIs(t, err, ErrNoOrgAdmins)
+			}
+			assert.Equal(t, 1, transport.count("GET "+notReadyOrgPath+"/adminscopes"))
+			assert.Zero(t, transport.count("GET "+notReadyUsersPath))
+			assert.Zero(t, transport.count("POST "+notReadyOrgPath+"/scopes"))
+		})
+	}
 }

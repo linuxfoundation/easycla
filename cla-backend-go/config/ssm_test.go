@@ -18,6 +18,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ssm"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	"github.com/sirupsen/logrus"
+	logtest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -74,7 +77,9 @@ func TestLoadConfigRecordsUnreadableSSS(t *testing.T) {
 			return
 		}
 		value := configValue
-		if strings.HasPrefix(input.Name, "cla-gh-app-id-") {
+		if input.Name == "cla-acs-direct-roles-enabled-test" {
+			value = "true"
+		} else if strings.HasPrefix(input.Name, "cla-gh-app-id-") {
 			value = "123"
 		} else if strings.Contains(input.Name, "-enabled-") || strings.Contains(input.Name, "-enable-services-for-parent-") {
 			value = "false"
@@ -95,6 +100,8 @@ func TestLoadConfigRecordsUnreadableSSS(t *testing.T) {
 	cfg, err := LoadConfig("", awsSession, "test")
 	require.NoError(t, err, "SSS configuration must not prevent non-screening workers from loading their configuration")
 	assert.Equal(t, configValue, cfg.Auth0.Domain)
+	assert.True(t, cfg.ACSDirectCLARolesEnabled)
+	assert.False(t, cfg.MemberService.CreateCompanyEnabled)
 	assert.Contains(t, cfg.SSS.ReadError, "ThrottlingException")
 	assert.Equal(t, SSS{ReadError: cfg.SSS.ReadError}, cfg.SSS, "do not publish a partial screening policy")
 }
@@ -228,7 +235,8 @@ func TestGetOptionalSSMBool(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := getOptionalSSMBool(flagSSMClient(t, tc.code, tc.value, tc.incomplete), "cla-member-service-cla-admins-enabled-test", nil)
+			const key = "cla-member-service-cla-admins-enabled-test"
+			got, err := getOptionalSSMBool(flagSSMClient(t, key, tc.code, tc.value, tc.incomplete), key, nil)
 			if tc.wantErr != "" {
 				require.ErrorContains(t, err, tc.wantErr)
 				assert.False(t, got)
@@ -257,15 +265,61 @@ func TestLoadCreateCompanyFlag(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var cfg Config
-			loadCreateCompanyFlag(flagSSMClient(t, tc.code, tc.value, false), "test", &cfg, nil)
+			loadCreateCompanyFlag(flagSSMClient(t, "cla-member-service-create-company-enabled-test", tc.code, tc.value, false), "test", &cfg, nil)
 			assert.Equal(t, tc.want, cfg.MemberService.CreateCompanyEnabled)
 		})
 	}
 }
 
-func flagSSMClient(t *testing.T, code, value string, incomplete bool) *ssm.SSM {
+func TestLoadACSDirectRolesFlag(t *testing.T) {
+	for _, tc := range []struct {
+		name, code, value string
+		incomplete, want  bool
+		warn              bool
+	}{
+		{name: "not provisioned", code: ssm.ErrCodeParameterNotFound},
+		{name: "enabled and trimmed", value: " TRUE ", want: true},
+		{name: "disabled", value: "false"},
+		{name: "denied", code: "AccessDeniedException", warn: true},
+		{name: "throttled", code: "ThrottlingException", warn: true},
+		{name: "malformed", value: "yes", warn: true},
+		{name: "numeric", value: "1", warn: true},
+		{name: "empty", warn: true},
+		{name: "incomplete", incomplete: true, warn: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			logger := log.GetLogger()
+			oldLevel := logger.GetLevel()
+			oldHooks := logger.ReplaceHooks(make(logrus.LevelHooks))
+			logger.SetLevel(logrus.WarnLevel)
+			t.Cleanup(func() {
+				logger.ReplaceHooks(oldHooks)
+				logger.SetLevel(oldLevel)
+			})
+			hook := logtest.NewLocal(logger)
+			cfg := Config{ACSDirectCLARolesEnabled: true, MemberService: MemberService{CreateCompanyEnabled: true}}
+			loadACSDirectRolesFlag(flagSSMClient(t, "cla-acs-direct-roles-enabled-test", tc.code, tc.value, tc.incomplete), "test", &cfg, nil)
+			assert.Equal(t, tc.want, cfg.ACSDirectCLARolesEnabled)
+			assert.True(t, cfg.MemberService.CreateCompanyEnabled, "the creation rollout must not be changed by the role flag")
+			if tc.warn {
+				require.Len(t, hook.AllEntries(), 1)
+				assert.Contains(t, hook.LastEntry().Message, "switch unreadable")
+			} else {
+				assert.Empty(t, hook.AllEntries(), "an absent flag is not an operational failure")
+			}
+		})
+	}
+}
+
+func flagSSMClient(t *testing.T, key, code, value string, incomplete bool) *ssm.SSM {
 	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var input ssm.GetParameterInput
+		if err := json.NewDecoder(r.Body).Decode(&input); !assert.NoError(t, err) {
+			http.Error(w, "invalid parameter request", http.StatusBadRequest)
+			return
+		}
+		assert.Equal(t, key, aws.StringValue(input.Name))
 		w.Header().Set("Content-Type", "application/x-amz-json-1.1")
 		if code != "" {
 			w.WriteHeader(http.StatusBadRequest)
@@ -277,7 +331,7 @@ func flagSSMClient(t *testing.T, code, value string, incomplete bool) *ssm.SSM {
 			return
 		}
 		assert.NoError(t, json.NewEncoder(w).Encode(map[string]interface{}{
-			"Parameter": map[string]string{"Name": "cla-member-service-cla-admins-enabled-test", "Value": value},
+			"Parameter": map[string]string{"Name": key, "Value": value},
 		}))
 	}))
 	t.Cleanup(server.Close)
@@ -309,7 +363,7 @@ func TestLoadCLAAdminsFlag(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var cfg Config
-			loadCLAAdminsFlag(flagSSMClient(t, tc.code, tc.value, false), "test", &cfg, nil)
+			loadCLAAdminsFlag(flagSSMClient(t, "cla-member-service-cla-admins-enabled-test", tc.code, tc.value, false), "test", &cfg, nil)
 			assert.Equal(t, tc.want, cfg.MemberService.CLAAdminsEnabled)
 			if tc.wantError == "" {
 				assert.Empty(t, cfg.MemberService.CLAAdminsFlagError)

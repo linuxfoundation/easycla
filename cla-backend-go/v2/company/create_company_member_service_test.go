@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -23,6 +25,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	mock_company_repo "github.com/linuxfoundation/easycla/cla-backend-go/company/mocks"
+	"github.com/linuxfoundation/easycla/cla-backend-go/config"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	v2CompanyOps "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/company"
@@ -34,6 +37,7 @@ import (
 	memberService "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
 	orgService "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
+	orgModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/models"
 	v2UserServiceModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/models"
 )
 
@@ -47,6 +51,8 @@ const (
 	msEmptyJSON    = "{}"
 	msRolesPath    = "/acs/v1/api/roles"
 	msLookupPath   = "/organization-service/v1/lookup"
+	msAdminRoleID  = "role-company-admin"
+	msGrantPath    = "/acs/v1/api/roles/" + msAdminRoleID + "/members/users"
 )
 
 // memberCreateHTTP fakes member-service find-or-create and the platform calls of the new create path; any other request fails the test
@@ -60,6 +66,7 @@ type memberCreateHTTP struct {
 	orgStatus         int
 	rolesStatus       int
 	scopeStatus       int
+	grantBody         string
 
 	mu       sync.Mutex
 	calls    []string
@@ -97,10 +104,14 @@ func (h *memberCreateHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 			body = `{"Message":"organization not found"}`
 		}
 	case r.URL.Host == msPlatformHost && r.URL.Path == msRolesPath:
-		body = `[{"role_id":"role-company-admin","role_name":"company-admin"}]`
+		body = `[{"role_id":"` + msAdminRoleID + `","role_name":"company-admin"}]`
 		if h.rolesStatus != 0 {
 			response.StatusCode, body = h.rolesStatus, `{"Message":"acs failure"}`
 		}
+	case r.URL.Host == msPlatformHost && r.URL.Path == "/acs/v1/api/object-types":
+		body = `[{"name":"organization","type_id":12}]`
+	case r.URL.Host == msPlatformHost && r.Method == http.MethodPost && r.URL.Path == msGrantPath:
+		response.StatusCode, body = h.grantResponse(r)
 	case r.URL.Host == msPlatformHost && r.Method == http.MethodPost && r.URL.Path == msOrgPath+"/scopes":
 		response.StatusCode = h.scopeStatus
 		if h.scopeStatus >= http.StatusBadRequest {
@@ -114,6 +125,28 @@ func (h *memberCreateHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 	}
 	response.Body = io.NopCloser(strings.NewReader(body))
 	return response, nil
+}
+
+func (h *memberCreateHTTP) grantResponse(r *http.Request) (int, string) {
+	var payload struct {
+		RoleID       string   `json:"role_id"`
+		Usernames    []string `json:"usernames"`
+		ObjectIDs    []string `json:"object_ids"`
+		ObjectTypeID int      `json:"object_type_id"`
+	}
+	require.NoError(h.t, json.NewDecoder(r.Body).Decode(&payload))
+	assert.Equal(h.t, msAdminRoleID, payload.RoleID)
+	assert.Equal(h.t, []string{testCallerUsername}, payload.Usernames)
+	assert.Equal(h.t, []string{msAccountSFID}, payload.ObjectIDs)
+	assert.Equal(h.t, 12, payload.ObjectTypeID)
+	body := `[{"grant_id":"creator-admin-grant","username":"` + testCallerUsername + `"}]`
+	if h.scopeStatus >= http.StatusBadRequest {
+		body = `{"message":"private grant failure for ` + testCallerEmail + `"}`
+	}
+	if h.grantBody != "" {
+		body = h.grantBody
+	}
+	return h.scopeStatus, body
 }
 
 func (h *memberCreateHTTP) count(suffix string) int {
@@ -223,7 +256,123 @@ func memberCreateParams(website, signingEntity string) *v2CompanyOps.CreateCompa
 	}
 }
 
+func withCompanyRoleFlags(t *testing.T, createCompany, directRoles bool) {
+	t.Helper()
+	original := config.GetConfig()
+	configPath := filepath.Join(t.TempDir(), "config.json")
+	load := func(value config.Config) {
+		data, err := json.Marshal(value)
+		require.NoError(t, err)
+		require.NoError(t, os.WriteFile(configPath, data, 0600))
+		_, err = config.LoadConfig(configPath, nil, "")
+		require.NoError(t, err)
+	}
+	t.Cleanup(func() { load(original) })
+	updated := original
+	updated.MemberService.CreateCompanyEnabled = createCompany
+	updated.ACSDirectCLARolesEnabled = directRoles
+	load(updated)
+}
+
+func TestCompanyCreatorUsesNativeOrganizationGrant(t *testing.T) {
+	previous := lfUserByEmail
+	t.Cleanup(func() { lfUserByEmail = previous })
+	lfUserByEmail = func(string) (*v2UserServiceModels.User, error) {
+		return &v2UserServiceModels.User{Username: testCallerUsername}, nil
+	}
+	for _, memberCreation := range []bool{true, false} {
+		for _, tc := range []struct {
+			name        string
+			grantStatus int
+			roleStatus  int
+			grantBody   string
+			wantError   bool
+		}{
+			{name: "created", grantStatus: http.StatusCreated},
+			{name: "already assigned", grantStatus: http.StatusConflict},
+			{name: "grant outage", grantStatus: http.StatusServiceUnavailable, wantError: true},
+			{name: "native failure is not an Org Service association conflict", grantStatus: http.StatusBadRequest, grantBody: fmt.Sprintf(`{"message":%q}`, OrgAssociated), wantError: true},
+			{name: "role lookup outage", roleStatus: http.StatusServiceUnavailable, wantError: true},
+		} {
+			t.Run(fmt.Sprintf("member=%t/%s", memberCreation, tc.name), func(t *testing.T) {
+				withCompanyRoleFlags(t, memberCreation, true)
+				logger := log.GetLogger()
+				oldLevel := logger.GetLevel()
+				oldHooks := logger.ReplaceHooks(make(logrus.LevelHooks))
+				logger.SetLevel(logrus.WarnLevel)
+				t.Cleanup(func() {
+					logger.ReplaceHooks(oldHooks)
+					logger.SetLevel(oldLevel)
+				})
+				hook := logrustest.NewLocal(logger)
+				transport := &memberCreateHTTP{
+					memberStatus: http.StatusCreated,
+					memberBody:   `{"uid":"` + msAccountSFID + `","name":"` + testCompanyName + `"}`,
+					orgStatus:    http.StatusNotFound, rolesStatus: tc.roleStatus, scopeStatus: tc.grantStatus,
+					grantBody: tc.grantBody,
+				}
+				fx := newMemberCreateFixture(t, transport, memberCreateRepo{expectRow: memberCreation || !tc.wantError})
+				var output *models.CompanyOutput
+				var err error
+				if memberCreation {
+					output, err = fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+				} else {
+					output, err = fx.svc.createCompanyForOrg(context.Background(), nil,
+						&orgModels.Organization{ID: msAccountSFID, Name: testCompanyName},
+						testCompanyName, "", testCompanySite, testCallerEmail, "u-jane", "",
+						&v2UserServiceModels.User{Username: testCallerUsername, Account: &v2UserServiceModels.Account{ID: NoAccount}})
+				}
+				if tc.wantError {
+					require.ErrorIs(t, err, ErrCompanyDependencyFailed)
+					assert.EqualError(t, err, ErrCompanyDependencyFailed.Error())
+					assert.Nil(t, output)
+				} else {
+					require.NoError(t, err)
+					require.NotNil(t, output)
+					assert.Equal(t, msAccountSFID, output.CompanyID)
+				}
+				if memberCreation || !tc.wantError {
+					require.NotNil(t, fx.created)
+					assert.Equal(t, []string{testCallerUsername}, fx.created.CompanyACL)
+					assert.Equal(t, "u-jane", fx.created.CompanyManagerID)
+				}
+				assert.Zero(t, transport.count(msOrgPath), "an ACS grant must not require Organization Service ingestion")
+				assert.Zero(t, transport.count(msOrgPath+"/scopes"))
+				wantGrants := 1
+				if tc.roleStatus != 0 {
+					wantGrants = 0
+				}
+				assert.Equal(t, wantGrants, transport.count(msGrantPath))
+				for _, entry := range hook.AllEntries() {
+					text, formatErr := entry.String()
+					require.NoError(t, formatErr)
+					assert.NotContains(t, text, testCallerEmail)
+					assert.NotContains(t, text, "private grant failure")
+				}
+			})
+		}
+	}
+	t.Run("matched account never gains a creator grant", func(t *testing.T) {
+		withCompanyRoleFlags(t, true, true)
+		transport := &memberCreateHTTP{
+			memberStatus: http.StatusOK,
+			memberBody:   `{"uid":"` + msAccountSFID + `","name":"` + testCompanyName + `"}`,
+			orgStatus:    http.StatusNotFound,
+		}
+		fx := newMemberCreateFixture(t, transport, memberCreateRepo{expectRow: true, expectLookup: true})
+		output, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+		require.NoError(t, err)
+		require.NotNil(t, output)
+		assert.Empty(t, fx.created.CompanyACL)
+		assert.Empty(t, fx.created.CompanyManagerID)
+		assert.Zero(t, transport.count(msGrantPath))
+		assert.Zero(t, transport.count(msOrgPath))
+		assert.Zero(t, transport.count(msOrgPath+"/scopes"))
+	})
+}
+
 func TestCreateCompanyViaMemberService(t *testing.T) {
+	withCompanyRoleFlags(t, true, false)
 	previous := lfUserByEmail
 	t.Cleanup(func() { lfUserByEmail = previous })
 	lfUserByEmail = func(string) (*v2UserServiceModels.User, error) {

@@ -307,10 +307,6 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 				return cla_manager.NewInviteCompanyAdminInternalServerError().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseInternalServerError(reqID, ErrCLADependencyFailed.Error()))
 			}
-			var notReady *CompanyNotReadyError
-			if errors.As(err, &notReady) {
-				return companyNotReadyResponder(reqID, notReady)
-			}
 			statusCode := buildErrorStatusCode(err)
 			if statusCode == NotFound {
 				return cla_manager.NewInviteCompanyAdminNotFound().WithXRequestID(reqID).WithPayload(

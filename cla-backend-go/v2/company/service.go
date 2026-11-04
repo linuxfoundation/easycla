@@ -559,13 +559,21 @@ func (s *service) createCompanyForOrg(ctx context.Context, f logrus.Fields, org 
 		// Assign company-admin to user
 		roleID, adminErr := acsClient.GetRoleID(utils.CompanyAdminRole)
 		if adminErr != nil {
+			if acsService.DirectCLARolesEnabled() {
+				log.WithField(utils.XREQUESTID, ctx.Value(utils.XREQUESTID)).Warn("unable to look up the company-admin role")
+				return nil, ErrCompanyDependencyFailed
+			}
 			msg := "Problem getting companyAdmin role ID for contributor"
 			log.WithFields(f).Warn(msg)
 			return nil, adminErr
 		}
 
-		scopeErr := orgClient.CreateOrgUserRoleOrgScope(ctx, userEmail, org.ID, roleID)
+		scopeErr := orgClient.CreateCLAOrgUserRoleScope(ctx, userEmail, lfUser.Username, org.ID, roleID)
 		if scopeErr != nil {
+			if acsService.DirectCLARolesEnabled() {
+				log.WithField(utils.XREQUESTID, ctx.Value(utils.XREQUESTID)).Warn("unable to create the company-admin grant")
+				return nil, ErrCompanyDependencyFailed
+			}
 			msg := fmt.Sprintf("Problem creating Org scope for email: %s , companyID: %s", userEmail, org.ID)
 			log.WithFields(f).Warn(msg)
 			// Ignore conflict - role has already been assigned - otherwise, return error

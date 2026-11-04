@@ -9,17 +9,21 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/LF-Engineering/lfx-kit/auth"
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/strfmt"
+	"github.com/sirupsen/logrus"
+	logrustest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
 	v2CompanyOps "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/company"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	v2UserServiceModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/models"
 )
 
@@ -117,6 +121,45 @@ func TestCreateCompanyHandlerDependencyFailuresAre500(t *testing.T) {
 			assert.NotContains(t, payload.Message, "member-service")
 		})
 	}
+
+	t.Run("native grant failure does not log private details", func(t *testing.T) {
+		withCompanyRoleFlags(t, true, true)
+		logger := log.GetLogger()
+		oldLevel := logger.GetLevel()
+		oldHooks := logger.ReplaceHooks(make(logrus.LevelHooks))
+		logger.SetLevel(logrus.WarnLevel)
+		t.Cleanup(func() {
+			logger.ReplaceHooks(oldHooks)
+			logger.SetLevel(oldLevel)
+		})
+		hook := logrustest.NewLocal(logger)
+		const privateDetail = "private creator grant failure"
+		transport := &memberCreateHTTP{
+			memberStatus: http.StatusCreated,
+			memberBody:   `{"uid":"` + msAccountSFID + `","name":"` + testCompanyName + `"}`,
+			orgStatus:    http.StatusNotFound,
+			scopeStatus:  http.StatusServiceUnavailable,
+			grantBody:    fmt.Sprintf(`{"message":%q}`, privateDetail+" for "+testCallerEmail),
+		}
+		fx := newMemberCreateFixture(t, transport, memberCreateRepo{expectRow: true})
+		code, payload := call(t, fx)
+		assert.Equal(t, http.StatusInternalServerError, code)
+		assert.Equal(t, "500", payload.Code)
+		assert.Equal(t, "EasyCLA - 500 Internal Server Error - "+ErrCompanyDependencyFailed.Error(), payload.Message)
+		assert.Equal(t, 1, transport.count(msGrantPath))
+		assert.Zero(t, transport.count(msOrgPath+"/scopes"))
+		handlerWarnings := 0
+		for _, entry := range hook.AllEntries() {
+			text, err := entry.String()
+			require.NoError(t, err)
+			assert.NotContains(t, text, testCallerEmail)
+			assert.NotContains(t, text, privateDetail)
+			if strings.HasPrefix(entry.Message, "error returned from create company api:") {
+				handlerWarnings++
+			}
+		}
+		assert.Equal(t, 1, handlerWarnings)
+	})
 
 	t.Run("a plain legacy website conflict still answers the legacy 409", func(t *testing.T) {
 		api := operations.NewEasyclaAPI(nil)

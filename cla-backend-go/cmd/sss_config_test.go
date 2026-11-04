@@ -15,10 +15,46 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/linuxfoundation/easycla/cla-backend-go/config"
 	ini "github.com/linuxfoundation/easycla/cla-backend-go/init"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+func TestMemberServiceClientRequiredByEitherRollout(t *testing.T) {
+	for _, createCompany := range []bool{false, true} {
+		for _, directRoles := range []bool{false, true} {
+			t.Run(fmt.Sprintf("create=%t/direct=%t", createCompany, directRoles), func(t *testing.T) {
+				cfg := config.Config{
+					ACSDirectCLARolesEnabled: directRoles,
+					MemberService: config.MemberService{
+						CreateCompanyEnabled: createCompany,
+						BaseURL:              "https://member.invalid",
+						Audience:             "member-audience",
+					},
+					Auth0Platform: config.Auth0Platform{
+						URL: "https://auth.member.invalid/oauth/token", ClientID: "test-client", ClientSecret: "test-secret",
+					},
+				}
+				member, err := newMemberServiceClient(cfg)
+				require.NoError(t, err)
+				if createCompany || directRoles {
+					require.NotNil(t, member, "ACS-only signing still needs the authoritative screening-domain fallback")
+				} else {
+					assert.Nil(t, member)
+				}
+				cfg.MemberService.BaseURL = ""
+				member, err = newMemberServiceClient(cfg)
+				assert.Nil(t, member)
+				if createCompany || directRoles {
+					require.Error(t, err, "an enabled dependency must not silently disappear")
+				} else {
+					require.NoError(t, err, "unused optional member configuration must not affect legacy startup")
+				}
+			})
+		}
+	}
+}
 
 func TestServerRejectsUnreadableSSS(t *testing.T) {
 	const endpointEnv = "EASYCLA_TEST_SERVER_SSS_ENDPOINT"
