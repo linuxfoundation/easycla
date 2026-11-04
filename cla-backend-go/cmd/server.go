@@ -51,6 +51,7 @@ import (
 	user_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
 
 	acs_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
+	member_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
 	organization_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/github_organizations"
@@ -63,6 +64,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 
 	lfxAuth "github.com/LF-Engineering/lfx-kit/auth"
+	"github.com/linuxfoundation/easycla/cla-backend-go/config"
 	"github.com/linuxfoundation/easycla/cla-backend-go/docs"
 	v1Repositories "github.com/linuxfoundation/easycla/cla-backend-go/repositories"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
@@ -190,6 +192,19 @@ func enabledByEnvOrStage(envVar, stage string, defaultByStage [2]bool) bool {
 	}
 	// dev and all non-prod stages default to enabled
 	return defaultByStage[0]
+}
+
+func newMemberServiceClient(cfg config.Config) (*member_service.Client, error) {
+	if !cfg.MemberService.CreateCompanyEnabled && !cfg.ACSDirectCLARolesEnabled {
+		return nil, nil
+	}
+	return member_service.NewClient(member_service.Config{
+		BaseURL:       cfg.MemberService.BaseURL,
+		Audience:      cfg.MemberService.Audience,
+		OAuthTokenURL: cfg.Auth0Platform.URL,
+		ClientID:      cfg.Auth0Platform.ClientID,
+		ClientSecret:  cfg.Auth0Platform.ClientSecret,
+	})
 }
 
 // apiPathLoggerWithDB creates a middleware that logs API requests to DynamoDB
@@ -435,6 +450,13 @@ func server(localMode bool) http.Handler {
 	v2ProjectService := v2Project.NewService(v1ProjectService, v1CLAGroupRepo, v1ProjectClaGroupRepo)
 	v1CompanyService := v1Company.NewService(v1CompanyRepo, configFile.CorporateConsoleV2URL, userRepo, usersService)
 	v2CompanyService := v2Company.NewService(v1CompanyService, signaturesRepo, v1CLAGroupRepo, usersRepo, v1CompanyRepo, v1ProjectClaGroupRepo, eventsService)
+	members, memberErr := newMemberServiceClient(configFile)
+	if memberErr != nil {
+		log.WithError(memberErr).Warn("unable to configure member-service client for company creation or pending-Account screening")
+	}
+	if configFile.MemberService.CreateCompanyEnabled {
+		v2CompanyService.EnableMemberServiceCreate(members)
+	}
 	v2CurrentUserService := v2CurrentUser.NewService()
 
 	v1RepositoriesService := v1Repositories.NewService(gitV1Repository, githubOrganizationsRepo, v1ProjectClaGroupRepo)
@@ -481,6 +503,7 @@ func server(localMode bool) http.Handler {
 	v2ClaGroupService := cla_groups.NewService(v1ProjectService, templateService, v1ProjectClaGroupRepo, v1ClaManagerService, v1SignaturesService, metricsRepo, gerritService, v1RepositoriesService, eventsService)
 
 	v2SignService := sign.NewService(configFile.ClaAPIV4Base, configFile.ClaV1ApiURL, v1CompanyRepo, v1CLAGroupRepo, v1ProjectClaGroupRepo, v1CompanyService, v2ClaGroupService, configFile.DocuSignPrivateKey, usersService, v1SignaturesService, storeRepository, v1RepositoriesService, githubOrganizationsService, gitlabOrganizationsService, configFile.CLALandingPage, configFile.CLALogoURL, emailService, eventsService, gitlabActivityService, gitlabApp, gerritService, sssClient, sssRequired, sssEnabled)
+	v2SignService.SetMemberServiceClient(members)
 	v2SelfServeSignService := v2SelfServeSign.NewService(v2MyClasService, usersService, v1ProjectService, v1ProjectClaGroupRepo, storeRepository, v2SignService, v1CompanyRepo, configFile.CLAContributorv2Base)
 
 	sessionStore, err := dynastore.New(dynastore.Path("/"), dynastore.HTTPOnly(), dynastore.TableName(configFile.SessionStoreTableName), dynastore.DynamoDB(dynamodb.New(awsSession)))

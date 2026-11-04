@@ -6,9 +6,11 @@ package user_service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -30,11 +32,13 @@ const (
 // answers the fake Auth0 token endpoint and the user-service lookups in-process; closing the token response
 // body is the end of token.Init's asynchronous request, which is signalled through tokenDone
 type fakeTransport struct {
-	mu        sync.Mutex
-	requests  []*http.Request
-	username  string
-	tokenDone chan struct{}
-	once      sync.Once
+	mu             sync.Mutex
+	requests       []*http.Request
+	username       string
+	tokenDone      chan struct{}
+	once           sync.Once
+	responseStatus int
+	responseErr    error
 }
 
 type closeSignal struct {
@@ -58,12 +62,19 @@ func (f *fakeTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	case apiHost:
 		f.mu.Lock()
 		f.requests = append(f.requests, r.Clone(r.Context()))
+		status, responseErr := f.responseStatus, f.responseErr
 		f.mu.Unlock()
+		if responseErr != nil {
+			return nil, responseErr
+		}
+		if status == 0 {
+			status = http.StatusOK
+		}
 		body, err := json.Marshal(models.UserList{Data: []*models.User{{Username: f.username}}})
 		if err != nil {
 			return nil, err
 		}
-		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(string(body))), Request: r}, nil
+		return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(string(body))), Request: r}, nil
 	default:
 		return nil, fmt.Errorf("unexpected request to %s", r.URL.Host)
 	}
@@ -94,9 +105,10 @@ func TestUserLookupsSendTheRawUsernameAsOneQueryParameter(t *testing.T) {
 	assert.Equal(t, raw, byContext.Username)
 
 	transport.mu.Lock()
-	defer transport.mu.Unlock()
-	require.Len(t, transport.requests, 2)
-	for i, r := range transport.requests {
+	requests := append([]*http.Request(nil), transport.requests...)
+	transport.mu.Unlock()
+	require.Len(t, requests, 2)
+	for i, r := range requests {
 		assert.Equal(t, http.MethodGet, r.Method, i)
 		assert.Equal(t, apiHost, r.URL.Host, i)
 		assert.Equal(t, "/user-service/v1/users", r.URL.Path, i)
@@ -107,4 +119,24 @@ func TestUserLookupsSendTheRawUsernameAsOneQueryParameter(t *testing.T) {
 		assert.Equal(t, "Bearer "+fakeToken, r.Header.Get("Authorization"), i)
 		assert.Equal(t, "application/json", r.Header.Get("Content-Type"), i)
 	}
+
+	t.Run("status errors retain the username", func(t *testing.T) {
+		transport.mu.Lock()
+		transport.responseStatus = http.StatusServiceUnavailable
+		transport.mu.Unlock()
+		_, err := usc.GetUserByUsernameContext(context.Background(), raw)
+		require.ErrorContains(t, err, raw)
+		assert.ErrorContains(t, err, "503")
+	})
+	t.Run("transport errors retain their URL and cause", func(t *testing.T) {
+		failure := errors.New("user-service transport unavailable")
+		transport.mu.Lock()
+		transport.responseErr = failure
+		transport.mu.Unlock()
+		_, err := usc.GetUserByUsernameContext(context.Background(), raw)
+		require.ErrorIs(t, err, failure)
+		var requestErr *url.Error
+		require.ErrorAs(t, err, &requestErr)
+		assert.Contains(t, requestErr.URL, "username="+url.QueryEscape(raw))
+	})
 }

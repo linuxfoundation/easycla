@@ -491,7 +491,7 @@ func deleteFoundationCLAManager(ctx context.Context, f logrus.Fields, orgSFID, f
 		log.WithFields(f).WithError(scopeErr).Warnf("failed to get scopeID for foundation: %s , organization: %s, manager: %s and role: %s ", foundationSFID, orgSFID, mgr, utils.CLAManagerRole)
 		return scopeErr
 	}
-	deleteErr := organization_service.GetClient().DeleteOrgUserRoleOrgScopeProjectOrg(ctx, orgSFID, roleID, scopeID, &mgr, email)
+	deleteErr := organization_service.GetClient().DeleteCLAUserRoleScope(ctx, orgSFID, roleID, scopeID, &mgr, email)
 	if deleteErr != nil {
 		log.WithFields(f).WithError(deleteErr).Warnf("Failed to remove CLA Manager from user: %s ", mgr)
 		return deleteErr
@@ -531,7 +531,7 @@ func (s *service) updateCLAManagerPermissions(signature Signature, managers []st
 		return ErrNoExternalID
 	}
 
-	org, orgErr := orgClient.GetOrganization(ctx, companyModel.CompanyExternalID)
+	org, orgErr := orgClient.GetOrganizationForCLA(ctx, companyModel.CompanyExternalID, companyModel.CompanyName)
 	if orgErr != nil {
 		log.WithFields(f).WithError(orgErr).Warnf("failed to get organisation for ID: %s ", companyModel.CompanyExternalID)
 		return orgErr
@@ -578,7 +578,7 @@ func (s *service) updateCLAManagerPermissions(signature Signature, managers []st
 			if action == AddCLAManager {
 				log.WithFields(f).Debugf("Adding CLA Manager permissions...")
 
-				hasScope, scopeErr := orgClient.IsUserHaveRoleScope(ctx, utils.CLAManagerRole, lfUser.ID, org.ID, foundationSFID)
+				hasScope, scopeErr := orgClient.IsCLAUserHaveRoleScope(ctx, utils.CLAManagerRole, lfUser.ID, lfUser.Username, org.ID, foundationSFID)
 				if scopeErr != nil {
 					log.WithFields(f).WithError(scopeErr).Warnf("Failed to get scope for role: %s , user:%s , foundation: %s and org: %s ", utils.CLAManagerRole, lfUser.ID, foundationSFID, org.ID)
 					return scopeErr
@@ -587,7 +587,7 @@ func (s *service) updateCLAManagerPermissions(signature Signature, managers []st
 					log.WithFields(f).Warnf("User: %s already has scope ", mgr)
 					continue
 				}
-				createErr := orgClient.CreateOrgUserRoleOrgScopeProjectOrg(ctx, *email, foundationSFID, org.ID, roleID)
+				createErr := orgClient.CreateCLAUserRoleScope(ctx, *email, lfUser.Username, foundationSFID, org.ID, roleID)
 				if createErr != nil {
 					log.WithFields(f).WithError(createErr).Warnf("failed to create CLA Manager role for user: %s ", *email)
 					return createErr
@@ -609,7 +609,7 @@ func (s *service) updateCLAManagerPermissions(signature Signature, managers []st
 					projectSFID := projectSfid
 					eg.Go(func() error {
 						log.WithFields(f).Debugf("Adding CLA Manager role...")
-						err := orgClient.CreateOrgUserRoleOrgScopeProjectOrg(ctx, *email, projectSFID, org.ID, roleID)
+						err := orgClient.CreateCLAUserRoleScope(ctx, *email, lfUser.Username, projectSFID, org.ID, roleID)
 						if err != nil {
 							msg := fmt.Sprintf("unable to add %s scope for project: %s, company: %s using roleID: %s for user email: %s error = %s",
 								utils.CLAManagerRole, projectSFID, org.ID, roleID, *email, err)
@@ -644,7 +644,7 @@ func (s *service) updateCLAManagerPermissions(signature Signature, managers []st
 							return scopeErr
 						}
 						log.WithFields(f).Debugf("Removing CLA Manager role...")
-						deleteErr := orgClient.DeleteOrgUserRoleOrgScopeProjectOrg(ctx, org.ID, roleID, scopeID, &mgr, email)
+						deleteErr := orgClient.DeleteCLAUserRoleScope(ctx, org.ID, roleID, scopeID, &mgr, email)
 						if deleteErr != nil {
 							log.WithFields(f).Warn(deleteErr)
 							return deleteErr

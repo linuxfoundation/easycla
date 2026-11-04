@@ -40,6 +40,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/users"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	acsService "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
+	memberService "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
 	orgModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/models"
 
 	v2Ops "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/company"
@@ -95,6 +96,7 @@ type Service interface {
 	GetCompanyClaGroups(ctx context.Context, companySFID string, pageSize, offset *int64) (*models.CompanyClaGroups, error)
 	CreateCompany(ctx context.Context, params *v2Ops.CreateCompanyParams) (*models.CompanyOutput, error)
 	CreateCompanyFromSFModel(ctx context.Context, orgModel *orgModels.Organization, authUser *auth.User) (*models.CompanyOutput, error)
+	EnableMemberServiceCreate(client *memberService.Client)
 	GetCompanyByName(ctx context.Context, companyName string) (*models.Company, error)
 	GetCompanyBySigningEntityName(ctx context.Context, signingEntityName string) (*models.Company, error)
 	GetCompanyByID(ctx context.Context, companyID string) (*models.Company, error)
@@ -154,7 +156,7 @@ func (s *service) GetCompanyProjectCLAManagers(ctx context.Context, v1CompanyMod
 	// TODO: DAD - consider using separate go routine
 	// get the org client for org info filling
 	orgClient := orgService.GetClient()
-	orgModel, err := orgClient.GetOrganization(ctx, v1CompanyModel.CompanyExternalID)
+	orgModel, err := orgClient.GetOrganizationForCLA(ctx, v1CompanyModel.CompanyExternalID, v1CompanyModel.CompanyName)
 	if err != nil {
 		return nil, fmt.Errorf("fetching org model failed for companySFID : %s : %w", v1CompanyModel.CompanyExternalID, err)
 	}
@@ -455,6 +457,10 @@ func (s *service) CreateCompany(ctx context.Context, params *v2Ops.CreateCompany
 		log.WithFields(f).Warnf("userEmail %s differs from the signed-in e-mail - ignored; company-admin is granted to the signed-in identity", userEmail)
 	}
 
+	if s.createViaMemberService {
+		return s.createCompanyViaMemberService(ctx, f, companyName, signingEntityName, companyWebsite, grantEmail, userID, note, lfUser)
+	}
+
 	// Create SalesForce company
 	orgClient := orgService.GetClient()
 	log.WithFields(f).Debugf("Creating Organization: %s, Signing Entity Name: %s, Website: %s in SalesForce...", companyName, signingEntityName, companyWebsite)
@@ -553,13 +559,21 @@ func (s *service) createCompanyForOrg(ctx context.Context, f logrus.Fields, org 
 		// Assign company-admin to user
 		roleID, adminErr := acsClient.GetRoleID(utils.CompanyAdminRole)
 		if adminErr != nil {
+			if acsService.DirectCLARolesEnabled() {
+				log.WithField(utils.XREQUESTID, ctx.Value(utils.XREQUESTID)).Warn("unable to look up the company-admin role")
+				return nil, ErrCompanyDependencyFailed
+			}
 			msg := "Problem getting companyAdmin role ID for contributor"
 			log.WithFields(f).Warn(msg)
 			return nil, adminErr
 		}
 
-		scopeErr := orgClient.CreateOrgUserRoleOrgScope(ctx, userEmail, org.ID, roleID)
+		scopeErr := orgClient.CreateCLAOrgUserRoleScope(ctx, userEmail, lfUser.Username, org.ID, roleID)
 		if scopeErr != nil {
+			if acsService.DirectCLARolesEnabled() {
+				log.WithField(utils.XREQUESTID, ctx.Value(utils.XREQUESTID)).Warn("unable to create the company-admin grant")
+				return nil, ErrCompanyDependencyFailed
+			}
 			msg := fmt.Sprintf("Problem creating Org scope for email: %s , companyID: %s", userEmail, org.ID)
 			log.WithFields(f).Warn(msg)
 			// Ignore conflict - role has already been assigned - otherwise, return error

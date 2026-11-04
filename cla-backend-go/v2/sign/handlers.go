@@ -133,6 +133,10 @@ func Configure(api *operations.EasyclaAPI, service Service, userService users.Se
 				if errors.As(err, &sanctionedErr) {
 					return utils.CompanySanctionedResponder(reqID, sanctionedErr)
 				}
+				if errors.Is(err, ErrSigningDependencyFailed) {
+					log.WithField(utils.XREQUESTID, reqID).WithError(err).Warn("unable to prepare corporate signatory")
+					return sign.NewRequestCorporateSignatureInternalServerError().WithXRequestID(reqID).WithPayload(errorResponse(reqID, ErrSigningDependencyFailed))
+				}
 				if strings.Contains(err.Error(), "does not exist") {
 					return sign.NewRequestCorporateSignatureNotFound().WithPayload(errorResponse(reqID, err))
 				}
