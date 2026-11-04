@@ -1433,10 +1433,16 @@ func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string, p
 	if mappingErr != nil {
 		return nil, mappingErr
 	}
-	list := make([]models.CompanyClaGroup, len(rows))
+	mappedRows := make([]companyClaGroupRow, 0, len(rows))
+	for _, row := range rows {
+		if len(claGroupProjects[row.claGroupID]) > 0 {
+			mappedRows = append(mappedRows, row)
+		}
+	}
+	list := make([]models.CompanyClaGroup, len(mappedRows))
 	group, groupCtx := errgroup.WithContext(ctx)
 	group.SetLimit(companyClaGroupsConcurrency)
-	for i, row := range rows {
+	for i, row := range mappedRows {
 		group.Go(func() error {
 			// The request was cancelled or a sibling lookup already failed: skip the remaining work.
 			// The cancellation is returned rather than swallowed so that the row cannot silently stay
@@ -1447,7 +1453,7 @@ func (s *service) GetCompanyClaGroups(ctx context.Context, companySFID string, p
 			}
 			// The repositories get the request context rather than groupCtx: the first failure is
 			// reported as-is instead of turning the in-flight sibling lookups into context-canceled noise
-			built, rowErr := s.buildCompanyClaGroup(ctx, f, row, claGroupProjects[row.claGroupID])
+			built, rowErr := s.buildCompanyClaGroup(ctx, row, claGroupProjects[row.claGroupID])
 			if rowErr != nil {
 				return rowErr
 			}
@@ -1526,10 +1532,8 @@ func (s *service) claGroupProjectMappings(ctx context.Context, claGroupIDs []str
 	return byClaGroup, nil
 }
 
-// buildCompanyClaGroup fills one organization CLA list row: the CCLA's stored signing date, the
-// CLA group's name/foundation/projects (from the mapping, or the CLA group record when the group
-// has no mapping) and the approved employee acknowledgment count
-func (s *service) buildCompanyClaGroup(ctx context.Context, f logrus.Fields, in companyClaGroupRow, pcgs []*projects_cla_groups.ProjectClaGroup) (models.CompanyClaGroup, error) {
+// buildCompanyClaGroup fills one organization CLA list row for a mapped CLA group.
+func (s *service) buildCompanyClaGroup(ctx context.Context, in companyClaGroupRow, pcgs []*projects_cla_groups.ProjectClaGroup) (models.CompanyClaGroup, error) {
 	comp, sig, claGroupID := in.company, in.signature, in.claGroupID
 	row := models.CompanyClaGroup{
 		CompanyID:         comp.CompanyID,
@@ -1577,18 +1581,6 @@ func (s *service) buildCompanyClaGroup(ctx context.Context, f logrus.Fields, in 
 		sort.Slice(row.Projects, func(i, j int) bool {
 			return row.Projects[i].ProjectName < row.Projects[j].ProjectName
 		})
-	} else {
-		claGroup, cgErr := s.projectRepo.GetCLAGroupByID(ctx, claGroupID, DontLoadRepoDetails)
-		if cgErr != nil {
-			var nf *utils.CLAGroupNotFound
-			if !errors.As(cgErr, &nf) && !errors.Is(cgErr, repository.ErrProjectDoesNotExist) {
-				return models.CompanyClaGroup{}, cgErr
-			}
-			log.WithFields(f).WithError(cgErr).Warnf("unable to load CLA group: %s", claGroupID)
-		} else {
-			row.ClaGroupName = claGroup.ProjectName
-			row.FoundationSFID = claGroup.FoundationSFID
-		}
 	}
 	for _, aclUser := range sig.SignatureACL {
 		row.ClaManagers = append(row.ClaManagers, models.CompanyClaGroupManager{

@@ -22,7 +22,6 @@ import (
 	mock_company_repo "github.com/linuxfoundation/easycla/cla-backend-go/company/mocks"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	mock_project_repo "github.com/linuxfoundation/easycla/cla-backend-go/project/mocks"
-	"github.com/linuxfoundation/easycla/cla-backend-go/project/repository"
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	mock_pcg_repo "github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups/mocks"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
@@ -242,10 +241,21 @@ func TestGetCompanyClaGroups(t *testing.T) {
 			IsSanctioned:      false,
 			SanctionedDate:    "2026-01-01T00:00:00Z",
 		},
+		{
+			CompanyID:         "company-id-4",
+			CompanyExternalID: companySFID,
+			CompanyName:       "Acme",
+			SigningEntityName: "Acme Retired",
+		},
 	}, nil)
 
 	mockSignatureRepo := mock_signature_repo.NewMockSignatureRepository(ctrl)
 	mockSignatureRepo.EXPECT().GetCompanySignatures(ctx, cclaSignaturesParams("company-id-3", nil), HugePageSize, signatures.LoadACLDetails).Return(&v1Models.Signatures{}, nil)
+	mockSignatureRepo.EXPECT().GetCompanySignatures(ctx, cclaSignaturesParams("company-id-4", nil), HugePageSize, signatures.LoadACLDetails).Return(&v1Models.Signatures{
+		Signatures: []*v1Models.Signature{
+			{SignatureID: "signature-id-4", ProjectID: "orphan-cla-group-id", SignatureSigned: true, SignatureApproved: true},
+		},
+	}, nil)
 	mockSignatureRepo.EXPECT().GetCompanySignatures(ctx, cclaSignaturesParams("company-id-1", nil), HugePageSize, signatures.LoadACLDetails).Return(&v1Models.Signatures{
 		Signatures: []*v1Models.Signature{
 			{
@@ -263,6 +273,7 @@ func TestGetCompanyClaGroups(t *testing.T) {
 				GithubOrgApprovalList:      []string{"acme-oss", "acme-labs"},
 				GitlabUsernameApprovalList: []string{"acme-dev"},
 			},
+			{SignatureID: "signature-id-old", ProjectID: "orphan-cla-group-id", SignatureSigned: true, SignatureApproved: true},
 		},
 	}, nil)
 	// The v1 converter fills SignedOn with the creation date when signed_on is missing - the stored
@@ -284,6 +295,7 @@ func TestGetCompanyClaGroups(t *testing.T) {
 	mockSignatureRepo.EXPECT().CountClaGroupCorporateContributors(ctx, "cla-group-id", aws.String("company-id-2"), true, nil).Return(int64(0), nil)
 
 	mockProjectClaGroupRepo := mock_pcg_repo.NewMockRepository(ctrl)
+	mockProjectClaGroupRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "orphan-cla-group-id").Times(1).Return(nil, nil)
 	mockProjectClaGroupRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-id").Times(1).Return([]*projects_cla_groups.ProjectClaGroup{
 		{
 			ClaGroupID:     "cla-group-id",
@@ -380,6 +392,7 @@ func TestGetCompanyClaGroupsPaging(t *testing.T) {
 	mockSignatureRepo.EXPECT().GetCompanySignatures(ctx, cclaSignaturesParams("company-id-1", nil), HugePageSize, signatures.LoadACLDetails).Return(&v1Models.Signatures{
 		Signatures: []*v1Models.Signature{
 			{SignatureID: "signature-id-1", ProjectID: "cla-group-id", SignatureSigned: true},
+			{SignatureID: "signature-id-old", ProjectID: "orphan-cla-group-id", SignatureSigned: true, SignatureApproved: true},
 		},
 	}, nil)
 	mockSignatureRepo.EXPECT().GetCompanySignatures(ctx, cclaSignaturesParams("company-id-2", nil), HugePageSize, signatures.LoadACLDetails).Return(&v1Models.Signatures{
@@ -387,11 +400,13 @@ func TestGetCompanyClaGroupsPaging(t *testing.T) {
 			{SignatureID: "signature-id-2", ProjectID: "cla-group-id", SignatureSigned: true},
 		},
 	}, nil)
-	mockSignatureRepo.EXPECT().GetItemSignature(ctx, gomock.Any()).Times(2).Return(nil, nil)
+	mockSignatureRepo.EXPECT().GetItemSignature(ctx, "signature-id-1").Return(nil, nil)
+	mockSignatureRepo.EXPECT().GetItemSignature(ctx, "signature-id-2").Return(nil, nil)
 	mockSignatureRepo.EXPECT().CountClaGroupCorporateContributors(ctx, "cla-group-id", aws.String("company-id-1"), true, nil).Return(int64(0), nil)
 	mockSignatureRepo.EXPECT().CountClaGroupCorporateContributors(ctx, "cla-group-id", aws.String("company-id-2"), true, nil).Return(int64(0), nil)
 
 	mockProjectClaGroupRepo := mock_pcg_repo.NewMockRepository(ctrl)
+	mockProjectClaGroupRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "orphan-cla-group-id").Return([]*projects_cla_groups.ProjectClaGroup{}, nil)
 	mockProjectClaGroupRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "cla-group-id").Times(1).Return([]*projects_cla_groups.ProjectClaGroup{
 		{ClaGroupID: "cla-group-id", ClaGroupName: "Test CLA Group", FoundationSFID: "foundation-sfid", FoundationName: "Test Foundation", ProjectSFID: "foundation-sfid", ProjectName: "Test Foundation"},
 	}, nil)
@@ -519,121 +534,46 @@ func TestGetCompanyClaGroupsCompanyNotFound(t *testing.T) {
 	assert.Len(t, result.List, 0)
 }
 
-func TestGetCompanyClaGroupsOrphanClaGroup(t *testing.T) {
-	ctx := context.Background()
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	companySFID := "0014100000Te0000AAC"
-	mockCompanyRepo := mock_company_repo.NewMockIRepository(ctrl)
-	mockCompanyRepo.EXPECT().GetCompaniesByExternalID(ctx, companySFID, true).Return([]*v1Models.Company{
-		{
-			CompanyID:         "company-id-1",
-			CompanyExternalID: companySFID,
-			CompanyName:       "Acme",
-			SigningEntityName: "Acme",
-		},
-	}, nil)
-
-	mockSignatureRepo := mock_signature_repo.NewMockSignatureRepository(ctrl)
-	mockSignatureRepo.EXPECT().GetCompanySignatures(ctx, cclaSignaturesParams("company-id-1", nil), HugePageSize, signatures.LoadACLDetails).Return(&v1Models.Signatures{
-		Signatures: []*v1Models.Signature{
-			{
-				SignatureID: "signature-id-1",
-				ProjectID:   "orphan-cla-group-id",
-			},
-		},
-	}, nil)
-	mockSignatureRepo.EXPECT().GetItemSignature(ctx, "signature-id-1").Return(nil, nil)
-	mockSignatureRepo.EXPECT().CountClaGroupCorporateContributors(ctx, "orphan-cla-group-id", aws.String("company-id-1"), true, nil).Return(int64(0), nil)
-
-	mockProjectClaGroupRepo := mock_pcg_repo.NewMockRepository(ctrl)
-	mockProjectClaGroupRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "orphan-cla-group-id").Return([]*projects_cla_groups.ProjectClaGroup{}, nil)
-
-	mockProjectRepo := mock_project_repo.NewMockProjectRepository(ctrl)
-	mockProjectRepo.EXPECT().GetCLAGroupByID(ctx, "orphan-cla-group-id", DontLoadRepoDetails).Return(&v1Models.ClaGroup{ProjectName: "Orphan Group", FoundationSFID: "orphan-foundation-sfid"}, nil)
-
-	service := NewService(nil, mockSignatureRepo, mockProjectRepo, mock_user_repo.NewMockUserRepository(ctrl), mockCompanyRepo, mockProjectClaGroupRepo, nil)
-	result, err := service.GetCompanyClaGroups(ctx, companySFID, nil, nil)
-
-	assert.Nil(t, err)
-	assert.Len(t, result.List, 1)
-	row := result.List[0]
-	assert.Equal(t, "Orphan Group", row.ClaGroupName)
-	assert.Equal(t, "orphan-foundation-sfid", row.FoundationSFID)
-	assert.Equal(t, "", row.FoundationName)
-	assert.Len(t, row.Projects, 0)
-	assert.False(t, row.Signed)
-	assert.False(t, row.NeedsClaManager)
-}
-
-func TestGetCompanyClaGroupsOrphanClaGroupErrors(t *testing.T) {
-	ctx := context.Background()
-	companySFID := "0014100000Te0000AAF"
-
-	newMocks := func(ctrl *gomock.Controller) (*mock_signature_repo.MockSignatureRepository, *mock_project_repo.MockProjectRepository, Service) {
-		mockCompanyRepo := mock_company_repo.NewMockIRepository(ctrl)
-		mockCompanyRepo.EXPECT().GetCompaniesByExternalID(ctx, companySFID, true).Return([]*v1Models.Company{
-			{
-				CompanyID:         "company-id-1",
-				CompanyExternalID: companySFID,
-				CompanyName:       "Acme",
-				SigningEntityName: "Acme",
-			},
-		}, nil)
-		mockSignatureRepo := mock_signature_repo.NewMockSignatureRepository(ctrl)
-		mockSignatureRepo.EXPECT().GetCompanySignatures(ctx, cclaSignaturesParams("company-id-1", nil), HugePageSize, signatures.LoadACLDetails).Return(&v1Models.Signatures{
-			Signatures: []*v1Models.Signature{
-				{
-					SignatureID: "signature-id-1",
-					ProjectID:   "orphan-cla-group-id",
-				},
-			},
-		}, nil)
-		mockSignatureRepo.EXPECT().GetItemSignature(ctx, "signature-id-1").Return(&signatures.ItemSignature{SignatureID: "signature-id-1"}, nil)
-		mockProjectClaGroupRepo := mock_pcg_repo.NewMockRepository(ctrl)
-		mockProjectClaGroupRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "orphan-cla-group-id").Return([]*projects_cla_groups.ProjectClaGroup{}, nil)
-		mockProjectRepo := mock_project_repo.NewMockProjectRepository(ctrl)
-		return mockSignatureRepo, mockProjectRepo, NewService(nil, mockSignatureRepo, mockProjectRepo, mock_user_repo.NewMockUserRepository(ctrl), mockCompanyRepo, mockProjectClaGroupRepo, nil)
-	}
-
+func TestGetCompanyClaGroupsUnmappedClaGroup(t *testing.T) {
 	for _, tc := range []struct {
-		name  string
-		cgErr error
+		name     string
+		mappings []*projects_cla_groups.ProjectClaGroup
 	}{
-		{"cla group not found tolerated", &utils.CLAGroupNotFound{CLAGroupID: "orphan-cla-group-id"}},
-		{"project does not exist tolerated", repository.ErrProjectDoesNotExist},
+		{"nil mappings", nil},
+		{"empty mappings", []*projects_cla_groups.ProjectClaGroup{}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()
-			mockSignatureRepo, mockProjectRepo, service := newMocks(ctrl)
-			mockProjectRepo.EXPECT().GetCLAGroupByID(ctx, "orphan-cla-group-id", DontLoadRepoDetails).Return(nil, tc.cgErr)
-			mockSignatureRepo.EXPECT().CountClaGroupCorporateContributors(ctx, "orphan-cla-group-id", aws.String("company-id-1"), true, nil).Return(int64(0), nil)
 
+			companySFID := "0014100000Te0000AAC"
+			mockCompanyRepo := mock_company_repo.NewMockIRepository(ctrl)
+			mockCompanyRepo.EXPECT().GetCompaniesByExternalID(ctx, companySFID, true).Return([]*v1Models.Company{
+				{CompanyID: "company-id-1", CompanyExternalID: companySFID, CompanyName: "Acme"},
+			}, nil)
+			mockSignatureRepo := mock_signature_repo.NewMockSignatureRepository(ctrl)
+			mockSignatureRepo.EXPECT().GetCompanySignatures(ctx, cclaSignaturesParams("company-id-1", nil), HugePageSize, signatures.LoadACLDetails).Return(&v1Models.Signatures{
+				Signatures: []*v1Models.Signature{
+					{SignatureID: "signature-id-1", ProjectID: "orphan-cla-group-id", SignatureSigned: true, SignatureApproved: true},
+				},
+			}, nil)
+			mockProjectClaGroupRepo := mock_pcg_repo.NewMockRepository(ctrl)
+			mockProjectClaGroupRepo.EXPECT().GetProjectsIdsForClaGroup(ctx, "orphan-cla-group-id").Return(tc.mappings, nil)
+
+			service := NewService(nil, mockSignatureRepo, mock_project_repo.NewMockProjectRepository(ctrl), mock_user_repo.NewMockUserRepository(ctrl), mockCompanyRepo, mockProjectClaGroupRepo, nil)
 			result, err := service.GetCompanyClaGroups(ctx, companySFID, nil, nil)
 
 			assert.Nil(t, err)
-			assert.Len(t, result.List, 1)
-			row := result.List[0]
-			assert.Equal(t, "orphan-cla-group-id", row.ClaGroupID)
-			assert.Equal(t, "", row.ClaGroupName)
-			assert.Equal(t, "", row.FoundationSFID)
+			if assert.NotNil(t, result) {
+				assert.Equal(t, companySFID, result.CompanySFID)
+				assert.Equal(t, int64(0), result.TotalCount)
+				assert.Equal(t, int64(0), result.ResultCount)
+				assert.NotNil(t, result.List)
+				assert.Empty(t, result.List)
+			}
 		})
 	}
-
-	t.Run("repository error propagated", func(t *testing.T) {
-		ctrl := gomock.NewController(t)
-		defer ctrl.Finish()
-		_, mockProjectRepo, service := newMocks(ctrl)
-		repoErr := errors.New("dynamodb failure")
-		mockProjectRepo.EXPECT().GetCLAGroupByID(ctx, "orphan-cla-group-id", DontLoadRepoDetails).Return(nil, repoErr)
-
-		result, err := service.GetCompanyClaGroups(ctx, companySFID, nil, nil)
-
-		assert.Nil(t, result)
-		assert.Equal(t, repoErr, err)
-	})
 }
 
 func TestGetCompanyClaGroupsSignaturePagination(t *testing.T) {
