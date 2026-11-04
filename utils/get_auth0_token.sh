@@ -182,7 +182,7 @@ LOGIN_URL="$("${CURL[@]}" -c "$JAR" -o /dev/null -w '%{redirect_url}' "$AUTHORIZ
 dbg "step1 authorize -> $LOGIN_URL"
 case "$LOGIN_URL" in
   *state=*) ;;
-  *) echo "error: /authorize did not redirect to the login page (check client/audience settings)" >&2; exit 1 ;;
+  *) echo "error: /authorize did not redirect to the login page (check client/audience settings) - if the client is unknown to Auth0, use: ./utils/get_lfx_token.sh $STAGE login" >&2; exit 1 ;;
 esac
 LOGIN_STATE="$(printf %s "$LOGIN_URL" | sed -n 's/.*[?&]state=\([^&]*\).*/\1/p')"
 

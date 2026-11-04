@@ -8,6 +8,7 @@ import (
 	"errors"
 	"testing"
 
+	acsService "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 )
@@ -31,6 +32,7 @@ func TestRollbackSignatoryGrants(t *testing.T) {
 		{name: "removal errors are logged and do not stop the rollback", authorityEmail: "signatory@example.com", authorityGranted: true, directGranted: true, removeErr: errors.New("acs down"),
 			want: []removal{{"signatory@example.com", "comp-sfid", "proj-sfid"}, {"caller@example.com", "comp-sfid", "proj-sfid"}}},
 	}
+
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var got []removal
@@ -51,4 +53,24 @@ func TestRollbackSignatoryGrants(t *testing.T) {
 			assert.Equal(t, tc.want, got)
 		})
 	}
+}
+
+func TestRollbackDirectSignatoryGrantUsesOwnedIDAfterCancellation(t *testing.T) {
+	original := deleteDirectSignatoryGrantFn
+	t.Cleanup(func() { deleteDirectSignatoryGrantFn = original })
+	deletes := 0
+	deleteDirectSignatoryGrantFn = func(ctx context.Context, roleID, grantID string) error {
+		assert.NoError(t, ctx.Err())
+		_, bounded := ctx.Deadline()
+		assert.True(t, bounded)
+		assert.Equal(t, "role", roleID)
+		assert.Equal(t, "owned-grant", grantID)
+		deletes++
+		return errors.New("ACS unavailable")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	rollbackDirectSignatoryGrant(ctx, logrus.Fields{}, &acsService.OrgGrant{RoleID: "role", GrantID: "owned-grant"})
+	rollbackDirectSignatoryGrant(ctx, logrus.Fields{}, nil)
+	assert.Equal(t, 1, deletes, "pre-existing grants must not be looked up or removed")
 }

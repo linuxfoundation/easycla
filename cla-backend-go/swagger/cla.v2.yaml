@@ -2749,7 +2749,9 @@ paths:
         '404':
           $ref: '#/responses/not-found'
         '409':
-          $ref: '#/responses/conflict'
+          $ref: '#/responses/conflict-or-company-not-ready'
+        '500':
+          $ref: '#/responses/internal-server-error'
       tags:
         - cla-manager
 
@@ -3266,6 +3268,8 @@ paths:
           $ref: '#/responses/forbidden-or-company-sanctioned'
         '409':
           $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
       tags:
         - cla-manager
 
@@ -3533,6 +3537,8 @@ paths:
           $ref: '#/responses/not-found'
         '409':
           $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
       tags:
         - cla-manager
 
@@ -3577,6 +3583,8 @@ paths:
           $ref: '#/responses/forbidden-or-company-sanctioned'
         '409':
           $ref: '#/responses/conflict'
+        '500':
+          $ref: '#/responses/internal-server-error'
       tags:
         - cla-manager
 
@@ -5166,6 +5174,25 @@ responses:
       `{"code": "company_sanctioned", "message": "...", "company_id": "...", "company_sfid": "...", "x-request-id": "..."}`
       - parse it from the raw body and key off lowercase `code` to distinguish the
       sanctions case from a plain permissions failure.
+    headers:
+      x-request-id:
+        type: string
+        description: The unique request ID value - assigned/set by the API Gateway based on the session
+    schema:
+      $ref: '#/definitions/error-response'
+  conflict-or-company-not-ready:
+    description: |
+      Conflict, or - only for contactAdmin=true while company creation through
+      member-service is enabled - the company is still being set up in the platform:
+      its Salesforce account is not yet known to the Organization Service, so no
+      company-admin invitation was sent. Direct CLA nominations use ACS and do not
+      wait for this ingestion. Only the plain
+      conflict follows the declared error-response schema; the not-ready body deviates
+      from it (swagger 2.0 cannot express the union) and is exactly
+      `{"code": "company_not_ready", "message": "...", "company_id": "...", "company_sfid": "...", "x-request-id": "..."}`
+      (`x-request-id` present when the request carried one) - parse it from the raw
+      body and key off lowercase `code` to distinguish the not-ready case (retry later,
+      no company-admin invitation was sent) from a plain conflict.
     headers:
       x-request-id:
         type: string
@@ -7212,4 +7239,3 @@ definitions:
         x-omitempty: false
 
       
-

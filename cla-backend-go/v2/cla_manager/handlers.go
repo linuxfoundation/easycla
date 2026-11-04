@@ -176,6 +176,11 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 		utils.SetAuthUserProperties(authUser, params.XUSERNAME, params.XEMAIL)
 		claManagerDesignee, err := service.CreateCLAManagerDesignee(ctx, v1CompanyModel.CompanyID, params.ProjectSFID, params.Body.UserEmail.String())
 		if err != nil {
+			if errors.Is(err, ErrCLADependencyFailed) {
+				log.WithField(utils.XREQUESTID, reqID).Warn(ErrCLADependencyFailed)
+				return cla_manager.NewCreateCLAManagerDesigneeInternalServerError().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseInternalServerError(reqID, ErrCLADependencyFailed.Error()))
+			}
 			if err == ErrCLAManagerDesigneeConflict {
 				msg := fmt.Sprintf("Conflict assigning cla manager role for Project SFID: %s ", params.ProjectSFID)
 				return cla_manager.NewCreateCLAManagerDesigneeByGroupConflict().WithXRequestID(reqID).WithPayload(utils.ErrorResponseConflictWithError(reqID, msg, err))
@@ -236,6 +241,11 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 
 			designeeScopes, msg, err := service.CreateCLAManagerDesigneeByGroup(ctx, params, projectCLAGroups)
 			if err != nil {
+				if errors.Is(err, ErrCLADependencyFailed) {
+					log.WithField(utils.XREQUESTID, reqID).Warn(ErrCLADependencyFailed)
+					return cla_manager.NewCreateCLAManagerDesigneeByGroupInternalServerError().WithXRequestID(reqID).WithPayload(
+						utils.ErrorResponseInternalServerError(reqID, ErrCLADependencyFailed.Error()))
+				}
 				log.WithFields(f).WithError(err).Warnf("problem creating cla manager designee for CLA Group: %s with user email: %s", params.ClaGroupID, params.Body.UserEmail)
 				if err == ErrCLAManagerDesigneeConflict {
 					return cla_manager.NewCreateCLAManagerDesigneeByGroupConflict().WithXRequestID(reqID).WithPayload(utils.ErrorResponseConflictWithError(reqID, msg, err))
@@ -292,6 +302,15 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 		claManagerDesignees, err := service.InviteCompanyAdmin(ctx, params.Body.ContactAdmin, params.Body.CompanyID, *params.Body.ClaGroupID, params.Body.UserEmail.String(), params.Body.Name, &user, params.Body.PullRequestURL)
 
 		if err != nil {
+			if errors.Is(err, ErrCLADependencyFailed) {
+				log.WithField(utils.XREQUESTID, reqID).Warn(ErrCLADependencyFailed)
+				return cla_manager.NewInviteCompanyAdminInternalServerError().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseInternalServerError(reqID, ErrCLADependencyFailed.Error()))
+			}
+			var notReady *CompanyNotReadyError
+			if errors.As(err, &notReady) {
+				return companyNotReadyResponder(reqID, notReady)
+			}
 			statusCode := buildErrorStatusCode(err)
 			if statusCode == NotFound {
 				return cla_manager.NewInviteCompanyAdminNotFound().WithXRequestID(reqID).WithPayload(
@@ -377,6 +396,11 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 			*params.Body.FullName, authUser)
 
 		if err != nil {
+			if errors.Is(err, ErrCLADependencyFailed) {
+				log.WithField(utils.XREQUESTID, reqID).Warn(ErrCLADependencyFailed)
+				return cla_manager.NewCreateCLAManagerRequestInternalServerError().WithXRequestID(reqID).WithPayload(
+					utils.ErrorResponseInternalServerError(reqID, ErrCLADependencyFailed.Error()))
+			}
 			statusCode := buildErrorStatusCode(err)
 			if statusCode == NotFound {
 				return cla_manager.NewCreateCLAManagerRequestNotFound().WithXRequestID(reqID).WithPayload(

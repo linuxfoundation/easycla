@@ -284,6 +284,7 @@ func loadSSMConfig(awsSession *session.Session, stage string) (Config, error) { 
 
 	config.OrgLensURL = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-org-lens-base-%s", stage), f)
 	loadCLAAdminsFlag(ssmClient, stage, &config, f)
+	loadCreateCompanyFlag(ssmClient, stage, &config, f)
 
 	return config, nil
 }
@@ -397,6 +398,16 @@ func loadCLAAdminsFlag(ssmClient *ssm.SSM, stage string, config *Config, f logru
 		config.MemberService.CLAAdminsFlagError = err.Error()
 	}
 	config.MemberService.CLAAdminsEnabled = enabled
+}
+
+// loadCreateCompanyFlag reads the create-company switch: a missing, unreadable or malformed parameter keeps it off
+func loadCreateCompanyFlag(ssmClient *ssm.SSM, stage string, config *Config, f logrus.Fields) {
+	enabled, err := getOptionalSSMBool(ssmClient, fmt.Sprintf("cla-member-service-create-company-enabled-%s", stage), f)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("create-company switch unreadable - keeping the Organization Service path")
+		return
+	}
+	config.MemberService.CreateCompanyEnabled = enabled
 }
 
 // getOptionalSSMBool reads an optional flag: a missing parameter is false, any other read failure is an error so

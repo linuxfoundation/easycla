@@ -924,7 +924,7 @@ func (s *service) DeleteCLAGroup(ctx context.Context, claGroupModel *v1Models.Cl
 			// Remove CLA Manager role
 			go func(companySFID, projectSFID string, authUser *auth.User) {
 				log.WithFields(f).Debugf("removing role permissions for %s...", utils.CLAManagerRole)
-				claMgrErr := oscClient.DeleteRolePermissions(ctx, companySFID, projectSFID, utils.CLAManagerRole, authUser)
+				claMgrErr := oscClient.DeleteCLARolePermissions(ctx, companySFID, projectSFID, utils.CLAManagerRole, authUser)
 				if claMgrErr != nil {
 					log.WithFields(f).Warn(claMgrErr)
 					errChan <- claMgrErr
@@ -939,7 +939,7 @@ func (s *service) DeleteCLAGroup(ctx context.Context, claGroupModel *v1Models.Cl
 			// Remove CLA Manager Designee
 			go func(companySFID, projectSFID string, authUser *auth.User) {
 				log.WithFields(f).Debugf("removing role permissions for %s...", utils.CLADesigneeRole)
-				claMgrDesigneeErr := oscClient.DeleteRolePermissions(ctx, companySFID, projectSFID, utils.CLADesigneeRole, authUser)
+				claMgrDesigneeErr := oscClient.DeleteCLARolePermissions(ctx, companySFID, projectSFID, utils.CLADesigneeRole, authUser)
 				if claMgrDesigneeErr != nil {
 					log.WithFields(f).Warn(claMgrDesigneeErr)
 					errChan <- claMgrDesigneeErr
@@ -953,7 +953,7 @@ func (s *service) DeleteCLAGroup(ctx context.Context, claGroupModel *v1Models.Cl
 			// Remove CLA signatories role
 			go func(companySFID, projectSFID string, authUser *auth.User) {
 				log.WithFields(f).Debugf("removing role permissions for %s...", utils.CLASignatoryRole)
-				claSignatoryErr := oscClient.DeleteRolePermissions(ctx, companySFID, projectSFID, utils.CLASignatoryRole, authUser)
+				claSignatoryErr := oscClient.DeleteCLARolePermissions(ctx, companySFID, projectSFID, utils.CLASignatoryRole, authUser)
 				if claSignatoryErr != nil {
 					log.WithFields(f).Warn(claSignatoryErr)
 					errChan <- claSignatoryErr

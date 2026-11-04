@@ -114,6 +114,8 @@ func requestCorporateSignatureError(reqID string, err error) middleware.Responde
 		return utils.CompanySanctionedResponder(reqID, sanctionedErr)
 	}
 	switch {
+	case errors.Is(err, v2Sign.ErrSigningDependencyFailed):
+		return selfServeSignOps.NewSelfServeRequestCorporateSignatureInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerError(reqID, v2Sign.ErrSigningDependencyFailed.Error()))
 	case errors.Is(err, ErrAttestationRequired), errors.Is(err, ErrSignatoryRequired),
 		errors.Is(err, v2Sign.ErrCLAGroupRequired), errors.Is(err, v2Sign.ErrCLAGroupMismatch):
 		return selfServeSignOps.NewSelfServeRequestCorporateSignatureBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequest(reqID, err.Error()))

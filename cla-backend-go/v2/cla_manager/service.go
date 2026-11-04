@@ -39,6 +39,7 @@ import (
 	v2AcsService "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
 	v2Company "github.com/linuxfoundation/easycla/cla-backend-go/v2/company"
 	v2OrgService "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
+	orgModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/models"
 	v2ProjectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 	v2UserService "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
 	v2UserModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/models"
@@ -51,6 +52,8 @@ var (
 	ErrCLAUserNotFound = errors.New("cla user not found")
 	//ErrLFXUserNotFound when user-service fails to find user
 	ErrLFXUserNotFound = errors.New("lfx user not found")
+	// ErrCLADependencyFailed reports an upstream CLA manager dependency failure.
+	ErrCLADependencyFailed = errors.New("CLA manager operation is temporarily unavailable")
 	//ErrNoLFID thrown when users dont have an LFID
 	ErrNoLFID = errors.New("user has no LF Login")
 	//ErrNoOrgAdmins when No admins found for organization
@@ -65,6 +68,8 @@ var (
 	ErrClaGroupNotFound = errors.New("cla group not found")
 	//ErrClaGroupBadRequest returns error if cla group bad request
 	ErrClaGroupBadRequest = errors.New("cla group bad request")
+	// ErrCompanyNotReady reports a company whose Salesforce account the Organization Service does not know yet (lfx-self-serve#4992)
+	ErrCompanyNotReady = errors.New("the company is still being set up in the platform - please try again later")
 
 	errRequestNotFound = errors.New("cla manager request not found")
 	// ErrCLAManagerRequestAlreadyDecided when the request is no longer pending
@@ -313,6 +318,12 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 		"userEmail":      userEmail,
 	}
 
+	direct := v2AcsService.DirectCLARolesEnabled()
+	if direct && strings.TrimSpace(userEmail) == "" {
+		log.WithFields(f).Warn(v2UserService.ErrEmailRequired)
+		return nil, v2UserService.ErrEmailRequired
+	}
+
 	// integrate user,acs,org and project services
 	acServiceClient := v2AcsService.GetClient()
 	orgClient := v2OrgService.GetClient()
@@ -341,32 +352,40 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 		return nil, ErrProjectSigned
 	}
 
-	userService := v2UserService.GetClient()
 	log.WithFields(f).Debug("searching user in user service...")
 	// This routine is taking 24-29 seconds when running locally -> User service in DEV
 	//lfxUser, userErr := userService.SearchUserByEmail(userEmail)
 	// This routine is taking 4 seconds when running locally -> User service in DEV
-	lfxUser, userErr := userService.SearchUsersByEmail(userEmail)
+	lfxUser, userErr := searchCLADesigneeByEmail(ctx, userEmail)
 	if userErr != nil {
 		log.WithFields(f).Debugf("Failed to get user by email: %s, error: %+v", userEmail, userErr)
+		if direct && !errors.Is(userErr, v2UserService.ErrUserNotFound) {
+			return nil, userErr
+		}
 		return nil, ErrLFXUserNotFound
+	}
+	if direct && (lfxUser == nil || strings.TrimSpace(lfxUser.Username) == "") {
+		log.WithField(utils.XREQUESTID, ctx.Value(utils.XREQUESTID)).Warn(ErrNoLFID)
+		return nil, ErrNoLFID
 	}
 
 	log.WithFields(f).Debugf("user found: %+v", lfxUser)
 
-	log.WithFields(f).Debugf("checking if user has %s role scope...", utils.CLADesigneeRole)
-	// Check if user is already CLA Manager designee of project|organization scope
-	hasRoleScope, hasRoleScopeErr := orgClient.IsUserHaveRoleScope(ctx, utils.CLADesigneeRole, lfxUser.ID, v1CompanyModel.CompanyExternalID, projectSFID)
-	if hasRoleScopeErr != nil {
-		// Skip 404 for ListOrgUsrServiceScopes endpoint
-		if _, ok := hasRoleScopeErr.(*organizations.ListOrgUsrServiceScopesNotFound); !ok {
-			log.WithFields(f).Debugf("Failed to check roleScope: %s for user: %s", utils.CLADesigneeRole, lfxUser.Username)
-			return nil, hasRoleScopeErr
+	if !direct {
+		log.WithFields(f).Debugf("checking if user has %s role scope...", utils.CLADesigneeRole)
+		// Check if user is already CLA Manager designee of project|organization scope
+		hasRoleScope, hasRoleScopeErr := orgClient.IsCLAUserHaveRoleScope(ctx, utils.CLADesigneeRole, lfxUser.ID, lfxUser.Username, v1CompanyModel.CompanyExternalID, projectSFID)
+		if hasRoleScopeErr != nil {
+			// Skip 404 for ListOrgUsrServiceScopes endpoint
+			if _, ok := hasRoleScopeErr.(*organizations.ListOrgUsrServiceScopesNotFound); !ok {
+				log.WithFields(f).Debugf("Failed to check roleScope: %s for user: %s", utils.CLADesigneeRole, lfxUser.Username)
+				return nil, hasRoleScopeErr
+			}
 		}
-	}
-	if hasRoleScope {
-		// this is fine...just return with value...
-		log.WithFields(f).Debugf("User already has role scope: %s", utils.CLADesigneeRole)
+		if hasRoleScope {
+			// this is fine...just return with value...
+			log.WithFields(f).Debugf("User already has role scope: %s", utils.CLADesigneeRole)
+		}
 	}
 
 	log.WithFields(f).Debug("loading project by SFID...")
@@ -385,8 +404,11 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 
 	log.WithFields(f).Debugf("creating user role organization scope for user: %s, with role: %s with role ID: %s using project|org: %s|%s...",
 		userEmail, utils.CLADesigneeRole, roleID, projectSFID, v1CompanyModel.CompanyExternalID)
-	scopeErr := orgClient.CreateOrgUserRoleOrgScopeProjectOrg(ctx, userEmail, projectSFID, v1CompanyModel.CompanyExternalID, roleID)
+	scopeErr := orgClient.CreateCLAUserRoleScope(ctx, userEmail, lfxUser.Username, projectSFID, v1CompanyModel.CompanyExternalID, roleID)
 	if scopeErr != nil {
+		if direct {
+			return nil, fmt.Errorf("%w: ACS grant: %w", ErrCLADependencyFailed, scopeErr)
+		}
 		// Ignore conflict - role has already been assigned - otherwise, return error
 		if _, ok := scopeErr.(*organizations.CreateOrgUsrRoleScopesConflict); !ok {
 			log.Warn(fmt.Sprintf("problem creating projectOrg scope for email: %s , projectSFID: %s, companySFID: %s", userEmail, projectSFID, v1CompanyModel.CompanyExternalID))
@@ -475,6 +497,19 @@ func (s *service) IsCLAManagerDesignee(ctx context.Context, companySFID, claGrou
 		return nil, pcgErr
 	}
 
+	if v2AcsService.DirectCLARolesEnabled() && len(pcgs) > 0 {
+		projectSFIDs := make([]string, 0, len(pcgs))
+		for _, pcg := range pcgs {
+			projectSFIDs = append(projectSFIDs, pcg.ProjectSFID)
+		}
+		hasRole, err := v2AcsService.GetClient().HasAnyProjectRole(ctx, companySFID, projectSFIDs, utils.CLADesigneeRole, user.Username)
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("unable to check CLA manager designee grants")
+			return nil, err
+		}
+		return &models.UserRoleStatus{HasRole: &hasRole, LfUsername: userLFID}, nil
+	}
+
 	orgClient := v2OrgService.GetClient()
 	//default to false
 	var hasRole = false
@@ -501,7 +536,7 @@ func (s *service) IsCLAManagerDesignee(ctx context.Context, companySFID, claGrou
 				defer swg.Done()
 				var output result
 				log.WithFields(f).Debugf("Checking role status for projectSFID: %s", pcg.ProjectSFID)
-				hasProjectLevelRole, roleErr := orgClient.IsUserHaveRoleScope(ctx, utils.CLADesigneeRole, user.ID, companySFID, pcg.ProjectSFID)
+				hasProjectLevelRole, roleErr := orgClient.IsCLAUserHaveRoleScope(ctx, utils.CLADesigneeRole, user.ID, user.Username, companySFID, pcg.ProjectSFID)
 				if roleErr != nil {
 					log.WithFields(f).Debugf("problem getting role:%s for user and project: %s ", utils.CLADesigneeRole, pcg.ProjectSFID)
 					output = result{
@@ -564,6 +599,11 @@ func (s *service) CreateCLAManagerDesigneeByGroup(ctx context.Context, params cl
 		"claGroupID":     params.ClaGroupID,
 		"companyID":      params.CompanyID,
 		"userEmail":      params.Body.UserEmail.String(),
+	}
+
+	if v2AcsService.DirectCLARolesEnabled() && strings.TrimSpace(params.Body.UserEmail.String()) == "" {
+		log.WithFields(f).Warn(v2UserService.ErrEmailRequired)
+		return nil, v2UserService.ErrEmailRequired.Error(), v2UserService.ErrEmailRequired
 	}
 
 	var designeeScopes []*models.ClaManagerDesignee
@@ -649,6 +689,12 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 		"fullName":       fullName,
 		"authUserName":   authUser.UserName,
 		"authUserEmail":  authUser.Email,
+	}
+
+	direct := !contactAdmin && v2AcsService.DirectCLARolesEnabled()
+	if direct && strings.TrimSpace(userEmail) == "" {
+		log.WithFields(f).Warn(v2UserService.ErrEmailRequired)
+		return nil, v2UserService.ErrEmailRequired
 	}
 
 	orgService := v2OrgService.GetClient()
@@ -751,7 +797,10 @@ func (s *service) CreateCLAManagerRequest(ctx context.Context, contactAdmin bool
 	// This routine is taking 24-29 seconds when running locally -> User service in DEV
 	//lfxUser, userErr := userService.SearchUserByEmail(userEmail)
 	// This routine is taking 4 seconds when running locally -> User service in DEV
-	lfxUser, userErr := userService.SearchUsersByEmail(userEmail)
+	lfxUser, userErr := searchCLADesigneeByEmail(ctx, userEmail)
+	if direct && userErr != nil && !errors.Is(userErr, v2UserService.ErrUserNotFound) {
+		return nil, userErr
+	}
 	if userErr != nil {
 		msg := fmt.Sprintf("User: %s does not have an LF Login", userEmail)
 		log.WithFields(f).Warn(msg)
@@ -870,6 +919,12 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 		"pullRequestURL": pullRequestURL,
 	}
 
+	direct := !contactAdmin && v2AcsService.DirectCLARolesEnabled()
+	if direct && strings.TrimSpace(userEmail) == "" {
+		log.WithFields(f).Warn(v2UserService.ErrEmailRequired)
+		return nil, v2UserService.ErrEmailRequired
+	}
+
 	orgService := v2OrgService.GetClient()
 	projectService := v2ProjectService.GetClient()
 	userService := v2UserService.GetClient()
@@ -916,8 +971,19 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 		return nil, ErrCLACompanyNotFound
 	}
 
-	organization, orgErr := orgService.GetOrganization(ctx, companyModel.CompanyExternalID)
+	var organization *orgModels.Organization
+	var orgErr error
+	if contactAdmin {
+		organization, orgErr = orgService.GetOrganization(ctx, companyModel.CompanyExternalID)
+	} else {
+		organization, orgErr = orgService.GetOrganizationForCLA(ctx, companyModel.CompanyExternalID, companyModel.CompanyName)
+	}
 	if orgErr != nil {
+		if contactAdmin {
+			if notReady := companyNotReady(f, orgErr, companyModel.CompanyID, companyModel.CompanyExternalID); notReady != nil {
+				return nil, notReady
+			}
+		}
 		msg := fmt.Sprintf("Problem getting company by ID: %s ", companyID)
 		log.Warn(msg)
 		return nil, orgErr
@@ -1011,7 +1077,10 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 	}
 
 	// Get suggested CLA Manager user details
-	user, userErr := userService.SearchUsersByEmail(userEmail)
+	user, userErr := searchCLADesigneeByEmail(ctx, userEmail)
+	if direct && userErr != nil && !errors.Is(userErr, v2UserService.ErrUserNotFound) {
+		return nil, userErr
+	}
 	if userErr != nil || (user != nil && user.Username == "") {
 		var contributorModel emails.Contributor
 		msg := fmt.Sprintf("UserEmail: %s has no LF Login and has been sent an invite email to create an account , error: %+v", userEmail, userErr)
@@ -1149,6 +1218,18 @@ func (s *service) ProjectCompanySignedOrNot(ctx context.Context, signedAtFoundat
 		}
 	}
 	return nil
+}
+
+func searchCLADesigneeByEmail(ctx context.Context, email string) (*v2UserModels.User, error) {
+	client := v2UserService.GetClient()
+	if v2AcsService.DirectCLARolesEnabled() {
+		user, err := client.SearchUsersByEmailContext(ctx, email)
+		if err != nil && !errors.Is(err, v2UserService.ErrUserNotFound) && !errors.Is(err, v2UserService.ErrEmailRequired) {
+			return nil, fmt.Errorf("%w: platform user lookup: %w", ErrCLADependencyFailed, err)
+		}
+		return user, err
+	}
+	return client.SearchUsersByEmail(email)
 }
 
 func validateInviteCompanyAdmin(contactAdmin bool, userEmail string, name string, contributor *v1User.User) error {

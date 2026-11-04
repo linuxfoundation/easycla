@@ -418,6 +418,24 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			companyModel, err := service.CreateCompany(ctx, &params)
 			if err != nil {
 				log.Warnf("error returned from create company api: %+v", err)
+				if errors.Is(err, ErrCompanySharedDomain) {
+					return company.NewCreateCompanyUnprocessableEntity().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{Code: "company_shared_domain", Message: err.Error(), XRequestID: reqID})
+				}
+				if errors.Is(err, ErrCompanyAmbiguousDomain) {
+					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{Code: "company_ambiguous_domain", Message: err.Error(), XRequestID: reqID})
+				}
+				if errors.Is(err, ErrCompanyExists) {
+					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(errorResponse(reqID, errors.New("organization already exists")))
+				}
+				if errors.Is(err, ErrCompanyNotEligible) {
+					return company.NewCreateCompanyUnprocessableEntity().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{Code: "company_not_eligible", Message: ErrCompanyNotEligible.Error(), XRequestID: reqID})
+				}
+				if errors.Is(err, ErrCompanyDependencyFailed) {
+					return company.NewCreateCompanyInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerError(reqID, ErrCompanyDependencyFailed.Error()))
+				}
+				if errors.Is(err, ErrMemberServiceNotConfigured) {
+					return company.NewCreateCompanyInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerError(reqID, err.Error()))
+				}
 				if strings.Contains(err.Error(), "website already exists") {
 					formatErr := errors.New("website already exists")
 					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(errorResponse(reqID, formatErr))
