@@ -20,9 +20,9 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service/models"
 )
 
-// DirectCLARolesEnabled uses the same rollout gate as member-service company creation.
+// DirectCLARolesEnabled selects native ACS role operations independently of company creation.
 func DirectCLARolesEnabled() bool {
-	return config.GetConfig().MemberService.CreateCompanyEnabled
+	return config.GetConfig().ACSDirectCLARolesEnabled
 }
 
 // HasProjectRole reads the exact user's project|organization grant without the ACS cache.
@@ -64,15 +64,30 @@ func (ac *Client) CreateProjectRoleGrant(ctx context.Context, orgSFID, projectSF
 		log.WithError(err).Warn("invalid project|organization grant")
 		return nil, err
 	}
+	return ac.createUserRoleGrant(ctx, roleID, username, projectSFID+"|"+orgSFID, utils.ProjectOrgScope)
+}
+
+// CreateOrganizationRoleGrant grants a role at organization scope to a platform-verified LFID.
+// A nil grant means the assignment already existed and is not owned by this request.
+func (ac *Client) CreateOrganizationRoleGrant(ctx context.Context, orgSFID, roleID, username string) (*OrgGrant, error) {
+	if strings.TrimSpace(orgSFID) == "" || strings.TrimSpace(roleID) == "" ||
+		strings.TrimSpace(username) == "" || strings.ContainsAny(orgSFID, "|*") {
+		err := fmt.Errorf("an exact organization, role and username are required for an ACS grant")
+		log.WithError(err).Warn("invalid organization grant")
+		return nil, err
+	}
+	return ac.createUserRoleGrant(ctx, roleID, username, orgSFID, "organization")
+}
+
+func (ac *Client) createUserRoleGrant(ctx context.Context, roleID, username, objectID, objectType string) (*OrgGrant, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	objectTypeID, err := ac.GetObjectTypeIDByName(utils.ProjectOrgScope)
+	objectTypeID, err := ac.GetObjectTypeIDByName(objectType)
 	if err != nil {
 		return nil, err
 	}
 	typeID := int64(objectTypeID)
-	objectID := projectSFID + "|" + orgSFID
 	body, err := json.Marshal(&models.CreateAssignUser{
 		RoleID:       &roleID,
 		ObjectTypeID: &typeID,
@@ -104,11 +119,11 @@ func (ac *Client) CreateProjectRoleGrant(ctx context.Context, orgSFID, projectSF
 	if (grant.RoleID != "" && grant.RoleID != roleID) ||
 		(grant.Username != "" && grant.Username != username) ||
 		(grant.ObjectID != "" && grant.ObjectID != objectID) ||
-		(grant.ObjectTypeName != "" && grant.ObjectTypeName != utils.ProjectOrgScope) {
-		return nil, fmt.Errorf("ACS created grant does not match the requested user, role and project|organization")
+		(grant.ObjectTypeName != "" && grant.ObjectTypeName != objectType) {
+		return nil, fmt.Errorf("ACS created grant does not match the requested user, role and %s", objectType)
 	}
 	grant.RoleID, grant.Username = roleID, username
-	grant.ObjectID, grant.ObjectTypeName = objectID, utils.ProjectOrgScope
+	grant.ObjectID, grant.ObjectTypeName = objectID, objectType
 	return &grant, nil
 }
 

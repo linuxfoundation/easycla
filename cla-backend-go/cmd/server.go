@@ -64,6 +64,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 
 	lfxAuth "github.com/LF-Engineering/lfx-kit/auth"
+	"github.com/linuxfoundation/easycla/cla-backend-go/config"
 	"github.com/linuxfoundation/easycla/cla-backend-go/docs"
 	v1Repositories "github.com/linuxfoundation/easycla/cla-backend-go/repositories"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
@@ -191,6 +192,19 @@ func enabledByEnvOrStage(envVar, stage string, defaultByStage [2]bool) bool {
 	}
 	// dev and all non-prod stages default to enabled
 	return defaultByStage[0]
+}
+
+func newMemberServiceClient(cfg config.Config) (*member_service.Client, error) {
+	if !cfg.MemberService.CreateCompanyEnabled && !cfg.ACSDirectCLARolesEnabled {
+		return nil, nil
+	}
+	return member_service.NewClient(member_service.Config{
+		BaseURL:       cfg.MemberService.BaseURL,
+		Audience:      cfg.MemberService.Audience,
+		OAuthTokenURL: cfg.Auth0Platform.URL,
+		ClientID:      cfg.Auth0Platform.ClientID,
+		ClientSecret:  cfg.Auth0Platform.ClientSecret,
+	})
 }
 
 // apiPathLoggerWithDB creates a middleware that logs API requests to DynamoDB
@@ -436,19 +450,11 @@ func server(localMode bool) http.Handler {
 	v2ProjectService := v2Project.NewService(v1ProjectService, v1CLAGroupRepo, v1ProjectClaGroupRepo)
 	v1CompanyService := v1Company.NewService(v1CompanyRepo, configFile.CorporateConsoleV2URL, userRepo, usersService)
 	v2CompanyService := v2Company.NewService(v1CompanyService, signaturesRepo, v1CLAGroupRepo, usersRepo, v1CompanyRepo, v1ProjectClaGroupRepo, eventsService)
-	var members *member_service.Client
+	members, memberErr := newMemberServiceClient(configFile)
+	if memberErr != nil {
+		log.WithError(memberErr).Warn("unable to configure member-service client for company creation or pending-Account screening")
+	}
 	if configFile.MemberService.CreateCompanyEnabled {
-		var memberErr error
-		members, memberErr = member_service.NewClient(member_service.Config{
-			BaseURL:       configFile.MemberService.BaseURL,
-			Audience:      configFile.MemberService.Audience,
-			OAuthTokenURL: configFile.Auth0Platform.URL,
-			ClientID:      configFile.Auth0Platform.ClientID,
-			ClientSecret:  configFile.Auth0Platform.ClientSecret,
-		})
-		if memberErr != nil {
-			log.WithError(memberErr).Warn("create-company via member-service is enabled but the client is not configured - company creation fails until it is")
-		}
 		v2CompanyService.EnableMemberServiceCreate(members)
 	}
 	v2CurrentUserService := v2CurrentUser.NewService()

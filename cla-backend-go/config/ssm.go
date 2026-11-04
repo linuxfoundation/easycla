@@ -285,6 +285,7 @@ func loadSSMConfig(awsSession *session.Session, stage string) (Config, error) { 
 	config.OrgLensURL = getOptionalSSMString(ssmClient, fmt.Sprintf("cla-org-lens-base-%s", stage), f)
 	loadCLAAdminsFlag(ssmClient, stage, &config, f)
 	loadCreateCompanyFlag(ssmClient, stage, &config, f)
+	loadACSDirectRolesFlag(ssmClient, stage, &config, f)
 
 	return config, nil
 }
@@ -408,6 +409,14 @@ func loadCreateCompanyFlag(ssmClient *ssm.SSM, stage string, config *Config, f l
 		return
 	}
 	config.MemberService.CreateCompanyEnabled = enabled
+}
+
+func loadACSDirectRolesFlag(ssmClient *ssm.SSM, stage string, config *Config, f logrus.Fields) {
+	enabled, err := getOptionalSSMBool(ssmClient, fmt.Sprintf("cla-acs-direct-roles-enabled-%s", stage), f)
+	config.ACSDirectCLARolesEnabled = enabled
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("ACS-direct roles switch unreadable - keeping the Organization Service path")
+	}
 }
 
 // getOptionalSSMBool reads an optional flag: a missing parameter is false, any other read failure is an error so

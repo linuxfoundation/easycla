@@ -21,6 +21,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+const acsObjectTypesPath = "/acs/v1/api/object-types"
+
 func userGrantsTestClient(t *testing.T, handler http.HandlerFunc) *Client {
 	t.Helper()
 	initFakeToken(t)
@@ -60,7 +62,7 @@ func TestCreateProjectRoleGrant(t *testing.T) {
 			acs := userGrantsTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				switch {
-				case r.Method == http.MethodGet && r.URL.Path == "/acs/v1/api/object-types":
+				case r.Method == http.MethodGet && r.URL.Path == acsObjectTypesPath:
 					_, err := w.Write([]byte(`[{"name":"project|organization","type_id":11}]`))
 					assert.NoError(t, err)
 				case r.Method == http.MethodPost && r.URL.Path == "/acs/v1/api/roles/"+roleID+"/members/users":
@@ -95,6 +97,83 @@ func TestCreateProjectRoleGrant(t *testing.T) {
 				assert.Equal(t, grantID, grant.GrantID)
 				assert.Equal(t, roleID, grant.RoleID)
 				assert.Equal(t, project+"|"+org, grant.ObjectID)
+			} else {
+				assert.Nil(t, grant)
+			}
+		})
+	}
+}
+
+func TestCreateOrganizationRoleGrant(t *testing.T) {
+	const (
+		roleID  = "11111111-2222-4333-8444-555555555555"
+		grantID = "66666666-7777-4888-8999-aaaaaaaaaaaa"
+		org     = "0014100000Te0G7AAJ"
+	)
+	for _, tc := range []struct {
+		name, response string
+		status         int
+		wantErr, owned bool
+	}{
+		{"created organization grant", `[{"grant_id":"` + grantID + `","role_id":"` + roleID + `","username":"jane","object_id":"` + org + `","object_type_name":"organization"}]`, http.StatusCreated, false, true},
+		{"grant ID only", `[{"grant_id":"` + grantID + `"}]`, http.StatusCreated, false, true},
+		{"already assigned is not owned", `{"message":"already assigned"}`, http.StatusConflict, false, false},
+		{"forbidden", `{"message":"forbidden"}`, http.StatusForbidden, true, false},
+		{"dependency outage", `{"message":"unavailable"}`, http.StatusServiceUnavailable, true, false},
+		{"unexpected success status", `[{"grant_id":"` + grantID + `"}]`, http.StatusOK, true, false},
+		{"missing grant ID", `[{"scope_id":"not-a-grant"}]`, http.StatusCreated, true, false},
+		{"different organization", `[{"grant_id":"` + grantID + `","object_id":"another-organization"}]`, http.StatusCreated, true, false},
+		{"different role", `[{"grant_id":"` + grantID + `","role_id":"another-role"}]`, http.StatusCreated, true, false},
+		{"different username", `[{"grant_id":"` + grantID + `","username":"another-user"}]`, http.StatusCreated, true, false},
+		{"wrong scope type", `[{"grant_id":"` + grantID + `","object_type_name":"project|organization"}]`, http.StatusCreated, true, false},
+		{"malformed response", `{`, http.StatusCreated, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var creates atomic.Int32
+			acs := userGrantsTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch {
+				case r.Method == http.MethodGet && r.URL.Path == acsObjectTypesPath:
+					assert.NoError(t, json.NewEncoder(w).Encode([]map[string]interface{}{
+						{"name": utils.ProjectOrgScope, "type_id": 11},
+						{"name": "organization", "type_id": 12},
+					}))
+				case r.Method == http.MethodPost && r.URL.Path == "/acs/v1/api/roles/"+roleID+"/members/users":
+					creates.Add(1)
+					var body models.CreateAssignUser
+					if err := json.NewDecoder(r.Body).Decode(&body); !assert.NoError(t, err) {
+						return
+					}
+					assert.Equal(t, []string{"jane"}, body.Usernames)
+					assert.Equal(t, []string{org}, body.ObjectIds)
+					if assert.NotNil(t, body.RoleID) {
+						assert.Equal(t, roleID, *body.RoleID)
+					}
+					if assert.NotNil(t, body.ObjectTypeID) {
+						assert.Equal(t, int64(12), *body.ObjectTypeID)
+					}
+					w.WriteHeader(tc.status)
+					_, err := w.Write([]byte(tc.response))
+					assert.NoError(t, err)
+				default:
+					t.Errorf("unexpected request: %s %s", r.Method, r.URL.Path)
+					http.NotFound(w, r)
+				}
+			})
+			grant, err := acs.CreateOrganizationRoleGrant(context.Background(), org, roleID, "jane")
+			if tc.wantErr {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			assert.Equal(t, int32(1), creates.Load())
+			if tc.owned {
+				require.NotNil(t, grant)
+				assert.Equal(t, grantID, grant.GrantID)
+				assert.Equal(t, roleID, grant.RoleID)
+				assert.Equal(t, "jane", grant.Username)
+				assert.Equal(t, org, grant.ObjectID)
+				assert.Equal(t, "organization", grant.ObjectTypeName)
 			} else {
 				assert.Nil(t, grant)
 			}
@@ -137,6 +216,18 @@ func TestUserGrantRejectsWildcardAndCanceledRequests(t *testing.T) {
 	cancel()
 	_, err = acs.CreateProjectRoleGrant(ctx, "org", "project", "role", "jane")
 	require.ErrorIs(t, err, context.Canceled)
+	_, err = acs.CreateOrganizationRoleGrant(ctx, "org", "role", "jane")
+	require.ErrorIs(t, err, context.Canceled)
+	for _, input := range []struct{ org, role, username string }{
+		{"", "role", "jane"},
+		{"*", "role", "jane"},
+		{"project|org", "role", "jane"},
+		{"org", "", "jane"},
+		{"org", "role", " "},
+	} {
+		_, err = acs.CreateOrganizationRoleGrant(context.Background(), input.org, input.role, input.username)
+		require.Error(t, err)
+	}
 	require.ErrorIs(t, acs.DeleteUserGrant(ctx, "role", "grant"), context.Canceled)
 }
 

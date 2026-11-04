@@ -68,8 +68,6 @@ var (
 	ErrClaGroupNotFound = errors.New("cla group not found")
 	//ErrClaGroupBadRequest returns error if cla group bad request
 	ErrClaGroupBadRequest = errors.New("cla group bad request")
-	// ErrCompanyNotReady reports a company whose Salesforce account the Organization Service does not know yet (lfx-self-serve#4992)
-	ErrCompanyNotReady = errors.New("the company is still being set up in the platform - please try again later")
 
 	errRequestNotFound = errors.New("cla manager request not found")
 	// ErrCLAManagerRequestAlreadyDecided when the request is no longer pending
@@ -427,10 +425,12 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 	} else {
 		log.WithFields(f).Debugf("creating contact role organization scope for user: %s, with role: %s with role ID: %s using org: %s...",
 			userEmail, utils.ContactRole, contactRoleID, v1CompanyModel.CompanyExternalID)
-		contactScopeErr := orgClient.CreateOrgUserRoleOrgScope(ctx, userEmail, v1CompanyModel.CompanyExternalID, contactRoleID)
+		contactScopeErr := orgClient.CreateCLAOrgUserRoleScope(ctx, userEmail, lfxUser.Username, v1CompanyModel.CompanyExternalID, contactRoleID)
 		if contactScopeErr != nil {
 			// Ignore conflict - role has already been assigned - otherwise, log error but don't fail
-			if _, ok := contactScopeErr.(*organizations.CreateOrgUsrRoleScopesConflict); !ok {
+			if v2AcsService.DirectCLARolesEnabled() {
+				log.WithField(utils.XREQUESTID, ctx.Value(utils.XREQUESTID)).Warn("unable to create the contact grant - continuing without contact role")
+			} else if _, ok := contactScopeErr.(*organizations.CreateOrgUsrRoleScopesConflict); !ok {
 				log.WithFields(f).Warnf("problem creating contact role org scope for email: %s, companySFID: %s, error: %+v - continuing without contact role", userEmail, v1CompanyModel.CompanyExternalID, contactScopeErr)
 			} else {
 				log.WithFields(f).Debugf("contact role already assigned for user: %s, companySFID: %s", userEmail, v1CompanyModel.CompanyExternalID)
@@ -979,10 +979,10 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 		organization, orgErr = orgService.GetOrganizationForCLA(ctx, companyModel.CompanyExternalID, companyModel.CompanyName)
 	}
 	if orgErr != nil {
-		if contactAdmin {
-			if notReady := companyNotReady(f, orgErr, companyModel.CompanyID, companyModel.CompanyExternalID); notReady != nil {
-				return nil, notReady
-			}
+		var notFound *organizations.GetOrgNotFound
+		if contactAdmin && errors.As(orgErr, &notFound) {
+			log.WithFields(f).Warn(ErrNoOrgAdmins)
+			return nil, ErrNoOrgAdmins
 		}
 		msg := fmt.Sprintf("Problem getting company by ID: %s ", companyID)
 		log.Warn(msg)
@@ -1030,7 +1030,15 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 		if listScopeErr != nil {
 			msg := fmt.Sprintf("Admin lookup error for organisation SFID: %s ", companyModel.CompanyExternalID)
 			log.WithFields(f).Warn(msg)
+			var notFound *organizations.ListOrgUsrAdminScopesNotFound
+			if errors.As(listScopeErr, &notFound) {
+				return nil, ErrNoOrgAdmins
+			}
 			return nil, listScopeErr
+		}
+		if len(scopes.Userroles) == 0 {
+			log.WithFields(f).Warn(ErrNoOrgAdmins)
+			return nil, ErrNoOrgAdmins
 		}
 		// Search for Easy CLA User
 		log.Debugf("Getting user by ID: %s", contributor.UserID)

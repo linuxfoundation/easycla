@@ -50,6 +50,14 @@ func (osc *Client) CreateCLAUserRoleScope(ctx context.Context, email, username, 
 	return osc.CreateOrgUserRoleOrgScopeProjectOrg(ctx, email, projectSFID, orgID, roleID)
 }
 
+func (osc *Client) CreateCLAOrgUserRoleScope(ctx context.Context, email, username, orgID, roleID string) error {
+	if acsService.DirectCLARolesEnabled() {
+		_, err := acsService.GetClient().CreateOrganizationRoleGrant(ctx, orgID, roleID, username)
+		return err
+	}
+	return osc.CreateOrgUserRoleOrgScope(ctx, email, orgID, roleID)
+}
+
 func (osc *Client) DeleteCLAUserRoleScope(ctx context.Context, orgID, roleID, grantID string, username, email *string) error {
 	if acsService.DirectCLARolesEnabled() {
 		return acsService.GetClient().DeleteUserGrant(ctx, roleID, grantID)

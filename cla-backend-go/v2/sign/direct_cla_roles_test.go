@@ -42,7 +42,7 @@ func enableDirectCLARoles(t *testing.T, enabled bool) {
 	}
 	t.Cleanup(func() { load(original) })
 	updated := original
-	updated.MemberService.CreateCompanyEnabled = enabled
+	updated.ACSDirectCLARolesEnabled = enabled
 	load(updated)
 }
 
@@ -80,7 +80,7 @@ func TestMemberDomainFallbackPreservesScreeningPolicy(t *testing.T) {
 		{name: "missing authoritative domain fails closed", noDomain: true, wantErr: true, wantMember: 1},
 		{name: "member authorization failure fails closed", memberStatus: http.StatusForbidden, wantErr: true, wantMember: 1},
 		{name: "organization outage is not a missing Account", orgFailure: true, wantErr: true},
-		{name: "disabled creation preserves missing-Org failure", disableDirect: true, wantErr: true},
+		{name: "disabled direct roles preserves missing-Org failure", disableDirect: true, wantErr: true},
 		{name: "known organization preserves its domain", knownOrg: true, wantBlocked: true, wantSSS: 1, wantDomain: "platform.invalid"},
 		{name: "manual block never calls upstream", persistedOrigin: "manual", wantBlocked: true},
 		{name: "SSS kill switch remains authoritative", persistedOrigin: "sss", disableSSS: true},

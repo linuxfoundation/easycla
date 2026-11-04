@@ -6,6 +6,7 @@ package organization_service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -35,7 +36,7 @@ func setCLARoleMode(t *testing.T, enabled bool) {
 	}
 	t.Cleanup(func() { load(original) })
 	updated := original
-	updated.MemberService.CreateCompanyEnabled = enabled
+	updated.ACSDirectCLARolesEnabled = enabled
 	load(updated)
 }
 
@@ -45,6 +46,47 @@ func (f claRoleTransport) RoundTrip(r *http.Request) (*http.Response, error) { r
 
 func claRoleResponse(r *http.Request, status int, body string) (*http.Response, error) {
 	return &http.Response{StatusCode: status, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
+}
+
+func TestCreateCLARoleScopeUsesAnIndependentFlag(t *testing.T) {
+	const orgID, projectSFID, roleID = "0014100000Te0G7AAJ", "a09P000000DsCE5IAN", "role-manager"
+	for _, createCompany := range []bool{false, true} {
+		for _, directRoles := range []bool{false, true} {
+			t.Run(fmt.Sprintf("create=%t/direct=%t", createCompany, directRoles), func(t *testing.T) {
+				setCLARoleMode(t, createCompany)
+				configPath := filepath.Join(t.TempDir(), "independent-flags.json")
+				data := fmt.Sprintf(`{"member_service":{"create_company_enabled":%t},"acs_direct_cla_roles_enabled":%t}`, createCompany, directRoles)
+				require.NoError(t, os.WriteFile(configPath, []byte(data), 0600))
+				_, err := config.LoadConfig(configPath, nil, "")
+				require.NoError(t, err)
+				base := newOrgTestClient(t, false)
+				acsService.InitClient("https://"+orgTestPlatformHost, "test-key")
+				directCalls, legacyCalls := 0, 0
+				orgSwitch.set(claRoleTransport(func(r *http.Request) (*http.Response, error) {
+					switch {
+					case r.URL.Path == "/acs/v1/api/object-types":
+						return claRoleResponse(r, http.StatusOK, `[{"name":"project|organization","type_id":11}]`)
+					case r.Method == http.MethodPost && r.URL.Path == "/acs/v1/api/roles/"+roleID+"/members/users":
+						directCalls++
+						return claRoleResponse(r, http.StatusCreated, `[{"grant_id":"native-grant","username":"jane"}]`)
+					case r.Method == http.MethodPost && r.URL.Path == "/organization-service/v1/orgs/"+orgID+"/scopes":
+						legacyCalls++
+						return claRoleResponse(r, http.StatusCreated, `{}`)
+					default:
+						return base.RoundTrip(r)
+					}
+				}))
+				require.NoError(t, GetClient().CreateCLAUserRoleScope(context.Background(), "jane@example.invalid", "jane", projectSFID, orgID, roleID))
+				if directRoles {
+					assert.Equal(t, 1, directCalls)
+					assert.Zero(t, legacyCalls)
+				} else {
+					assert.Zero(t, directCalls)
+					assert.Equal(t, 1, legacyCalls)
+				}
+			})
+		}
+	}
 }
 
 func TestGetOrganizationForCLAOnlyFallsBackForPendingAccounts(t *testing.T) {
