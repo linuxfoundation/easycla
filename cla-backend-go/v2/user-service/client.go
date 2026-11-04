@@ -290,14 +290,17 @@ func (usc *Client) GetUserByUsernameContext(ctx context.Context, lfUsername stri
 		"functionName": "GetUserByUsernameContext",
 		"lfUsername":   lfUsername,
 	}
+	return usc.findUserContext(ctx, usersByUsernameURL(usc.apiGwURL, lfUsername), lfUsername, f)
+}
 
+func (usc *Client) findUserContext(ctx context.Context, requestURL, identity string, f logrus.Fields) (*models.User, error) {
 	tok, err := token.GetToken()
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem obtaining token")
 		return nil, err
 	}
 
-	request, err := http.NewRequestWithContext(ctx, "GET", usersByUsernameURL(usc.apiGwURL, lfUsername), nil)
+	request, err := http.NewRequestWithContext(ctx, "GET", requestURL, nil)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem building new request")
 		return nil, err
@@ -329,7 +332,7 @@ func (usc *Client) GetUserByUsernameContext(ctx context.Context, lfUsername stri
 
 	if response.StatusCode != http.StatusOK {
 		log.WithFields(f).Warnf("problem searching user - status: %d", response.StatusCode)
-		return nil, fmt.Errorf("searching user %s failed with status: %d", lfUsername, response.StatusCode)
+		return nil, fmt.Errorf("searching user %s failed with status: %d", identity, response.StatusCode)
 	}
 
 	userList, err := getUsers(data)
@@ -467,6 +470,21 @@ func (usc *Client) SearchUsersByEmail(email string) (*models.User, error) {
 
 	return userList[0], nil
 
+}
+
+// SearchUsersByEmailContext preserves lookup errors instead of treating an upstream failure as a missing user.
+func (usc *Client) SearchUsersByEmailContext(ctx context.Context, email string) (*models.User, error) {
+	f := logrus.Fields{
+		"functionName": "SearchUsersByEmailContext",
+		"email":        email,
+	}
+	if strings.TrimSpace(email) == "" {
+		err := errors.New("email is required for a user lookup")
+		log.WithFields(f).WithError(err).Warn("refusing an unfiltered user lookup")
+		return nil, err
+	}
+	requestURL := fmt.Sprintf("https://%s/user-service/v1/users?email=%s", usc.apiGwURL, url.QueryEscape(email))
+	return usc.findUserContext(ctx, requestURL, email, f)
 }
 
 func getUsers(body []byte) ([]*models.User, error) {

@@ -156,7 +156,7 @@ func (s *service) GetCompanyProjectCLAManagers(ctx context.Context, v1CompanyMod
 	// TODO: DAD - consider using separate go routine
 	// get the org client for org info filling
 	orgClient := orgService.GetClient()
-	orgModel, err := orgClient.GetOrganization(ctx, v1CompanyModel.CompanyExternalID)
+	orgModel, err := orgClient.GetOrganizationForCLA(ctx, v1CompanyModel.CompanyExternalID, v1CompanyModel.CompanyName)
 	if err != nil {
 		return nil, fmt.Errorf("fetching org model failed for companySFID : %s : %w", v1CompanyModel.CompanyExternalID, err)
 	}

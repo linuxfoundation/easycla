@@ -412,6 +412,19 @@ func (s *service) addCLAManagerDesigneePermissions(ctx context.Context, claGroup
 
 				orgID := strings.Split(userScope.ObjectID, "|")[1]
 				email := userScope.Email
+				username := userScope.Username
+				if acsService.DirectCLARolesEnabled() {
+					lfUser, userErr := userService.GetClient().GetUserByUsername(username)
+					if userErr != nil {
+						log.WithFields(f).WithError(userErr).Warnf("unable to verify platform user %s before assigning a CLA designee role", username)
+						return
+					}
+					if lfUser == nil || lfUser.Username == "" {
+						log.WithFields(f).Warnf("platform user %s has no LFID - not assigning a CLA designee role", username)
+						return
+					}
+					username = lfUser.Username
+				}
 
 				// Lookup the organization name
 				log.WithFields(f).Debugf("looking up organization by SFID: %s", orgID)
@@ -427,7 +440,7 @@ func (s *service) addCLAManagerDesigneePermissions(ctx context.Context, claGroup
 
 				log.WithFields(f).Debugf("assiging role: %s to user %s with email %s for project: %s, company: %s...",
 					utils.CLAManagerRole, userScope.Username, email, projectSFID, orgID)
-				roleErr := orgClient.CreateOrgUserRoleOrgScopeProjectOrg(ctx, email, projectSFID, orgID, claManagerDesigneeRoleID)
+				roleErr := orgClient.CreateCLAUserRoleScope(ctx, email, username, projectSFID, orgID, claManagerDesigneeRoleID)
 				if roleErr != nil {
 					log.WithFields(f).WithError(roleErr).Warnf("%s, role assignment for user %s failed for this project: %s, company: %s ",
 						utils.CLADesigneeRole, email, projectSFID, orgID)
@@ -567,7 +580,7 @@ func (s *service) addCLAManagerPermissions(ctx context.Context, claGroupID, proj
 				}
 
 				// Determine if the user already has the cla-manager role scope for this Project and Company
-				hasRole, roleLookupErr := orgClient.IsUserHaveRoleScope(ctx, utils.CLAManagerRole, userModel.ID, companySFID, projectSFID)
+				hasRole, roleLookupErr := orgClient.IsCLAUserHaveRoleScope(ctx, utils.CLAManagerRole, userModel.ID, userModel.Username, companySFID, projectSFID)
 				if roleLookupErr != nil {
 					log.WithFields(f).WithError(roleLookupErr).Warnf("unable to lookup role scope %s for user %s/%s - skipping %s role review/assigment for this project",
 						utils.CLAManagerRole, signatureUserModel.LfUsername, userModel.ID, utils.CLAManagerRole)
@@ -585,7 +598,7 @@ func (s *service) addCLAManagerPermissions(ctx context.Context, claGroupID, proj
 				// Finally....assign the role to this user
 				log.WithFields(f).Debugf("assiging role: %s to user %s/%s/%s for project: %s, company: %s...",
 					utils.CLAManagerRole, signatureUserModel.LfUsername, userModel.ID, userClient.GetPrimaryEmail(userModel), projectSFID, companySFID)
-				roleErr := orgClient.CreateOrgUserRoleOrgScopeProjectOrg(ctx, userClient.GetPrimaryEmail(userModel), projectSFID, companySFID, claManagerRoleID)
+				roleErr := orgClient.CreateCLAUserRoleScope(ctx, userClient.GetPrimaryEmail(userModel), userModel.Username, projectSFID, companySFID, claManagerRoleID)
 				if roleErr != nil {
 					log.WithFields(f).WithError(roleErr).Warnf("%s, role assignment for user user %s/%s/%s failed for this project: %s, company: %s",
 						utils.CLAManagerRole, signatureUserModel.LfUsername, userModel.ID, userClient.GetPrimaryEmail(userModel), projectSFID, companySFID)

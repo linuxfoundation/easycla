@@ -436,8 +436,10 @@ func server(localMode bool) http.Handler {
 	v2ProjectService := v2Project.NewService(v1ProjectService, v1CLAGroupRepo, v1ProjectClaGroupRepo)
 	v1CompanyService := v1Company.NewService(v1CompanyRepo, configFile.CorporateConsoleV2URL, userRepo, usersService)
 	v2CompanyService := v2Company.NewService(v1CompanyService, signaturesRepo, v1CLAGroupRepo, usersRepo, v1CompanyRepo, v1ProjectClaGroupRepo, eventsService)
+	var members *member_service.Client
 	if configFile.MemberService.CreateCompanyEnabled {
-		members, memberErr := member_service.NewClient(member_service.Config{
+		var memberErr error
+		members, memberErr = member_service.NewClient(member_service.Config{
 			BaseURL:       configFile.MemberService.BaseURL,
 			Audience:      configFile.MemberService.Audience,
 			OAuthTokenURL: configFile.Auth0Platform.URL,
@@ -495,6 +497,7 @@ func server(localMode bool) http.Handler {
 	v2ClaGroupService := cla_groups.NewService(v1ProjectService, templateService, v1ProjectClaGroupRepo, v1ClaManagerService, v1SignaturesService, metricsRepo, gerritService, v1RepositoriesService, eventsService)
 
 	v2SignService := sign.NewService(configFile.ClaAPIV4Base, configFile.ClaV1ApiURL, v1CompanyRepo, v1CLAGroupRepo, v1ProjectClaGroupRepo, v1CompanyService, v2ClaGroupService, configFile.DocuSignPrivateKey, usersService, v1SignaturesService, storeRepository, v1RepositoriesService, githubOrganizationsService, gitlabOrganizationsService, configFile.CLALandingPage, configFile.CLALogoURL, emailService, eventsService, gitlabActivityService, gitlabApp, gerritService, sssClient, sssRequired, sssEnabled)
+	v2SignService.SetMemberServiceClient(members)
 	v2SelfServeSignService := v2SelfServeSign.NewService(v2MyClasService, usersService, v1ProjectService, v1ProjectClaGroupRepo, storeRepository, v2SignService, v1CompanyRepo, configFile.CLAContributorv2Base)
 
 	sessionStore, err := dynastore.New(dynastore.Path("/"), dynastore.HTTPOnly(), dynastore.TableName(configFile.SessionStoreTableName), dynastore.DynamoDB(dynamodb.New(awsSession)))

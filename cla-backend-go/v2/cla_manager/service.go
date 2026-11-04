@@ -39,6 +39,7 @@ import (
 	v2AcsService "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
 	v2Company "github.com/linuxfoundation/easycla/cla-backend-go/v2/company"
 	v2OrgService "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
+	orgModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/models"
 	v2ProjectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 	v2UserService "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
 	v2UserModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service/models"
@@ -358,7 +359,7 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 
 	log.WithFields(f).Debugf("checking if user has %s role scope...", utils.CLADesigneeRole)
 	// Check if user is already CLA Manager designee of project|organization scope
-	hasRoleScope, hasRoleScopeErr := orgClient.IsUserHaveRoleScope(ctx, utils.CLADesigneeRole, lfxUser.ID, v1CompanyModel.CompanyExternalID, projectSFID)
+	hasRoleScope, hasRoleScopeErr := orgClient.IsCLAUserHaveRoleScope(ctx, utils.CLADesigneeRole, lfxUser.ID, lfxUser.Username, v1CompanyModel.CompanyExternalID, projectSFID)
 	if hasRoleScopeErr != nil {
 		// Skip 404 for ListOrgUsrServiceScopes endpoint
 		if _, ok := hasRoleScopeErr.(*organizations.ListOrgUsrServiceScopesNotFound); !ok {
@@ -387,7 +388,7 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 
 	log.WithFields(f).Debugf("creating user role organization scope for user: %s, with role: %s with role ID: %s using project|org: %s|%s...",
 		userEmail, utils.CLADesigneeRole, roleID, projectSFID, v1CompanyModel.CompanyExternalID)
-	scopeErr := orgClient.CreateOrgUserRoleOrgScopeProjectOrg(ctx, userEmail, projectSFID, v1CompanyModel.CompanyExternalID, roleID)
+	scopeErr := orgClient.CreateCLAUserRoleScope(ctx, userEmail, lfxUser.Username, projectSFID, v1CompanyModel.CompanyExternalID, roleID)
 	if scopeErr != nil {
 		// Ignore conflict - role has already been assigned - otherwise, return error
 		if _, ok := scopeErr.(*organizations.CreateOrgUsrRoleScopesConflict); !ok {
@@ -503,7 +504,7 @@ func (s *service) IsCLAManagerDesignee(ctx context.Context, companySFID, claGrou
 				defer swg.Done()
 				var output result
 				log.WithFields(f).Debugf("Checking role status for projectSFID: %s", pcg.ProjectSFID)
-				hasProjectLevelRole, roleErr := orgClient.IsUserHaveRoleScope(ctx, utils.CLADesigneeRole, user.ID, companySFID, pcg.ProjectSFID)
+				hasProjectLevelRole, roleErr := orgClient.IsCLAUserHaveRoleScope(ctx, utils.CLADesigneeRole, user.ID, user.Username, companySFID, pcg.ProjectSFID)
 				if roleErr != nil {
 					log.WithFields(f).Debugf("problem getting role:%s for user and project: %s ", utils.CLADesigneeRole, pcg.ProjectSFID)
 					output = result{
@@ -918,10 +919,18 @@ func (s *service) InviteCompanyAdmin(ctx context.Context, contactAdmin bool, com
 		return nil, ErrCLACompanyNotFound
 	}
 
-	organization, orgErr := orgService.GetOrganization(ctx, companyModel.CompanyExternalID)
+	var organization *orgModels.Organization
+	var orgErr error
+	if contactAdmin {
+		organization, orgErr = orgService.GetOrganization(ctx, companyModel.CompanyExternalID)
+	} else {
+		organization, orgErr = orgService.GetOrganizationForCLA(ctx, companyModel.CompanyExternalID, companyModel.CompanyName)
+	}
 	if orgErr != nil {
-		if notReady := companyNotReady(f, orgErr, companyModel.CompanyID, companyModel.CompanyExternalID); notReady != nil {
-			return nil, notReady
+		if contactAdmin {
+			if notReady := companyNotReady(f, orgErr, companyModel.CompanyID, companyModel.CompanyExternalID); notReady != nil {
+				return nil, notReady
+			}
 		}
 		msg := fmt.Sprintf("Problem getting company by ID: %s ", companyID)
 		log.Warn(msg)
@@ -1335,9 +1344,6 @@ func (s *service) isSigned(ctx context.Context, companyModel *v1Models.Company, 
 	log.WithFields(f).Debug("loading CLA Managers for company/project")
 	claManagers, err := s.v2CompanyService.GetCompanyProjectCLAManagers(ctx, companyV1toV2(companyModel), projectID)
 	if err != nil {
-		if notReady := companyNotReady(f, err, companyModel.CompanyID, companyModel.CompanyExternalID); notReady != nil {
-			return false, notReady
-		}
 		msg := fmt.Sprintf("EasyCLA - 400 Bad Request : %v", err)
 		log.WithFields(f).Warn(msg)
 		return false, err

@@ -32,6 +32,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/users"
 	mock_users "github.com/linuxfoundation/easycla/cla-backend-go/users/mocks"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
+	acsService "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
 	organizationService "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
 	projectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 	userService "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
@@ -40,23 +41,25 @@ import (
 )
 
 const (
-	oauthEndpoint       = "/oauth/token"
-	rowlessPlatformHost = "platform.rowless.invalid"
-	rowlessAuthHost     = "auth.rowless.invalid"
-	rowlessSFID         = "0014100000Rowless1"
-	rowlessShortSFID    = "0014100000Rowle"
-	rowlessProjectSFID  = "a09P000000Rowless1"
-	rowlessCompanyID    = "6f1d2c3b-4a5e-4f60-8b7c-9d0e1f2a3b4c"
-	rowlessProjectID    = "1b2c3d4e-5f60-4718-9a0b-1c2d3e4f5a6b"
-	rowlessOrgJSON      = `{"ID":"` + rowlessSFID + `","Name":"Acme Corp","Domains":"acme.invalid","Link":"https://acme.invalid","SigningEntityName":["Acme Labs"]}`
-	rowlessDocuSignHost = "docusign.rowless.invalid"
-	rowlessEnvelopes    = "/accounts/rowless-account/envelopes"
-	rowlessEnvelopeID   = "rowless-envelope"
-	rowlessSignURL      = "https://docusign.rowless.invalid/sign"
-	rowlessProjectsPath = "/project-service/v1/projects/"
-	rowlessUsersPath    = "/user-service/v1/users"
-	rowlessLFUsername   = "lgryglicki"
-	rowlessUserEmail    = "lg@acme.invalid"
+	oauthEndpoint        = "/oauth/token"
+	rowlessPlatformHost  = "platform.rowless.invalid"
+	rowlessAuthHost      = "auth.rowless.invalid"
+	rowlessSSSHost       = "sss.example.com"
+	rowlessSSSStatusPath = "/api/v1/organizations/status"
+	rowlessSFID          = "0014100000Rowless1"
+	rowlessShortSFID     = "0014100000Rowle"
+	rowlessProjectSFID   = "a09P000000Rowless1"
+	rowlessCompanyID     = "6f1d2c3b-4a5e-4f60-8b7c-9d0e1f2a3b4c"
+	rowlessProjectID     = "1b2c3d4e-5f60-4718-9a0b-1c2d3e4f5a6b"
+	rowlessOrgJSON       = `{"ID":"` + rowlessSFID + `","Name":"Acme Corp","Domains":"acme.invalid","Link":"https://acme.invalid","SigningEntityName":["Acme Labs"]}`
+	rowlessDocuSignHost  = "docusign.rowless.invalid"
+	rowlessEnvelopes     = "/accounts/rowless-account/envelopes"
+	rowlessEnvelopeID    = "rowless-envelope"
+	rowlessSignURL       = "https://docusign.rowless.invalid/sign"
+	rowlessProjectsPath  = "/project-service/v1/projects/"
+	rowlessUsersPath     = "/user-service/v1/users"
+	rowlessLFUsername    = "lgryglicki"
+	rowlessUserEmail     = "lg@acme.invalid"
 )
 
 // rowlessHTTP stubs the token endpoint, the organization/project/user services, the SSS (auth +
@@ -101,7 +104,7 @@ func (h *rowlessHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 	case r.URL.Host == rowlessDocuSignHost && r.URL.Path == rowlessEnvelopes+"/"+rowlessEnvelopeID+"/views/recipient":
 		response.StatusCode = http.StatusCreated
 		response.Body = io.NopCloser(strings.NewReader(`{"url":"` + rowlessSignURL + `"}`))
-	case r.URL.Host == "sss.example.com" && r.URL.Path == "/api/v1/organizations/status":
+	case r.URL.Host == rowlessSSSHost && r.URL.Path == rowlessSSSStatusPath:
 		h.sssCalls++
 		response.Body = io.NopCloser(strings.NewReader(`{"status":"` + h.sssStatus + `","entity_id":"e1","source":"unit","org_name":"Acme Corp","domain":"acme.invalid"}`))
 	case r.URL.Host == rowlessPlatformHost && strings.HasPrefix(r.URL.Path, "/organization-service/v1/orgs/"):
@@ -819,6 +822,51 @@ func TestRequestCorporateSignatureFirstCCLAEndToEnd(t *testing.T) {
 		assert.Empty(t, *removed, "a pre-existing authority grant must be left alone")
 		assert.Zero(t, fx.transport.envelopes)
 	})
+	for _, emailFlow := range []bool{false, true} {
+		for _, created := range []bool{false, true} {
+			t.Run(fmt.Sprintf("native failed request email=%t created=%t", emailFlow, created), func(t *testing.T) {
+				enableDirectCLARoles(t, true)
+				ctrl := gomock.NewController(t)
+				fx := newFixtures(t, ctrl, rowlessCLAGroup())
+				expectAlreadySigned(fx)
+				oldPrepare, oldDelete := prepareDirectUserForSigningFn, deleteDirectSignatoryGrantFn
+				t.Cleanup(func() { prepareDirectUserForSigningFn, deleteDirectSignatoryGrantFn = oldPrepare, oldDelete })
+				input := signingInput()
+				expectedEmail := rowlessUserEmail
+				if emailFlow {
+					input, expectedEmail = emailInput(), authorityEmail
+				}
+				prepareDirectUserForSigningFn = func(_ context.Context, email, companySFID, projectSFID string) (*acsService.OrgGrant, error) {
+					assert.Equal(t, expectedEmail, email)
+					assert.Equal(t, rowlessSFID, companySFID)
+					assert.Equal(t, rowlessProjectSFID, projectSFID)
+					if created {
+						return &acsService.OrgGrant{RoleID: "signatory-role", GrantID: "request-owned-grant"}, nil
+					}
+					return nil, nil
+				}
+				var revoked []string
+				deleteDirectSignatoryGrantFn = func(ctx context.Context, roleID, grantID string) error {
+					assert.NoError(t, ctx.Err())
+					_, bounded := ctx.Deadline()
+					assert.True(t, bounded)
+					assert.Equal(t, "signatory-role", roleID)
+					revoked = append(revoked, grantID)
+					return nil
+				}
+				out, err := fx.svc.RequestCorporateSignature(context.Background(), rowlessLFUsername, "unused", input)
+				require.ErrorContains(t, err, "corporate valid signature exists")
+				assert.Nil(t, out)
+				if created {
+					assert.Equal(t, []string{"request-owned-grant"}, revoked)
+				} else {
+					assert.Empty(t, revoked, "pre-existing grants must not be revoked")
+				}
+				assert.Zero(t, fx.transport.orgCalls)
+				assert.Zero(t, fx.transport.envelopes)
+			})
+		}
+	}
 }
 
 func TestCompanyReferencePatternAcceptsRowsAndOrganizations(t *testing.T) {

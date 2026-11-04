@@ -45,6 +45,7 @@ import (
 	organizationService "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
 	orgModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/models"
 
+	memberService "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
 	projectService "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service"
 	userService "github.com/linuxfoundation/easycla/cla-backend-go/v2/user-service"
 
@@ -84,6 +85,7 @@ type ProjectRepo interface {
 
 // Service interface defines the sign service methods
 type Service interface {
+	SetMemberServiceClient(client *memberService.Client)
 	VoidEnvelope(ctx context.Context, envelopeID, message string) error
 	PrepareSignRequest(ctx context.Context, signRequest *DocuSignEnvelopeRequest) (*DocusignEnvelopeResponse, error)
 	GetSignURL(email, recipientID, userName, clientUserId, envelopeID, returnURL string) (string, error)
@@ -129,6 +131,7 @@ type service struct {
 	gitlabApp             *gitlab_api.App
 	gerritService         gerrits.Service
 	sssClient             *sss.Client
+	memberClient          *memberService.Client
 	sssRequired           bool
 	sssEnabled            bool
 	complianceCache       map[string]complianceCacheEntry
@@ -424,7 +427,18 @@ func (s *service) requestCorporateSignatureWithExpectedCLAGroup(ctx context.Cont
 
 	// Email flow
 	var authoritySignatoryGranted, directSignatoryGranted bool
-	if input.SendAsEmail {
+	var directGrant *acsService.OrgGrant
+	if acsService.DirectCLARolesEnabled() {
+		signatoryEmail := currentUserEmail
+		if input.SendAsEmail {
+			signatoryEmail = input.AuthorityEmail.String()
+		}
+		directGrant, err = prepareDirectUserForSigningFn(ctx, signatoryEmail, utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid))
+		if err != nil {
+			log.WithFields(f).WithError(err).Warn("unable to assign the signatory's ACS grant")
+			return nil, err
+		}
+	} else if input.SendAsEmail {
 		log.WithFields(f).Debugf("Sending request as an email to: %s...", input.AuthorityEmail.String())
 		// this would be used only in case of cla-signatory
 		authoritySignatoryGranted, err = prepareUserForSigningFn(ctx, input.AuthorityEmail.String(), utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid), input.SigningEntityName)
@@ -459,6 +473,7 @@ func (s *service) requestCorporateSignatureWithExpectedCLAGroup(ctx context.Cont
 	}, comp, proj, lfUsername, currentUserEmail)
 
 	if err != nil {
+		rollbackDirectSignatoryGrant(ctx, f, directGrant)
 		rollbackSignatoryGrants(ctx, f, input.AuthorityEmail.String(), currentUserEmail, utils.StringValue(input.CompanySfid), utils.StringValue(input.ProjectSfid), authoritySignatoryGranted, directSignatoryGranted)
 		log.WithFields(f).WithError(err).Warnf("unable to request corporate signature")
 		return nil, err
@@ -3576,6 +3591,10 @@ func (s *service) checkCompanyCompliance(ctx context.Context, company *v1Models.
 		return s.complianceUnavailable(f, company, fmt.Errorf("checkCompanyCompliance: organization service client is not configured"))
 	}
 	org, err := orgClient.GetOrganization(ctx, company.CompanyExternalID)
+	var orgNotFound *organizations.GetOrgNotFound
+	if acsService.DirectCLARolesEnabled() && errors.As(err, &orgNotFound) {
+		org, err = s.memberOrganizationForScreening(ctx, company.CompanyExternalID)
+	}
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("failed to get organization %s for domain resolution", company.CompanyExternalID)
 		return s.complianceUnavailable(f, company, fmt.Errorf("checkCompanyCompliance: failed to get organization %s: %w", company.CompanyExternalID, err))

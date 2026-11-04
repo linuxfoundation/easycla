@@ -27,11 +27,12 @@ func TestAssignCLAManagerTreatsAnExistingRoleAsAssigned(t *testing.T) {
 		claManagerRoleIDLookup = func() (string, error) { return "role-cla-manager", nil }
 		var mu sync.Mutex
 		attempted := &[]string{}
-		claManagerRoleScopeCreator = func(_ context.Context, email, projectSFID, companySFID, roleID string) error {
+		claManagerRoleScopeCreator = func(_ context.Context, email, username, projectSFID, companySFID, roleID string) error {
 			mu.Lock()
 			*attempted = append(*attempted, projectSFID)
 			mu.Unlock()
 			assert.Equal(t, "jane@example.invalid", email)
+			assert.Equal(t, "jane", username)
 			assert.Equal(t, "company-sfid", companySFID)
 			assert.Equal(t, "role-cla-manager", roleID)
 			return create(projectSFID)

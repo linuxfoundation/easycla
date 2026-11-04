@@ -156,8 +156,8 @@ func (s *service) SetInitialCLAManagerACSPermissions(ctx context.Context, signat
 var (
 	claManagerRoleIDLookup = func() (string, error) { return v2AcsService.GetClient().GetRoleID(utils.CLAManagerRole) }
 
-	claManagerRoleScopeCreator = func(ctx context.Context, email, projectSFID, companySFID, roleID string) error {
-		return v2OrgService.GetClient().CreateOrgUserRoleOrgScopeProjectOrg(ctx, email, projectSFID, companySFID, roleID)
+	claManagerRoleScopeCreator = func(ctx context.Context, email, username, projectSFID, companySFID, roleID string) error {
+		return v2OrgService.GetClient().CreateCLAUserRoleScope(ctx, email, username, projectSFID, companySFID, roleID)
 	}
 )
 
@@ -210,7 +210,7 @@ func (s service) assignCLAManager(ctx context.Context, email, username, companyS
 		go func(projectSFID string) {
 			defer wg.Done()
 			log.WithFields(f).Debugf("assigning role: %s to user: %s with email: %s for project: %s", utils.CLAManagerRole, username, email, projectSFID)
-			err := claManagerRoleScopeCreator(ctx, email, projectSFID, companySFID, claManagerRoleID)
+			err := claManagerRoleScopeCreator(ctx, email, username, projectSFID, companySFID, claManagerRoleID)
 			if err != nil {
 				// the signer may already hold cla-manager for this project|organization (re-sign, prior designation):
 				// not a failure, and failing here would skip the cla-manager-designee cleanup that follows
