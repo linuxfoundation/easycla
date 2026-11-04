@@ -52,6 +52,8 @@ var (
 	ErrCLAUserNotFound = errors.New("cla user not found")
 	//ErrLFXUserNotFound when user-service fails to find user
 	ErrLFXUserNotFound = errors.New("lfx user not found")
+	// ErrCLADependencyFailed reports an upstream CLA user lookup failure.
+	ErrCLADependencyFailed = errors.New("CLA manager operation is temporarily unavailable")
 	//ErrNoLFID thrown when users dont have an LFID
 	ErrNoLFID = errors.New("user has no LF Login")
 	//ErrNoOrgAdmins when No admins found for organization
@@ -1216,7 +1218,11 @@ func (s *service) ProjectCompanySignedOrNot(ctx context.Context, signedAtFoundat
 func searchCLADesigneeByEmail(ctx context.Context, email string) (*v2UserModels.User, error) {
 	client := v2UserService.GetClient()
 	if v2AcsService.DirectCLARolesEnabled() {
-		return client.SearchUsersByEmailContext(ctx, email)
+		user, err := client.SearchUsersByEmailContext(ctx, email)
+		if err != nil && !errors.Is(err, v2UserService.ErrUserNotFound) && !errors.Is(err, v2UserService.ErrEmailRequired) {
+			return nil, fmt.Errorf("%w: platform user lookup: %w", ErrCLADependencyFailed, err)
+		}
+		return user, err
 	}
 	return client.SearchUsersByEmail(email)
 }

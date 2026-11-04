@@ -420,15 +420,15 @@ func (s *service) addCLAManagerDesigneePermissions(ctx context.Context, claGroup
 					}
 					lfUser, userErr := userService.GetClient().GetUserByUsername(username)
 					if userErr != nil {
-						log.WithFields(f).WithError(userErr).Warnf("unable to verify platform user %s before assigning a CLA designee role", username)
+						log.WithFields(f).Warn("unable to verify platform user before assigning a CLA designee role")
 						return
 					}
 					if lfUser == nil || strings.TrimSpace(lfUser.Username) == "" {
-						log.WithFields(f).Warnf("platform user %s has no LFID - not assigning a CLA designee role", username)
+						log.WithFields(f).Warn("platform user has no LFID - not assigning a CLA designee role")
 						return
 					}
 					if lfUser.Username != username {
-						log.WithFields(f).Warnf("platform lookup did not match LFID %s - not assigning a CLA designee role", username)
+						log.WithFields(f).Warn("platform lookup did not match LFID - not assigning a CLA designee role")
 						return
 					}
 				}

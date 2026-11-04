@@ -118,6 +118,7 @@ func TestDesigneePropagationRequiresExactLFID(t *testing.T) {
 		roleID         = "11111111-2222-4333-8444-555555555555"
 		username       = "verified-designee"
 		foundationSFID = "foundation"
+		claGroupID     = "cla-group"
 	)
 	originalConfig := config.GetConfig()
 	configPath := filepath.Join(t.TempDir(), "config.json")
@@ -131,6 +132,7 @@ func TestDesigneePropagationRequiresExactLFID(t *testing.T) {
 	t.Cleanup(func() { loadConfig(originalConfig) })
 
 	var scopeUsername, returnedUsername string
+	var lookupErr error
 	var lookups, writes, legacyWrites int
 	tokenServed := make(chan struct{})
 	var tokenOnce sync.Once
@@ -152,6 +154,9 @@ func TestDesigneePropagationRequiresExactLFID(t *testing.T) {
 		case r.URL.Path == "/user-service/v1/users":
 			lookups++
 			assert.Equal(t, scopeUsername, r.URL.Query().Get("username"))
+			if lookupErr != nil {
+				return nil, lookupErr
+			}
 			body = `{"Data":[{"ID":"contact","Username":"` + returnedUsername + `"}]}`
 		case r.URL.Path == "/organization-service/v1/orgs/company":
 			body = `{"ID":"company","Name":"Company"}`
@@ -189,16 +194,24 @@ func TestDesigneePropagationRequiresExactLFID(t *testing.T) {
 	userService.InitClient(platformURL, "test-key")
 
 	logger := log.GetLogger()
+	oldLevel := logger.GetLevel()
+	logger.SetLevel(logrus.WarnLevel)
 	oldHooks := logger.ReplaceHooks(make(logrus.LevelHooks))
-	t.Cleanup(func() { logger.ReplaceHooks(oldHooks) })
+	t.Cleanup(func() {
+		logger.ReplaceHooks(oldHooks)
+		logger.SetLevel(oldLevel)
+	})
 	hook := logtest.NewLocal(logger)
 	for _, tc := range []struct {
 		name, requested, returned string
 		legacy                    bool
+		lookupFailure             bool
 		wantLookups, wantWrites   int
 	}{
 		{name: "missing username", returned: username},
 		{name: "blank username", requested: "   ", returned: username},
+		{name: "platform lookup failure", requested: username, lookupFailure: true, wantLookups: 1},
+		{name: "platform user without LFID", requested: username, wantLookups: 1},
 		{name: "mismatched username", requested: username, returned: "another-user", wantLookups: 1},
 		{name: "exact username", requested: username, returned: username, wantLookups: 1, wantWrites: 1},
 		{name: "legacy empty username unchanged", legacy: true, wantWrites: 1},
@@ -208,6 +221,10 @@ func TestDesigneePropagationRequiresExactLFID(t *testing.T) {
 			updated.MemberService.CreateCompanyEnabled = !tc.legacy
 			loadConfig(updated)
 			scopeUsername, returnedUsername = tc.requested, tc.returned
+			lookupErr = nil
+			if tc.lookupFailure {
+				lookupErr = fmt.Errorf("private platform lookup detail for %s", tc.requested)
+			}
 			lookups, writes, legacyWrites = 0, 0, 0
 			hook.Reset()
 			ctrl := gomock.NewController(t)
@@ -216,7 +233,7 @@ func TestDesigneePropagationRequiresExactLFID(t *testing.T) {
 			recorder := &designeeStreamEvents{}
 			svc := service{projectService: projects, eventsRepo: recorder}
 
-			require.NoError(t, svc.addCLAManagerDesigneePermissions(context.Background(), "cla-group", foundationSFID, "new-project"))
+			require.NoError(t, svc.addCLAManagerDesigneePermissions(context.Background(), claGroupID, foundationSFID, "new-project"))
 
 			assert.Equal(t, tc.wantLookups, lookups)
 			if tc.legacy {
@@ -228,7 +245,14 @@ func TestDesigneePropagationRequiresExactLFID(t *testing.T) {
 			}
 			assert.Len(t, recorder.recorded, tc.wantWrites)
 			if tc.wantWrites == 0 {
-				assert.NotEmpty(t, hook.AllEntries(), "skipped invalid identities must be logged")
+				warnings := 0
+				for _, entry := range hook.AllEntries() {
+					if entry.Data["claGroupID"] == claGroupID {
+						warnings++
+						assert.NotContains(t, fmt.Sprint(entry.Message, entry.Data), username)
+					}
+				}
+				assert.Equal(t, 1, warnings, "skipped invalid identities must be logged without their LFID")
 			}
 		})
 	}

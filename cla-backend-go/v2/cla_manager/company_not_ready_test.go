@@ -70,6 +70,7 @@ type notReadyHTTP struct {
 	acsScopes  string
 	grantCode  int
 	userStatus int
+	userErr    error
 
 	mu    sync.Mutex
 	calls []string
@@ -86,6 +87,9 @@ func (h *notReadyHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 		body = `{"access_token":"unit-test-token","token_type":"Bearer","expires_in":3600}`
 		designeeTokenClose.Do(func() { close(designeeTokenServed) })
 	case r.URL.Host == designeePlatformHost && r.URL.Path == notReadyUsersPath:
+		if h.userErr != nil {
+			return nil, h.userErr
+		}
 		if h.userStatus != 0 {
 			response.StatusCode = h.userStatus
 		}
@@ -276,6 +280,110 @@ func TestDirectDesigneeHandlersRejectBlankEmail(t *testing.T) {
 	}
 }
 
+func TestDirectDesigneeHandlersMapLookupFailures(t *testing.T) {
+	t.Setenv("DISABLE_LOCAL_PERMISSION_CHECKS", "false")
+	for _, operation := range []string{opDesignee, opDesigneeByGroup, opCreateRequest, opInviteAdmin} {
+		t.Run(operation, func(t *testing.T) {
+			withCreateViaMemberService(t, true)
+			transport := &notReadyHTTP{orgStatus: http.StatusNotFound, userStatus: http.StatusServiceUnavailable, users: designeeUserJSON()}
+			setupNotReadyHTTP(t, transport)
+			svc := newNotReadyService(t)
+			eventRecorder := &directDesigneeEvents{}
+			svc.eventService = eventRecorder
+			api := operations.NewEasyclaAPI(nil)
+			Configure(api, svc, svc.companyService, "", "", svc.projectCGRepo, &fakeEasyCLAUserRepo{})
+			request := httptest.NewRequest(http.MethodPost, "/", nil)
+			authUser := &auth.User{UserName: notReadyRequester, Email: testerEmail, ACL: auth.ACL{Admin: true, Allowed: true}}
+			reqID, claGroupID, fullName := testReqID, notReadyClaGroupID, notReadyRequester
+			email := strfmt.Email("nominee@example.invalid")
+			var response middleware.Responder
+			switch operation {
+			case opDesignee:
+				response = api.ClaManagerCreateCLAManagerDesigneeHandler.Handle(cla_manager.CreateCLAManagerDesigneeParams{
+					HTTPRequest: request, XREQUESTID: &reqID, CompanyID: notReadyCompany.CompanyID, ProjectSFID: notReadyProjectSFID,
+					Body: cla_manager.CreateCLAManagerDesigneeBody{UserEmail: email},
+				}, authUser)
+			case opDesigneeByGroup:
+				response = api.ClaManagerCreateCLAManagerDesigneeByGroupHandler.Handle(cla_manager.CreateCLAManagerDesigneeByGroupParams{
+					HTTPRequest: request, XREQUESTID: &reqID, CompanyID: notReadyCompany.CompanyID, ClaGroupID: claGroupID,
+					Body: cla_manager.CreateCLAManagerDesigneeByGroupBody{UserEmail: email},
+				}, authUser)
+			case opCreateRequest:
+				response = api.ClaManagerCreateCLAManagerRequestHandler.Handle(cla_manager.CreateCLAManagerRequestParams{
+					HTTPRequest: request, XREQUESTID: &reqID, CompanyID: notReadyCompany.CompanyID, ProjectSFID: notReadyProjectSFID,
+					Body: cla_manager.CreateCLAManagerRequestBody{UserEmail: email, FullName: &fullName},
+				}, authUser)
+			case opInviteAdmin:
+				response = api.ClaManagerInviteCompanyAdminHandler.Handle(cla_manager.InviteCompanyAdminParams{
+					HTTPRequest: request, XREQUESTID: &reqID, UserID: "contributor",
+					Body: cla_manager.InviteCompanyAdminBody{CompanyID: notReadyCompany.CompanyID, ClaGroupID: &claGroupID, UserEmail: email, Name: fullName},
+				})
+			}
+			output := httptest.NewRecorder()
+			response.WriteResponse(output, runtime.JSONProducer())
+			assert.Equal(t, http.StatusInternalServerError, output.Code, output.Body.String())
+			assert.Equal(t, testReqID, output.Header().Get(utils.XREQUESTID))
+			assert.NotContains(t, output.Body.String(), "searching user")
+			assert.NotContains(t, output.Body.String(), fmt.Sprint(http.StatusServiceUnavailable))
+			assert.NotContains(t, output.Body.String(), email.String())
+			assert.NotContains(t, output.Body.String(), testerEmail)
+			var payload models.ErrorResponse
+			require.NoError(t, json.Unmarshal(output.Body.Bytes(), &payload))
+			assert.Equal(t, "500", payload.Code)
+			assert.Equal(t, testReqID, payload.XRequestID)
+			assert.Equal(t, 1, transport.count("GET "+notReadyUsersPath))
+			assert.Zero(t, transport.count("POST /acs/v1/api/roles/"+notReadyRoleID+"/members/users"))
+			assert.Zero(t, transport.count("POST "+notReadyOrgPath+"/scopes"))
+			assert.Empty(t, eventRecorder.recorded)
+		})
+	}
+}
+
+func TestDesigneeLookupClassifiesDependencyFailures(t *testing.T) {
+	transportErr := errors.New("platform transport unavailable")
+	for _, tc := range []struct {
+		name, email, users string
+		legacy             bool
+		status             int
+		transportErr       error
+		wantErr            error
+	}{
+		{name: "upstream failure", email: testerEmail, users: designeeUserJSON(), status: http.StatusServiceUnavailable, wantErr: ErrCLADependencyFailed},
+		{name: "transport cause preserved", email: testerEmail, transportErr: transportErr, wantErr: ErrCLADependencyFailed},
+		{name: "missing user stays not found", email: testerEmail, wantErr: v2UserService.ErrUserNotFound},
+		{name: "blank email stays invalid", email: notReadyBlankEmail, wantErr: v2UserService.ErrEmailRequired},
+		{name: "legacy lookup unchanged", legacy: true, email: testerEmail, users: designeeUserJSON(), status: http.StatusServiceUnavailable},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			withCreateViaMemberService(t, !tc.legacy)
+			transport := &notReadyHTTP{users: tc.users, userStatus: tc.status, userErr: tc.transportErr}
+			setupNotReadyHTTP(t, transport)
+
+			user, err := searchCLADesigneeByEmail(context.Background(), tc.email)
+
+			if tc.wantErr == nil {
+				require.NoError(t, err)
+				require.NotNil(t, user)
+				assert.Equal(t, designeeUserLFID, user.Username)
+			} else {
+				require.ErrorIs(t, err, tc.wantErr)
+				assert.Nil(t, user)
+				if tc.wantErr != ErrCLADependencyFailed {
+					assert.NotErrorIs(t, err, ErrCLADependencyFailed)
+				}
+				if tc.transportErr != nil {
+					assert.ErrorIs(t, err, tc.transportErr)
+				}
+			}
+			if strings.TrimSpace(tc.email) == "" {
+				assert.Zero(t, transport.count("GET "+notReadyUsersPath))
+			} else {
+				assert.Equal(t, 1, transport.count("GET "+notReadyUsersPath))
+			}
+		})
+	}
+}
+
 func TestDirectDesigneeEntryPointsRejectInvalidLookupWithoutInviting(t *testing.T) {
 	for _, operation := range []string{opDesignee, opCreateRequest, opInviteAdmin} {
 		for _, email := range []string{"", notReadyBlankEmail, "designee@example.invalid"} {
@@ -298,6 +406,7 @@ func TestDirectDesigneeEntryPointsRejectInvalidLookupWithoutInviting(t *testing.
 					assert.ErrorIs(t, err, v2UserService.ErrEmailRequired)
 					assert.Zero(t, transport.count("GET "+notReadyUsersPath))
 				} else {
+					assert.ErrorIs(t, err, ErrCLADependencyFailed)
 					assert.ErrorContains(t, err, "503")
 					assert.NotErrorIs(t, err, ErrNoLFID)
 					assert.NotErrorIs(t, err, ErrLFXUserNotFound)
