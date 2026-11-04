@@ -90,6 +90,7 @@ func (ac *Client) CreateProjectRoleGrant(ctx context.Context, orgSFID, projectSF
 		return nil, nil
 	}
 	if status != http.StatusCreated {
+		log.WithField("status", status).Warn("ACS create user grant failed")
 		return nil, fmt.Errorf("ACS create user grant returned %d: %s", status, strings.TrimSpace(string(response[:min(len(response), 512)])))
 	}
 	var grants []OrgGrant
@@ -123,6 +124,7 @@ func (ac *Client) DeleteUserGrant(ctx context.Context, roleID, grantID string) e
 		return err
 	}
 	if status != http.StatusNoContent {
+		log.WithField("status", status).Warn("ACS delete user grant failed")
 		return fmt.Errorf("ACS delete user grant returned %d: %s", status, strings.TrimSpace(string(response[:min(len(response), 512)])))
 	}
 	return nil

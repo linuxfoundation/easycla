@@ -185,10 +185,6 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 				msg := fmt.Sprintf("Conflict assigning cla manager role for Project SFID: %s ", params.ProjectSFID)
 				return cla_manager.NewCreateCLAManagerDesigneeByGroupConflict().WithXRequestID(reqID).WithPayload(utils.ErrorResponseConflictWithError(reqID, msg, err))
 			}
-			var notReady *CompanyNotReadyError
-			if errors.As(err, &notReady) {
-				return companyNotReadyResponder(reqID, notReady)
-			}
 			msg := fmt.Sprintf("user :%s, error: %+v ", authUser.Email, err)
 			return cla_manager.NewCreateCLAManagerBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 		}
@@ -253,10 +249,6 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 				log.WithFields(f).WithError(err).Warnf("problem creating cla manager designee for CLA Group: %s with user email: %s", params.ClaGroupID, params.Body.UserEmail)
 				if err == ErrCLAManagerDesigneeConflict {
 					return cla_manager.NewCreateCLAManagerDesigneeByGroupConflict().WithXRequestID(reqID).WithPayload(utils.ErrorResponseConflictWithError(reqID, msg, err))
-				}
-				var notReady *CompanyNotReadyError
-				if errors.As(err, &notReady) {
-					return companyNotReadyResponder(reqID, notReady)
 				}
 				return cla_manager.NewCreateCLAManagerDesigneeByGroupBadRequest().WithXRequestID(reqID).WithPayload(utils.ErrorResponseBadRequestWithError(reqID, msg, err))
 			}
@@ -408,10 +400,6 @@ func Configure(api *operations.EasyclaAPI, service Service, v1CompanyService v1C
 				log.WithField(utils.XREQUESTID, reqID).Warn(ErrCLADependencyFailed)
 				return cla_manager.NewCreateCLAManagerRequestInternalServerError().WithXRequestID(reqID).WithPayload(
 					utils.ErrorResponseInternalServerError(reqID, ErrCLADependencyFailed.Error()))
-			}
-			var notReady *CompanyNotReadyError
-			if errors.As(err, &notReady) {
-				return companyNotReadyResponder(reqID, notReady)
 			}
 			statusCode := buildErrorStatusCode(err)
 			if statusCode == NotFound {

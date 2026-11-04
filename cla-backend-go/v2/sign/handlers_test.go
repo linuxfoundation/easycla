@@ -25,6 +25,7 @@ import (
 const (
 	handlerTestProjectSFID = "a09P000000DsCE9IAN"
 	handlerTestCompanySFID = "0014100000Te0fZAAR"
+	handlerTestRequestID   = "req-corporate-signature"
 )
 
 type fakeSignService struct {
@@ -48,10 +49,12 @@ func respondRequestCorporateSignature(t *testing.T, serviceErr error) (int, http
 	username := "cla-signatory-user"
 	authUser := &auth.User{UserName: username, ACL: auth.ACL{Allowed: true, Scopes: []auth.Scope{{Type: auth.ProjectOrganization, ID: handlerTestProjectSFID + "|" + handlerTestCompanySFID}}}}
 	projectSFID, companySFID := handlerTestProjectSFID, handlerTestCompanySFID
+	reqID := handlerTestRequestID
 	responder := api.SignRequestCorporateSignatureHandler.Handle(signOps.RequestCorporateSignatureParams{
 		HTTPRequest:   httptest.NewRequest(http.MethodPost, "/v4/request-corporate-signature", nil),
 		Authorization: "******",
 		XUSERNAME:     &username,
+		XREQUESTID:    &reqID,
 		Input:         &models.CorporateSignatureInput{ProjectSfid: &projectSFID, CompanySfid: &companySFID},
 	}, authUser)
 	recorder := httptest.NewRecorder()
@@ -88,11 +91,15 @@ func TestRequestCorporateSignatureHandlerLegacySanctionMessageStillMapsTo403(t *
 }
 
 func TestRequestCorporateSignatureHandlerDependencyPrecedesLegacyMatching(t *testing.T) {
-	status, _, body := respondRequestCorporateSignature(t, fmt.Errorf("%w: upstream record does not exist", ErrSigningDependencyFailed))
+	status, header, body := respondRequestCorporateSignature(t, fmt.Errorf("%w: upstream record does not exist", ErrSigningDependencyFailed))
 
 	assert.Equal(t, http.StatusInternalServerError, status)
+	assert.Equal(t, handlerTestRequestID, header.Get(utils.XREQUESTID))
 	assert.Contains(t, body, ErrSigningDependencyFailed.Error())
 	assert.NotContains(t, body, "upstream record")
+	var payload models.ErrorResponse
+	require.NoError(t, json.Unmarshal([]byte(body), &payload))
+	assert.Equal(t, handlerTestRequestID, payload.XRequestID)
 }
 
 func TestRequestCorporateSignatureHandlerOtherErrorsAreBadRequests(t *testing.T) {

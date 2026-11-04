@@ -52,7 +52,7 @@ var (
 	ErrCLAUserNotFound = errors.New("cla user not found")
 	//ErrLFXUserNotFound when user-service fails to find user
 	ErrLFXUserNotFound = errors.New("lfx user not found")
-	// ErrCLADependencyFailed reports an upstream CLA user lookup failure.
+	// ErrCLADependencyFailed reports an upstream CLA manager dependency failure.
 	ErrCLADependencyFailed = errors.New("CLA manager operation is temporarily unavailable")
 	//ErrNoLFID thrown when users dont have an LFID
 	ErrNoLFID = errors.New("user has no LF Login")
@@ -371,19 +371,21 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 
 	log.WithFields(f).Debugf("user found: %+v", lfxUser)
 
-	log.WithFields(f).Debugf("checking if user has %s role scope...", utils.CLADesigneeRole)
-	// Check if user is already CLA Manager designee of project|organization scope
-	hasRoleScope, hasRoleScopeErr := orgClient.IsCLAUserHaveRoleScope(ctx, utils.CLADesigneeRole, lfxUser.ID, lfxUser.Username, v1CompanyModel.CompanyExternalID, projectSFID)
-	if hasRoleScopeErr != nil {
-		// Skip 404 for ListOrgUsrServiceScopes endpoint
-		if _, ok := hasRoleScopeErr.(*organizations.ListOrgUsrServiceScopesNotFound); !ok {
-			log.WithFields(f).Debugf("Failed to check roleScope: %s for user: %s", utils.CLADesigneeRole, lfxUser.Username)
-			return nil, hasRoleScopeErr
+	if !direct {
+		log.WithFields(f).Debugf("checking if user has %s role scope...", utils.CLADesigneeRole)
+		// Check if user is already CLA Manager designee of project|organization scope
+		hasRoleScope, hasRoleScopeErr := orgClient.IsCLAUserHaveRoleScope(ctx, utils.CLADesigneeRole, lfxUser.ID, lfxUser.Username, v1CompanyModel.CompanyExternalID, projectSFID)
+		if hasRoleScopeErr != nil {
+			// Skip 404 for ListOrgUsrServiceScopes endpoint
+			if _, ok := hasRoleScopeErr.(*organizations.ListOrgUsrServiceScopesNotFound); !ok {
+				log.WithFields(f).Debugf("Failed to check roleScope: %s for user: %s", utils.CLADesigneeRole, lfxUser.Username)
+				return nil, hasRoleScopeErr
+			}
 		}
-	}
-	if hasRoleScope {
-		// this is fine...just return with value...
-		log.WithFields(f).Debugf("User already has role scope: %s", utils.CLADesigneeRole)
+		if hasRoleScope {
+			// this is fine...just return with value...
+			log.WithFields(f).Debugf("User already has role scope: %s", utils.CLADesigneeRole)
+		}
 	}
 
 	log.WithFields(f).Debug("loading project by SFID...")
@@ -404,6 +406,9 @@ func (s *service) CreateCLAManagerDesignee(ctx context.Context, companyID string
 		userEmail, utils.CLADesigneeRole, roleID, projectSFID, v1CompanyModel.CompanyExternalID)
 	scopeErr := orgClient.CreateCLAUserRoleScope(ctx, userEmail, lfxUser.Username, projectSFID, v1CompanyModel.CompanyExternalID, roleID)
 	if scopeErr != nil {
+		if direct {
+			return nil, fmt.Errorf("%w: ACS grant: %w", ErrCLADependencyFailed, scopeErr)
+		}
 		// Ignore conflict - role has already been assigned - otherwise, return error
 		if _, ok := scopeErr.(*organizations.CreateOrgUsrRoleScopesConflict); !ok {
 			log.Warn(fmt.Sprintf("problem creating projectOrg scope for email: %s , projectSFID: %s, companySFID: %s", userEmail, projectSFID, v1CompanyModel.CompanyExternalID))

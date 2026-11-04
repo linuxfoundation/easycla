@@ -68,6 +68,7 @@ type notReadyHTTP struct {
 	orgStatus  int
 	users      string
 	acsScopes  string
+	acsStatus  int
 	grantCode  int
 	userStatus int
 	userErr    error
@@ -107,6 +108,9 @@ func (h *notReadyHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 	case r.URL.Host == designeePlatformHost && r.URL.Path == notReadyACSGrantsPath:
 		assert.Equal(h.t, http.MethodGet, r.Method)
 		assert.Equal(h.t, "false", r.Header.Get("X-LFX-CACHE"))
+		if h.acsStatus != 0 {
+			response.StatusCode = h.acsStatus
+		}
 		body = `{"userroles":{},"metadata":{"TotalSize":0}}`
 		if h.acsScopes != "" {
 			body = h.acsScopes
@@ -208,14 +212,15 @@ func TestCreateCLAManagerDesigneeBeforeOrganizationIngestion(t *testing.T) {
 	for _, status := range []int{http.StatusCreated, http.StatusConflict, http.StatusInternalServerError} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			withCreateViaMemberService(t, true)
-			transport := &notReadyHTTP{orgStatus: http.StatusNotFound, users: designeeUserJSON(), grantCode: status}
+			transport := &notReadyHTTP{orgStatus: http.StatusNotFound, users: designeeUserJSON(), acsStatus: http.StatusServiceUnavailable, grantCode: status}
 			setupNotReadyHTTP(t, transport)
 			svc := newNotReadyService(t)
 			recorder := &directDesigneeEvents{}
 			svc.eventService = recorder
 			designee, err := svc.CreateCLAManagerDesignee(context.Background(), notReadyCompany.CompanyID, notReadyProjectSFID, "designee@example.invalid")
 			if status == http.StatusInternalServerError {
-				require.Error(t, err)
+				require.ErrorIs(t, err, ErrCLADependencyFailed)
+				assert.ErrorContains(t, err, "ACS create user grant returned 500")
 				assert.Nil(t, designee)
 				assert.Empty(t, recorder.recorded)
 			} else {
@@ -230,6 +235,7 @@ func TestCreateCLAManagerDesigneeBeforeOrganizationIngestion(t *testing.T) {
 			}
 			assert.Equal(t, 1, transport.count("GET "+notReadyOrgPath))
 			assert.Equal(t, 1, transport.count("GET "+notReadyUsersPath))
+			assert.Zero(t, transport.count("GET "+notReadyACSGrantsPath), "nomination must not depend on an organization-wide grant read")
 			assert.Equal(t, 1, transport.count("POST /acs/v1/api/roles/"+notReadyRoleID+"/members/users"))
 			if status == http.StatusInternalServerError {
 				assert.Equal(t, 1, transport.count("GET /acs/v1/api/roles"))
@@ -280,12 +286,25 @@ func TestDirectDesigneeHandlersRejectBlankEmail(t *testing.T) {
 	}
 }
 
-func TestDirectDesigneeHandlersMapLookupFailures(t *testing.T) {
+func TestDirectDesigneeHandlersMapDependencyFailures(t *testing.T) {
 	t.Setenv("DISABLE_LOCAL_PERMISSION_CHECKS", "false")
-	for _, operation := range []string{opDesignee, opDesigneeByGroup, opCreateRequest, opInviteAdmin} {
-		t.Run(operation, func(t *testing.T) {
+	for _, tc := range []struct {
+		operation                     string
+		userStatus, grantCode         int
+		wantUserCalls, wantGrantCalls int
+	}{
+		{operation: opDesignee, userStatus: http.StatusServiceUnavailable, wantUserCalls: 1},
+		{operation: opDesigneeByGroup, userStatus: http.StatusServiceUnavailable, wantUserCalls: 1},
+		{operation: opCreateRequest, userStatus: http.StatusServiceUnavailable, wantUserCalls: 1},
+		{operation: opInviteAdmin, userStatus: http.StatusServiceUnavailable, wantUserCalls: 1},
+		{operation: opDesignee, grantCode: http.StatusServiceUnavailable, wantUserCalls: 1, wantGrantCalls: 1},
+		{operation: opDesigneeByGroup, grantCode: http.StatusServiceUnavailable, wantUserCalls: 1, wantGrantCalls: 1},
+		{operation: opCreateRequest, grantCode: http.StatusServiceUnavailable, wantUserCalls: 2, wantGrantCalls: 1},
+		{operation: opInviteAdmin, grantCode: http.StatusServiceUnavailable, wantUserCalls: 2, wantGrantCalls: 1},
+	} {
+		t.Run(fmt.Sprintf("%s/user=%d/grant=%d", tc.operation, tc.userStatus, tc.grantCode), func(t *testing.T) {
 			withCreateViaMemberService(t, true)
-			transport := &notReadyHTTP{orgStatus: http.StatusNotFound, userStatus: http.StatusServiceUnavailable, users: designeeUserJSON()}
+			transport := &notReadyHTTP{orgStatus: http.StatusNotFound, userStatus: tc.userStatus, grantCode: tc.grantCode, users: designeeUserJSON()}
 			setupNotReadyHTTP(t, transport)
 			svc := newNotReadyService(t)
 			eventRecorder := &directDesigneeEvents{}
@@ -297,7 +316,7 @@ func TestDirectDesigneeHandlersMapLookupFailures(t *testing.T) {
 			reqID, claGroupID, fullName := testReqID, notReadyClaGroupID, notReadyRequester
 			email := strfmt.Email("nominee@example.invalid")
 			var response middleware.Responder
-			switch operation {
+			switch tc.operation {
 			case opDesignee:
 				response = api.ClaManagerCreateCLAManagerDesigneeHandler.Handle(cla_manager.CreateCLAManagerDesigneeParams{
 					HTTPRequest: request, XREQUESTID: &reqID, CompanyID: notReadyCompany.CompanyID, ProjectSFID: notReadyProjectSFID,
@@ -327,12 +346,14 @@ func TestDirectDesigneeHandlersMapLookupFailures(t *testing.T) {
 			assert.NotContains(t, output.Body.String(), fmt.Sprint(http.StatusServiceUnavailable))
 			assert.NotContains(t, output.Body.String(), email.String())
 			assert.NotContains(t, output.Body.String(), testerEmail)
+			assert.NotContains(t, output.Body.String(), designeeUserLFID)
 			var payload models.ErrorResponse
 			require.NoError(t, json.Unmarshal(output.Body.Bytes(), &payload))
 			assert.Equal(t, "500", payload.Code)
+			assert.Equal(t, "EasyCLA - 500 Internal Server Error - "+ErrCLADependencyFailed.Error(), payload.Message)
 			assert.Equal(t, testReqID, payload.XRequestID)
-			assert.Equal(t, 1, transport.count("GET "+notReadyUsersPath))
-			assert.Zero(t, transport.count("POST /acs/v1/api/roles/"+notReadyRoleID+"/members/users"))
+			assert.Equal(t, tc.wantUserCalls, transport.count("GET "+notReadyUsersPath))
+			assert.Equal(t, tc.wantGrantCalls, transport.count("POST /acs/v1/api/roles/"+notReadyRoleID+"/members/users"))
 			assert.Zero(t, transport.count("POST "+notReadyOrgPath+"/scopes"))
 			assert.Empty(t, eventRecorder.recorded)
 		})
@@ -590,51 +611,34 @@ func TestInviteCompanyAdminCompanyNotReady(t *testing.T) {
 	})
 }
 
-type notReadyWriteService struct{ Service }
+func TestInviteCompanyAdminHandlerMapsCompanyNotReady(t *testing.T) {
+	withCreateViaMemberService(t, true)
+	transport := &notReadyHTTP{orgStatus: http.StatusNotFound}
+	setupNotReadyHTTP(t, transport)
+	svc := newNotReadyService(t)
+	api := operations.NewEasyclaAPI(nil)
+	Configure(api, svc, svc.companyService, "", "", svc.projectCGRepo, &fakeEasyCLAUserRepo{})
+	reqID, claGroupID := testReqID, notReadyClaGroupID
+	response := api.ClaManagerInviteCompanyAdminHandler.Handle(cla_manager.InviteCompanyAdminParams{
+		HTTPRequest: httptest.NewRequest(http.MethodPost, "/", nil), XREQUESTID: &reqID, UserID: "contributor",
+		Body: cla_manager.InviteCompanyAdminBody{
+			ContactAdmin: true, CompanyID: notReadyCompany.CompanyID, ClaGroupID: &claGroupID,
+			UserEmail: "admin@example.invalid", Name: "Admin",
+		},
+	})
+	output := httptest.NewRecorder()
+	response.WriteResponse(output, runtime.JSONProducer())
 
-func (notReadyWriteService) notReady() error {
-	return &CompanyNotReadyError{CompanyID: "company-1", CompanySFID: "comp-sfid"}
-}
-
-func (s notReadyWriteService) CreateCLAManagerDesignee(_ context.Context, _ string, _ string, _ string) (*models.ClaManagerDesignee, error) {
-	return nil, s.notReady()
-}
-
-func (s notReadyWriteService) CreateCLAManagerDesigneeByGroup(_ context.Context, _ cla_manager.CreateCLAManagerDesigneeByGroupParams, _ []*projects_cla_groups.ProjectClaGroup) ([]*models.ClaManagerDesignee, string, error) {
-	return nil, "Creating cla manager failed for Project SFID: proj-sfid", s.notReady()
-}
-
-func (s notReadyWriteService) InviteCompanyAdmin(_ context.Context, _ bool, _ string, _ string, _ string, _ string, _ *v1User.User, _ string) ([]*models.ClaManagerDesignee, error) {
-	return nil, s.notReady()
-}
-
-func (s notReadyWriteService) CreateCLAManagerRequest(_ context.Context, _ bool, _ string, _ string, _ string, _ string, _ *auth.User) (*models.ClaManagerDesignee, error) {
-	return nil, s.notReady()
-}
-
-func TestWriteHandlersMapCompanyNotReady(t *testing.T) {
-	t.Setenv("DISABLE_LOCAL_PERMISSION_CHECKS", "false")
-	managerUser := &auth.User{UserName: "manager-user", Email: "manager@example.com", ACL: auth.ACL{Allowed: true, Scopes: []auth.Scope{{Type: auth.ProjectOrganization, ID: "proj-sfid|comp-sfid"}}}}
-	orgAdminUser := &auth.User{UserName: "org-admin-user", Email: "org-admin@example.com", ACL: auth.ACL{Admin: true, Allowed: true}}
-	users := map[string]*auth.User{opDesignee: managerUser, opDesigneeByGroup: managerUser, opInviteAdmin: nil, opCreateRequest: orgAdminUser}
-	for _, op := range []string{opDesignee, opDesigneeByGroup, opInviteAdmin, opCreateRequest} {
-		t.Run(op, func(t *testing.T) {
-			api := operations.NewEasyclaAPI(nil)
-			companyService := &fakeV1CompanyService{company: &v1Models.Company{CompanyID: "company-1", CompanyName: "Acme", CompanyExternalID: "comp-sfid"}}
-			pcgRepo := &fakePCGRepoWithProjects{fakeProjectClaGroupRepo{cginfo: &projects_cla_groups.ProjectClaGroup{ClaGroupID: "cla-group-1"}}}
-			Configure(api, notReadyWriteService{}, companyService, "", "", pcgRepo, &fakeEasyCLAUserRepo{})
-
-			status, body, headers := callWriteOp(t, api, op, users[op])
-
-			assert.Equal(t, http.StatusConflict, status, body)
-			assert.Equal(t, testReqID, headers.Get("X-Request-Id"))
-			var payload map[string]interface{}
-			require.NoError(t, json.Unmarshal([]byte(body), &payload))
-			assert.Equal(t, companyNotReadyCode, payload["code"])
-			assert.Equal(t, "company-1", payload["company_id"])
-			assert.Equal(t, "comp-sfid", payload["company_sfid"])
-			assert.Contains(t, payload["message"], "try again later")
-			assert.Equal(t, testReqID, payload["x-request-id"])
-		})
-	}
+	assert.Equal(t, http.StatusConflict, output.Code, output.Body.String())
+	assert.Equal(t, testReqID, output.Header().Get(utils.XREQUESTID))
+	var payload map[string]interface{}
+	require.NoError(t, json.Unmarshal(output.Body.Bytes(), &payload))
+	assert.Equal(t, companyNotReadyCode, payload["code"])
+	assert.Equal(t, notReadyCompany.CompanyID, payload["company_id"])
+	assert.Equal(t, notReadyCompanySFID, payload["company_sfid"])
+	assert.Contains(t, payload["message"], "try again later")
+	assert.Equal(t, testReqID, payload["x-request-id"])
+	assert.Equal(t, 1, transport.count("GET "+notReadyOrgPath))
+	assert.Zero(t, transport.count("POST "+notReadyOrgPath+"/scopes"))
+	assert.Zero(t, transport.count("POST /acs/v1/api/roles/"+notReadyRoleID+"/members/users"))
 }

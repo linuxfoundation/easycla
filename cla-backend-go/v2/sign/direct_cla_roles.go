@@ -69,7 +69,8 @@ func prepareDirectUserForSigning(ctx context.Context, email, companySFID, projec
 		if errors.Is(err, userService.ErrEmailRequired) {
 			return nil, err
 		}
-		return nil, fmt.Errorf("%w: platform user lookup: %w", ErrSigningDependencyFailed, err)
+		log.WithField(utils.XREQUESTID, ctx.Value(utils.XREQUESTID)).Warn("unable to look up signatory - continuing without an ACS grant")
+		return nil, nil
 	}
 	if user == nil || strings.TrimSpace(user.Username) == "" {
 		log.Debug("signatory has no LFID - no ACS grant required")
@@ -82,7 +83,8 @@ func prepareDirectUserForSigning(ctx context.Context, email, companySFID, projec
 	}
 	grant, err := acs.CreateProjectRoleGrant(ctx, companySFID, projectSFID, roleID, user.Username)
 	if err != nil {
-		return nil, fmt.Errorf("%w: signatory grant: %w", ErrSigningDependencyFailed, err)
+		log.WithField(utils.XREQUESTID, ctx.Value(utils.XREQUESTID)).Warn("unable to assign the signatory grant - continuing without it")
+		return nil, nil
 	}
 	return grant, nil
 }
