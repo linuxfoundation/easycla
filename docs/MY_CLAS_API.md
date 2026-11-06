@@ -218,7 +218,9 @@ searched:
      the identities linked to the LF login's Auth0 user record, via the shared platform
      M2M credentials. LFX One links newly connected identities only in Auth0, so they may
      exist nowhere else yet; a lookup failure yields an empty set, so affected keys are
-     skipped, never allowed.
+     skipped, never allowed. Identities from the Terraform-managed `gitlab` custom social
+     connection (`provider: "oauth2"`, `connection: "gitlab"`) count as GitLab identities,
+     and the `gitlab|` prefix is stripped from their `user_id` before matching `gitlabId`.
 
    Usernames are accepted per source (`github`, `gitlab`, `gerrit` — a Slack
    identity never authorizes a GitHub search); identity emails are accepted from any

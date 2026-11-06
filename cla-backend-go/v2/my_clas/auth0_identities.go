@@ -40,6 +40,32 @@ func auth0UserID(lfUsername string) string {
 	return base58.Encode(hash[:])
 }
 
+// auth0SocialConnectionSources lists the Auth0 custom social (provider "oauth2") connections that
+// stand for a native identity source - keyed by lowercase connection name. lfxOne links GitLab
+// through the Terraform-managed "gitlab" connection, so its identities arrive as provider "oauth2"
+var auth0SocialConnectionSources = map[string]string{
+	"gitlab": identitySourceGitlab,
+}
+
+// auth0IdentitySource returns the effective identity source and user ID for an Auth0 identity:
+// a mapped custom social connection reports its native source, with the "<connection>|" prefix
+// Auth0 adds to custom social user IDs removed when present
+func auth0IdentitySource(provider, connection, userID string) (string, string) {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	if provider != "oauth2" {
+		return provider, userID
+	}
+	connection = strings.ToLower(strings.TrimSpace(connection))
+	source, ok := auth0SocialConnectionSources[connection]
+	if !ok {
+		return provider, userID
+	}
+	if prefix, rest, found := strings.Cut(userID, "|"); found && strings.EqualFold(prefix, connection) {
+		userID = rest
+	}
+	return source, userID
+}
+
 // Auth0Identity is one identity linked to the LF login's Auth0 user record
 type Auth0Identity struct {
 	Provider string
@@ -121,6 +147,7 @@ func (c *auth0Client) UserIdentities(ctx context.Context, lfUsername string) ([]
 	var payload struct {
 		Identities []struct {
 			Provider    string          `json:"provider"`
+			Connection  string          `json:"connection"`
 			UserID      json.RawMessage `json:"user_id"`
 			ProfileData struct {
 				Nickname string `json:"nickname"`
@@ -136,8 +163,9 @@ func (c *auth0Client) UserIdentities(ctx context.Context, lfUsername string) ([]
 		if userID == "null" {
 			userID = ""
 		}
+		provider, userID := auth0IdentitySource(identity.Provider, identity.Connection, userID)
 		identities = append(identities, Auth0Identity{
-			Provider: strings.ToLower(strings.TrimSpace(identity.Provider)),
+			Provider: provider,
 			UserID:   userID,
 			Username: identity.ProfileData.Nickname,
 		})

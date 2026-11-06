@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
@@ -336,6 +337,32 @@ func TestAuthorizeIdentityViaAuth0(t *testing.T) {
 	assert.Equal(t, []int64{777}, allowed.GitlabIDs)
 	assert.Equal(t, []string{"someone-gl", "Someone-GL"}, allowed.GitlabUsernames)
 	assert.Equal(t, []string{"githubId:99"}, skipped)
+}
+
+// GitLab accounts linked through lfxOne's "gitlab" custom social connection arrive from Auth0 as
+// provider "oauth2" with a "gitlab|"-prefixed user ID - exercised through the real Auth0 client
+func TestAuthorizeIdentityViaAuth0GitlabOAuth2Connection(t *testing.T) {
+	tokenCalls := 0
+	server := newAuth0TestServer(t, &tokenCalls, http.StatusOK,
+		`{"identities":[
+			{"provider":"github","user_id":30514950,"profileData":{"nickname":"ah-med"}},
+			{"provider":"oauth2","connection":"gitlab","user_id":"gitlab|4242","profileData":{"nickname":"someone-gl"}}
+		]}`)
+	svc := newTestService(&fakeRepo{}, nil, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+	svc.auth0Identities = NewAuth0IdentityService(server.URL+"/oauth/token", "id", "secret")
+	require.NotNil(t, svc.auth0Identities)
+
+	allowed, skipped, err := svc.AuthorizeIdentity(context.Background(), &Caller{Username: "someone"}, &Identity{
+		Emails:          []string{"nobody@example.org"},
+		GithubIDs:       []int64{30514950},
+		GitlabIDs:       []int64{4242, 9999},
+		GitlabUsernames: []string{"Someone-GL", "stranger-gl"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []int64{4242}, allowed.GitlabIDs)
+	assert.Equal(t, []string{"someone-gl", "Someone-GL"}, allowed.GitlabUsernames)
+	assert.Equal(t, []int64{30514950}, allowed.GithubIDs)
+	assert.Equal(t, []string{"email:nobody@example.org", "gitlabId:9999", "gitlabUsername:stranger-gl"}, skipped)
 }
 
 func TestAuthorizeIdentitySelfRecordShortCircuit(t *testing.T) {
