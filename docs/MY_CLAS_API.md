@@ -218,8 +218,12 @@ searched:
      the identities linked to the LF login's Auth0 user record, via the shared platform
      M2M credentials. LFX One links newly connected identities only in Auth0, so they may
      exist nowhere else yet. A rate-limited (HTTP 429) lookup is retried up to 2 times
-     within ~3s, honouring Auth0's `Retry-After`/`X-RateLimit-Reset` headers; it fails
-     fast when the reset is further away. Successful lookups are cached per LF username for
+     with at most 3 seconds of cumulative planned waits, including jitter, honouring
+     Auth0's `Retry-After`/`X-RateLimit-Reset` headers. HTTP requests and token acquisition
+     are not included in this wait budget; a retry is skipped if its wait would exceed
+     the remaining budget. The shared lookup has its own 35-second context timeout;
+     a caller can cancel its wait without cancelling that lookup. Successful lookups
+     are cached per LF username for
      5 minutes in each Lambda container (`v2/my_clas/auth0_identities_cache.go`), so
      linking or unlinking an account takes effect within that window. While Auth0 keeps
      rate-limiting, the user's own last successful lookup (at most 1 hour old) stands in,
@@ -725,9 +729,12 @@ Per request, with every distinct key resolved exactly once:
 - one GSI query for the caller's own EasyCLA records (enforcement) + the lazily-loaded
   platform identity sources (at most once per request, whenever a username key is present or
   another key is not covered by the EasyCLA records): zero, one or two **user-service** HTTP
-  calls (profile + paginated identities) and one **Auth0 Management API** user lookup, plus a
-  token request when the shared M2M token is not cached. The two sources are fetched
-  concurrently, so the added latency is the slower of the two rather than their sum;
+  calls (profile + paginated identities). A fresh **Auth0 Management API** identity-cache
+  hit makes no Auth0 HTTP requests; concurrent misses for the same LF username share
+  one lookup, with up to three user-lookup HTTP attempts (the initial attempt plus two
+  retries) and a token request when the shared M2M token is not cached. The two sources
+  are fetched concurrently, so the added latency is the slower of the two rather than
+  their sum;
 - one GSI query per allowed identity key (typically 2–4);
 - one paginated GSI query per matched user record (typically 1–2);
 - one `GetItem` per distinct CLA group (name), one per distinct company (employee acknowledgments only);

@@ -26,6 +26,7 @@ type fakeAuth0Inner struct {
 	results map[string][]auth0Result
 	calls   map[string]int
 	block   chan struct{}
+	started chan context.Context
 }
 
 func newFakeAuth0Inner() *fakeAuth0Inner {
@@ -44,16 +45,39 @@ func (f *fakeAuth0Inner) callCount(lfUsername string) int {
 	return f.calls[lfUsername]
 }
 
-func (f *fakeAuth0Inner) UserIdentities(_ context.Context, lfUsername string) ([]Auth0Identity, error) {
-	if f.block != nil {
-		<-f.block
-	}
+func (f *fakeAuth0Inner) UserIdentities(ctx context.Context, lfUsername string) ([]Auth0Identity, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	results := f.results[lfUsername]
 	result := results[min(f.calls[lfUsername], len(results)-1)]
 	f.calls[lfUsername]++
+	f.mu.Unlock()
+	if f.started != nil {
+		f.started <- ctx
+	}
+	if f.block != nil {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-f.block:
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	return result.identities, result.err
+}
+
+// Done is evaluated after the caller joins the singleflight, so this signals an
+// attached waiter without relying on scheduler timing or sleeps.
+type auth0WaiterContext struct {
+	context.Context
+	waiting chan struct{}
+	once    sync.Once
+}
+
+func (c *auth0WaiterContext) Done() <-chan struct{} {
+	c.once.Do(func() { close(c.waiting) })
+	return c.Context.Done()
 }
 
 type fakeClock struct {
@@ -238,16 +262,60 @@ func TestCachedAuth0IdentitiesCallerCancelled(t *testing.T) {
 	inner := newFakeAuth0Inner()
 	inner.program("someone", auth0Result{identities: gitlabIdentity})
 	inner.block = make(chan struct{})
+	inner.started = make(chan context.Context, 1)
+	release := sync.OnceFunc(func() { close(inner.block) })
+	defer release()
 	cache, _ := newTestAuth0Cache(inner)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	_, err := cache.UserIdentities(ctx, "someone")
-	require.ErrorIs(t, err, context.Canceled)
+	testCtx, cancelTest := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancelTest()
+	leaderCtx, cancelLeader := context.WithCancel(testCtx)
+	defer cancelLeader()
+	leaderErr := make(chan error, 1)
+	go func() {
+		_, err := cache.UserIdentities(leaderCtx, "someone")
+		leaderErr <- err
+	}()
 
-	// the detached lookup still completes and fills the cache for the next caller
-	close(inner.block)
-	identities, err := cache.UserIdentities(context.Background(), "someone")
+	var lookupCtx context.Context
+	select {
+	case lookupCtx = <-inner.started:
+	case <-testCtx.Done():
+		t.Fatal("inner lookup did not start")
+	}
+
+	waiterCtx := &auth0WaiterContext{Context: testCtx, waiting: make(chan struct{})}
+	waiterResult := make(chan auth0Result, 1)
+	go func() {
+		identities, err := cache.UserIdentities(waiterCtx, "someone")
+		waiterResult <- auth0Result{identities: identities, err: err}
+	}()
+	select {
+	case <-waiterCtx.waiting:
+	case <-testCtx.Done():
+		t.Fatal("follower did not join the shared lookup")
+	}
+
+	cancelLeader()
+	select {
+	case err := <-leaderErr:
+		require.ErrorIs(t, err, context.Canceled)
+	case <-testCtx.Done():
+		t.Fatal("cancelled leader did not return")
+	}
+	require.NoError(t, lookupCtx.Err(), "leader cancellation must not cancel the shared lookup")
+
+	release()
+	select {
+	case result := <-waiterResult:
+		require.NoError(t, result.err)
+		assert.Equal(t, gitlabIdentity, result.identities)
+	case <-testCtx.Done():
+		t.Fatal("follower did not receive the shared result")
+	}
+
+	// the detached lookup filled the cache, rather than starting a second lookup
+	identities, err := cache.UserIdentities(testCtx, "someone")
 	require.NoError(t, err)
 	assert.Equal(t, gitlabIdentity, identities)
 	assert.Equal(t, 1, inner.callCount("someone"))
