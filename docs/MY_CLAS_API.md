@@ -217,8 +217,15 @@ searched:
      [linuxfoundation/easycla#5172](https://github.com/linuxfoundation/easycla/pull/5172)):
      the identities linked to the LF login's Auth0 user record, via the shared platform
      M2M credentials. LFX One links newly connected identities only in Auth0, so they may
-     exist nowhere else yet; a lookup failure yields an empty set, so affected keys are
-     skipped, never allowed.
+     exist nowhere else yet. A rate-limited (HTTP 429) lookup is retried up to 2 times
+     within ~3s, honouring Auth0's `Retry-After`/`X-RateLimit-Reset` headers; it fails
+     fast when the reset is further away. Successful lookups are cached per LF username for
+     5 minutes in each Lambda container (`v2/my_clas/auth0_identities_cache.go`), so
+     linking or unlinking an account takes effect within that window. While Auth0 keeps
+     rate-limiting, the user's own last successful lookup (at most 1 hour old) stands in,
+     and a `serving stale Auth0 identities after rate limiting` warning is logged. Any
+     other failure, or a rate-limited user with no prior lookup, yields an empty set, so
+     affected keys are skipped, never allowed.
 
    Usernames are accepted per source (`github`, `gitlab`, `gerrit` — a Slack
    identity never authorizes a GitHub search); identity emails are accepted from any
