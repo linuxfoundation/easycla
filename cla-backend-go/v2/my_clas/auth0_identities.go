@@ -41,7 +41,7 @@ func auth0UserID(lfUsername string) string {
 }
 
 // auth0SocialConnectionSources lists the Auth0 custom social (provider "oauth2") connections that
-// stand for a native identity source - keyed by lowercase connection name. lfxOne links GitLab
+// stand for a native identity source - keyed by exact connection name. lfxOne links GitLab
 // through the Terraform-managed "gitlab" connection, so its identities arrive as provider "oauth2"
 var auth0SocialConnectionSources = map[string]string{
 	"gitlab": identitySourceGitlab,
@@ -55,7 +55,7 @@ func auth0IdentitySource(provider, connection, userID string) (string, string) {
 	if provider != "oauth2" {
 		return provider, userID
 	}
-	connection = strings.ToLower(strings.TrimSpace(connection))
+	connection = strings.TrimSpace(connection)
 	source, ok := auth0SocialConnectionSources[connection]
 	if !ok {
 		return provider, userID

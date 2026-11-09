@@ -219,8 +219,10 @@ searched:
      M2M credentials. LFX One links newly connected identities only in Auth0, so they may
      exist nowhere else yet; a lookup failure yields an empty set, so affected keys are
      skipped, never allowed. Identities from the Terraform-managed `gitlab` custom social
-     connection (`provider: "oauth2"`, `connection: "gitlab"`) count as GitLab identities,
-     and the `gitlab|` prefix is stripped from their `user_id` before matching `gitlabId`.
+     connection (`provider: "oauth2"`, case-sensitive `connection: "gitlab"`) count as GitLab
+     identities; differently cased connection names remain unmapped. The `gitlab|` prefix is
+     stripped from their `user_id` before matching `gitlabId`. Username matching uses
+     `profileData.nickname`; when empty, only the ID can authorize through this Auth0 identity.
 
    Usernames are accepted per source (`github`, `gitlab`, `gerrit` — a Slack
    identity never authorizes a GitHub search); identity emails are accepted from any
