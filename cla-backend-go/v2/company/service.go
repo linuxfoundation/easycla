@@ -569,17 +569,17 @@ func (s *service) createCompanyForOrg(ctx context.Context, f logrus.Fields, org 
 		}
 
 		scopeErr := orgClient.CreateCLAOrgUserRoleScope(ctx, userEmail, lfUser.Username, org.ID, roleID)
-		if scopeErr != nil {
+		if isOrgAssociated(scopeErr) {
+			// ACS allows one organization-scope association per user - the company is created without the grant
+			log.WithField(utils.XREQUESTID, ctx.Value(utils.XREQUESTID)).Warnf("user %s already belongs to another organization - creating the company without the company-admin grant", lfUser.Username)
+		} else if scopeErr != nil {
 			if acsService.DirectCLARolesEnabled() {
 				log.WithField(utils.XREQUESTID, ctx.Value(utils.XREQUESTID)).Warn("unable to create the company-admin grant")
 				return nil, ErrCompanyDependencyFailed
 			}
 			msg := fmt.Sprintf("Problem creating Org scope for email: %s , companyID: %s", userEmail, org.ID)
 			log.WithFields(f).Warn(msg)
-			// Ignore conflict - role has already been assigned - otherwise, return error
-			if !isOrgAssociated(scopeErr) {
-				return nil, scopeErr
-			}
+			return nil, scopeErr
 		}
 		// Associate User (Not associated) with Newly created org
 		if lfUser.Account.ID == NoAccount {
