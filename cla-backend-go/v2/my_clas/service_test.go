@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
@@ -336,6 +337,65 @@ func TestAuthorizeIdentityViaAuth0(t *testing.T) {
 	assert.Equal(t, []int64{777}, allowed.GitlabIDs)
 	assert.Equal(t, []string{"someone-gl", "Someone-GL"}, allowed.GitlabUsernames)
 	assert.Equal(t, []string{"githubId:99"}, skipped)
+}
+
+// GitLab accounts linked through lfxOne's "gitlab" custom social connection arrive from Auth0 as
+// provider "oauth2" with a "gitlab|"-prefixed user ID - exercised through the real Auth0 client
+func TestAuthorizeIdentityViaAuth0GitlabOAuth2Connection(t *testing.T) {
+	tests := []struct {
+		name          string
+		connection    string
+		nickname      string
+		wantIDs       []int64
+		wantUsernames []string
+		wantSkipped   []string
+	}{
+		{
+			name:          "exact connection accepts owned keys",
+			connection:    "gitlab",
+			nickname:      "someone-gl",
+			wantIDs:       []int64{4242},
+			wantUsernames: []string{"someone-gl", "Someone-GL"},
+			wantSkipped:   []string{"email:nobody@example.org", "gitlabId:9999", "gitlabUsername:stranger-gl"},
+		},
+		{
+			name:        "different connection casing rejects GitLab keys",
+			connection:  "GitLab",
+			nickname:    "someone-gl",
+			wantSkipped: []string{"email:nobody@example.org", "gitlabId:4242", "gitlabId:9999", "gitlabUsername:Someone-GL", "gitlabUsername:stranger-gl"},
+		},
+		{
+			name:        "empty nickname still accepts owned ID",
+			connection:  "gitlab",
+			wantIDs:     []int64{4242},
+			wantSkipped: []string{"email:nobody@example.org", "gitlabId:9999", "gitlabUsername:Someone-GL", "gitlabUsername:stranger-gl"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tokenCalls := 0
+			server := newAuth0TestServer(t, &tokenCalls, http.StatusOK,
+				fmt.Sprintf(`{"identities":[
+					{"provider":"github","user_id":30514950,"profileData":{"nickname":"ah-med"}},
+					{"provider":"oauth2","connection":%q,"user_id":"gitlab|4242","profileData":{"nickname":%q}}
+				]}`, tt.connection, tt.nickname))
+			svc := newTestService(&fakeRepo{}, nil, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+			svc.auth0Identities = NewAuth0IdentityService(server.URL+"/oauth/token", "id", "secret")
+			require.NotNil(t, svc.auth0Identities)
+
+			allowed, skipped, err := svc.AuthorizeIdentity(context.Background(), &Caller{Username: "someone"}, &Identity{
+				Emails:          []string{"nobody@example.org"},
+				GithubIDs:       []int64{30514950},
+				GitlabIDs:       []int64{4242, 9999},
+				GitlabUsernames: []string{"Someone-GL", "stranger-gl"},
+			})
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantIDs, allowed.GitlabIDs)
+			assert.Equal(t, tt.wantUsernames, allowed.GitlabUsernames)
+			assert.Equal(t, []int64{30514950}, allowed.GithubIDs)
+			assert.Equal(t, tt.wantSkipped, skipped)
+		})
+	}
 }
 
 func TestAuthorizeIdentitySelfRecordShortCircuit(t *testing.T) {

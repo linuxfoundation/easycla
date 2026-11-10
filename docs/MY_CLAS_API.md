@@ -229,7 +229,12 @@ searched:
      rate-limiting, the user's own last successful lookup (at most 1 hour old) stands in,
      and a `serving stale Auth0 identities after rate limiting` warning is logged. Any
      other failure, or a rate-limited user with no prior lookup, yields an empty set, so
-     affected keys are skipped, never allowed.
+     affected keys are skipped, never allowed. Identities from the Terraform-managed `gitlab`
+     custom social connection (`provider: "oauth2"`, case-sensitive `connection: "gitlab"`)
+     count as GitLab identities; differently cased connection names remain unmapped. The
+     `gitlab|` prefix is stripped from their `user_id` before matching `gitlabId`. Username
+     matching uses `profileData.nickname`; when empty, only the ID can authorize through
+     this Auth0 identity.
 
    Usernames are accepted per source (`github`, `gitlab`, `gerrit` — a Slack
    identity never authorizes a GitHub search); identity emails are accepted from any

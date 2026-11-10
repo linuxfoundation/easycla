@@ -78,6 +78,32 @@ func TestAuth0UserIdentities(t *testing.T) {
 	assert.Nil(t, identities)
 }
 
+func TestAuth0UserIdentitiesGitlabOAuth2Connection(t *testing.T) {
+	tokenCalls := 0
+	server := newAuth0TestServer(t, &tokenCalls, http.StatusOK,
+		`{"identities":[
+			{"provider":"oauth2","connection":"gitlab","user_id":"gitlab|4242","profileData":{"nickname":"someone-gl"}},
+			{"provider":"oauth2","connection":"GitLab","user_id":"5151","profileData":{"nickname":"other-gl"}},
+			{"provider":"oauth2","connection":"GITLAB","user_id":"GITLAB|6262","profileData":{"nickname":"uppercase-gl"}},
+			{"provider":" OAuth2 ","connection":" gitlab ","user_id":"7373","profileData":{"nickname":"bare-gl"}},
+			{"provider":"oauth2","connection":"gitlab","user_id":"other|77","profileData":{"nickname":"mismatched-gl"}},
+			{"provider":"oauth2","connection":"acme-sso","user_id":"acme-sso|9","profileData":{"nickname":"x"}}
+		]}`)
+	svc := NewAuth0IdentityService(server.URL+"/oauth/token", "id", "secret")
+	require.NotNil(t, svc)
+
+	identities, err := svc.UserIdentities(context.Background(), "someone")
+	require.NoError(t, err)
+	assert.Equal(t, []Auth0Identity{
+		{Provider: "gitlab", UserID: "4242", Username: "someone-gl"},
+		{Provider: "oauth2", UserID: "5151", Username: "other-gl"},
+		{Provider: "oauth2", UserID: "GITLAB|6262", Username: "uppercase-gl"},
+		{Provider: "gitlab", UserID: "7373", Username: "bare-gl"},
+		{Provider: "gitlab", UserID: "other|77", Username: "mismatched-gl"},
+		{Provider: "oauth2", UserID: "acme-sso|9", Username: "x"},
+	}, identities)
+}
+
 // golden hashes produced with lfx-v2-auth-service's mapUsernameToSub implementation
 func TestAuth0UserID(t *testing.T) {
 	assert.Equal(t, "someone", auth0UserID("someone"))
