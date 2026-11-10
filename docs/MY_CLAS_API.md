@@ -46,6 +46,12 @@ round trip, while the lookup of the identity in the existing EasyCLA user record
 runs (duplicate avoidance) — a match is attached/enriched exactly as before, no match
 creates the record right away. Untrusted callers (verifier disabled, or a token whose
 `azp`/`aud` do not qualify) keep the previous behavior unchanged.
+When an untrusted, non-admin signing request needs Auth0 ownership evidence,
+`AuthorizeIdentity` bypasses both fresh and stale identity-cache entries and performs a
+live lookup with the same bounded 429 retries. An unlinked identity or failed live lookup
+therefore cannot authorize signing solely from cached Auth0 evidence or persist that
+obsolete binding through user enrichment. Existing EasyCLA/user-service ownership sources
+and admin/trusted-caller exceptions are unchanged.
 
 ### Terminology
 
@@ -235,6 +241,8 @@ searched:
      `gitlab|` prefix is stripped from their `user_id` before matching `gitlabId`. Username
      matching uses `profileData.nickname`; when empty, only the ID can authorize through
      this Auth0 identity.
+     This identity-cache policy applies to the My CLAs surface, not the explicit ownership
+     check for `POST /v4/self-serve/prepare-sign`, which bypasses the identity cache.
 
    Usernames are accepted per source (`github`, `gitlab`, `gerrit` — a Slack
    identity never authorizes a GitHub search); identity emails are accepted from any

@@ -887,10 +887,15 @@ func (s *service) GetMyIdentities(ctx context.Context, currentUsername string, p
 }
 
 // AuthorizeIdentity narrows the requested identity keys to those belonging to the authenticated
-// user and reports the dropped ones - the boundary GET /my-clas enforces, shared with
-// POST /self-serve/prepare-sign; an admin or trusted Self Serve caller passes them through unverified
+// user for POST /self-serve/prepare-sign. Auth0 evidence must be live, not a fresh or stale
+// identity-cache result; an admin or trusted Self Serve caller still passes keys through unverified.
 func (s *service) AuthorizeIdentity(ctx context.Context, caller *Caller, requested *Identity) (*Identity, []string, error) {
-	return s.effectiveIdentity(ctx, caller, requested)
+	verification := *s
+	if cached, ok := s.auth0Identities.(*cachedAuth0Identities); ok {
+		// Keep the shared service's cache intact for concurrent CLA-history requests.
+		verification.auth0Identities = cached.inner
+	}
+	return verification.effectiveIdentity(ctx, caller, requested)
 }
 
 // effectiveIdentity resolves which identity keys may be searched. An admin or trusted LFX Self

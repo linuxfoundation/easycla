@@ -110,7 +110,7 @@ type auth0Client struct {
 // NewAuth0IdentityService builds an Auth0 Management API client from the shared platform M2M
 // credentials - tokenURL is the tenant token endpoint (cla-auth0-platform-url-{stage}), from
 // which the tenant base URL and the Management API audience are derived. Lookups are cached per
-// LF username in front of the client (see cachedAuth0Identities).
+// LF username for My CLAs history; explicit signing verification bypasses the identity cache.
 func NewAuth0IdentityService(tokenURL, clientID, clientSecret string) Auth0IdentityService {
 	client := newAuth0Client(tokenURL, clientID, clientSecret)
 	if client == nil {
@@ -120,6 +120,8 @@ func NewAuth0IdentityService(tokenURL, clientID, clientSecret string) Auth0Ident
 	return newCachedAuth0Identities(client)
 }
 
+// newAuth0Client validates the M2M configuration and creates the live, retrying client.
+// It caches only the access token, never linked-account ownership evidence.
 func newAuth0Client(tokenURL, clientID, clientSecret string) *auth0Client {
 	u := strings.TrimRight(strings.TrimSpace(tokenURL), "/")
 	base, ok := strings.CutSuffix(u, "/oauth/token")
@@ -137,6 +139,8 @@ func newAuth0Client(tokenURL, clientID, clientSecret string) *auth0Client {
 	}
 }
 
+// UserIdentities fetches the current linked accounts, retrying only rate-limited user lookups
+// while the requested waits fit the retry budget. Cancellation interrupts requests and waits.
 func (c *auth0Client) UserIdentities(ctx context.Context, lfUsername string) ([]Auth0Identity, error) {
 	lfUsername = strings.TrimSpace(lfUsername)
 	if lfUsername == "" {

@@ -52,6 +52,7 @@ type cachedAuth0Identities struct {
 	entries map[string]auth0CacheEntry
 }
 
+// newCachedAuth0Identities wraps a live client with bounded per-user history caching.
 func newCachedAuth0Identities(inner Auth0IdentityService) *cachedAuth0Identities {
 	return &cachedAuth0Identities{
 		inner:      inner,
@@ -63,6 +64,8 @@ func newCachedAuth0Identities(inner Auth0IdentityService) *cachedAuth0Identities
 	}
 }
 
+// UserIdentities serves fresh history evidence or shares a detached refresh. Only rate-limit
+// failures may reuse stale results; this method must not authorize a new signing session.
 func (c *cachedAuth0Identities) UserIdentities(ctx context.Context, lfUsername string) ([]Auth0Identity, error) {
 	lfUsername = strings.TrimSpace(lfUsername)
 	if lfUsername == "" {
@@ -116,6 +119,7 @@ func (c *cachedAuth0Identities) UserIdentities(ctx context.Context, lfUsername s
 	}
 }
 
+// entry reads a cached result under the mutex without changing its original age.
 func (c *cachedAuth0Identities) entry(lfUsername string) (auth0CacheEntry, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -123,6 +127,7 @@ func (c *cachedAuth0Identities) entry(lfUsername string) (auth0CacheEntry, bool)
 	return entry, ok
 }
 
+// fresh returns a cached result only while it is younger than the normal cache TTL.
 func (c *cachedAuth0Identities) fresh(lfUsername string) ([]Auth0Identity, bool) {
 	entry, ok := c.entry(lfUsername)
 	if !ok || c.now().Sub(entry.fetchedAt) >= c.ttl {

@@ -210,6 +210,68 @@ func TestCachedAuth0IdentitiesNoEntryRateLimited(t *testing.T) {
 	assert.Equal(t, []string{"gitlabId:777", "gitlabUsername:someone-gl"}, skipped)
 }
 
+func TestAuthorizeIdentityBypassesAuth0Cache(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		age        time.Duration
+		initial    []Auth0Identity
+		live       auth0Result
+		wantLinked bool
+	}{
+		{name: "fresh cached link removed", age: time.Minute, initial: gitlabIdentity},
+		{name: "stale cached link removed", age: 30 * time.Minute, initial: gitlabIdentity},
+		{name: "fresh cached link rate limited", age: time.Minute, initial: gitlabIdentity, live: auth0Result{err: rateLimited}},
+		{name: "stale cached link rate limited", age: 30 * time.Minute, initial: gitlabIdentity, live: auth0Result{err: rateLimited}},
+		{name: "new link bypasses cached empty result", age: time.Minute, live: auth0Result{identities: gitlabIdentity}, wantLinked: true},
+		{name: "current link still verified", age: time.Minute, initial: gitlabIdentity, live: auth0Result{identities: gitlabIdentity}, wantLinked: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			inner := newFakeAuth0Inner()
+			inner.program("someone", auth0Result{identities: tc.initial}, tc.live)
+			cache, clock := newTestAuth0Cache(inner)
+			svc := newTestService(&fakeRepo{}, nil, &fakeSignatures{}, &fakeCompanies{}, &fakeClaGroups{})
+			svc.auth0Identities = cache
+			caller := &Caller{Username: "someone"}
+			requested := &Identity{GitlabIDs: []int64{777}, GitlabUsernames: []string{"someone-gl"}}
+			skippedKeys := []string{"gitlabId:777", "gitlabUsername:someone-gl"}
+			ctx := context.Background()
+
+			// A history read fills the same cache used by the production service.
+			history, err := svc.GetMyClas(ctx, caller, requested, nil, nil)
+			require.NoError(t, err)
+			if len(tc.initial) > 0 {
+				assert.Empty(t, history.SkippedIdentities)
+			} else {
+				assert.Equal(t, skippedKeys, history.SkippedIdentities)
+			}
+			require.Equal(t, 1, inner.callCount("someone"))
+			clock.Advance(tc.age)
+
+			// Signing's ownership check must use the live result, even with eligible cached evidence.
+			allowed, skipped, err := svc.AuthorizeIdentity(ctx, caller, requested)
+			require.NoError(t, err)
+			if tc.wantLinked {
+				assert.Equal(t, requested.GitlabIDs, allowed.GitlabIDs)
+				assert.Contains(t, allowed.GitlabUsernames, "someone-gl")
+				assert.Empty(t, skipped)
+			} else {
+				assert.Empty(t, allowed.GitlabIDs)
+				assert.Empty(t, allowed.GitlabUsernames)
+				assert.Equal(t, skippedKeys, skipped)
+			}
+			assert.Equal(t, 2, inner.callCount("someone"))
+			assert.Same(t, cache, svc.auth0Identities, "verification must not replace the shared history cache")
+
+			// A denied signing check must not disable history's rate-limit fallback.
+			if errors.Is(tc.live.err, errAuth0RateLimited) {
+				history, err = svc.GetMyClas(ctx, caller, requested, nil, nil)
+				require.NoError(t, err)
+				assert.Empty(t, history.SkippedIdentities)
+			}
+		})
+	}
+}
+
 func TestCachedAuth0IdentitiesPerUserIsolation(t *testing.T) {
 	inner := newFakeAuth0Inner()
 	inner.program("user-a", auth0Result{identities: gitlabIdentity})
