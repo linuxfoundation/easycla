@@ -8,7 +8,7 @@ SPDX-License-Identifier: CC-BY-4.0
 **Companion**: [MY_CLAS_STATUS_MATRIX.md](MY_CLAS_STATUS_MATRIX.md) — the shipped M2 status model for the **Me** lens
 **Status of this document**: **the target model.** It describes the statuses the Org lens
 should show, not what any build renders. Written against the M3 UI prototype and the M3
-backend on `dev` (2026-09-14). Implementation is compared against this document, not the
+backend on `dev` (2026-09-14; acknowledgment statuses re-checked 2026-11-10). Implementation is compared against this document, not the
 other way round; where they differ, [Not yet implemented](#not-yet-implemented) records it.
 
 Single source of truth for the statuses the **Org lens** EasyCLA module shows once the
@@ -113,26 +113,31 @@ Shown per contributor row in the employee acknowledgment table of a CLA entry.
 | Status | What it means | Backend basis | Dated? |
 |---|---|---|---|
 | **Authorized** | The employee acknowledged the corporate agreement and the company's approval criteria still cover them. | `signatureSigned = true` **and** `signatureApproved = true` | no |
-| **Not Authorized** | The acknowledgment is intact, but the contributor is no longer covered by the approval criteria. Nobody revoked access deliberately — a criterion they matched was removed, or their membership of an approved org or group changed. **Recoverable**: adding them back restores them. | **none today** — no coverage verdict is computed, see [Not yet implemented](#not-yet-implemented) | no |
-| **Invalidated** | The acknowledgment itself was made void — deliberately by a CLA manager, or as a side effect of an approval-criterion removal. **Not recoverable** by re-adding the contributor; they must acknowledge again. | `signatureApproved = false` | yes — *Invalidated · date*, from `invalidatedAt` |
+| **Not Authorized** | The acknowledgment is intact, but an approval-list criterion that covered the contributor was removed. Nobody voided it deliberately. **Recoverable**: re-adding a matching entry returns the row to **Authorized**, with no re-acknowledgment. | `signatureApproved = false` with approval-list-removal evidence only — `invalidationReason` *approved list removal (…)*, or the legacy removal note — classified by `approvalListRemoval()` in the Self Serve BFF | no |
+| **Invalidated** | The acknowledgment was made void deliberately, by a CLA manager or admin. **Not recoverable** by re-adding the contributor; they must acknowledge again. | `signatureApproved = false` without removal-only evidence | yes — *Invalidated · date*, from `invalidatedAt` |
 
 Rules:
 
-- **Unsigned acknowledgments should never be shown** — a row should exist only once
+- **Unsigned acknowledgments are never shown** — a row exists only once
   `signatureSigned = true`, aligning with M2's filter and retiring today's console state
-  **"Not set up"** (`!approved && !signed`). **This is a proposal, not current behavior**:
-  unlike the CCLA query, the employee signature query filters only on company and project, so
-  unsigned records *are* returned today. See [Not yet implemented](#not-yet-implemented).
+  **"Not set up"** (`!approved && !signed`). The backend enforces this: `corporateContributorFilter`
+  requires `signature_signed = true` in both the page and the `totalCount` query of
+  `GetClaGroupCorporateContributors`, and keeps signed rows with `signature_approved = false` —
+  the **Not Authorized** and **Invalidated** rows.
 - **Not Authorized is recoverable; Invalidated is not.** That distinction is the whole point of
-  splitting them: one is coverage drift the company can undo, the other a voided agreement it
-  cannot. Copy and severity must not blur them — the prototype renders the first amber, the
-  second red.
+  splitting them: one is a removed criterion the company can put back, the other a voided
+  agreement it cannot. Since [easycla#5231](https://github.com/linuxfoundation/easycla/pull/5231)
+  the backend honors it: on an approval-list add, `restoreRemovalInvalidatedEmployeeSignatures`
+  re-approves the signed acknowledgments that **only** an approval-list removal had invalidated
+  and whose user the added entries cover, with or without `autoCreateECLA`; deliberate
+  invalidations are never touched. Copy and severity must not blur them — the prototype renders
+  the first amber, the second red.
 - **`autoCreateECLA` now honors that rule.** `processEmployeeSignatures` checks
   `employeeModel.Invalidated` first and leaves an invalidated record alone, logging that it
   needs an explicit re-approval; only a record that was never invalidated and has either flag
-  false is re-approved, via `ValidateProjectRecordUnlessInvalidated`. An **Invalidated** row no
-  longer returns to **Authorized** on an unrelated approval-list edit. The target model's
-  "Invalidated is final" rule now matches backend behavior for this path.
+  false is re-approved, via `ValidateProjectRecordUnlessInvalidated`. An **Invalidated** row does
+  not return to **Authorized** on an approval-list edit; the only way back for an unapproved row
+  is the re-add recovery above, which applies to **Not Authorized** rows alone.
 - **Only the invalidation date is shown; the row names nobody.** The API exposes the full set —
   `corporate-contributor` carries `invalidatedAt`, `invalidatedBy`, `invalidationReason`,
   `invalidationNote` and the legacy `note`, all populated by `GetClaGroupCorporateContributors`
@@ -145,30 +150,28 @@ Rules:
 
 | Condition | In the data | Status |
 |---|---|---|
-| Not acknowledged | `signatureSigned = false` | *row is not shown* (filtered client-side today) |
-| The acknowledgment was voided | `signatureApproved = false` | **Invalidated** |
-| Acknowledgment intact, criteria do not cover the contributor | *not computed today* | **Not Authorized** |
+| Not acknowledged | `signatureSigned = false` | *row is not shown* (filtered server-side) |
+| Invalidated only by an approval-list removal | `signatureApproved = false` with removal evidence only | **Not Authorized** |
+| Voided deliberately | `signatureApproved = false`, any other invalidation | **Invalidated** |
 | Acknowledgment intact and covered | `signatureApproved = true` | **Authorized** |
 
-### Why Not Authorized is unreachable today
+### What Not Authorized still misses
 
-Removing an approval criterion **invalidates matching acknowledgments immediately** for most
-criteria — `invalidateSignatures` sets `signature_approved = false` with invalidation metadata
-— so the row lands in **Invalidated** rather than in a recoverable state. What **Not
-Authorized** is meant to name is the residue: cases where coverage went stale and nothing
-recorded it, so the row keeps reading **Authorized**. Those are membership drift in an approved
-GitHub org (no approval-list edit occurs, so nothing triggers a re-check) and records the sweep
-skipped (missing user record, or a panic recovered per acknowledgment). GitLab groups are not a
-source of residue because they are never evaluated in either direction — they are out of scope
-for M3 entirely. The specific backend defects behind each are listed in
+Removing an approval criterion invalidates the matching acknowledgments with removal evidence —
+`invalidateSignatures` sets `signature_approved = false` and `invalidation_reason`
+*approved list removal (…)* — so the row lands in **Not Authorized**, and re-adding a matching
+entry restores it ([lfx-self-serve#2980](https://github.com/linuxfoundation/lfx-self-serve/issues/2980)).
+The prototype's recovery hint — *add the user to the approval list, or Invalidate to remove for
+good* — is therefore truthful.
+
+Not Authorized names only coverage loss that an approval-list removal recorded. Where coverage
+went stale and nothing recorded it, the row keeps reading **Authorized**: membership drift in an
+approved GitHub org (no approval-list edit occurs, so nothing triggers a re-check) and records
+the sweep skipped (missing user record, or a panic recovered per acknowledgment). GitLab groups
+are not a source of residue because they are never evaluated in either direction — they are out
+of scope for M3 entirely. Naming that residue needs a live coverage verdict from the backend —
+an open product decision, not a copy fix. The specific backend defects are listed in
 [Not yet implemented](#not-yet-implemented).
-
-Consequently the prototype's recovery hint — *add the user to the approval list, or Invalidate
-to remove for good* — is untruthful for the common case: the acknowledgment is already voided,
-so re-adding the criterion does not restore the row. `autoCreateECLA` no longer offers a
-backdoor to it either — `processEmployeeSignatures` now leaves an invalidated record alone
-rather than re-approving it. The row needs a live coverage verdict from the backend before Not
-Authorized can render. This is an open product decision, not a copy fix.
 
 ## Cross-lens naming map
 
@@ -205,17 +208,17 @@ Two divergences are load-bearing:
 
 ## Not yet implemented
 
-A first Org-lens EasyCLA build exists in `lfx-self-serve` behind the `org-lens-cla-m3-enabled`
-feature flag (list, card, detail page, approval list, Sign CLA flow). It is not user-visible
-and diverges from this document in the first two rows below. Acknowledgment statuses have no UI
-there at all, so everything in [Acknowledgment statuses](#acknowledgment-statuses-employee-acknowledgment) is unbuilt.
+The Org-lens EasyCLA module is live in `lfx-self-serve` (list, card, detail page, approval
+list, contributor acknowledgments, Sign CLA flow); its `org-lens-cla-m3-enabled` flag was
+removed in [lfx-self-serve#5231](https://github.com/linuxfoundation/lfx-self-serve/issues/5231).
+It diverges from this document in the first two rows below. The acknowledgment table renders all
+three [acknowledgment statuses](#acknowledgment-statuses-employee-acknowledgment).
 
 | Gap | Effect in the Org lens | Backend status |
 |---|---|---|
-| **Shipped build labels the sanctions state "Sanctioned", not "Revoked"** | `cla.constants.ts` renders the card pill as *Sanctioned* and the detail heading as *Unavailable* — two words for one company-level fact, neither matching the Me lens. The M3 prototype has since adopted **Revoked** for the pill, so the build is now the only holdout. | frontend copy only — rename to **Revoked**, matching this document and the prototype |
+| **Shipped build shows no pill for the sanctions state** | Since [lfx-self-serve#3532](https://github.com/linuxfoundation/lfx-self-serve/pull/3532) a sanctioned entry carries no status pill on the card or the detail header: legal review ruled out *Sanctioned*, and its replacement is pending that review. The detail heading still reads *Unavailable*. **Revoked** is this document's proposal, matching the Me lens and the M3 prototype, and is subject to the same review. | frontend copy only — pending legal review of the wording |
 | **Shipped build derives the entry status from two booleans in the BFF** | `signed` and `sanctioned` are collapsed in the Self Serve server layer, relocating the two-boolean derivation this matrix criticizes. The Me lens consumes an authoritative `status` from the producer. | open — whether the entry status should become a producer-side field |
-| **Unsigned acknowledgments are not filtered server-side, and the count disagrees with the page** | Rows with `signatureSigned = false` come back from the API. Worse, the page query filters on company only while `totalCount` also filters `signature_approved` and `signature_signed`, so unsigned and invalidated records consume page slots and cursors while being excluded from the total. Client-side dropping yields short pages and a mismatched count. | needs filing — both queries must select the **same** row set: require `signature_signed = true` in each and **keep** signed rows with `signature_approved = false`, which are the **Invalidated** rows the lens must show. A frontend-only fix is insufficient |
-| **No coverage verdict on an acknowledgment row** | **Not Authorized** cannot be rendered. `corporate-contributor` carries the two signature flags and the invalidation attributes, but nothing stating whether the approval criteria still cover the contributor — no equivalent of the M2 coverage check exists. | needs filing — a per-row coverage verdict, or a documented decision that removal stops auto-invalidating |
+| **No coverage verdict for unrecorded drift** | **Not Authorized** renders only when an approval-list removal recorded the loss. A contributor who leaves an approved GitHub org, or a record the removal sweep skipped, keeps reading **Authorized**: `corporate-contributor` carries the signature flags and the invalidation attributes, but nothing stating whether the approval criteria still cover the contributor — no equivalent of the M2 coverage check exists. | needs filing — a per-row coverage verdict, or a documented decision that unrecorded drift stays unreported |
 | **The prototype formats the invalidation date differently from M2** | The M3 prototype renders a full timestamp under the pill — *on Sep 17, 2026, 3:42:07 PM* — where the shipped Me lens shows *Invalidated · Jun 3, 2026*. One field, two formats across the lenses. | backend done — `invalidatedAt` is on the row; frontend copy only, adopt M2's date-only *Invalidated · date* |
 | **The DocuSign-completion signing refusal is not machine-readable** | `SignRequestCorporateSignatureHandler` already maps a sanctions block to the typed `403 company_sanctioned` body, but `SignCclaCallbackHandler` still returns a plain `400` with no typed error, so the Org lens would have to string-match on that one path — the same fragility as `TODO(#5078)`. | needs filing — return the typed sanctions error from the callback path too |
 | **Revoked has no date** | The entry shows the status alone; the list entry carries only the boolean `sanctioned`, and the M3 prototype shows no date either. The Me lens model dates it from `flaggedAt` — the company's stored `sanctioned_date`, stamped when EasyCLA first detected the block and re-stamped if a cleared entity is flagged again, so it is EasyCLA's detection date and not the sanctioning authority's listing date. | needs filing — expose the stored date on the list entry |
