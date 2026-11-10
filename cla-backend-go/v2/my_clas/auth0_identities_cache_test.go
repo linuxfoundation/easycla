@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -401,4 +402,106 @@ func TestCachedAuth0IdentitiesBounded(t *testing.T) {
 	assert.NotContains(t, cache.entries, "user-a", "the oldest lookup must be evicted")
 	assert.Contains(t, cache.entries, "user-b")
 	assert.Contains(t, cache.entries, "user-c")
+}
+
+// TestSensitiveMyClaOperationsBypassAuth0Cache keeps history's cache separate from
+// PDF/manager disclosure and manager-request side effects, for fresh and stale evidence.
+func TestSensitiveMyClaOperationsBypassAuth0Cache(t *testing.T) {
+	const (
+		pdfOperation            = "pdf"
+		managerRequestOperation = "manager-request"
+	)
+	for _, operation := range []string{pdfOperation, "managers", managerRequestOperation} {
+		t.Run(operation, func(t *testing.T) {
+			for _, tc := range []struct {
+				name       string
+				age        time.Duration
+				initial    []Auth0Identity
+				live       auth0Result
+				wantLinked bool
+			}{
+				{name: "fresh link removed", age: time.Minute, initial: gitlabIdentity},
+				{name: "stale link removed", age: 30 * time.Minute, initial: gitlabIdentity},
+				{name: "fresh link rate limited", age: time.Minute, initial: gitlabIdentity, live: auth0Result{err: rateLimited}},
+				{name: "stale link rate limited", age: 30 * time.Minute, initial: gitlabIdentity, live: auth0Result{err: rateLimited}},
+				{name: "new link bypasses cached empty result", age: time.Minute, live: auth0Result{identities: gitlabIdentity}, wantLinked: true},
+				{name: "current link verified", age: time.Minute, initial: gitlabIdentity, live: auth0Result{identities: gitlabIdentity}, wantLinked: true},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					inner := newFakeAuth0Inner()
+					inner.program(someoneLF, auth0Result{identities: tc.initial}, tc.live)
+					cache, clock := newTestAuth0Cache(inner)
+					repo, signaturesService, companies := managersFixture()
+					// Only Auth0, never an LF-linked EasyCLA record, proves this historical account.
+					historical := repo.byLFUsername[someoneLF][0]
+					historical.LfUsername = ""
+					historical.GitlabID = "777"
+					historical.GitlabUsername = "someone-gl"
+					repo.byLFUsername = nil
+					repo.byGitlabID = map[int64][]*v1Models.User{777: {historical}}
+					repo.byGitlabUsername = map[string][]*v1Models.User{"someone-gl": {historical}}
+					svc, eventsService, sent := newRequestTestService(repo, signaturesService, companies)
+					svc.auth0Identities = cache
+					documentChecks, presigns := 0, 0
+					svc.documentExists = func(string) (bool, error) {
+						documentChecks++
+						return true, nil
+					}
+					svc.presign = func(string) (string, error) {
+						presigns++
+						return "https://example.org/signed.pdf", nil
+					}
+					caller := &Caller{Username: someoneLF}
+					requested := &Identity{GitlabIDs: []int64{777}, GitlabUsernames: []string{"someone-gl"}}
+					ctx := context.Background()
+
+					history, err := svc.GetMyClas(ctx, caller, requested, nil, nil)
+					require.NoError(t, err)
+					assert.Equal(t, len(tc.initial) == 0, len(history.SkippedIdentities) > 0)
+					require.Equal(t, 1, inner.callCount(someoneLF))
+					clock.Advance(tc.age)
+					managerLookups := signaturesService.cclaCalls
+
+					var result interface{}
+					switch operation {
+					case pdfOperation:
+						result, err = svc.GetMyClaPdfURL(ctx, caller, requested, "sig-icla")
+					case "managers":
+						result, err = svc.GetMyClaManagers(ctx, caller, requested, "sig-ecla", nil, nil)
+					case managerRequestOperation:
+						result, err = svc.CreateMyClaManagerRequest(ctx, caller, requested, "sig-ecla",
+							requestInput("contact", []string{"manager-one"}, "please contact me"))
+					}
+					require.NoError(t, err)
+					assert.Equal(t, 2, inner.callCount(someoneLF), "each operation must verify live ownership")
+					assert.Same(t, cache, svc.auth0Identities, "the shared history cache must remain intact")
+					if tc.wantLinked {
+						require.NotNil(t, result)
+					} else {
+						assert.Nil(t, result)
+						assert.Equal(t, managerLookups, signaturesService.cclaCalls, "denial must not load manager details")
+					}
+					wantPDF := 0
+					if tc.wantLinked && operation == pdfOperation {
+						wantPDF = 1
+					}
+					assert.Equal(t, wantPDF, documentChecks)
+					assert.Equal(t, wantPDF, presigns)
+					wantWrites := 0
+					if tc.wantLinked && operation == managerRequestOperation {
+						wantWrites = 1
+					}
+					assert.Len(t, *sent, wantWrites)
+					assert.Len(t, eventsService.logged, wantWrites)
+
+					if errors.Is(tc.live.err, errAuth0RateLimited) {
+						history, err = svc.GetMyClas(ctx, caller, requested, nil, nil)
+						require.NoError(t, err)
+						assert.Empty(t, history.SkippedIdentities, "history must retain rate-limit fallback")
+						assert.Len(t, history.Clas, 2)
+					}
+				})
+			}
+		})
+	}
 }

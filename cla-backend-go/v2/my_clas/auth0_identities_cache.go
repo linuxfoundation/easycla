@@ -65,7 +65,7 @@ func newCachedAuth0Identities(inner Auth0IdentityService) *cachedAuth0Identities
 }
 
 // UserIdentities serves fresh history evidence or shares a detached refresh. Only rate-limit
-// failures may reuse stale results; this method must not authorize a new signing session.
+// failures may reuse stale results; signing, PDF, and CLA-manager checks must bypass this method.
 func (c *cachedAuth0Identities) UserIdentities(ctx context.Context, lfUsername string) ([]Auth0Identity, error) {
 	lfUsername = strings.TrimSpace(lfUsername)
 	if lfUsername == "" {

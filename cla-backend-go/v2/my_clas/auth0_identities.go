@@ -110,7 +110,7 @@ type auth0Client struct {
 // NewAuth0IdentityService builds an Auth0 Management API client from the shared platform M2M
 // credentials - tokenURL is the tenant token endpoint (cla-auth0-platform-url-{stage}), from
 // which the tenant base URL and the Management API audience are derived. Lookups are cached per
-// LF username for My CLAs history; explicit signing verification bypasses the identity cache.
+// LF username for history/identity listing; signing, PDF, and CLA-manager checks bypass that cache.
 func NewAuth0IdentityService(tokenURL, clientID, clientSecret string) Auth0IdentityService {
 	client := newAuth0Client(tokenURL, clientID, clientSecret)
 	if client == nil {
