@@ -162,15 +162,16 @@ Removing an approval criterion invalidates the matching acknowledgments with rem
 *approved list removal (…)* — so the row lands in **Not Authorized**, and re-adding a matching
 entry restores it ([lfx-self-serve#2980](https://github.com/linuxfoundation/lfx-self-serve/issues/2980)).
 The prototype's recovery hint — *add the user to the approval list, or Invalidate to remove for
-good* — is therefore truthful.
+good* — is therefore truthful, except for a GitLab group (below).
 
 Not Authorized names only coverage loss that an approval-list removal recorded. Where coverage
 went stale and nothing recorded it, the row keeps reading **Authorized**: membership drift in an
-approved GitHub org (no approval-list edit occurs, so nothing triggers a re-check) and records
-the sweep skipped (missing user record, or a panic recovered per acknowledgment). GitLab groups
-are not a source of residue because they are never evaluated in either direction — they are out
-of scope for M3 entirely. Naming that residue needs a live coverage verdict from the backend —
-an open product decision, not a copy fix. The specific backend defects are listed in
+approved GitHub org or GitLab group (no approval-list edit occurs, so nothing triggers a
+re-check) and records the sweep skipped (missing user record, or a panic recovered per
+acknowledgment). A GitLab group adds one more case: re-adding a removed group restores nothing,
+because `EvaluateUserApproval` cannot evaluate group membership, so those rows stay **Not
+Authorized**. Naming the residue needs a live coverage verdict from the backend — an open
+product decision, not a copy fix. The specific backend defects are listed in
 [Not yet implemented](#not-yet-implemented).
 
 ## Cross-lens naming map
@@ -182,16 +183,20 @@ needs to translate.
 | Underlying state | Me lens (M2, shipped) | Today's Corporate Console | Org lens (M3, target) |
 |---|---|---|---|
 | Acknowledged and covered | **Valid** | Authorized | **Authorized** |
-| Acknowledged, not covered by criteria | **Needs attention** | Not Authorized | **Not Authorized** |
-| Acknowledgment voided | **Invalidated** | Not Authorized *(collapsed)* | **Invalidated** |
+| Approved, but a live check finds the criteria no longer cover the contributor | **Needs attention** | Authorized | **Authorized** — no live check, see gaps |
+| Invalidated by an approval-list removal | **Invalidated** | Not Authorized | **Not Authorized** |
+| Invalidated deliberately | **Invalidated** | Not Authorized *(collapsed)* | **Invalidated** |
 | Coverage could not be determined | **—** (dash) | *never determined — no coverage check runs* | *no equivalent — see gaps* |
 | Company under sanctions | **Revoked** (on the acknowledgment row) | "Unable to Sign" / "Unable to Prepare CCLA" error states | **Revoked** (on the CLA entry) |
 | Not acknowledged / not signed | *row hidden* | Not set up | *row hidden* |
 
 Two divergences are load-bearing:
 
-- **"Needs attention" ≡ "Not Authorized".** Same state, different audience — an instruction to
-  the contributor versus a fact about a person. Neither name is being changed.
+- **"Needs attention" and "Not Authorized" are different states.** Needs attention is the Me
+  lens's live check on an approved row; the Org lens has no equivalent and shows that row as
+  **Authorized**. Not Authorized is a recorded approval-list removal; `assignMyClaStatus` ranks
+  `!approved` above coverage, so the Me lens shows that row as **Invalidated** even though
+  re-adding the entry restores it. Support must not translate one name into the other.
 - **"Revoked" sits on a different object in each lens** — one contributor's acknowledgment in
   the Me lens, the whole signing entity's CLA entry in the Org lens. The sanction is
   company-level in both; only the object carrying the label differs.
@@ -220,10 +225,8 @@ three [acknowledgment statuses](#acknowledgment-statuses-employee-acknowledgment
 | **Shipped build derives the entry status from two booleans in the BFF** | `signed` and `sanctioned` are collapsed in the Self Serve server layer, relocating the two-boolean derivation this matrix criticizes. The Me lens consumes an authoritative `status` from the producer. | open — whether the entry status should become a producer-side field |
 | **No coverage verdict for unrecorded drift** | **Not Authorized** renders only when an approval-list removal recorded the loss. A contributor who leaves an approved GitHub org, or a record the removal sweep skipped, keeps reading **Authorized**: `corporate-contributor` carries the signature flags and the invalidation attributes, but nothing stating whether the approval criteria still cover the contributor — no equivalent of the M2 coverage check exists. | needs filing — a per-row coverage verdict, or a documented decision that unrecorded drift stays unreported |
 | **The prototype formats the invalidation date differently from M2** | The M3 prototype renders a full timestamp under the pill — *on Sep 17, 2026, 3:42:07 PM* — where the shipped Me lens shows *Invalidated · Jun 3, 2026*. One field, two formats across the lenses. | backend done — `invalidatedAt` is on the row; frontend copy only, adopt M2's date-only *Invalidated · date* |
-| **The DocuSign-completion signing refusal is not machine-readable** | `SignRequestCorporateSignatureHandler` already maps a sanctions block to the typed `403 company_sanctioned` body, but `SignCclaCallbackHandler` still returns a plain `400` with no typed error, so the Org lens would have to string-match on that one path — the same fragility as `TODO(#5078)`. | needs filing — return the typed sanctions error from the callback path too |
 | **Revoked has no date** | The entry shows the status alone; the list entry carries only the boolean `sanctioned`, and the M3 prototype shows no date either. The Me lens model dates it from `flaggedAt` — the company's stored `sanctioned_date`, stamped when EasyCLA first detected the block and re-stamped if a cleared entity is flagged again, so it is EasyCLA's detection date and not the sanctioning authority's listing date. | needs filing — expose the stored date on the list entry |
-| **GitLab group criteria are stored but never evaluated, so they are out of scope for M3** | Group membership cannot be read without a per-group installed OAuth token, so EasyCLA evaluates a GitLab group entry in neither direction: `EvaluateUserApproval` has no group check when granting coverage, and `verifyUserApprovals` has no `GitlabOrgCriteria` branch when removing it. The entry is stored and listed, but grants nothing and, on removal, invalidates nothing. This is long-standing backend behavior ([easycla#3081](https://github.com/linuxfoundation/easycla/pull/3081) added the lists), not new — the Corporate Console has always offered the criterion on the same terms, and the Self Serve approval list ([lfx-self-serve#2257](https://github.com/linuxfoundation/lfx-self-serve/pull/2257)) inherits it by exposing the same producer field. Carried over from M2, which recorded the same limitation. | needs filing against the backend — a group entry must either be evaluated or be rejected at the API. Until then the Org lens should not offer **GitLab group**, since a stored-but-inert criterion reads as working coverage. GitLab *username* is unaffected and stays supported |
-| **GitLab-org removal iterates the wrong acknowledgment set** | `UpdateApprovalList` mutates one shared `ApprovalList`. The GitHub-org removal branch now loads its own removed-org ECLAs and assigns `.ECLAs` explicitly before invalidating, so a standalone GitHub-org removal sweeps correctly. The GitLab-org branch still never assigns `.ECLAs`, so a standalone GitLab-org removal sweeps nothing; combined with a domain removal in the same request it sweeps the domain-derived set under the GitLab-org criterion instead. | needs filing — backend bug scoped to the GitLab-org branch; it must load the acknowledgment set the removed GitLab org selects before calling `invalidateSignatures`, matching the GitHub-org branch's fix |
+| **GitLab group re-adds restore nothing** | For a group registered in EasyCLA, a GitLab group entry grants coverage on the GitLab merge-request check (`checkGitLabGroupApproval`), and removing it invalidates its members' acknowledgments (`gitLabOrgRemovalTargets` and the `GitlabOrgCriteria` branch of `verifyUserApprovals`), so they read **Not Authorized**. But `EvaluateUserApproval` has no group check, so re-adding only a group restores nothing: the rows stay **Not Authorized** and the *add the user to the approval list* hint does not work for them. The Me lens coverage check cannot evaluate a group either. | needs filing — add a GitLab group check to `EvaluateUserApproval`, so re-add recovery and the coverage check cover groups. Whether the Org lens offers **GitLab group** meanwhile is a separate product decision |
 | **An invalidated CCLA disappears silently** | The entry vanishes from the list, so an admin cannot tell a never-signed CLA group from one whose agreement was voided. | open product question |
 | **Sanctioned + never signed is not listable** | Only the **Sign CLA** preview can show it, and `GET /v4/cla-group/search` carries no `sanctioned` field, so the preview must resolve the sanctions state separately. | needs filing — add the flag to the search result, or have the preview resolve the company |
 | **Invalidating existing acknowledgments on sanction is blocked** | A newly sanctioned company keeps **Authorized** acknowledgment rows while every write is refused. | blocked pending [lfx-self-serve#2051](https://github.com/linuxfoundation/lfx-self-serve/issues/2051) |
