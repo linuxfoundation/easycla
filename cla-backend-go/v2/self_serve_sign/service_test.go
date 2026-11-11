@@ -8,7 +8,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	goapierrors "github.com/go-openapi/errors"
@@ -186,6 +189,68 @@ func stringRef(value string) *string { return &value }
 func uriRef(value string) *strfmt.URI {
 	uri := strfmt.URI(value)
 	return &uri
+}
+
+// auth0OnlyOwnershipRepo supplies no persisted ownership evidence. Unexpected repository
+// methods panic through the embedded interface, so a denied request cannot silently proceed.
+type auth0OnlyOwnershipRepo struct {
+	my_clas.Repository
+}
+
+func (auth0OnlyOwnershipRepo) GetUsersByLFUsername(context.Context, string) ([]*v1Models.User, error) {
+	return nil, nil
+}
+
+func TestPrepareSignRejectsCachedAuth0Ownership(t *testing.T) {
+	for _, status := range []int{http.StatusOK, http.StatusTooManyRequests} {
+		t.Run(http.StatusText(status), func(t *testing.T) {
+			var changed atomic.Bool
+			var lookups atomic.Int64
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				if r.URL.Path == "/oauth/token" {
+					_, err := fmt.Fprint(w, `{"access_token":"test-token","expires_in":3600}`)
+					assert.NoError(t, err)
+					return
+				}
+				lookups.Add(1)
+				if changed.Load() {
+					w.Header().Set("Retry-After", "3600")
+					w.WriteHeader(status)
+					_, err := fmt.Fprint(w, `{"identities":[]}`)
+					assert.NoError(t, err)
+					return
+				}
+				_, err := fmt.Fprint(w, `{"identities":[{"provider":"gitlab","user_id":"77","profileData":{"nickname":"someone-gl"}}]}`)
+				assert.NoError(t, err)
+			}))
+			defer server.Close()
+			ownership := my_clas.NewService(auth0OnlyOwnershipRepo{}, nil,
+				my_clas.NewAuth0IdentityService(server.URL+"/oauth/token", "id", "secret"),
+				nil, nil, nil, nil, nil, nil)
+			ctx := context.Background()
+			identities, err := ownership.GetMyIdentities(ctx, "someone", nil, nil)
+			require.NoError(t, err)
+			require.Contains(t, identities.Identities, "gitlab-id:77")
+			require.Equal(t, int64(1), lookups.Load())
+			changed.Store(true)
+
+			users, store := &fakeUsers{}, &fakeStore{}
+			svc := newTestService(ownership, users, enabledCLAGroup(), store)
+			result, err := svc.PrepareSign(ctx, &my_clas.Caller{Username: "someone"}, "", &models.PrepareSignInput{
+				ClaGroupID:     stringRef(testCLAGroupID),
+				ReturnURL:      uriRef(testReturnURL),
+				GitlabID:       77,
+				GitlabUsername: "someone-gl",
+			})
+			require.ErrorIs(t, err, ErrIdentityNotVerified)
+			assert.Nil(t, result)
+			assert.Nil(t, users.created)
+			assert.Empty(t, users.updates, "cached evidence must not reach user enrichment")
+			assert.Empty(t, store.value, "cached evidence must not create a signing session")
+			assert.Equal(t, int64(2), lookups.Load(), "signing must perform its own live Auth0 lookup")
+		})
+	}
 }
 
 const testReturnURL = "https://openprofile.dev/my-clas"

@@ -17,11 +17,12 @@ approval lists), download signed ICLA PDFs via time-limited links, and list the
 deduplicated identity set they own (the set the list endpoint authorizes them to search).
 For non-admin, untrusted callers every identity key is **verified to belong to the
 authenticated user** before it is searched (admin/trusted exceptions below), so the
-endpoints cannot enumerate other people's CLA history. "Belongs to" means *currently*
-attached to the caller's LF account (their EasyCLA user records, their platform
-user-service profile/identities, or the identities on their Auth0 user record) — the
-accepted bar for this read-only surface; the recycled-alias trade-off is under "Known
-limitations".
+endpoints cannot enumerate other people's CLA history. "Belongs to" means attached
+to the caller's LF account (their EasyCLA user records, their platform user-service
+profile/identities, or the identities on their Auth0 user record). History and identity
+listing may reuse cached Auth0 evidence as described below; signing, signed-PDF access,
+and CLA-manager reads and writes bypass that cache. The recycled-alias trade-off is
+under "Known limitations".
 
 | Method | Path | Purpose |
 |---|---|---|
@@ -46,6 +47,15 @@ round trip, while the lookup of the identity in the existing EasyCLA user record
 runs (duplicate avoidance) — a match is attached/enriched exactly as before, no match
 creates the record right away. Untrusted callers (verifier disabled, or a token whose
 `azp`/`aud` do not qualify) keep the previous behavior unchanged.
+When an untrusted, non-admin request needs Auth0 ownership evidence for signing,
+signed-PDF access, CLA-manager details, or a CLA-manager request, `liveVerification`
+bypasses both fresh and stale identity-cache entries and performs a live lookup with
+the same bounded 429 retries. An unlinked identity or failed live lookup therefore
+cannot authorize those operations solely from cached Auth0 evidence: it cannot
+persist an obsolete signing binding, issue a PDF link, disclose manager details,
+or send a manager-request email / record its audit event. Existing EasyCLA/user-service
+ownership sources and admin/trusted-caller exceptions are unchanged. History and identity
+listing retain the cache; a previously issued PDF URL remains valid for its 15-minute TTL.
 
 ### Terminology
 
@@ -217,12 +227,27 @@ searched:
      [linuxfoundation/easycla#5172](https://github.com/linuxfoundation/easycla/pull/5172)):
      the identities linked to the LF login's Auth0 user record, via the shared platform
      M2M credentials. LFX One links newly connected identities only in Auth0, so they may
-     exist nowhere else yet; a lookup failure yields an empty set, so affected keys are
-     skipped, never allowed. Identities from the Terraform-managed `gitlab` custom social
-     connection (`provider: "oauth2"`, case-sensitive `connection: "gitlab"`) count as GitLab
-     identities; differently cased connection names remain unmapped. The `gitlab|` prefix is
-     stripped from their `user_id` before matching `gitlabId`. Username matching uses
-     `profileData.nickname`; when empty, only the ID can authorize through this Auth0 identity.
+     exist nowhere else yet. A rate-limited (HTTP 429) lookup is retried up to 2 times
+     with at most 3 seconds of cumulative planned waits, including jitter, honouring
+     Auth0's `Retry-After`/`X-RateLimit-Reset` headers. HTTP requests and token acquisition
+     are not included in this wait budget; a retry is skipped if its wait would exceed
+     the remaining budget. The shared lookup has its own 35-second context timeout;
+     a caller can cancel its wait without cancelling that lookup. Successful lookups
+     are cached per LF username for
+     5 minutes in each Lambda container (`v2/my_clas/auth0_identities_cache.go`), so
+     linking or unlinking an account takes effect within that window. While Auth0 keeps
+     rate-limiting, the user's own last successful lookup (at most 1 hour old) stands in,
+     and a `serving stale Auth0 identities after rate limiting` warning is logged. Any
+     other failure, or a rate-limited user with no prior lookup, yields an empty set, so
+     affected keys are skipped, never allowed. Identities from the Terraform-managed `gitlab`
+     custom social connection (`provider: "oauth2"`, case-sensitive `connection: "gitlab"`)
+     count as GitLab identities; differently cased connection names remain unmapped. The
+     `gitlab|` prefix is stripped from their `user_id` before matching `gitlabId`. Username
+     matching uses `profileData.nickname`; when empty, only the ID can authorize through
+     this Auth0 identity.
+     This identity-cache policy applies only to CLA-history and identity listing. Ownership
+     checks for `POST /v4/self-serve/prepare-sign`, signed-PDF retrieval, CLA-manager details,
+     and CLA-manager request creation bypass the identity cache.
 
    Usernames are accepted per source (`github`, `gitlab`, `gerrit` — a Slack
    identity never authorizes a GitHub search); identity emails are accepted from any
@@ -722,9 +747,14 @@ Per request, with every distinct key resolved exactly once:
 - one GSI query for the caller's own EasyCLA records (enforcement) + the lazily-loaded
   platform identity sources (at most once per request, whenever a username key is present or
   another key is not covered by the EasyCLA records): zero, one or two **user-service** HTTP
-  calls (profile + paginated identities) and one **Auth0 Management API** user lookup, plus a
-  token request when the shared M2M token is not cached. The two sources are fetched
-  concurrently, so the added latency is the slower of the two rather than their sum;
+  calls (profile + paginated identities). For history and identity listing, a fresh
+  **Auth0 Management API** identity-cache hit makes no Auth0 HTTP requests; concurrent
+  misses for the same LF username share one lookup. Signing, signed-PDF retrieval, and
+  CLA-manager reads and writes bypass that identity cache and its singleflight coalescing
+  when Auth0 evidence is needed. Either lookup can make up to three user-lookup HTTP
+  attempts (the initial attempt plus two retries) and a token request when the shared
+  M2M token is not cached. The two sources are fetched concurrently, so the added latency
+  is the slower of the two rather than their sum;
 - one GSI query per allowed identity key (typically 2–4);
 - one paginated GSI query per matched user record (typically 1–2);
 - one `GetItem` per distinct CLA group (name), one per distinct company (employee acknowledgments only);
