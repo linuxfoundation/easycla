@@ -2,6 +2,7 @@
 
 **Parent spec**: FR-010 in [specs/001-easycla-ss-integration-fable/spec.md](../specs/001-easycla-ss-integration-fable/spec.md); milestone brief [02-milestone-sign-cla-fable.md](../specs/001-easycla-ss-integration-fable/02-milestone-sign-cla-fable.md), merged to `dev` with [easycla#5144](https://github.com/linuxfoundation/easycla/pull/5144)
 **Last verified against shipped code**: 2026-09-03
+**Companion**: [M3_ORG_LENS_STATUS_MATRIX.md](M3_ORG_LENS_STATUS_MATRIX.md) — the target status model for the **Org** lens, including a [cross-lens naming map](M3_ORG_LENS_STATUS_MATRIX.md#cross-lens-naming-map) for the statuses named differently there
 
 Single source of truth for the status a My CLAs row shows. The status model is **shipped and settled** — the backend status fields (`easycla` `dev`, including [easycla#5156](https://github.com/linuxfoundation/easycla/pull/5156)) and the frontend rendering ([lfx-self-serve#1440](https://github.com/linuxfoundation/lfx-self-serve/pull/1440), merged 2026-08-21). [Not yet implemented](#not-yet-implemented) lists everything a contributor cannot do or see today, so nobody builds to it by mistake.
 
@@ -83,7 +84,7 @@ Consequences worth stating plainly:
 - **Revoked is the only employee-acknowledgment state with no actions.**
 - **Request approval is deliberately withheld** from a row whose employer has no active agreement. There would be nothing to be approved onto, so the button would send the contributor to a manager who cannot help.
 
-Contact is offered only where a manager could actually help. A **Valid** row has nothing wrong, but the contributor may still have a question (a team change, an acquisition, another project) — a message-only action fits that. It is withheld from **Invalidated**, because a manager cannot undo it from the approved list — removal from the list is what invalidates an acknowledgment, and re-adding the contributor does not re-approve it; the contributor re-acknowledges instead; and from **"—"**, because the system could not work out what is wrong, and where no company or corporate agreement exists no managers resolve at all.
+Contact is offered only where a manager could actually help. A **Valid** row has nothing wrong, but the contributor may still have a question (a team change, an acquisition, another project) — a message-only action fits that. It is withheld from **Invalidated**, because the row cannot say whether a manager can undo it: re-adding a matching entry (other than a GitLab group) re-approves an acknowledgment that only an approval-list removal invalidated ([easycla#5231](https://github.com/linuxfoundation/easycla/pull/5231)), but a deliberate invalidation cannot be undone, and My CLAs exposes the date, not the cause; the contributor re-acknowledges instead; and from **"—"**, because the system could not work out what is wrong, and where no company or corporate agreement exists no managers resolve at all.
 
 ## Not yet implemented
 
