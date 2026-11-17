@@ -326,7 +326,7 @@ func (s *service) GetMyClaPdfURL(ctx context.Context, caller *Caller, requested 
 		"signatureID":     signatureID,
 	}
 
-	identity, _, err := s.effectiveIdentity(ctx, caller, requested)
+	identity, _, err := s.liveVerification().effectiveIdentity(ctx, caller, requested)
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +381,7 @@ func (s *service) GetMyClaPdfURL(ctx context.Context, caller *Caller, requested 
 // GetMyClaManagers returns the CLA managers of the CCLA covering the given ECLA - nil means
 // unknown, not-owned, unsigned or ICLA signature ID
 func (s *service) GetMyClaManagers(ctx context.Context, caller *Caller, requested *Identity, signatureID string, pageSize, offset *int64) (*models.MyClaManagerList, error) {
-	identity, sig, _, err := s.findOwnedEcla(ctx, caller, requested, signatureID)
+	identity, sig, _, err := s.liveVerification().findOwnedEcla(ctx, caller, requested, signatureID)
 	if err != nil || sig == nil {
 		return nil, err
 	}
@@ -428,7 +428,7 @@ func (s *service) CreateMyClaManagerRequest(ctx context.Context, caller *Caller,
 		"signatureID":     signatureID,
 	}
 
-	identity, sig, userModel, err := s.findOwnedEcla(ctx, caller, requested, signatureID)
+	identity, sig, userModel, err := s.liveVerification().findOwnedEcla(ctx, caller, requested, signatureID)
 	if err != nil || sig == nil {
 		return nil, err
 	}
@@ -887,10 +887,21 @@ func (s *service) GetMyIdentities(ctx context.Context, currentUsername string, p
 }
 
 // AuthorizeIdentity narrows the requested identity keys to those belonging to the authenticated
-// user and reports the dropped ones - the boundary GET /my-clas enforces, shared with
-// POST /self-serve/prepare-sign; an admin or trusted Self Serve caller passes them through unverified
+// user for POST /self-serve/prepare-sign. Auth0 evidence must be live, not a fresh or stale
+// identity-cache result; an admin or trusted Self Serve caller still passes keys through unverified.
 func (s *service) AuthorizeIdentity(ctx context.Context, caller *Caller, requested *Identity) (*Identity, []string, error) {
-	return s.effectiveIdentity(ctx, caller, requested)
+	return s.liveVerification().effectiveIdentity(ctx, caller, requested)
+}
+
+// liveVerification makes a request-local service copy that bypasses identity caching for
+// signing, signed-PDF access, and CLA-manager reads and writes. Other ownership sources and
+// admin/trusted exceptions are unchanged; concurrent history requests keep the shared cache.
+func (s *service) liveVerification() *service {
+	verification := *s
+	if cached, ok := s.auth0Identities.(*cachedAuth0Identities); ok {
+		verification.auth0Identities = cached.inner
+	}
+	return &verification
 }
 
 // effectiveIdentity resolves which identity keys may be searched. An admin or trusted LFX Self
