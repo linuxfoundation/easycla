@@ -291,7 +291,7 @@ func TestCompanyCreatorUsesNativeOrganizationGrant(t *testing.T) {
 			{name: "created", grantStatus: http.StatusCreated},
 			{name: "already assigned", grantStatus: http.StatusConflict},
 			{name: "grant outage", grantStatus: http.StatusServiceUnavailable, wantError: true},
-			{name: "native failure is not an Org Service association conflict", grantStatus: http.StatusBadRequest, grantBody: fmt.Sprintf(`{"message":%q}`, OrgAssociated), wantError: true},
+			{name: "creator already belongs to another organization", grantStatus: http.StatusBadRequest, grantBody: fmt.Sprintf(`{"Code":400,"Message":"user is %s"}`, OrgAssociated)},
 			{name: "role lookup outage", roleStatus: http.StatusServiceUnavailable, wantError: true},
 		} {
 			t.Run(fmt.Sprintf("member=%t/%s", memberCreation, tc.name), func(t *testing.T) {
