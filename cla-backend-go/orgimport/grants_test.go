@@ -259,3 +259,117 @@ func TestDroppedGrantsReportIsRebuiltFromTheJournal(t *testing.T) {
 	require.NoError(t, err)
 	assert.Contains(t, string(journal), `"grant_id":"g-grace","scope_id":"","object_type_name":"organization","object_id":"`+lfID+`"}],"step":"done"`)
 }
+
+func TestCollapseDecisionAppliesToTheFirstGroupOnTheAccount(t *testing.T) {
+	fx, dir := collisionFixture(t)
+	fx.platform.addGrant("lf-a", "alice", "role-cla-manager", "")
+	fx.platform.addGrant("lf-a", "alice", "role-company-admin", "")
+	// lf-b belongs to the same reviewed collapse but has no mapping row yet: lf-a is alone on the Account for now
+	mapping := writeMapping(t, dir, "lf-a,"+targetSFID+",created,true")
+	decisions := writeDecisions(t, dir, "collapse,lf-a;lf-b,"+targetSFID+",michal,one legal entity")
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, Decisions: decisions, State: filepath.Join(dir, "state.jsonl"), Routes: []Route{RouteRewrite}, OutDir: filepath.Join(dir, "out")}
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	require.Len(t, plan.Rewrite, 1)
+	var printed bytes.Buffer
+	plan.Print(&printed)
+	assert.Contains(t, printed.String(), "(created): wait org-service; copy the EasyCLA role grants;")
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+	require.NoError(t, err)
+	assert.Equal(t, 1, sum.Rewritten)
+
+	assert.Equal(t, []string{"alice:cla-manager:" + targetSFID}, targetGrants(t, fx))
+	assert.Equal(t, [][]string{droppedHeader, {"lf-a", targetSFID, "alice", "company-admin", objectTypeOrganization, "lf-a"}},
+		readCSV(t, filepath.Join(opts.OutDir, "dropped_grants.csv")))
+}
+
+func TestGrantWithoutRoleNameIsNeverDeletedUncopied(t *testing.T) {
+	for _, tc := range []struct {
+		action string
+		stops  bool
+	}{{"matched", true}, {"created", false}} {
+		t.Run(tc.action, func(t *testing.T) {
+			fx, _, statePath := rewriteFixture(t)
+			fx.platform.addGrant(lfID, "judy", "role-cla-manager", "")
+			nameless := len(fx.platform.grants[lfID]) - 1
+			fx.platform.grants[lfID][nameless].RoleName = ""
+			mapping := writeMapping(t, t.TempDir(), lfID+","+targetSFID+","+tc.action+",true")
+			opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}}
+			plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+			require.NoError(t, err)
+			require.Len(t, plan.Rewrite, 1)
+			sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+			if !tc.stops {
+				require.NoError(t, err)
+				assert.Equal(t, 1, sum.Rewritten)
+				assert.Contains(t, targetGrants(t, fx), "judy:cla-manager:"+targetSFID, "a new Account takes every grant, named or not")
+				return
+			}
+			require.Error(t, err)
+			assert.ErrorContains(t, plan.Rewrite[0].Err, "has no role name")
+			assert.Empty(t, fx.companies.updates, "the group stops before the row cutover")
+			assert.Len(t, mustListOrgGrants(t, fx, lfID), 4, "nothing is deleted on the old org")
+			st, err := LoadState(statePath)
+			require.NoError(t, err)
+			assert.Equal(t, StepGrants, st.Last[lfID].Step)
+			assert.Equal(t, statusFailed, st.Last[lfID].Status)
+		})
+	}
+}
+
+func TestResumedGroupFindsItsAccountSharedThroughTheMappingOrAnExistingRow(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		share func(fx *fixture) []string
+	}{
+		{"another mapping row", func(*fixture) []string { return []string{"lf-not-in-this-run," + targetSFID + ",created,true"} }},
+		{"a row already on the Account", func(fx *fixture) []string {
+			fx.company("c-x", "Acme Old", "", targetSFID, "cg-9")
+			return nil
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fx, dir := collisionFixture(t)
+			fx.platform.addGrant("lf-a", "alice", "role-cla-manager", "")
+			fx.platform.addGrant("lf-a", "alice", "role-company-admin", "")
+			statePath := filepath.Join(dir, "state.jsonl")
+			require.NoError(t, os.WriteFile(statePath, []byte(`{"old_id":"lf-a","new_id":"`+targetSFID+`","company_ids":["c-a"],"all_grants":true,`+
+				`"step":"wait","ts":"2026-09-29T11:00:00Z","status":"failed","err":"org-service does not serve it yet"}`+"\n"), 0o600))
+			mapping := writeMapping(t, dir, append([]string{"lf-a," + targetSFID + ",created,true"}, tc.share(fx)...)...)
+			opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}, OutDir: filepath.Join(dir, "out")}
+			plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+			require.NoError(t, err)
+			require.Len(t, plan.Rewrite, 1)
+			require.True(t, plan.Rewrite[0].Replayed)
+			sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+			require.NoError(t, err)
+			assert.Equal(t, 1, sum.Rewritten)
+
+			assert.Equal(t, []string{"alice:cla-manager:" + targetSFID}, targetGrants(t, fx))
+			assert.Equal(t, [][]string{droppedHeader, {"lf-a", targetSFID, "alice", "company-admin", objectTypeOrganization, "lf-a"}},
+				readCSV(t, filepath.Join(opts.OutDir, "dropped_grants.csv")))
+		})
+	}
+}
+
+func TestGrantAddedOnTheAccountBeforeCleanupIsNotReported(t *testing.T) {
+	fx, mapping, statePath := rewriteFixture(t)
+	fx.platform.addGrant(lfID, "grace", "role-company-admin", "")
+	fx.platform.addGrant(lfID, "heidi", "role-viewer", "")
+	// grace is made an admin of the Account by somebody else between the copy and the cleanup
+	lists := 0
+	fx.platform.listHook = func(orgID string) {
+		if orgID == targetSFID {
+			if lists++; lists == 2 {
+				fx.platform.addGrantLocked(targetSFID, "grace", "role-company-admin", "")
+			}
+		}
+	}
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}, OutDir: t.TempDir()}
+	sum, err := runIngest(t, fx, opts)
+	require.NoError(t, err)
+	assert.Equal(t, 1, sum.Rewritten)
+	assert.Contains(t, fx.out.String(), "2 not copied")
+	assert.Equal(t, [][]string{droppedHeader, {lfID, targetSFID, "heidi", "viewer", objectTypeOrganization, lfID}},
+		readCSV(t, filepath.Join(opts.OutDir, "dropped_grants.csv")))
+}

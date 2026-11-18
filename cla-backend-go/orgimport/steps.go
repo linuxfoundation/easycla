@@ -109,6 +109,15 @@ func (g *Group) drop(gr acs_service.OrgGrant) {
 	g.Dropped = append(g.Dropped, gr)
 }
 
+func (g *Group) undrop(gr acs_service.OrgGrant) {
+	for i, d := range g.Dropped {
+		if grantKey(d, g.OldID) == grantKey(gr, g.OldID) {
+			g.Dropped = append(g.Dropped[:i:i], g.Dropped[i+1:]...)
+			return
+		}
+	}
+}
+
 // listGrantPair lists the old org's grants and indexes the new org's grants by grantKey.
 func (r *runner) listGrantPair(ctx context.Context, g *Group) ([]acs_service.OrgGrant, map[string]bool, error) {
 	oldGrants, err := r.deps.ACS.ListOrgGrants(ctx, g.OldID)
@@ -128,7 +137,7 @@ func (r *runner) listGrantPair(ctx context.Context, g *Group) ([]acs_service.Org
 
 // ensureGrant creates the old grant's counterpart on the new org unless it already exists (a grant
 // without a role is unusable and skipped); it reports whether a grant was created. A grant without
-// a username cannot be copied and fails the step so that it is never deleted uncopied.
+// a username - or, when only the EasyCLA roles are copied, without a role name - fails the step so that it is never deleted uncopied.
 func (r *runner) ensureGrant(ctx context.Context, g *Group, gr acs_service.OrgGrant, have map[string]bool) (bool, error) {
 	if gr.RoleID == "" {
 		return false, nil
@@ -141,6 +150,9 @@ func (r *runner) ensureGrant(ctx context.Context, g *Group, gr acs_service.OrgGr
 		return false, nil
 	}
 	if !g.AllGrants && !easyCLARoles[gr.RoleName] {
+		if gr.RoleName == "" {
+			return false, fmt.Errorf("grant %s (role %s) of %s on %s has no role name: cannot tell whether it is copied to %s", gr.GrantID, gr.RoleID, gr.Username, g.OldID, g.NewID)
+		}
 		return false, nil
 	}
 	objectType, objectID := objectTypeOrganization, g.NewID
@@ -255,6 +267,8 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 		if uncopied(g, gr, have) {
 			g.drop(gr)
 			fmt.Fprintf(r.deps.Out, "grant deleted without a copy %s -> %s: %s %s on %s\n", g.OldID, g.NewID, firstNonEmpty(gr.RoleName, gr.RoleID), gr.Username, gr.ObjectID)
+		} else {
+			g.undrop(gr)
 		}
 	}
 	fmt.Fprintf(r.deps.Out, "grants %s: %d deleted (%d copied late)\n", g.OldID, deleted, copied)

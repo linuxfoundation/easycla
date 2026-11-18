@@ -128,6 +128,10 @@ func (d *Decisions) Collapse(oldID, target string) *Decision {
 	return nil
 }
 
+func (d *Decisions) collapsed(oldID string) bool {
+	return d != nil && d.ByOldID[oldID] != nil && d.ByOldID[oldID].Kind == DecisionCollapse
+}
+
 // Distinct reports whether a recorded distinct decision separates oldID from any id in others.
 func (d *Decisions) Distinct(oldID string, others []string) *Decision {
 	if d == nil {

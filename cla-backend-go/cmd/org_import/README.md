@@ -33,7 +33,7 @@ Safety rules:
 - The row rewrite is a conditional write (`company_external_id = <exact stored value>`); a concurrent change stops that group only.
 - Grants are copied before rows are rewritten and old grants deleted last, each old grant re-checked (and copied if missing) right before
   its deletion: managers never lose access.
-- On an Account that existed before the rewrite (`matched`, or several old ids under a collapse decision) only `cla-manager`, `cla-manager-designee`,
+- On an Account that existed before the rewrite or is shared (`matched`, or an old id under a collapse decision) only `cla-manager`, `cla-manager-designee`,
   `cla-signatory`, `contributor` and `contact` are copied; every other role (`company-admin`, `viewer`) is deleted with the old id and listed in
   `dropped_grants.csv`; the list is kept in the journal, so a resumed run still reports it. An Account created for one group alone (`created`)
   receives every grant - unless another old id has been mapped onto it by the time an interrupted group is resumed.
@@ -296,7 +296,7 @@ list (one domain per line, `#` comments). Mapping rows are explicit human decisi
 Verification per tranche (pick 3 groups):
 - `GET /b2b_orgs/{new id}` → 200 (member-service).
 - org-service `GET /organizations/{new id}` → 200.
-- ACS `GET /users/rolescopes/organization?orgid={new id}&scopetype=all` with `X-LFX-CACHE: false` → every user/role the old id had, minus the rows of `dropped_grants.csv` (an existing Account also keeps its own grants); old id → empty.
+- ACS `GET /users/rolescopes/organization?orgid={new id}&scopetype=all` with `X-LFX-CACHE: false` → every user/role/scope the old id had, minus the rows of `dropped_grants.csv` (an existing Account also keeps its own grants); old id → empty.
 - `GET /v4/company/external/{new id}/cla-groups` lists the CCLA; `GET /v4/company/{companyID}/project/{projectSFID}/events` still shows the pre-rewrite history.
 - DynamoDB row: `company_external_id = new`, `previous_company_external_id = old`.
 - Corporate Console: a CLA manager of the company logs in, sees the company and its CCLA; Self Serve org lens shows the organization.

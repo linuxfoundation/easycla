@@ -66,6 +66,7 @@ func BuildPlan(ctx context.Context, deps Deps, opts Options) (*Plan, error) {
 		if !g.Replayed {
 			g.AllGrants = g.Action == ActionCreated
 		}
+		g.AllGrants = g.AllGrants && !decisions.collapsed(g.Key)
 	}
 	for _, t := range targets {
 		for _, g := range t.Groups {
