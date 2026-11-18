@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: MIT
 module github.com/linuxfoundation/easycla/cla-backend-go
 
-go 1.25.0
+go 1.26.0
 
-toolchain go1.25.13
+toolchain go1.26.11
 
 replace github.com/awslabs/aws-lambda-go-api-proxy => github.com/LF-Engineering/aws-lambda-go-api-proxy v0.3.2
 
@@ -59,12 +59,12 @@ require (
 	github.com/verdverm/frisby v0.0.0-20170604211311-b16556248a9a
 	github.com/xanzy/go-gitlab v0.50.1
 	go.uber.org/ratelimit v0.1.0
-	golang.org/x/crypto v0.55.0 // indirect
+	golang.org/x/crypto v0.59.0 // indirect
 	golang.org/x/image v0.45.0 // indirect
-	golang.org/x/net v0.58.0
+	golang.org/x/net v0.62.0
 	golang.org/x/oauth2 v0.36.0
-	golang.org/x/sync v0.22.0
-	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/sync v0.25.0
+	golang.org/x/sys v0.50.0 // indirect
 	golang.org/x/time v0.0.0-20200630173020-3af7569d3a1e
 	google.golang.org/protobuf v1.36.11 // indirect
 )
@@ -141,7 +141,8 @@ require (
 	go.opentelemetry.io/otel/metric v1.45.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
 	golang.org/x/arch v0.3.0 // indirect
-	golang.org/x/text v0.41.0 // indirect
+	golang.org/x/crypto/openpgp v0.1.0-deprecated // indirect
+	golang.org/x/text v0.44.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260803160001-6ac0973c030d // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260803160001-6ac0973c030d // indirect
 	google.golang.org/grpc v1.83.2 // indirect
