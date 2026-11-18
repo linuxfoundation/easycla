@@ -230,7 +230,7 @@ func (s *service) grantCreatorIfOrgKnown(ctx context.Context, f logrus.Fields, s
 		if errors.As(scopeErr, &grantErr) {
 			entry = entry.WithField("acsStatus", grantErr.Status)
 		}
-		entry.Warnf("problem creating the company-admin scope for user %s - creating the company without the grant", userID)
+		entry.WithField("acsReason", acsGrantReason(scopeErr)).Warnf("problem creating the company-admin scope for user %s - creating the company without the grant", userID)
 	}
 }
 

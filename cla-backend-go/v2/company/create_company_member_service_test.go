@@ -286,13 +286,15 @@ func TestCompanyCreatorUsesNativeOrganizationGrant(t *testing.T) {
 			grantStatus int
 			roleStatus  int
 			grantBody   string
+			wantReason  string // acsReason on the grant-failure warning, "" when no such warning is expected
 		}{
 			{name: "created", grantStatus: http.StatusCreated},
 			{name: "already assigned", grantStatus: http.StatusConflict},
-			{name: "grant outage", grantStatus: http.StatusServiceUnavailable},
+			{name: "grant outage", grantStatus: http.StatusServiceUnavailable, wantReason: "other"},
 			{name: "creator already belongs to another organization", grantStatus: http.StatusBadRequest, grantBody: fmt.Sprintf(`{"Code":400,"Message":"user is %s"}`, OrgAssociated)},
 			{name: "role lookup outage", roleStatus: http.StatusServiceUnavailable},
-			{name: "creator refused by ACS", grantStatus: http.StatusBadRequest, grantBody: `{"Code":400,"Message":"user does not have valid corporate email"}`},
+			{name: "creator refused by ACS", grantStatus: http.StatusBadRequest, grantBody: `{"error":{"name":"ValidationError","message":"user does not have valid corporate email"}}`, wantReason: "corporate-email"},
+			{name: "account not in the Organization Service yet", grantStatus: http.StatusBadRequest, grantBody: `{"error":{"name":"ValidationError","message":"acs - upstream service - not found"}}`, wantReason: "account-not-found"},
 		} {
 			t.Run(fmt.Sprintf("member=%t/%s", memberCreation, tc.name), func(t *testing.T) {
 				withCompanyRoleFlags(t, memberCreation, true)
@@ -335,11 +337,20 @@ func TestCompanyCreatorUsesNativeOrganizationGrant(t *testing.T) {
 					wantGrants = 0
 				}
 				assert.Equal(t, wantGrants, transport.count(msGrantPath))
+				var reasons []string
 				for _, entry := range hook.AllEntries() {
 					text, formatErr := entry.String()
 					require.NoError(t, formatErr)
 					assert.NotContains(t, text, testCallerEmail)
 					assert.NotContains(t, text, "private grant failure")
+					if reason, ok := entry.Data["acsReason"]; ok {
+						reasons = append(reasons, reason.(string))
+					}
+				}
+				if tc.wantReason == "" {
+					assert.Empty(t, reasons)
+				} else {
+					assert.Equal(t, []string{tc.wantReason}, reasons, "the warning names the ACS refusal without its body")
 				}
 			})
 		}

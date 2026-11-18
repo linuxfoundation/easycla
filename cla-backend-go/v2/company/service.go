@@ -487,6 +487,20 @@ func isOrgAssociated(err error) bool {
 	return err != nil && strings.Contains(err.Error(), OrgAssociated)
 }
 
+// acsGrantReason names why ACS refused a company-admin grant without logging its answer, which may echo the request:
+// "account-not-found" (the Organization Service does not have the Account yet, the grant would pass later),
+// "corporate-email" (no e-mail of the user is on the Account's domains, the grant never passes) or "other"
+func acsGrantReason(err error) string {
+	switch msg := err.Error(); {
+	case strings.Contains(msg, "upstream service - not found"):
+		return "account-not-found"
+	case strings.Contains(msg, "does not have valid corporate email"):
+		return "corporate-email"
+	default:
+		return "other"
+	}
+}
+
 // lfUserByEmail is the seam onto the user-service e-mail lookup (tests)
 var lfUserByEmail = func(email string) (*v2UserServiceModels.User, error) {
 	return v2UserService.GetClient().SearchUsersByEmail(email)
@@ -578,7 +592,7 @@ func (s *service) createCompanyForOrg(ctx context.Context, f logrus.Fields, org 
 			if errors.As(scopeErr, &grantErr) {
 				entry = entry.WithField("acsStatus", grantErr.Status)
 			}
-			entry.Warnf("unable to create the company-admin grant - creating company %s without it", org.ID)
+			entry.WithField("acsReason", acsGrantReason(scopeErr)).Warnf("unable to create the company-admin grant - creating company %s without it", org.ID)
 		}
 		// Associate User (Not associated) with Newly created org
 		if lfUser.Account.ID == NoAccount {
