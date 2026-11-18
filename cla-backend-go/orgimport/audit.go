@@ -472,12 +472,48 @@ func writeIngestReports(dir string, plan *Plan) error {
 		}
 		targets = append(targets, []string{t.SFID, strconv.Itoa(len(t.Groups)), strings.Join(t.OldIDs(), ";"), strings.Join(ids, ";"), strings.Join(names, ";"), strconv.Itoa(len(t.Existing)), decision, reviewer, t.Status})
 	}
-	for name, data := range map[string][][]string{"plan.csv": rows, "to_salesforce.csv": toSF, "manual_actions.csv": manual, "targets.csv": targets} {
+	files := map[string][][]string{"plan.csv": rows, "to_salesforce.csv": toSF, "manual_actions.csv": manual, "targets.csv": targets}
+	if plan.applied {
+		files["dropped_grants.csv"] = plan.droppedRows()
+	} else if err := os.Remove(filepath.Join(dir, "dropped_grants.csv")); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	for name, data := range files {
 		if err := writeCSV(filepath.Join(dir, name), data); err != nil {
 			return err
 		}
 	}
 	return writeColumnsCSV(dir)
+}
+
+// droppedRows lists, from the journal, the grants deleted without a copy by every rewrite whose cleanup finished;
+// the journal holds no usernames, so only the grants this run saw carry one.
+func (p *Plan) droppedRows() [][]string {
+	rows := [][]string{{"old_id", "new_id", "username", "role", "object_type", "object_id", "grant_id"}}
+	if p.state == nil {
+		return rows
+	}
+	users := map[string]string{}
+	for _, g := range p.Groups {
+		for _, gr := range g.Dropped {
+			users[gr.GrantID] = gr.Username
+		}
+	}
+	keys := make([]string, 0, len(p.state.Last))
+	for k := range p.state.Last {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		rec := p.state.Last[k]
+		if rec.Step != StepDone && rec.Step != StepRegister && (rec.Step != StepCleanup || rec.Status != statusOK) {
+			continue
+		}
+		for _, gr := range rec.Dropped {
+			rows = append(rows, []string{rec.OldID, rec.NewID, users[gr.GrantID], firstNonEmpty(gr.RoleName, gr.RoleID), gr.ObjectTypeName, gr.ObjectID, gr.GrantID})
+		}
+	}
+	return rows
 }
 
 // domainOf returns the group's website domain and "true"/"false" for the shared-domain flag.

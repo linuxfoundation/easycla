@@ -14,7 +14,7 @@ import (
 func TestColumnsLegendCoversEveryReportColumn(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, writeAuditReports(dir, &AuditResult{}))
-	require.NoError(t, writeIngestReports(dir, &Plan{}))
+	require.NoError(t, writeIngestReports(dir, &Plan{applied: true}))
 
 	legend := map[string]map[string]bool{}
 	for _, row := range readCSV(t, filepath.Join(dir, ColumnsFile))[1:] {
@@ -28,14 +28,14 @@ func TestColumnsLegendCoversEveryReportColumn(t *testing.T) {
 		assert.False(t, legend[row[0]][row[1]], "duplicate legend row %v", row)
 		legend[row[0]][row[1]] = true
 	}
-	for _, name := range []string{"audit.csv", "unresolvable.csv", "possible_duplicates.csv", "plan.csv", "to_salesforce.csv", "manual_actions.csv", "targets.csv"} {
+	for _, name := range []string{"audit.csv", "unresolvable.csv", "possible_duplicates.csv", "plan.csv", "to_salesforce.csv", "manual_actions.csv", "targets.csv", "dropped_grants.csv"} {
 		header := readCSV(t, filepath.Join(dir, name))[0]
 		for _, col := range header {
 			assert.True(t, legend[name][col], "%s: column %q has no legend row", name, col)
 		}
 		assert.Len(t, legend[name], len(header), "%s: legend rows for columns the file does not have", name)
 	}
-	assert.Len(t, legend, 7)
+	assert.Len(t, legend, 8)
 
 	names := []string{}
 	for _, a := range attachmentsOf(dir) {

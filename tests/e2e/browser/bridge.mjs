@@ -34,12 +34,12 @@ const m3Org = { sfid: cfg('M3_ORG_SFID'), name: cfg('M3_ORG_NAME'), sig: cfg('M3
 const other = { sfid: cfg('OTHER_ORG_SFID'), name: cfg('OTHER_ORG_NAME') };
 const adminOrgs = cfg('ID1_ADMIN_ORG_SFIDS').split(',').map((s) => s.trim()).filter(Boolean);
 const uid = (o) => (typeof o === 'string' ? o : o?.uid || o?.sfid || o?.id);
-const navLinks = (page) => page.$$eval('nav a[href], aside a[href]', (as) => [...new Set(as.filter((a) => /^\/org\//.test(a.getAttribute('href') || '')).map((a) => (a.getAttribute('href') || '') + ' :: ' + (a.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40)))]).catch(() => []);
+const navLinks = (page) => page.$$eval('nav a[href], aside a[href]', (as) => [...new Set(as.filter((a) => /^\/(org|company)\//.test(a.getAttribute('href') || '')).map((a) => (a.getAttribute('href') || '') + ' :: ' + (a.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 40)))]).catch(() => []);
 const adminWords = /Org Admin|Dashboard|Memberships|People/;
-const deniedPath = (p) => /not-found|access-denied/.test(p) || p === '/' || p === '/org/overview';
-// Self Serve sometimes keeps a no-role identity on /org/<sfid>/overview and renders the unbound overview shell
-// ("Select Organization", zero data) instead of redirecting: denied as long as that company's name is not rendered
-const deniedOverview = (w, name) => deniedPath(w.path) || (/^\/org\/[^/]+\/overview$/.test(w.path) && !!name && !w.text.toLowerCase().includes(name.toLowerCase()));
+const deniedPath = (p) => /not-found|access-denied/.test(p) || p === '/' || /^\/(org|company)\/overview$/.test(p);
+// Self Serve sometimes keeps a no-role identity on /company/<sfid>/overview and renders the unbound overview shell
+// ("Select Company", zero data) instead of redirecting: denied as long as that company's name is not rendered
+const deniedOverview = (w, name) => deniedPath(w.path) || (/^\/(org|company)\/[^/]+\/overview$/.test(w.path) && !!name && !w.text.toLowerCase().includes(name.toLowerCase()));
 
 async function visit(page, p, shotName, settle = 7000) {
   // a failed navigation (not the SSO redirect superseding it) must reach the outer handler: the checks below compare the

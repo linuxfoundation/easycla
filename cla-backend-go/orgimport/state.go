@@ -11,18 +11,22 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	acs_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
 )
 
 // StateRecord is one append-only JSONL line: a group's progress through the rewrite steps.
 type StateRecord struct {
-	OldID      string   `json:"old_id"`
-	Key        string   `json:"key,omitempty"`
-	NewID      string   `json:"new_id"`
-	CompanyIDs []string `json:"company_ids"`
-	Step       string   `json:"step"`
-	TS         string   `json:"ts"`
-	Status     string   `json:"status"`
-	Err        string   `json:"err,omitempty"`
+	OldID      string                 `json:"old_id"`
+	Key        string                 `json:"key,omitempty"`
+	NewID      string                 `json:"new_id"`
+	CompanyIDs []string               `json:"company_ids"`
+	AllGrants  bool                   `json:"all_grants,omitempty"`
+	Dropped    []acs_service.OrgGrant `json:"dropped,omitempty"`
+	Step       string                 `json:"step"`
+	TS         string                 `json:"ts"`
+	Status     string                 `json:"status"`
+	Err        string                 `json:"err,omitempty"`
 }
 
 // key is the group selector: the company id of a row-targeted group, otherwise the old external id.
@@ -54,7 +58,7 @@ func LoadState(path string) (*State, error) {
 	}
 	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	sc.Buffer(make([]byte, 1<<20), 64<<20)
 	line := 0
 	for sc.Scan() {
 		line++
