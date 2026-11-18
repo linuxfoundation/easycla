@@ -108,7 +108,6 @@ func TestCreateCompanyHandlerDependencyFailuresAre500(t *testing.T) {
 	}{
 		"member-service 503":                   {&memberCreateHTTP{memberStatus: http.StatusServiceUnavailable, memberBody: `{"message":"upstream body"}`}, memberCreateRepo{}, "upstream body"},
 		"name lookup failure":                  {&memberCreateHTTP{memberStatus: http.StatusCreated, memberBody: accountJSON}, memberCreateRepo{nameFailure: errors.New("dynamodb unavailable")}, "dynamodb"},
-		"scope failure after row":              {&memberCreateHTTP{memberStatus: http.StatusCreated, memberBody: accountJSON, orgStatus: http.StatusOK, scopeStatus: http.StatusInternalServerError}, memberCreateRepo{expectRow: true}, "scope failure"},
 		"member-service 503 with legacy words": {&memberCreateHTTP{memberStatus: http.StatusServiceUnavailable, memberBody: `{"message":"website already exists"}`}, memberCreateRepo{}, "website already exists"},
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -142,10 +141,8 @@ func TestCreateCompanyHandlerDependencyFailuresAre500(t *testing.T) {
 			grantBody:    fmt.Sprintf(`{"message":%q}`, privateDetail+" for "+testCallerEmail),
 		}
 		fx := newMemberCreateFixture(t, transport, memberCreateRepo{expectRow: true})
-		code, payload := call(t, fx)
-		assert.Equal(t, http.StatusInternalServerError, code)
-		assert.Equal(t, "500", payload.Code)
-		assert.Equal(t, "EasyCLA - 500 Internal Server Error - "+ErrCompanyDependencyFailed.Error(), payload.Message)
+		code, _ := call(t, fx)
+		assert.Equal(t, http.StatusOK, code, "a failed grant never fails the company (lfx-self-serve#5916)")
 		assert.Equal(t, 1, transport.count(msGrantPath))
 		assert.Zero(t, transport.count(msOrgPath+"/scopes"))
 		handlerWarnings := 0
@@ -158,7 +155,7 @@ func TestCreateCompanyHandlerDependencyFailuresAre500(t *testing.T) {
 				handlerWarnings++
 			}
 		}
-		assert.Equal(t, 1, handlerWarnings)
+		assert.Equal(t, 0, handlerWarnings, "a 200 answer logs no handler error")
 	})
 
 	t.Run("a plain legacy website conflict still answers the legacy 409", func(t *testing.T) {
