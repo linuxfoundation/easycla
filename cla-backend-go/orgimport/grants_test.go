@@ -17,6 +17,32 @@ import (
 
 var droppedHeader = []string{"old_id", "new_id", "username", "role", "object_type", "object_id"}
 
+// droppedReport reads dropped_grants.csv without its last column, grant_id, which every data row must carry.
+func droppedReport(t *testing.T, dir string) [][]string {
+	t.Helper()
+	rows := readCSV(t, filepath.Join(dir, "dropped_grants.csv"))
+	require.Equal(t, "grant_id", rows[0][len(rows[0])-1])
+	out := make([][]string, 0, len(rows))
+	for i, row := range rows {
+		if i > 0 {
+			require.NotEmpty(t, row[len(row)-1], row)
+		}
+		out = append(out, row[:len(row)-1])
+	}
+	return out
+}
+
+func grantIDOf(t *testing.T, fx *fixture, org, user, role string) string {
+	t.Helper()
+	for _, g := range fx.platform.grants[org] {
+		if g.Username == user && g.RoleName == role {
+			return g.GrantID
+		}
+	}
+	t.Fatalf("no %s grant of %s on %s", role, user, org)
+	return ""
+}
+
 func targetGrants(t *testing.T, fx *fixture) []string {
 	t.Helper()
 	var out []string
@@ -44,6 +70,7 @@ func TestRewriteOntoExistingAccountCopiesOnlyEasyCLARoles(t *testing.T) {
 			}
 		}
 	}
+	aliceAdmin, heidiViewer := grantIDOf(t, fx, lfID, "alice", "company-admin"), grantIDOf(t, fx, lfID, "heidi", "viewer")
 	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}, OutDir: t.TempDir()}
 	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
 	require.NoError(t, err)
@@ -64,7 +91,7 @@ func TestRewriteOntoExistingAccountCopiesOnlyEasyCLARoles(t *testing.T) {
 		"grace:company-admin:" + targetSFID,
 	}, targetGrants(t, fx), "only the EasyCLA roles are copied; grace keeps the grant she already had on the Account")
 	assert.Empty(t, mustListOrgGrants(t, fx, lfID), "old grants are deleted, copied or not")
-	dropped := readCSV(t, filepath.Join(opts.OutDir, "dropped_grants.csv"))
+	dropped := droppedReport(t, opts.OutDir)
 	assert.Equal(t, droppedHeader, dropped[0])
 	assert.ElementsMatch(t, [][]string{
 		{lfID, targetSFID, "alice", "company-admin", objectTypeOrganization, lfID},
@@ -72,10 +99,15 @@ func TestRewriteOntoExistingAccountCopiesOnlyEasyCLARoles(t *testing.T) {
 		{lfID, targetSFID, "ivan", "viewer", objectTypeOrganization, lfID},
 	}, dropped[1:], "one row per grant deleted without a copy, the late one included")
 	assert.Contains(t, fx.out.String(), "grants "+lfID+" -> "+targetSFID+": 2 existing, 5 created, 2 not copied")
-	assert.Contains(t, fx.out.String(), "grant deleted without a copy "+lfID+" -> "+targetSFID+": company-admin alice on "+lfID)
+	assert.Contains(t, fx.out.String(), "grant deleted without a copy "+lfID+" -> "+targetSFID+": company-admin grant "+aliceAdmin+" on "+lfID)
 	journal, err := os.ReadFile(filepath.Clean(statePath))
 	require.NoError(t, err)
 	assert.NotContains(t, string(journal), "all_grants")
+	assert.Contains(t, string(journal), `"grant_id":"`+heidiViewer+`"`, "the journal keeps the list by grant id")
+	for _, user := range []string{"alice", "heidi", "ivan"} {
+		assert.NotContains(t, string(journal), user, "no username in the journal: the sweep workflow publishes it")
+		assert.NotContains(t, fx.out.String(), user, "no username in the log")
+	}
 }
 
 func TestRewriteOntoNewAccountCopiesEveryGrant(t *testing.T) {
@@ -101,7 +133,7 @@ func TestRewriteOntoNewAccountCopiesEveryGrant(t *testing.T) {
 		"heidi:viewer:" + targetSFID,
 	}, targetGrants(t, fx))
 	assert.Empty(t, mustListOrgGrants(t, fx, lfID))
-	assert.Equal(t, [][]string{droppedHeader}, readCSV(t, filepath.Join(opts.OutDir, "dropped_grants.csv")))
+	assert.Equal(t, [][]string{droppedHeader}, droppedReport(t, opts.OutDir))
 	journal, err := os.ReadFile(filepath.Clean(statePath))
 	require.NoError(t, err)
 	assert.Contains(t, string(journal), `"all_grants":true,"step":"done"`)
@@ -131,7 +163,7 @@ func TestCollapseCopiesOnlyEasyCLARoles(t *testing.T) {
 		droppedHeader,
 		{"lf-a", targetSFID, "alice", "company-admin", objectTypeOrganization, "lf-a"},
 		{"lf-b", targetSFID, "bob", "company-admin", objectTypeOrganization, "lf-b"},
-	}, readCSV(t, filepath.Join(opts.OutDir, "dropped_grants.csv")))
+	}, droppedReport(t, opts.OutDir))
 }
 
 func TestReplayKeepsTheGrantPolicyOfTheJournal(t *testing.T) {
@@ -165,12 +197,12 @@ func TestReplayKeepsTheGrantPolicyOfTheJournal(t *testing.T) {
 			if tc.copied {
 				assert.Contains(t, targetGrants(t, fx), "grace:company-admin:"+targetSFID)
 				assert.Contains(t, string(journal), `"all_grants":true,"step":"done"`)
-				assert.Equal(t, [][]string{droppedHeader}, readCSV(t, filepath.Join(opts.OutDir, "dropped_grants.csv")))
+				assert.Equal(t, [][]string{droppedHeader}, droppedReport(t, opts.OutDir))
 				return
 			}
 			assert.NotContains(t, targetGrants(t, fx), "grace:company-admin:"+targetSFID)
 			assert.NotContains(t, string(journal), "all_grants")
-			assert.Equal(t, [][]string{droppedHeader, {lfID, targetSFID, "grace", "company-admin", objectTypeOrganization, lfID}}, readCSV(t, filepath.Join(opts.OutDir, "dropped_grants.csv")))
+			assert.Equal(t, [][]string{droppedHeader, {lfID, targetSFID, "grace", "company-admin", objectTypeOrganization, lfID}}, droppedReport(t, opts.OutDir))
 		})
 	}
 }
@@ -202,7 +234,7 @@ func TestGroupStoppedBeforeCleanupReportsNoDroppedGrant(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, fx.out.String(), "1 not copied")
 	assert.Len(t, mustListOrgGrants(t, fx, lfID), 4, "the group stopped at the row rewrite: nothing is deleted")
-	assert.Equal(t, [][]string{droppedHeader}, readCSV(t, filepath.Join(opts.OutDir, "dropped_grants.csv")))
+	assert.Equal(t, [][]string{droppedHeader}, droppedReport(t, opts.OutDir))
 }
 
 func TestReplayOntoAnAccountThatBecameSharedCopiesOnlyEasyCLARoles(t *testing.T) {
@@ -228,7 +260,7 @@ func TestReplayOntoAnAccountThatBecameSharedCopiesOnlyEasyCLARoles(t *testing.T)
 	assert.Equal(t, []string{"alice:cla-manager:" + targetSFID, "bob:cla-manager:" + targetSFID}, targetGrants(t, fx),
 		"the journal says all grants, but the Account is shared now")
 	assert.Equal(t, [][]string{droppedHeader, {"lf-a", targetSFID, "alice", "company-admin", objectTypeOrganization, "lf-a"}},
-		readCSV(t, filepath.Join(opts.OutDir, "dropped_grants.csv")))
+		droppedReport(t, opts.OutDir))
 }
 
 func TestDroppedGrantsReportIsRebuiltFromTheJournal(t *testing.T) {
@@ -239,25 +271,25 @@ func TestDroppedGrantsReportIsRebuiltFromTheJournal(t *testing.T) {
 	fx.companies.rows["c-parent"].CompanyExternalID, fx.companies.rows["c-parent"].PreviousCompanyExternalID = targetSFID, lfID
 	fx.companies.rows["c-sub"].CompanyExternalID, fx.companies.rows["c-sub"].PreviousCompanyExternalID = targetSFID, lfID
 	fx.platform.grants[lfID] = nil
-	grant := func(user, role, org string) string {
-		return `{"username":"` + user + `","role_name":"` + role + `","role_id":"role-` + role + `","grant_id":"g-` + user + `","object_type_name":"organization","object_id":"` + org + `"}`
+	grant := func(id, role, org string) string {
+		return `{"username":"","role_name":"` + role + `","role_id":"role-` + role + `","grant_id":"` + id + `","object_type_name":"organization","object_id":"` + org + `"}`
 	}
 	require.NoError(t, os.WriteFile(statePath, []byte(
-		`{"old_id":"`+twoLfID+`","new_id":"`+twoSFID+`","company_ids":["c-two"],"dropped":[`+grant("heidi", "viewer", twoLfID)+`],"step":"done","ts":"2026-09-29T11:00:00Z","status":"ok"}`+"\n"+
-			`{"old_id":"`+lfID+`","new_id":"`+targetSFID+`","company_ids":["c-parent","c-sub"],"dropped":[`+grant("grace", "company-admin", lfID)+`],"step":"delete_old_grants","ts":"2026-09-29T11:00:01Z","status":"ok"}`+"\n"), 0o600))
+		`{"old_id":"`+twoLfID+`","new_id":"`+twoSFID+`","company_ids":["c-two"],"dropped":[`+grant("g-92", "viewer", twoLfID)+`],"step":"done","ts":"2026-09-29T11:00:00Z","status":"ok"}`+"\n"+
+			`{"old_id":"`+lfID+`","new_id":"`+targetSFID+`","company_ids":["c-parent","c-sub"],"dropped":[`+grant("g-91", "company-admin", lfID)+`],"step":"delete_old_grants","ts":"2026-09-29T11:00:01Z","status":"ok"}`+"\n"), 0o600))
 	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}, OutDir: t.TempDir()}
 	sum, err := runIngest(t, fx, opts)
 	require.NoError(t, err)
 	assert.Equal(t, 1, sum.Rewritten)
 
 	assert.Equal(t, [][]string{
-		droppedHeader,
-		{lfID, targetSFID, "grace", "company-admin", objectTypeOrganization, lfID},
-		{twoLfID, twoSFID, "heidi", "viewer", objectTypeOrganization, twoLfID},
-	}, readCSV(t, filepath.Join(opts.OutDir, "dropped_grants.csv")), "the list survives the crash: it is kept in the journal")
+		append(append([]string{}, droppedHeader...), "grant_id"),
+		{lfID, targetSFID, "", "company-admin", objectTypeOrganization, lfID, "g-91"},
+		{twoLfID, twoSFID, "", "viewer", objectTypeOrganization, twoLfID, "g-92"},
+	}, readCSV(t, filepath.Join(opts.OutDir, "dropped_grants.csv")), "the list survives the crash by grant id: the journal keeps no usernames")
 	journal, err := os.ReadFile(filepath.Clean(statePath))
 	require.NoError(t, err)
-	assert.Contains(t, string(journal), `"grant_id":"g-grace","scope_id":"","object_type_name":"organization","object_id":"`+lfID+`"}],"step":"done"`)
+	assert.Contains(t, string(journal), `"grant_id":"g-91","scope_id":"","object_type_name":"organization","object_id":"`+lfID+`"}],"step":"done"`)
 }
 
 func TestCollapseDecisionAppliesToTheFirstGroupOnTheAccount(t *testing.T) {
@@ -280,7 +312,7 @@ func TestCollapseDecisionAppliesToTheFirstGroupOnTheAccount(t *testing.T) {
 
 	assert.Equal(t, []string{"alice:cla-manager:" + targetSFID}, targetGrants(t, fx))
 	assert.Equal(t, [][]string{droppedHeader, {"lf-a", targetSFID, "alice", "company-admin", objectTypeOrganization, "lf-a"}},
-		readCSV(t, filepath.Join(opts.OutDir, "dropped_grants.csv")))
+		droppedReport(t, opts.OutDir))
 }
 
 func TestGrantWithoutRoleNameIsNeverDeletedUncopied(t *testing.T) {
@@ -347,7 +379,7 @@ func TestResumedGroupFindsItsAccountSharedThroughTheMappingOrAnExistingRow(t *te
 
 			assert.Equal(t, []string{"alice:cla-manager:" + targetSFID}, targetGrants(t, fx))
 			assert.Equal(t, [][]string{droppedHeader, {"lf-a", targetSFID, "alice", "company-admin", objectTypeOrganization, "lf-a"}},
-				readCSV(t, filepath.Join(opts.OutDir, "dropped_grants.csv")))
+				droppedReport(t, opts.OutDir))
 		})
 	}
 }
@@ -371,5 +403,24 @@ func TestGrantAddedOnTheAccountBeforeCleanupIsNotReported(t *testing.T) {
 	assert.Equal(t, 1, sum.Rewritten)
 	assert.Contains(t, fx.out.String(), "2 not copied")
 	assert.Equal(t, [][]string{droppedHeader, {lfID, targetSFID, "heidi", "viewer", objectTypeOrganization, lfID}},
-		readCSV(t, filepath.Join(opts.OutDir, "dropped_grants.csv")))
+		droppedReport(t, opts.OutDir))
+}
+
+func TestCollapseDecisionForAnotherAccountDoesNotApply(t *testing.T) {
+	fx, dir := collisionFixture(t)
+	fx.platform.addGrant("lf-a", "alice", "role-cla-manager", "")
+	fx.platform.addGrant("lf-a", "alice", "role-company-admin", "")
+	// the decision collapses lf-a onto another Account than the new one the mapping creates for it alone
+	mapping := writeMapping(t, dir, "lf-a,"+targetSFID+",created,true")
+	decisions := writeDecisions(t, dir, "collapse,lf-a;lf-b,"+targetSFID2+",michal,one legal entity")
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, Decisions: decisions, State: filepath.Join(dir, "state.jsonl"), Routes: []Route{RouteRewrite}, OutDir: filepath.Join(dir, "out")}
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	require.Len(t, plan.Rewrite, 1)
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+	require.NoError(t, err)
+	assert.Equal(t, 1, sum.Rewritten)
+
+	assert.Equal(t, []string{"alice:cla-manager:" + targetSFID, "alice:company-admin:" + targetSFID}, targetGrants(t, fx))
+	assert.Equal(t, [][]string{droppedHeader}, droppedReport(t, opts.OutDir))
 }

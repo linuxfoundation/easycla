@@ -98,10 +98,11 @@ var columnLegend = [][]string{
 	with("targets.csv", []string{"status", srcDerived, "collision check of the Account against --decisions", "ok | needs_decision (several old ids or existing rows land on one Account without a collapse decision = target_collision) | distinct_conflict (a distinct decision spans ids resolving to this Account) | target_forms_differ (ids landing here use both the 15- and 18-char form)"}),
 	// dropped_grants.csv
 	with("dropped_grants.csv", colOldID), with("dropped_grants.csv", colNewID),
-	with("dropped_grants.csv", []string{"username", srcACS, opDropped, "LF username that held the role on old_id"}),
+	with("dropped_grants.csv", []string{"username", srcACS, opDropped, "LF username that held the role on old_id; empty = the row comes from the journal of an earlier or interrupted run, which keeps no usernames: use grant_id with that run's file or with the ACS snapshot taken before it"}),
 	with("dropped_grants.csv", []string{"role", srcACS, opDropped, "role deleted with old_id and not copied to new_id because the Account existed before the rewrite (matched, or a collapse decision): only cla-manager, cla-manager-designee, cla-signatory, contributor and contact are copied there; grant it on new_id by hand if it is needed"}),
 	with("dropped_grants.csv", []string{"object_type", srcACS, opDropped, "organization | project|organization"}),
 	with("dropped_grants.csv", []string{"object_id", srcACS, opDropped, "scope of the old grant: old_id, or <project sfid>|old_id"}),
+	with("dropped_grants.csv", []string{"grant_id", srcACS, opDropped, "ACS id of the deleted grant: the only identity of it in state.jsonl and run.log"}),
 }
 
 func with(file string, col []string) []string {

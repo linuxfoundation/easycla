@@ -97,12 +97,13 @@ func (r *runner) copyGrants(ctx context.Context, g *Group) error {
 }
 
 func uncopied(g *Group, gr acs_service.OrgGrant, have map[string]bool) bool {
-	return gr.RoleID != "" && !have[grantKey(gr, g.NewID)]
+	return gr.RoleID != "" && gr.GrantID != "" && !have[grantKey(gr, g.NewID)]
 }
 
 func (g *Group) drop(gr acs_service.OrgGrant) {
-	for _, d := range g.Dropped {
-		if grantKey(d, g.OldID) == grantKey(gr, g.OldID) {
+	for i, d := range g.Dropped {
+		if d.GrantID == gr.GrantID {
+			g.Dropped[i] = gr
 			return
 		}
 	}
@@ -111,11 +112,24 @@ func (g *Group) drop(gr acs_service.OrgGrant) {
 
 func (g *Group) undrop(gr acs_service.OrgGrant) {
 	for i, d := range g.Dropped {
-		if grantKey(d, g.OldID) == grantKey(gr, g.OldID) {
+		if d.GrantID == gr.GrantID {
 			g.Dropped = append(g.Dropped[:i:i], g.Dropped[i+1:]...)
 			return
 		}
 	}
+}
+
+// droppedForJournal returns the list without usernames: the journal and the log are published by the sweep workflow.
+func (g *Group) droppedForJournal() []acs_service.OrgGrant {
+	if len(g.Dropped) == 0 {
+		return nil
+	}
+	out := make([]acs_service.OrgGrant, len(g.Dropped))
+	for i, d := range g.Dropped {
+		d.Username = ""
+		out[i] = d
+	}
+	return out
 }
 
 // listGrantPair lists the old org's grants and indexes the new org's grants by grantKey.
@@ -151,7 +165,7 @@ func (r *runner) ensureGrant(ctx context.Context, g *Group, gr acs_service.OrgGr
 	}
 	if !g.AllGrants && !easyCLARoles[gr.RoleName] {
 		if gr.RoleName == "" {
-			return false, fmt.Errorf("grant %s (role %s) of %s on %s has no role name: cannot tell whether it is copied to %s", gr.GrantID, gr.RoleID, gr.Username, g.OldID, g.NewID)
+			return false, fmt.Errorf("grant %s (role %s) on %s has no role name: cannot tell whether it is copied to %s", gr.GrantID, gr.RoleID, g.OldID, g.NewID)
 		}
 		return false, nil
 	}
@@ -266,7 +280,7 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 		deleted++
 		if uncopied(g, gr, have) {
 			g.drop(gr)
-			fmt.Fprintf(r.deps.Out, "grant deleted without a copy %s -> %s: %s %s on %s\n", g.OldID, g.NewID, firstNonEmpty(gr.RoleName, gr.RoleID), gr.Username, gr.ObjectID)
+			fmt.Fprintf(r.deps.Out, "grant deleted without a copy %s -> %s: %s grant %s on %s\n", g.OldID, g.NewID, firstNonEmpty(gr.RoleName, gr.RoleID), gr.GrantID, gr.ObjectID)
 		} else {
 			g.undrop(gr)
 		}

@@ -35,7 +35,7 @@ Safety rules:
   its deletion: managers never lose access.
 - On an Account that existed before the rewrite or is shared (`matched`, or an old id under a collapse decision) only `cla-manager`, `cla-manager-designee`,
   `cla-signatory`, `contributor` and `contact` are copied; every other role (`company-admin`, `viewer`) is deleted with the old id and listed in
-  `dropped_grants.csv`; the list is kept in the journal, so a resumed run still reports it. An Account created for one group alone (`created`)
+  `dropped_grants.csv`; the journal keeps the list by grant id, so a resumed run still reports it. An Account created for one group alone (`created`)
   receives every grant - unless another old id has been mapped onto it by the time an interrupted group is resumed.
 - An apply that could not finish is refused before its first write: rewrites without `--state`, or any register/rewrite without member-service.
 - `register` is stateless and needs no Salesforce input — it is the only route ever scheduled (§6).
@@ -73,7 +73,8 @@ Safety rules:
   Check: `STAGE=dev bin/org-import ingest --routes register --ids <known live 001 id>` must print `live=live`. A 403 on one Account while
   others answer 200 is `live=unregistered` (no b2b_org yet, §3.2); a 403 on every Account checked, or a 403 from the token endpoint, is
   `live=error` (never treated as dead) and the run exits 1.
-- Nothing sensitive is ever written: report files contain company names/ids only; tokens stay in memory.
+- Nothing sensitive is ever written: report files contain company names/ids only - except `dropped_grants.csv`, the one file that names LF users
+  (the sweep workflow does not upload it; it travels in the report e-mail); the journal and run.log identify such a grant by its grant id; tokens stay in memory.
 
 ## 3. Commands
 
@@ -184,8 +185,9 @@ Files (all rewritten after apply with the final state):
 - `plan.csv` — `key, old_id, id_shape, route, manual_reason, live, org_service, website, domain, shared_domain, new_id, action, decision, reviewer, company_ids, company_names, error, suggested_account`.
 - `manual_actions.csv` — one row per manual/pending/failed group with `reason`, `suggested_action` (what a human must do next) and `suggested_account` (§3.1).
 - `targets.csv` — rewrite destinations grouped by Account: `target_sfid, groups, old_ids, company_ids, company_names, existing_rows, decision, reviewer, status(ok|needs_decision|distinct_conflict|target_forms_differ)`.
-- `dropped_grants.csv` (written at the end of an apply only) — `old_id, new_id, username, role, object_type, object_id`: every grant the rewrites
-  recorded in `--state` deleted on an old id without a copy on the target (safety rules, §1); grant one on `new_id` by hand if it is needed.
+- `dropped_grants.csv` (written at the end of an apply only) — `old_id, new_id, username, role, object_type, object_id, grant_id`: every grant the rewrites
+  recorded in `--state` deleted on an old id without a copy on the target (safety rules, §1); grant one on `new_id` by hand if it is needed. `username` is
+  filled for the grants this run deleted; a row carried from the journal of an earlier or interrupted run has only its `grant_id`.
 - `to_salesforce.csv` — `old_id, name, website, ccla_signed_date, domain, shared_domain, suggested_account` — the hand-off to sales ops (§4).
 - `columns.csv` — the column legend (§3.1), covering every file above.
 
@@ -323,7 +325,7 @@ GitHub Actions `.github/workflows/org-import-sweep.yml`:
   unset or `off` (default) ⇒ the scheduled job does nothing. Scheduled runs are always `--routes register`. Manual runs ignore the variables.
 - Promotion: ≥10 clean manual runs (dry-run, then apply) → set the variable to `dry-run`, read the artifacts for a week → `apply`.
   Rollback: set `off` (no deploy, no code change). The `prod` environment's protection rules (reviewers) apply to every run.
-- Each run uploads `org-import-out/` (run.log and the CSVs of §3.2) as artifact `org-import-out-<stage>-<run id>`, copies run.log to CloudWatch
+- Each run uploads `org-import-out/` (run.log and the CSVs of §3.2, without `dropped_grants.csv`) as artifact `org-import-out-<stage>-<run id>`, copies run.log to CloudWatch
   Logs and e-mails the report (§8) — scheduled runs included.
 - IAM: the `github-actions-deploy` role of each account must allow the DynamoDB/SSM access listed in §2 (it deploys the API, so it already does).
 

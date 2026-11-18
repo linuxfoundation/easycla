@@ -66,7 +66,7 @@ func BuildPlan(ctx context.Context, deps Deps, opts Options) (*Plan, error) {
 		if !g.Replayed {
 			g.AllGrants = g.Action == ActionCreated
 		}
-		g.AllGrants = g.AllGrants && !decisions.collapsed(g.Key)
+		g.AllGrants = g.AllGrants && decisions.Collapse(g.Key, g.NewID) == nil
 	}
 	for _, t := range targets {
 		for _, g := range t.Groups {
@@ -629,7 +629,7 @@ func applyPreconditions(deps Deps, plan *Plan) error {
 
 // record appends one state line; a failure to journal is an error for the group.
 func (r *runner) record(g *Group, step, status string, err error) error {
-	rec := StateRecord{OldID: g.OldID, NewID: g.NewID, CompanyIDs: g.CompanyIDs(), AllGrants: g.AllGrants, Dropped: g.Dropped, Step: step, Status: status}
+	rec := StateRecord{OldID: g.OldID, NewID: g.NewID, CompanyIDs: g.CompanyIDs(), AllGrants: g.AllGrants, Dropped: g.droppedForJournal(), Step: step, Status: status}
 	if g.RowTargeted() {
 		rec.Key = g.Key
 	}

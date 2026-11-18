@@ -254,7 +254,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: org-import-out-${{ matrix.stage }}-${{ github.run_id }}
-          path: cla-backend-go/org-import-out
+          path: |
+            cla-backend-go/org-import-out
+            !cla-backend-go/org-import-out/dropped_grants.csv
           if-no-files-found: ignore
           retention-days: 90
 
