@@ -14,7 +14,7 @@ import (
 func TestColumnsLegendCoversEveryReportColumn(t *testing.T) {
 	dir := t.TempDir()
 	require.NoError(t, writeAuditReports(dir, &AuditResult{}))
-	require.NoError(t, writeIngestReports(dir, &Plan{Apply: true}))
+	require.NoError(t, writeIngestReports(dir, &Plan{applied: true}))
 
 	legend := map[string]map[string]bool{}
 	for _, row := range readCSV(t, filepath.Join(dir, ColumnsFile))[1:] {

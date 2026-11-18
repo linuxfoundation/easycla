@@ -29,6 +29,7 @@ type Plan struct {
 	shared    SharedDomains
 	state     *State
 	inv       *Inventory
+	applied   bool
 }
 
 // BuildPlan loads the inventory, replays unfinished state, classifies every eligible group and
@@ -63,7 +64,12 @@ func BuildPlan(ctx context.Context, deps Deps, opts Options) (*Plan, error) {
 	targets := applyDecisions(groups, inv, mapping, decisions)
 	for _, g := range groups {
 		if !g.Replayed {
-			g.AllGrants = g.Action == ActionCreated && g.Decision == nil
+			g.AllGrants = g.Action == ActionCreated
+		}
+	}
+	for _, t := range targets {
+		for _, g := range t.Groups {
+			g.AllGrants = g.AllGrants && !t.sharedWith(g)
 		}
 	}
 	known := knownAccountsFromGroups(shared, groups)
@@ -221,7 +227,7 @@ func replayGroups(ctx context.Context, deps Deps, inv *Inventory, state *State) 
 		if rec.NewID == "" || !IsSFID(rec.NewID) {
 			return nil, fmt.Errorf("state: unfinished group %s has no valid new_id", rec.key())
 		}
-		g := &Group{OldID: rec.OldID, Key: rec.key(), Shape: ShapeOf(rec.OldID), Route: RouteRewrite, NewID: rec.NewID, Replayed: true, Action: "replay:" + rec.Step, AllGrants: rec.AllGrants}
+		g := &Group{OldID: rec.OldID, Key: rec.key(), Shape: ShapeOf(rec.OldID), Route: RouteRewrite, NewID: rec.NewID, Replayed: true, Action: "replay:" + rec.Step, AllGrants: rec.AllGrants, Dropped: rec.Dropped}
 		for _, id := range rec.CompanyIDs {
 			dbRow, err := deps.Companies.GetCompanyRecord(ctx, id)
 			if err != nil {
@@ -587,6 +593,7 @@ func Execute(ctx context.Context, deps Deps, opts Options, plan *Plan) (Summary,
 	if recheck {
 		sum.Failed += r.recheckEvents(ctx, recheckBudget)
 	}
+	plan.applied = true
 	if opts.OutDir != "" {
 		if err := writeIngestReports(opts.OutDir, plan); err != nil {
 			return sum, err
@@ -621,7 +628,7 @@ func applyPreconditions(deps Deps, plan *Plan) error {
 
 // record appends one state line; a failure to journal is an error for the group.
 func (r *runner) record(g *Group, step, status string, err error) error {
-	rec := StateRecord{OldID: g.OldID, NewID: g.NewID, CompanyIDs: g.CompanyIDs(), AllGrants: g.AllGrants, Step: step, Status: status}
+	rec := StateRecord{OldID: g.OldID, NewID: g.NewID, CompanyIDs: g.CompanyIDs(), AllGrants: g.AllGrants, Dropped: g.Dropped, Step: step, Status: status}
 	if g.RowTargeted() {
 		rec.Key = g.Key
 	}

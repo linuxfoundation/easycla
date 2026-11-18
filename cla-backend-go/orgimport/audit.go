@@ -433,11 +433,7 @@ func writeIngestReports(dir string, plan *Plan) error {
 	rows := [][]string{{"key", "old_id", "id_shape", "route", "manual_reason", "live", "org_service", "website", "domain", "shared_domain", "new_id", "action", "decision", "reviewer", "company_ids", "company_names", "error", "suggested_account"}}
 	toSF := [][]string{{"old_id", "name", "website", "ccla_signed_date", "domain", "shared_domain", "suggested_account"}}
 	manual := [][]string{{"key", "old_id", "route", "reason", "suggested_action", "live", "org_service", "website", "domain", "shared_domain", "new_id", "action", "company_ids", "company_names", "error", "suggested_account"}}
-	dropped := [][]string{{"old_id", "new_id", "username", "role", "object_type", "object_id"}}
 	for _, g := range plan.Groups {
-		for _, gr := range g.Dropped {
-			dropped = append(dropped, []string{g.OldID, g.NewID, gr.Username, firstNonEmpty(gr.RoleName, gr.RoleID), gr.ObjectTypeName, gr.ObjectID})
-		}
 		names := strings.Join(g.Names(), ";")
 		errText := ""
 		if g.Err != nil {
@@ -477,8 +473,10 @@ func writeIngestReports(dir string, plan *Plan) error {
 		targets = append(targets, []string{t.SFID, strconv.Itoa(len(t.Groups)), strings.Join(t.OldIDs(), ";"), strings.Join(ids, ";"), strings.Join(names, ";"), strconv.Itoa(len(t.Existing)), decision, reviewer, t.Status})
 	}
 	files := map[string][][]string{"plan.csv": rows, "to_salesforce.csv": toSF, "manual_actions.csv": manual, "targets.csv": targets}
-	if plan.Apply {
-		files["dropped_grants.csv"] = dropped
+	if plan.applied {
+		files["dropped_grants.csv"] = plan.droppedRows()
+	} else if err := os.Remove(filepath.Join(dir, "dropped_grants.csv")); err != nil && !os.IsNotExist(err) {
+		return err
 	}
 	for name, data := range files {
 		if err := writeCSV(filepath.Join(dir, name), data); err != nil {
@@ -486,6 +484,29 @@ func writeIngestReports(dir string, plan *Plan) error {
 		}
 	}
 	return writeColumnsCSV(dir)
+}
+
+// droppedRows lists, from the journal, the grants deleted without a copy by every rewrite whose cleanup finished.
+func (p *Plan) droppedRows() [][]string {
+	rows := [][]string{{"old_id", "new_id", "username", "role", "object_type", "object_id"}}
+	if p.state == nil {
+		return rows
+	}
+	keys := make([]string, 0, len(p.state.Last))
+	for k := range p.state.Last {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		rec := p.state.Last[k]
+		if rec.Step != StepDone && rec.Step != StepRegister && (rec.Step != StepCleanup || rec.Status != statusOK) {
+			continue
+		}
+		for _, gr := range rec.Dropped {
+			rows = append(rows, []string{rec.OldID, rec.NewID, gr.Username, firstNonEmpty(gr.RoleName, gr.RoleID), gr.ObjectTypeName, gr.ObjectID})
+		}
+	}
+	return rows
 }
 
 // domainOf returns the group's website domain and "true"/"false" for the shared-domain flag.

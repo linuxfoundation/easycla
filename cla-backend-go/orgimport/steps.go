@@ -89,6 +89,7 @@ func (r *runner) copyGrants(ctx context.Context, g *Group) error {
 			created++
 		} else if uncopied(g, gr, have) {
 			skipped++
+			g.drop(gr)
 		}
 	}
 	fmt.Fprintf(r.deps.Out, "grants %s -> %s: %d existing, %d created, %d not copied\n", g.OldID, g.NewID, len(oldGrants)-created-skipped, created, skipped)
@@ -97,6 +98,15 @@ func (r *runner) copyGrants(ctx context.Context, g *Group) error {
 
 func uncopied(g *Group, gr acs_service.OrgGrant, have map[string]bool) bool {
 	return gr.RoleID != "" && !have[grantKey(gr, g.NewID)]
+}
+
+func (g *Group) drop(gr acs_service.OrgGrant) {
+	for _, d := range g.Dropped {
+		if grantKey(d, g.OldID) == grantKey(gr, g.OldID) {
+			return
+		}
+	}
+	g.Dropped = append(g.Dropped, gr)
 }
 
 // listGrantPair lists the old org's grants and indexes the new org's grants by grantKey.
@@ -243,7 +253,7 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 		}
 		deleted++
 		if uncopied(g, gr, have) {
-			g.Dropped = append(g.Dropped, gr)
+			g.drop(gr)
 			fmt.Fprintf(r.deps.Out, "grant deleted without a copy %s -> %s: %s %s on %s\n", g.OldID, g.NewID, firstNonEmpty(gr.RoleName, gr.RoleID), gr.Username, gr.ObjectID)
 		}
 	}

@@ -179,10 +179,11 @@ func TestDryRunWritesNoDroppedGrantsFile(t *testing.T) {
 	fx, mapping, statePath := rewriteFixture(t)
 	fx.platform.addGrant(lfID, "grace", "role-company-admin", "")
 	opts := Options{Stage: "dev", Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}, OutDir: t.TempDir()}
+	require.NoError(t, os.WriteFile(filepath.Join(opts.OutDir, "dropped_grants.csv"), []byte("left by an earlier apply\n"), 0o600))
 	_, err := runIngest(t, fx, opts)
 	require.NoError(t, err)
 	_, err = os.Stat(filepath.Join(opts.OutDir, "dropped_grants.csv"))
-	assert.True(t, os.IsNotExist(err), "a dry run does not list the grants: an empty file would read as nothing dropped")
+	assert.True(t, os.IsNotExist(err), "a dry run lists no grants and keeps no file of an earlier run: an empty or stale file would read as its own result")
 	_, err = os.Stat(filepath.Join(opts.OutDir, "plan.csv"))
 	assert.NoError(t, err)
 	assert.Len(t, mustListOrgGrants(t, fx, lfID), 4)
@@ -202,4 +203,59 @@ func TestGroupStoppedBeforeCleanupReportsNoDroppedGrant(t *testing.T) {
 	assert.Contains(t, fx.out.String(), "1 not copied")
 	assert.Len(t, mustListOrgGrants(t, fx, lfID), 4, "the group stopped at the row rewrite: nothing is deleted")
 	assert.Equal(t, [][]string{droppedHeader}, readCSV(t, filepath.Join(opts.OutDir, "dropped_grants.csv")))
+}
+
+func TestReplayOntoAnAccountThatBecameSharedCopiesOnlyEasyCLARoles(t *testing.T) {
+	fx, dir := collisionFixture(t)
+	fx.platform.addGrant("lf-a", "alice", "role-cla-manager", "")
+	fx.platform.addGrant("lf-a", "alice", "role-company-admin", "")
+	fx.platform.addGrant("lf-b", "bob", "role-cla-manager", "")
+	statePath := filepath.Join(dir, "state.jsonl")
+	// lf-a was planned alone on a new Account and stopped while waiting for org-service; lf-b was mapped onto it since
+	require.NoError(t, os.WriteFile(statePath, []byte(`{"old_id":"lf-a","new_id":"`+targetSFID+`","company_ids":["c-a"],"all_grants":true,`+
+		`"step":"wait","ts":"2026-09-29T11:00:00Z","status":"failed","err":"org-service does not serve it yet"}`+"\n"), 0o600))
+	mapping := writeMapping(t, dir, "lf-a,"+targetSFID+",created,true", "lf-b,"+targetSFID+",created,true")
+	decisions := writeDecisions(t, dir, "collapse,lf-a;lf-b,"+targetSFID+",michal,one legal entity")
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, Decisions: decisions, State: statePath, Routes: []Route{RouteRewrite}, OutDir: filepath.Join(dir, "out")}
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	require.Len(t, plan.Rewrite, 2)
+	require.True(t, plan.Rewrite[0].Replayed)
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+	require.NoError(t, err)
+	assert.Equal(t, 2, sum.Rewritten)
+
+	assert.Equal(t, []string{"alice:cla-manager:" + targetSFID, "bob:cla-manager:" + targetSFID}, targetGrants(t, fx),
+		"the journal says all grants, but the Account is shared now")
+	assert.Equal(t, [][]string{droppedHeader, {"lf-a", targetSFID, "alice", "company-admin", objectTypeOrganization, "lf-a"}},
+		readCSV(t, filepath.Join(opts.OutDir, "dropped_grants.csv")))
+}
+
+func TestDroppedGrantsReportIsRebuiltFromTheJournal(t *testing.T) {
+	fx, mapping, statePath := rewriteFixture(t)
+	// an earlier run finished another group, deleted this group's old grants and died before its final report
+	fx.company("c-two", "Two", "", twoSFID, "cg-1")
+	fx.platform.sfAccounts[twoSFID] = true
+	fx.companies.rows["c-parent"].CompanyExternalID, fx.companies.rows["c-parent"].PreviousCompanyExternalID = targetSFID, lfID
+	fx.companies.rows["c-sub"].CompanyExternalID, fx.companies.rows["c-sub"].PreviousCompanyExternalID = targetSFID, lfID
+	fx.platform.grants[lfID] = nil
+	grant := func(user, role, org string) string {
+		return `{"username":"` + user + `","role_name":"` + role + `","role_id":"role-` + role + `","grant_id":"g-` + user + `","object_type_name":"organization","object_id":"` + org + `"}`
+	}
+	require.NoError(t, os.WriteFile(statePath, []byte(
+		`{"old_id":"`+twoLfID+`","new_id":"`+twoSFID+`","company_ids":["c-two"],"dropped":[`+grant("heidi", "viewer", twoLfID)+`],"step":"done","ts":"2026-09-29T11:00:00Z","status":"ok"}`+"\n"+
+			`{"old_id":"`+lfID+`","new_id":"`+targetSFID+`","company_ids":["c-parent","c-sub"],"dropped":[`+grant("grace", "company-admin", lfID)+`],"step":"delete_old_grants","ts":"2026-09-29T11:00:01Z","status":"ok"}`+"\n"), 0o600))
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}, OutDir: t.TempDir()}
+	sum, err := runIngest(t, fx, opts)
+	require.NoError(t, err)
+	assert.Equal(t, 1, sum.Rewritten)
+
+	assert.Equal(t, [][]string{
+		droppedHeader,
+		{lfID, targetSFID, "grace", "company-admin", objectTypeOrganization, lfID},
+		{twoLfID, twoSFID, "heidi", "viewer", objectTypeOrganization, twoLfID},
+	}, readCSV(t, filepath.Join(opts.OutDir, "dropped_grants.csv")), "the list survives the crash: it is kept in the journal")
+	journal, err := os.ReadFile(filepath.Clean(statePath))
+	require.NoError(t, err)
+	assert.Contains(t, string(journal), `"grant_id":"g-grace","scope_id":"","object_type_name":"organization","object_id":"`+lfID+`"}],"step":"done"`)
 }
