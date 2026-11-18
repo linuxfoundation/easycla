@@ -58,7 +58,7 @@ func LoadState(path string) (*State, error) {
 	}
 	defer func() { _ = f.Close() }()
 	sc := bufio.NewScanner(f)
-	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	sc.Buffer(make([]byte, 1<<20), 64<<20)
 	line := 0
 	for sc.Scan() {
 		line++

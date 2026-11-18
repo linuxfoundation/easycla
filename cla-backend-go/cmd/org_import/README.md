@@ -325,7 +325,7 @@ GitHub Actions `.github/workflows/org-import-sweep.yml`:
   unset or `off` (default) ⇒ the scheduled job does nothing. Scheduled runs are always `--routes register`. Manual runs ignore the variables.
 - Promotion: ≥10 clean manual runs (dry-run, then apply) → set the variable to `dry-run`, read the artifacts for a week → `apply`.
   Rollback: set `off` (no deploy, no code change). The `prod` environment's protection rules (reviewers) apply to every run.
-- Each run uploads `org-import-out/` (run.log and the CSVs of §3.2, without `dropped_grants.csv`) as artifact `org-import-out-<stage>-<run id>`, copies run.log to CloudWatch
+- Each run uploads `org-import-out/` (run.log and the CSVs of §3.2, without `dropped_grants.csv`: keep `notify` on for a rewrite apply, the report e-mail is the only place that file goes) as artifact `org-import-out-<stage>-<run id>`, copies run.log to CloudWatch
   Logs and e-mails the report (§8) — scheduled runs included.
 - IAM: the `github-actions-deploy` role of each account must allow the DynamoDB/SSM access listed in §2 (it deploys the API, so it already does).
 

@@ -487,15 +487,17 @@ func writeIngestReports(dir string, plan *Plan) error {
 }
 
 // droppedRows lists, from the journal, the grants deleted without a copy by every rewrite whose cleanup finished;
-// the journal holds no usernames, so only the groups of this run carry them.
+// the journal holds no usernames, so only the grants this run saw carry one.
 func (p *Plan) droppedRows() [][]string {
 	rows := [][]string{{"old_id", "new_id", "username", "role", "object_type", "object_id", "grant_id"}}
 	if p.state == nil {
 		return rows
 	}
-	inRun := map[string]*Group{}
+	users := map[string]string{}
 	for _, g := range p.Groups {
-		inRun[g.Key] = g
+		for _, gr := range g.Dropped {
+			users[gr.GrantID] = gr.Username
+		}
 	}
 	keys := make([]string, 0, len(p.state.Last))
 	for k := range p.state.Last {
@@ -507,12 +509,8 @@ func (p *Plan) droppedRows() [][]string {
 		if rec.Step != StepDone && rec.Step != StepRegister && (rec.Step != StepCleanup || rec.Status != statusOK) {
 			continue
 		}
-		dropped := rec.Dropped
-		if g := inRun[k]; g != nil {
-			dropped = g.Dropped
-		}
-		for _, gr := range dropped {
-			rows = append(rows, []string{rec.OldID, rec.NewID, gr.Username, firstNonEmpty(gr.RoleName, gr.RoleID), gr.ObjectTypeName, gr.ObjectID, gr.GrantID})
+		for _, gr := range rec.Dropped {
+			rows = append(rows, []string{rec.OldID, rec.NewID, users[gr.GrantID], firstNonEmpty(gr.RoleName, gr.RoleID), gr.ObjectTypeName, gr.ObjectID, gr.GrantID})
 		}
 	}
 	return rows

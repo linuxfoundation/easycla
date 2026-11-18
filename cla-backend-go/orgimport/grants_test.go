@@ -6,13 +6,17 @@ package orgimport
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	acs_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
 )
 
 var droppedHeader = []string{"old_id", "new_id", "username", "role", "object_type", "object_id"}
@@ -423,4 +427,66 @@ func TestCollapseDecisionForAnotherAccountDoesNotApply(t *testing.T) {
 
 	assert.Equal(t, []string{"alice:cla-manager:" + targetSFID, "alice:company-admin:" + targetSFID}, targetGrants(t, fx))
 	assert.Equal(t, [][]string{droppedHeader}, droppedReport(t, opts.OutDir))
+}
+
+func TestFailedGrantStepNamesNoUser(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		fail func(fx *fixture)
+		step string
+	}{
+		{"copy", func(fx *fixture) { fx.platform.failCreate = true }, StepGrants},
+		{"cleanup", func(fx *fixture) { fx.platform.failDelete = true }, StepCleanup},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fx, mapping, statePath := rewriteFixture(t)
+			tc.fail(fx)
+			opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}}
+			plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+			require.NoError(t, err)
+			_, err = Execute(context.Background(), fx.deps(), opts, plan)
+			require.Error(t, err)
+			journal, err := os.ReadFile(filepath.Clean(statePath))
+			require.NoError(t, err)
+			assert.Contains(t, string(journal), `"step":"`+tc.step+`"`)
+			for _, user := range []string{"alice", "bob", "carol"} {
+				assert.NotContains(t, plan.Rewrite[0].Err.Error(), user)
+				assert.NotContains(t, string(journal), user)
+				assert.NotContains(t, fx.out.String(), user)
+			}
+		})
+	}
+}
+
+func TestDroppedGrantsOfAFinishedRewriteStayListedWhenItsKeyIsPlannedAgain(t *testing.T) {
+	fx, mapping, statePath := rewriteFixture(t)
+	// the rewrite of lfID finished earlier; its rows were put back on the old id by hand since, so the plan holds that key again
+	require.NoError(t, os.WriteFile(statePath, []byte(`{"old_id":"`+lfID+`","new_id":"`+targetSFID+`","company_ids":["c-parent","c-sub"],"dropped":[`+
+		`{"username":"","role_name":"viewer","role_id":"role-viewer","grant_id":"g-91","object_type_name":"organization","object_id":"`+lfID+`"}],`+
+		`"step":"done","ts":"2026-09-29T11:00:00Z","status":"ok"}`+"\n"), 0o600))
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}, OutDir: t.TempDir()}
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	require.NotNil(t, groupByKey(plan.Groups, lfID))
+	require.Empty(t, plan.Rewrite, "a finished group is not rewritten again")
+	_, err = Execute(context.Background(), fx.deps(), opts, plan)
+	require.Error(t, err, "the events recheck refuses rows that no longer carry the recorded new id")
+	assert.Equal(t, [][]string{droppedHeader, {lfID, targetSFID, "", "viewer", objectTypeOrganization, lfID}}, droppedReport(t, opts.OutDir))
+}
+
+func TestJournalLineLargerThanOneMebibyteIsReadBack(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "state.jsonl")
+	st, err := LoadState(statePath)
+	require.NoError(t, err)
+	dropped := make([]acs_service.OrgGrant, 6000)
+	for i := range dropped {
+		dropped[i] = acs_service.OrgGrant{RoleName: "viewer", RoleID: "0123456789abcdef0123456789abcdef", GrantID: fmt.Sprintf("grant-%032d", i), ObjectTypeName: objectTypeOrganization, ObjectID: lfID}
+	}
+	require.NoError(t, st.Append(StateRecord{OldID: lfID, NewID: targetSFID, CompanyIDs: []string{"c-parent"}, Dropped: dropped, Step: StepDone, Status: statusOK}, time.Now()))
+	info, err := os.Stat(statePath)
+	require.NoError(t, err)
+	require.Greater(t, info.Size(), int64(1<<20))
+	st, err = LoadState(statePath)
+	require.NoError(t, err)
+	assert.Len(t, st.Last[lfID].Dropped, 6000)
 }

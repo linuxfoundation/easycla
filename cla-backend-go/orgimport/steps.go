@@ -174,7 +174,7 @@ func (r *runner) ensureGrant(ctx context.Context, g *Group, gr acs_service.OrgGr
 		objectType, objectID = objectTypeProjectOrganization, p+"|"+g.NewID
 	}
 	if err := r.deps.Orgs.CreateUserRoleScope(ctx, gr.Username, g.NewID, objectType, objectID, gr.RoleID); err != nil {
-		return false, fmt.Errorf("granting %s %s on %s: %w", gr.RoleName, gr.Username, objectID, err)
+		return false, fmt.Errorf("granting %s (grant %s) on %s: %w", gr.RoleName, gr.GrantID, objectID, err)
 	}
 	have[key] = true
 	return true, nil
@@ -275,7 +275,7 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 			copied++
 		}
 		if err = r.deps.Orgs.DeleteUserRoleScope(ctx, g.OldID, gr.RoleID, gr.GrantID, gr.Username); err != nil {
-			return fmt.Errorf("deleting %s grant %s of %s: %w", gr.RoleName, gr.GrantID, gr.Username, err)
+			return fmt.Errorf("deleting %s grant %s: %w", gr.RoleName, gr.GrantID, err)
 		}
 		deleted++
 		if uncopied(g, gr, have) {
