@@ -433,7 +433,11 @@ func writeIngestReports(dir string, plan *Plan) error {
 	rows := [][]string{{"key", "old_id", "id_shape", "route", "manual_reason", "live", "org_service", "website", "domain", "shared_domain", "new_id", "action", "decision", "reviewer", "company_ids", "company_names", "error", "suggested_account"}}
 	toSF := [][]string{{"old_id", "name", "website", "ccla_signed_date", "domain", "shared_domain", "suggested_account"}}
 	manual := [][]string{{"key", "old_id", "route", "reason", "suggested_action", "live", "org_service", "website", "domain", "shared_domain", "new_id", "action", "company_ids", "company_names", "error", "suggested_account"}}
+	dropped := [][]string{{"old_id", "new_id", "username", "role", "object_type", "object_id"}}
 	for _, g := range plan.Groups {
+		for _, gr := range g.Dropped {
+			dropped = append(dropped, []string{g.OldID, g.NewID, gr.Username, firstNonEmpty(gr.RoleName, gr.RoleID), gr.ObjectTypeName, gr.ObjectID})
+		}
 		names := strings.Join(g.Names(), ";")
 		errText := ""
 		if g.Err != nil {
@@ -472,7 +476,11 @@ func writeIngestReports(dir string, plan *Plan) error {
 		}
 		targets = append(targets, []string{t.SFID, strconv.Itoa(len(t.Groups)), strings.Join(t.OldIDs(), ";"), strings.Join(ids, ";"), strings.Join(names, ";"), strconv.Itoa(len(t.Existing)), decision, reviewer, t.Status})
 	}
-	for name, data := range map[string][][]string{"plan.csv": rows, "to_salesforce.csv": toSF, "manual_actions.csv": manual, "targets.csv": targets} {
+	files := map[string][][]string{"plan.csv": rows, "to_salesforce.csv": toSF, "manual_actions.csv": manual, "targets.csv": targets}
+	if plan.Apply {
+		files["dropped_grants.csv"] = dropped
+	}
+	for name, data := range files {
 		if err := writeCSV(filepath.Join(dir, name), data); err != nil {
 			return err
 		}

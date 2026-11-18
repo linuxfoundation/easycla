@@ -19,6 +19,7 @@ type StateRecord struct {
 	Key        string   `json:"key,omitempty"`
 	NewID      string   `json:"new_id"`
 	CompanyIDs []string `json:"company_ids"`
+	AllGrants  bool     `json:"all_grants,omitempty"`
 	Step       string   `json:"step"`
 	TS         string   `json:"ts"`
 	Status     string   `json:"status"`

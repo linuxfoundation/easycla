@@ -61,6 +61,11 @@ func BuildPlan(ctx context.Context, deps Deps, opts Options) (*Plan, error) {
 	}
 	livenessGuard(groups)
 	targets := applyDecisions(groups, inv, mapping, decisions)
+	for _, g := range groups {
+		if !g.Replayed {
+			g.AllGrants = g.Action == ActionCreated && g.Decision == nil
+		}
+	}
 	known := knownAccountsFromGroups(shared, groups)
 	groups = filterIDs(groups, opts.IDs)
 	suggestAccounts(ctx, deps, shared, known, groups, func(g *Group) bool {
@@ -216,7 +221,7 @@ func replayGroups(ctx context.Context, deps Deps, inv *Inventory, state *State) 
 		if rec.NewID == "" || !IsSFID(rec.NewID) {
 			return nil, fmt.Errorf("state: unfinished group %s has no valid new_id", rec.key())
 		}
-		g := &Group{OldID: rec.OldID, Key: rec.key(), Shape: ShapeOf(rec.OldID), Route: RouteRewrite, NewID: rec.NewID, Replayed: true, Action: "replay:" + rec.Step}
+		g := &Group{OldID: rec.OldID, Key: rec.key(), Shape: ShapeOf(rec.OldID), Route: RouteRewrite, NewID: rec.NewID, Replayed: true, Action: "replay:" + rec.Step, AllGrants: rec.AllGrants}
 		for _, id := range rec.CompanyIDs {
 			dbRow, err := deps.Companies.GetCompanyRecord(ctx, id)
 			if err != nil {
@@ -436,8 +441,12 @@ func (p *Plan) Print(w io.Writer) {
 		if g.ApexCreates() {
 			newID = "<new Account, id assigned by Apex at apply>"
 		}
-		fmt.Fprintf(w, "PLAN rewrite %s -> %s (%s): wait org-service; copy ACS grants; rewrite %d row(s) %s; re-key events; delete old grants; POST /b2b_orgs {sfid:%s}\n",
-			g.OldID, newID, g.Action, len(g.Rows), strings.Join(g.CompanyIDs(), ","), newID)
+		grants := "copy the EasyCLA role grants"
+		if g.AllGrants {
+			grants = "copy ACS grants"
+		}
+		fmt.Fprintf(w, "PLAN rewrite %s -> %s (%s): wait org-service; %s; rewrite %d row(s) %s; re-key events; delete old grants; POST /b2b_orgs {sfid:%s}\n",
+			g.OldID, newID, g.Action, grants, len(g.Rows), strings.Join(g.CompanyIDs(), ","), newID)
 	}
 	if len(p.Targets) > 0 {
 		fmt.Fprintf(w, "TARGETS (rewrite destinations grouped by Account):\n")
@@ -612,7 +621,7 @@ func applyPreconditions(deps Deps, plan *Plan) error {
 
 // record appends one state line; a failure to journal is an error for the group.
 func (r *runner) record(g *Group, step, status string, err error) error {
-	rec := StateRecord{OldID: g.OldID, NewID: g.NewID, CompanyIDs: g.CompanyIDs(), Step: step, Status: status}
+	rec := StateRecord{OldID: g.OldID, NewID: g.NewID, CompanyIDs: g.CompanyIDs(), AllGrants: g.AllGrants, Step: step, Status: status}
 	if g.RowTargeted() {
 		rec.Key = g.Key
 	}

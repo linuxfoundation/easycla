@@ -19,6 +19,9 @@ const (
 	objectTypeProjectOrganization = "project|organization"
 )
 
+// easyCLARoles are the only roles copied to an Account that existed before the rewrite (lfx-self-serve #5081).
+var easyCLARoles = map[string]bool{"cla-manager": true, "cla-manager-designee": true, "cla-signatory": true, "contributor": true, "contact": true}
+
 // rewrite runs steps 6-10 for one group; every step is idempotent so a restart converges. The
 // journal is written before the first step and after each one; a journal failure stops the group.
 func (r *runner) rewrite(ctx context.Context, g *Group) error {
@@ -70,13 +73,13 @@ func grantKey(gr acs_service.OrgGrant, orgID string) string {
 	return strings.ToLower(gr.Username) + "|" + gr.RoleID + "|" + gr.ObjectTypeName + "|" + object
 }
 
-// copyGrants creates on the new org every grant the old org has (step 6); existing ones are kept.
+// copyGrants creates on the new org the old org's grants that the rewrite copies (step 6); existing ones are kept.
 func (r *runner) copyGrants(ctx context.Context, g *Group) error {
 	oldGrants, have, err := r.listGrantPair(ctx, g)
 	if err != nil {
 		return err
 	}
-	created := 0
+	created, skipped := 0, 0
 	for _, gr := range oldGrants {
 		ok, createErr := r.ensureGrant(ctx, g, gr, have)
 		if createErr != nil {
@@ -84,10 +87,16 @@ func (r *runner) copyGrants(ctx context.Context, g *Group) error {
 		}
 		if ok {
 			created++
+		} else if uncopied(g, gr, have) {
+			skipped++
 		}
 	}
-	fmt.Fprintf(r.deps.Out, "grants %s -> %s: %d existing, %d created\n", g.OldID, g.NewID, len(oldGrants)-created, created)
+	fmt.Fprintf(r.deps.Out, "grants %s -> %s: %d existing, %d created, %d not copied\n", g.OldID, g.NewID, len(oldGrants)-created-skipped, created, skipped)
 	return nil
+}
+
+func uncopied(g *Group, gr acs_service.OrgGrant, have map[string]bool) bool {
+	return gr.RoleID != "" && !have[grantKey(gr, g.NewID)]
 }
 
 // listGrantPair lists the old org's grants and indexes the new org's grants by grantKey.
@@ -119,6 +128,9 @@ func (r *runner) ensureGrant(ctx context.Context, g *Group, gr acs_service.OrgGr
 	}
 	key := grantKey(gr, g.NewID)
 	if have[key] {
+		return false, nil
+	}
+	if !g.AllGrants && !easyCLARoles[gr.RoleName] {
 		return false, nil
 	}
 	objectType, objectID := objectTypeOrganization, g.NewID
@@ -206,8 +218,8 @@ func (r *runner) rekeyListed(ctx context.Context, g *Group) (listed, rekeyed int
 	return len(ids), rekeyed, nil
 }
 
-// deleteOldGrants removes the old org's grants (step 8) after making sure each one exists on the new
-// org (a grant added since step 6 is copied first); a missing grant is success.
+// deleteOldGrants removes the old org's grants (step 8) after making sure each copied one exists on the
+// new org (a grant added since step 6 is copied first); a missing grant is success.
 func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 	oldGrants, have, err := r.listGrantPair(ctx, g)
 	if err != nil {
@@ -230,6 +242,10 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 			return fmt.Errorf("deleting %s grant %s of %s: %w", gr.RoleName, gr.GrantID, gr.Username, err)
 		}
 		deleted++
+		if uncopied(g, gr, have) {
+			g.Dropped = append(g.Dropped, gr)
+			fmt.Fprintf(r.deps.Out, "grant deleted without a copy %s -> %s: %s %s on %s\n", g.OldID, g.NewID, firstNonEmpty(gr.RoleName, gr.RoleID), gr.Username, gr.ObjectID)
+		}
 	}
 	fmt.Fprintf(r.deps.Out, "grants %s: %d deleted (%d copied late)\n", g.OldID, deleted, copied)
 	return nil

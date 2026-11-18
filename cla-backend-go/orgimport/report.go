@@ -411,7 +411,7 @@ func tailNote(runLog, tail []byte) string {
 // notice because the captured inputs and the journal travel only inside it.
 func attachments(outDir string, runLog []byte) ([]Attachment, []string) {
 	var out []Attachment
-	for _, name := range []string{"manual_actions.csv", "plan.csv", "targets.csv", "to_salesforce.csv", "audit.csv", "unresolvable.csv", "possible_duplicates.csv", ColumnsFile} {
+	for _, name := range []string{"manual_actions.csv", "plan.csv", "targets.csv", "dropped_grants.csv", "to_salesforce.csv", "audit.csv", "unresolvable.csv", "possible_duplicates.csv", ColumnsFile} {
 		data, err := os.ReadFile(filepath.Clean(filepath.Join(outDir, name)))
 		if err == nil && len(data) > 0 {
 			out = append(out, Attachment{Name: name, ContentType: "text/csv", Data: data})

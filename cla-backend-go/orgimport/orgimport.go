@@ -211,6 +211,8 @@ type Group struct {
 	Duplicate    bool
 	NewID        string
 	Action       string
+	AllGrants    bool // the target Account was created for this group alone
+	Dropped      []acs_service.OrgGrant
 	Org          *Org
 	OrgStatus    string
 	Live         string
