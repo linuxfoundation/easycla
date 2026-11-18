@@ -211,7 +211,13 @@ func (s *service) grantCreatorIfOrgKnown(ctx context.Context, f logrus.Fields, s
 			}
 			return fmt.Errorf("%w: %v", ErrCompanyDependencyFailed, adminErr)
 		}
-		if scopeErr := orgClient.CreateCLAOrgUserRoleScope(ctx, userEmail, username, sfid, roleID); scopeErr != nil && (direct || !isOrgAssociated(scopeErr)) {
+		scopeErr := orgClient.CreateCLAOrgUserRoleScope(ctx, userEmail, username, sfid, roleID)
+		if isOrgAssociated(scopeErr) {
+			// ACS allows one organization-scope association per user; the Org Service path has always tolerated this
+			log.WithFields(f).Warnf("user %s already belongs to another organization - creating the company without the company-admin grant", userID)
+			return nil
+		}
+		if scopeErr != nil {
 			entry := log.WithFields(f)
 			if !direct {
 				entry = entry.WithError(scopeErr)
