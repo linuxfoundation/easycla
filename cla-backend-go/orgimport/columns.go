@@ -22,6 +22,7 @@ const (
 	opCCLAQuery = "query signature_type=ccla, signature_reference_type=company, signature_reference_id=company_id, signature_signed=true, signature_approved=true"
 	opOrgGet    = "GET /orgs/{company_external_id}"
 	opLiveGet   = "GET /b2b_orgs/{company_external_id}"
+	opDropped   = "grants of old_id as listed by the apply before their deletion"
 )
 
 var (
@@ -62,7 +63,7 @@ var columnLegend = [][]string{
 	with("audit.csv", []string{"duplicate_sfid_group", srcDerived, "rows sharing one company_external_id", "true = another row carries the same company_external_id with the same or an empty signing entity name (exact-id duplicate set)"}),
 	with("audit.csv", colRoute), with("audit.csv", colReason),
 	with("audit.csv", []string{"tier", srcDerived, "reachability tier, 1:1 with utils/audit_company_reachability.sh", "SFID_OK | MISSING_SFID | INVALID_SFID_FORMAT | SFID_DANGLING_OR_DELETED (Org Service 404) | UNKNOWN (lookup failed)"}),
-	with("audit.csv", []string{"acs_roles", srcACS, "list grants scoped to company_external_id (organization and project|organization scopes)", "role=count;... (e.g. cla-manager, cla-signatory, cla-manager-designee, contact, contributor, company-admin, viewer); copied to the target on a rewrite, then deleted on the old id; filled for eligible 001/lf groups and duplicate-set rows; err = listing failed"}),
+	with("audit.csv", []string{"acs_roles", srcACS, "list grants scoped to company_external_id (organization and project|organization scopes)", "role=count;... (e.g. cla-manager, cla-signatory, cla-manager-designee, contact, contributor, company-admin, viewer); copied to the target on a rewrite (an Account that existed before receives only cla-manager, cla-manager-designee, cla-signatory, contributor and contact, the others go to dropped_grants.csv), then deleted on the old id; filled for eligible 001/lf groups and duplicate-set rows; err = listing failed"}),
 	with("audit.csv", colSuggested),
 	// unresolvable.csv
 	with("unresolvable.csv", colCompanyID), with("unresolvable.csv", colName), with("unresolvable.csv", colSigning), with("unresolvable.csv", colExternalID), with("unresolvable.csv", colShape),
@@ -95,6 +96,13 @@ var columnLegend = [][]string{
 	with("targets.csv", []string{"existing_rows", srcCompanies, opScan, "number of EasyCLA rows that already carry target_sfid before the rewrite (its current signing entities)"}),
 	with("targets.csv", colDecision), with("targets.csv", colReviewer),
 	with("targets.csv", []string{"status", srcDerived, "collision check of the Account against --decisions", "ok | needs_decision (several old ids or existing rows land on one Account without a collapse decision = target_collision) | distinct_conflict (a distinct decision spans ids resolving to this Account) | target_forms_differ (ids landing here use both the 15- and 18-char form)"}),
+	// dropped_grants.csv
+	with("dropped_grants.csv", colOldID), with("dropped_grants.csv", colNewID),
+	with("dropped_grants.csv", []string{"username", srcACS, opDropped, "LF username that held the role on old_id; empty = the row comes from the journal of an earlier or interrupted run, which keeps no usernames: use grant_id with that run's file or with the ACS snapshot taken before it"}),
+	with("dropped_grants.csv", []string{"role", srcACS, opDropped, "role deleted with old_id and not copied to new_id because the Account existed before the rewrite (matched, or a collapse decision): only cla-manager, cla-manager-designee, cla-signatory, contributor and contact are copied there; grant it on new_id by hand if it is needed"}),
+	with("dropped_grants.csv", []string{"object_type", srcACS, opDropped, "organization | project|organization"}),
+	with("dropped_grants.csv", []string{"object_id", srcACS, opDropped, "scope of the old grant: old_id, or <project sfid>|old_id"}),
+	with("dropped_grants.csv", []string{"grant_id", srcACS, opDropped, "ACS id of the deleted grant: the only identity of it in state.jsonl and run.log"}),
 }
 
 func with(file string, col []string) []string {

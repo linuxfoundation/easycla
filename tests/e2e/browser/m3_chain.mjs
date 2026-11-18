@@ -226,7 +226,7 @@ try {
   const m3Flag = flags2[cfg('LD_FLAG_M3')];
   const p2 = new URL(s2.page.url()).pathname;
   const cards2 = await s2.page.locator('[data-testid="org-easycla-card-link"]').count();
-  const nav2 = await s2.page.$$eval('nav a[href], aside a[href]', (as) => [...new Set(as.filter((a) => /^\/org\//.test(a.getAttribute('href') || '')).map((a) => (a.textContent || '').trim().replace(/\s+/g, ' ')))]).catch(() => []);
+  const nav2 = await s2.page.$$eval('nav a[href], aside a[href]', (as) => [...new Set(as.filter((a) => /^\/(org|company)\//.test(a.getAttribute('href') || '')).map((a) => (a.textContent || '').trim().replace(/\s+/g, ' ')))]).catch(() => []);
   const text2 = await e2e.bodyText(s2.page);
   await e2e.shot(s2.page, 'id2-bridge-easycla');
   if (m3Flag === false) skip('C9-ID2-BRIDGE-PAGE', `${cfg('LD_FLAG_M3')}=false for ${ID2}: the CLA-only Organization lens page is not released to this identity; path=${p2}`);

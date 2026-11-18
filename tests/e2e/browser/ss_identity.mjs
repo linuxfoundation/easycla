@@ -83,7 +83,7 @@ for (const who of [ID1, ID2]) {
       if (opened) items = (await page.locator('[role="option"][data-testid^="org-item-"]').allInnerTexts().catch(() => [])).map(e2e.squash).filter(Boolean);
       else {
         const name = e2e.squash(await trigger.getByTestId('org-selector-trigger-name').innerText({ timeout: 3000 }).catch(() => ''));
-        if (name && name !== 'Select Organization') items = [`${name} (static card)`];
+        if (name && !e2e.UNSELECTED.test(name)) items = [`${name} (static card)`];
       }
       await e2e.shot(page, `${who}-selector-${tag}`);
       await page.keyboard.press('Escape').catch(() => {});

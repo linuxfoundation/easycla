@@ -15,7 +15,7 @@ For every EasyCLA company with an **active CCLA** (`signature_type=ccla`, `signa
 | Route | When | What happens (apply mode) |
 |---|---|---|
 | `register` | `company_external_id` is a live Salesforce account id (`001…`, 15/18 chars) | `POST /b2b_orgs {"sfid": id}` on the LFX v2 member-service (idempotent) |
-| `rewrite` | id is `lf…` (legacy console) or a dead `001…` account | needs a new Salesforce id from `--mapping` (or `--use-apex`): copy ACS grants old→new, rewrite `company_external_id` on every row of the group (old id kept in `previous_company_external_id`), re-key activity events, delete old grants, register the new id |
+| `rewrite` | id is `lf…` (legacy console) or a dead `001…` account | needs a new Salesforce id from `--mapping` (or `--use-apex`): copy ACS grants old→new (only the EasyCLA roles when the Account existed before, see the safety rules), rewrite `company_external_id` on every row of the group (old id kept in `previous_company_external_id`), re-key activity events, delete old grants, register the new id |
 | `manual` | empty/invalid id, ambiguous/unapproved mapping, collision on the target Account without a decision (§4.1), no/shared website on the Apex path | nothing; listed with `manual_reason` and a suggested action |
 
 A **group** is every company row sharing one `company_external_id` (signing entities of one organization); it is
@@ -33,6 +33,10 @@ Safety rules:
 - The row rewrite is a conditional write (`company_external_id = <exact stored value>`); a concurrent change stops that group only.
 - Grants are copied before rows are rewritten and old grants deleted last, each old grant re-checked (and copied if missing) right before
   its deletion: managers never lose access.
+- On an Account that existed before the rewrite or is shared (`matched`, or an old id under a collapse decision) only `cla-manager`, `cla-manager-designee`,
+  `cla-signatory`, `contributor` and `contact` are copied; every other role (`company-admin`, `viewer`) is deleted with the old id and listed in
+  `dropped_grants.csv`; the journal keeps the list by grant id, so a resumed run still reports it. An Account created for one group alone (`created`)
+  receives every grant - unless another old id has been mapped onto it by the time an interrupted group is resumed.
 - An apply that could not finish is refused before its first write: rewrites without `--state`, or any register/rewrite without member-service.
 - `register` is stateless and needs no Salesforce input — it is the only route ever scheduled (§6).
 
@@ -69,7 +73,8 @@ Safety rules:
   Check: `STAGE=dev bin/org-import ingest --routes register --ids <known live 001 id>` must print `live=live`. A 403 on one Account while
   others answer 200 is `live=unregistered` (no b2b_org yet, §3.2); a 403 on every Account checked, or a 403 from the token endpoint, is
   `live=error` (never treated as dead) and the run exits 1.
-- Nothing sensitive is ever written: report files contain company names/ids only; tokens stay in memory.
+- Nothing sensitive is ever written: report files contain company names/ids only - except `dropped_grants.csv`, the one file that names LF users
+  (the sweep workflow does not upload it; it travels in the report e-mail); the journal and run.log identify such a grant by its grant id; tokens stay in memory.
 
 ## 3. Commands
 
@@ -156,7 +161,7 @@ rewrite  lfbd1c2b3a4d5e6f7a8  shape=lf    rows=1 new_id=0014100000NewNewNe actio
 rewrite  0014100000DeadDead1  shape=001   rows=1 live=dead reason=no_mapping | Dead Corp        <- pending: needs a mapping row
 manual   c0ffee00-...         shape=empty rows=1 reason=empty_external_id | Empty Inc
 PLAN register 0014100000Te0G7AAJ: POST /b2b_orgs {sfid:0014100000Te0G7AAJ} (rows: c-live,c-live-sub)
-PLAN rewrite lfbd1c2b3a4d5e6f7a8 -> 0014100000NewNewNe (matched): wait org-service; copy ACS grants; rewrite 1 row(s) c-lf; re-key events; delete old grants; POST /b2b_orgs {sfid:0014100000NewNewNe}
+PLAN rewrite lfbd1c2b3a4d5e6f7a8 -> 0014100000NewNewNe (matched): wait org-service; copy the EasyCLA role grants; rewrite 1 row(s) c-lf; re-key events; delete old grants; POST /b2b_orgs {sfid:0014100000NewNewNe}
 TARGETS (rewrite destinations grouped by Account):
 target 0014100000NewNewNe groups=1 old_ids=lfbd1c2b3a4d5e6f7a8 existing_rows=0 status=ok
 MANUAL ACTIONS (1):
@@ -180,6 +185,9 @@ Files (all rewritten after apply with the final state):
 - `plan.csv` — `key, old_id, id_shape, route, manual_reason, live, org_service, website, domain, shared_domain, new_id, action, decision, reviewer, company_ids, company_names, error, suggested_account`.
 - `manual_actions.csv` — one row per manual/pending/failed group with `reason`, `suggested_action` (what a human must do next) and `suggested_account` (§3.1).
 - `targets.csv` — rewrite destinations grouped by Account: `target_sfid, groups, old_ids, company_ids, company_names, existing_rows, decision, reviewer, status(ok|needs_decision|distinct_conflict|target_forms_differ)`.
+- `dropped_grants.csv` (written at the end of an apply only) — `old_id, new_id, username, role, object_type, object_id, grant_id`: every grant the rewrites
+  recorded in `--state` deleted on an old id without a copy on the target (safety rules, §1); grant one on `new_id` by hand if it is needed. `username` is
+  filled for the grants this run deleted; a row carried from the journal of an earlier or interrupted run has only its `grant_id`.
 - `to_salesforce.csv` — `old_id, name, website, ccla_signed_date, domain, shared_domain, suggested_account` — the hand-off to sales ops (§4).
 - `columns.csv` — the column legend (§3.1), covering every file above.
 
@@ -290,7 +298,7 @@ list (one domain per line, `#` comments). Mapping rows are explicit human decisi
 Verification per tranche (pick 3 groups):
 - `GET /b2b_orgs/{new id}` → 200 (member-service).
 - org-service `GET /organizations/{new id}` → 200.
-- ACS `GET /users/rolescopes/organization?orgid={new id}&scopetype=all` with `X-LFX-CACHE: false` → same users/roles as the old id had; old id → empty.
+- ACS `GET /users/rolescopes/organization?orgid={new id}&scopetype=all` with `X-LFX-CACHE: false` → every user/role/scope the old id had, minus the rows of `dropped_grants.csv` (an existing Account also keeps its own grants); old id → empty.
 - `GET /v4/company/external/{new id}/cla-groups` lists the CCLA; `GET /v4/company/{companyID}/project/{projectSFID}/events` still shows the pre-rewrite history.
 - DynamoDB row: `company_external_id = new`, `previous_company_external_id = old`.
 - Corporate Console: a CLA manager of the company logs in, sees the company and its CCLA; Self Serve org lens shows the organization.
@@ -317,7 +325,7 @@ GitHub Actions `.github/workflows/org-import-sweep.yml`:
   unset or `off` (default) ⇒ the scheduled job does nothing. Scheduled runs are always `--routes register`. Manual runs ignore the variables.
 - Promotion: ≥10 clean manual runs (dry-run, then apply) → set the variable to `dry-run`, read the artifacts for a week → `apply`.
   Rollback: set `off` (no deploy, no code change). The `prod` environment's protection rules (reviewers) apply to every run.
-- Each run uploads `org-import-out/` (run.log and the CSVs of §3.2) as artifact `org-import-out-<stage>-<run id>`, copies run.log to CloudWatch
+- Each run uploads `org-import-out/` (run.log and the CSVs of §3.2, without `dropped_grants.csv`: keep `notify` on for a rewrite apply, the report e-mail is the only place that file goes) as artifact `org-import-out-<stage>-<run id>`, copies run.log to CloudWatch
   Logs and e-mails the report (§8) — scheduled runs included.
 - IAM: the `github-actions-deploy` role of each account must allow the DynamoDB/SSM access listed in §2 (it deploys the API, so it already does).
 

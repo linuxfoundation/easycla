@@ -145,6 +145,7 @@ type fakePlatform struct {
 	calls       []string
 	nextGrant   int
 	failCreate  bool
+	failDelete  bool
 	failGetB2B  bool
 	noMembers   bool
 	listHook    func(orgID string)
@@ -183,7 +184,7 @@ func (p *fakePlatform) CreateUserRoleScope(_ context.Context, username, orgID, o
 		return errors.New("org-service down")
 	}
 	p.nextGrant++
-	p.grants[orgID] = append(p.grants[orgID], acs_service.OrgGrant{Username: username, RoleID: roleID, RoleName: "role-" + roleID, GrantID: fmt.Sprintf("g%d", p.nextGrant), ScopeID: fmt.Sprintf("s%d", p.nextGrant), ObjectTypeName: objectType, ObjectID: objectID})
+	p.grants[orgID] = append(p.grants[orgID], acs_service.OrgGrant{Username: username, RoleID: roleID, RoleName: strings.TrimPrefix(roleID, "role-"), GrantID: fmt.Sprintf("g%d", p.nextGrant), ScopeID: fmt.Sprintf("s%d", p.nextGrant), ObjectTypeName: objectType, ObjectID: objectID})
 	return nil
 }
 
@@ -191,6 +192,9 @@ func (p *fakePlatform) DeleteUserRoleScope(_ context.Context, orgID, roleID, gra
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.calls = append(p.calls, "delete-grant:"+orgID+":"+username+":"+roleID+":"+grantID)
+	if p.failDelete {
+		return errors.New("org-service down")
+	}
 	kept := p.grants[orgID][:0]
 	for _, g := range p.grants[orgID] {
 		if g.GrantID != grantID {
@@ -274,7 +278,7 @@ func (p *fakePlatform) addGrant(orgID, username, roleID, project string) {
 
 func (p *fakePlatform) addGrantLocked(orgID, username, roleID, project string) {
 	p.nextGrant++
-	g := acs_service.OrgGrant{Username: username, RoleID: roleID, RoleName: "role-" + roleID, GrantID: fmt.Sprintf("g%d", p.nextGrant), ScopeID: fmt.Sprintf("s%d", p.nextGrant), ObjectTypeName: objectTypeOrganization, ObjectID: orgID}
+	g := acs_service.OrgGrant{Username: username, RoleID: roleID, RoleName: strings.TrimPrefix(roleID, "role-"), GrantID: fmt.Sprintf("g%d", p.nextGrant), ScopeID: fmt.Sprintf("s%d", p.nextGrant), ObjectTypeName: objectTypeOrganization, ObjectID: orgID}
 	if project != "" {
 		g.ObjectTypeName, g.ObjectID = objectTypeProjectOrganization, project+"|"+orgID
 	}
@@ -833,11 +837,11 @@ func rewriteFixture(t *testing.T) (*fixture, string, string) {
 	fx.platform.sfAccounts[targetSFID] = true
 	fx.platform.orgs[lfID] = &Org{ID: lfID, Name: "Legacy Ltd", Website: "https://legacy.example"}
 	fx.platform.orgs[targetSFID] = &Org{ID: targetSFID, Name: "Legacy Ltd"}
-	fx.platform.addGrant(lfID, "alice", "role-mgr", "")
-	fx.platform.addGrant(lfID, "bob", "role-mgr", "proj-1")
-	fx.platform.addGrant(lfID, "carol", "role-signatory", "")
-	fx.platform.addGrant(targetSFID, "alice", "role-mgr", "") // already granted on the new org
-	fx.platform.addGrant(liveSFID, "dave", "role-mgr", "")
+	fx.platform.addGrant(lfID, "alice", "role-cla-manager", "")
+	fx.platform.addGrant(lfID, "bob", "role-cla-manager", "proj-1")
+	fx.platform.addGrant(lfID, "carol", "role-cla-signatory", "")
+	fx.platform.addGrant(targetSFID, "alice", "role-cla-manager", "") // already granted on the new org
+	fx.platform.addGrant(liveSFID, "dave", "role-cla-manager", "")
 	fx.events.sfidByEvent = map[string]string{"e1": lfID, "e2": lfID, "e3": liveSFID, "e4": lfID}
 	fx.events.byGroup = map[string][]string{lfID + "#cg-2": {"e4"}}
 	dir := t.TempDir()
@@ -911,8 +915,8 @@ func TestRewriteReplayAfterCrash(t *testing.T) {
 	// simulate a run that died after rewriting rows and re-keying events, before deleting old grants
 	fx.companies.rows["c-parent"].CompanyExternalID, fx.companies.rows["c-parent"].PreviousCompanyExternalID = targetSFID, lfID
 	fx.companies.rows["c-sub"].CompanyExternalID, fx.companies.rows["c-sub"].PreviousCompanyExternalID = targetSFID, lfID
-	fx.platform.addGrant(targetSFID, "bob", "role-mgr", "proj-1")
-	fx.platform.addGrant(targetSFID, "carol", "role-signatory", "")
+	fx.platform.addGrant(targetSFID, "bob", "role-cla-manager", "proj-1")
+	fx.platform.addGrant(targetSFID, "carol", "role-cla-signatory", "")
 	st, err := LoadState(statePath)
 	require.NoError(t, err)
 	require.NoError(t, st.Append(StateRecord{OldID: lfID, NewID: targetSFID, CompanyIDs: []string{"c-parent", "c-sub"}, Step: StepEvents, Status: "ok"}, time.Now()))
@@ -1207,7 +1211,7 @@ func TestRowTargetedRewriteApply(t *testing.T) {
 	fx.platform.sfAccounts[targetSFID2] = true
 	fx.platform.orgs[targetSFID] = &Org{ID: targetSFID, Name: "Empty Inc"}
 	fx.platform.orgs[targetSFID2] = &Org{ID: targetSFID2, Name: "Garbage Inc"}
-	fx.platform.addGrant(liveSFID, "dave", "role-mgr", "")
+	fx.platform.addGrant(liveSFID, "dave", "role-cla-manager", "")
 	fx.events.sfidByEvent = map[string]string{"e1": liveSFID, "e2": "N/A", "e3": ""}
 	dir := t.TempDir()
 	mapping := writeMapping(t, dir, "c-empty,"+targetSFID+",matched,true", "c-garbage,"+targetSFID2+",matched,true")
@@ -1688,8 +1692,8 @@ func TestAudit(t *testing.T) {
 	for _, r := range rows[1:] {
 		byID[r[0]] = r
 	}
-	assert.Equal(t, []string{"c-live", "Live Corp", "", liveSFID, "001", "true", "1", "", "200", "https://live.example", "false", "register", "", TierOK, "role-r1=2;role-r2=1", ""}, byID["c-live"])
-	assert.Equal(t, "role-r1=2;role-r2=1", byID["c-live-sub"][14], "ACS roles are per old id, so every row of the group shows them")
+	assert.Equal(t, []string{"c-live", "Live Corp", "", liveSFID, "001", "true", "1", "", "200", "https://live.example", "false", "register", "", TierOK, "r1=2;r2=1", ""}, byID["c-live"])
+	assert.Equal(t, "r1=2;r2=1", byID["c-live-sub"][14], "ACS roles are per old id, so every row of the group shows them")
 	assert.Equal(t, "", byID["c-inactive"][14], "ids outside the eligible groups and duplicate sets are not looked up in ACS")
 	assert.Equal(t, "", byID["c-dead"][14], "an id without grants has an empty cell")
 	assert.Equal(t, "", byID["c-samename-b"][14], "duplicate-set rows are looked up (no grants here)")
