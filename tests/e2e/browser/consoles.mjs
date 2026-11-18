@@ -42,9 +42,11 @@ for (const who of [ID1, ID2]) {
     else {
       const how = await e2e.login(page, who, `${CORP}/`);
       await settle(page);
-      check(`${P}-CORP-LOGIN`, !e2e.isAuth0Host(new URL(page.url()).hostname), `${who} corporate console (${KIND}) login ${how}; url=${page.url().slice(0, 100)}`);
+      const retired = /\/cb\/error-page/.test(new URL(page.url()).pathname) && (await has(page, /unauthorized_client/i));
+      if (retired) skip(`${P}-CORP-LOGIN`, `${who} corporate console (${KIND}): its Auth0 application no longer accepts logins (unauthorized_client); url=${new URL(page.url()).pathname}`);
+      else check(`${P}-CORP-LOGIN`, !e2e.isAuth0Host(new URL(page.url()).hostname), `${who} corporate console (${KIND}) login ${how}; url=${page.url().slice(0, 100)}`);
       for (const co of companies) {
-        if (!co.name) continue;
+        if (!co.name || retired) continue;
         if (KIND === 'v1') {
           // v1: company picker or last company dashboard; "Projects with Signed CLAs" loads asynchronously
           const link = page.getByText(co.name, { exact: false }).first();

@@ -178,6 +178,20 @@ func (t *Target) OldIDs() []string {
 	return ids
 }
 
+// sharedWith reports whether the Account also takes an old id or an EasyCLA row that is not g's.
+func (t *Target) sharedWith(g *Group) bool {
+	if len(t.Groups) > 1 || len(t.Mapped) > 0 {
+		return true
+	}
+	own := g.CompanyIDs()
+	for _, r := range t.Existing {
+		if !containsString(own, r.CompanyID) {
+			return true
+		}
+	}
+	return false
+}
+
 // forms lists the exact id strings (15- or 18-char) that would end up on the target.
 func (t *Target) forms(mapping *Mapping) []string {
 	var forms []string

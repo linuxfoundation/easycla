@@ -231,7 +231,7 @@ func TestDuplicateEntityParentKey(t *testing.T) {
 
 func TestCopyGrantsRefusesGrantWithoutUsername(t *testing.T) {
 	fx, mapping, statePath := rewriteFixture(t)
-	fx.platform.addGrant(lfID, "", "role-mgr", "")
+	fx.platform.addGrant(lfID, "", "role-cla-manager", "")
 	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}}
 	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
 	require.NoError(t, err)
@@ -259,7 +259,7 @@ func TestCleanupRefusesToDeleteGrantWithoutUsername(t *testing.T) {
 	fx.platform.listHook = func(orgID string) {
 		if orgID == lfID {
 			if lists++; lists == 2 {
-				fx.platform.addGrantLocked(lfID, "", "role-mgr", "cg-1")
+				fx.platform.addGrantLocked(lfID, "", "role-cla-manager", "cg-1")
 			}
 		}
 	}
@@ -276,7 +276,7 @@ func TestCleanupRefusesToDeleteGrantWithoutUsername(t *testing.T) {
 	for _, g := range mustListOrgGrants(t, fx, lfID) {
 		kept = append(kept, g.Username+"/"+g.RoleID)
 	}
-	assert.Contains(t, kept, "/role-mgr", "the uncopiable grant is never deleted")
+	assert.Contains(t, kept, "/role-cla-manager", "the uncopiable grant is never deleted")
 	st, err := LoadState(statePath)
 	require.NoError(t, err)
 	assert.False(t, st.Done(lfID), "no false done record")

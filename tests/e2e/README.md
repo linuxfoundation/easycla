@@ -31,7 +31,8 @@ Exit code `1` when any check `FAIL`ed, `2` when `--group`/`--module` selected no
   [`secrets/README.md`](secrets/README.md): `secrets/<env>.env.secret` (copy
   [`config/example.env`](config/example.env) and fill in your accounts and QA fixtures), the Auth0 client id and
   `AUTH0_USERNAME/AUTH0_PASSWORD` of the two suite identities per environment. Tokens are minted through the
-  repository's `utils/get_auth0_token.sh` (staged in a private temp dir, nothing in `utils/` is modified).
+  repository's `utils/get_lfx_token.sh` (staged in a private temp dir, nothing in `utils/` is modified); the first login of an
+  identity also needs Node.js and Playwright Chromium (headless consent), even for `--group api,legacy` - later mints refresh and fall back to that login only when the refresh fails.
 * Optional: an AWS profile (`AWS_PROFILE_E2E`, `lfproduct-dev|prod`) for the Lambda scans and the ACS
   cross-checks (missing → `SKIP`, never `FAIL`); `gh` logged in with push access to `GITHUB_REPO` for the
   dev-only PR flow.

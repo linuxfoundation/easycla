@@ -63,7 +63,7 @@ export function secret(name) {
 export const token = (identity) => secret(`auth0-${ENV}-${identity}.token`);
 
 // secrets/auth0-<env>-<identity>.secret holds AUTH0_USERNAME=... / AUTH0_PASSWORD=... (same file
-// utils/get_auth0_token.sh reads); the user name falls back to the identity itself.
+// utils/lfx_device_consent.mjs reads); the user name falls back to the identity itself.
 export function credentials(identity) {
   const out = { username: identity, password: '' };
   for (const line of secret(`auth0-${ENV}-${identity}`).split(/\r?\n/)) {
@@ -284,13 +284,14 @@ export async function orgSelector(page) {
   for (const t of await page.getByTestId('org-selector').all()) if (await t.isVisible().catch(() => false)) return t;
   return page.getByTestId('org-selector').first();
 }
+export const UNSELECTED = /^Select (Organization|Company)$/;
 export async function ensureOrgSelected(page, uid, name) {
   const selector = () => orgSelector(page);
   const trigger = async () => (await selector()).getByTestId('org-selector-trigger-name').innerText({ timeout: 3000 }).then(squash).catch(() => '');
   const matches = (t) => !!name && !!t && t.startsWith(name.slice(0, 12));
   for (let i = 0; i < 20; i++) {
     const t = await trigger();
-    if (t && t !== 'Select Organization') break;
+    if (t && !UNSELECTED.test(t)) break;
     await sleep(1000);
   }
   if (matches(await trigger())) return trigger();
@@ -315,7 +316,7 @@ export async function ensureOrgSelected(page, uid, name) {
 
 export async function closeOverlay(page) {
   for (let i = 0; i < 3; i++) {
-    const panel = page.locator('.org-selector-panel, [class*="selector-backdrop"]').first();
+    const panel = page.locator('.org-selector-panel, [data-testid="selector-backdrop"], [class*="selector-backdrop"]').first();
     if (!(await panel.isVisible().catch(() => false))) return;
     await page.keyboard.press('Escape').catch(() => {});
     await sleep(500);

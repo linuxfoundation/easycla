@@ -96,6 +96,7 @@ export function m3(session, { sfid, name, group, sig }) {
       }
     }
     await card.waitFor({ state: 'visible', timeout: 60000 });
+    await e2e.closeOverlay(page);
     await card.click();
     await page.getByTestId('org-easycla-detail-status').waitFor({ timeout: 60000 });
     await e2e.hideOverlays(page);
