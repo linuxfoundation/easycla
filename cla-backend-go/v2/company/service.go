@@ -487,6 +487,20 @@ func isOrgAssociated(err error) bool {
 	return err != nil && strings.Contains(err.Error(), OrgAssociated)
 }
 
+// acsGrantReason names why ACS refused a company-admin grant without logging its answer, which may echo the request:
+// "account-not-found" (the Organization Service does not have the Account yet, the grant would pass later),
+// "corporate-email" (no e-mail of the user is on the Account's domains, the grant never passes) or "other"
+func acsGrantReason(err error) string {
+	switch msg := err.Error(); {
+	case strings.Contains(msg, "upstream service - not found"):
+		return "account-not-found"
+	case strings.Contains(msg, "does not have valid corporate email"):
+		return "corporate-email"
+	default:
+		return "other"
+	}
+}
+
 // lfUserByEmail is the seam onto the user-service e-mail lookup (tests)
 var lfUserByEmail = func(email string) (*v2UserServiceModels.User, error) {
 	return v2UserService.GetClient().SearchUsersByEmail(email)
@@ -556,30 +570,29 @@ func (s *service) createCompanyForOrg(ctx context.Context, f logrus.Fields, org 
 	if lfUser != nil && lfUser.Username != "" {
 		log.WithFields(f).Debugf("User: %s has been assigned the %s role to organization: %s ",
 			userEmail, utils.CompanyAdminRole, org.Name)
-		// Assign company-admin to user
+		// best effort: the Salesforce organization exists already, so a refused or failed grant must not fail the
+		// company (lfx-self-serve#5916); in ACS-direct mode only the ACS status is logged, the answer may echo the request
+		direct := acsService.DirectCLARolesEnabled()
 		roleID, adminErr := acsClient.GetRoleID(utils.CompanyAdminRole)
 		if adminErr != nil {
-			if acsService.DirectCLARolesEnabled() {
-				log.WithField(utils.XREQUESTID, ctx.Value(utils.XREQUESTID)).Warn("unable to look up the company-admin role")
-				return nil, ErrCompanyDependencyFailed
+			entry := log.WithField(utils.XREQUESTID, ctx.Value(utils.XREQUESTID))
+			if !direct {
+				entry = entry.WithError(adminErr)
 			}
-			msg := "Problem getting companyAdmin role ID for contributor"
-			log.WithFields(f).Warn(msg)
-			return nil, adminErr
-		}
-
-		scopeErr := orgClient.CreateCLAOrgUserRoleScope(ctx, userEmail, lfUser.Username, org.ID, roleID)
-		if isOrgAssociated(scopeErr) {
+			entry.Warnf("unable to look up the company-admin role - creating company %s without the company-admin grant", org.ID)
+		} else if scopeErr := orgClient.CreateCLAOrgUserRoleScope(ctx, userEmail, lfUser.Username, org.ID, roleID); isOrgAssociated(scopeErr) {
 			// ACS allows one organization-scope association per user - the company is created without the grant
 			log.WithField(utils.XREQUESTID, ctx.Value(utils.XREQUESTID)).Warnf("the creator already belongs to another organization - creating company %s without the company-admin grant", org.ID)
 		} else if scopeErr != nil {
-			if acsService.DirectCLARolesEnabled() {
-				log.WithField(utils.XREQUESTID, ctx.Value(utils.XREQUESTID)).Warn("unable to create the company-admin grant")
-				return nil, ErrCompanyDependencyFailed
+			entry := log.WithField(utils.XREQUESTID, ctx.Value(utils.XREQUESTID))
+			if !direct {
+				entry = entry.WithError(scopeErr)
 			}
-			msg := fmt.Sprintf("Problem creating Org scope for email: %s , companyID: %s", userEmail, org.ID)
-			log.WithFields(f).Warn(msg)
-			return nil, scopeErr
+			var grantErr *acsService.UserGrantError
+			if errors.As(scopeErr, &grantErr) {
+				entry = entry.WithField("acsStatus", grantErr.Status)
+			}
+			entry.WithField("acsReason", acsGrantReason(scopeErr)).Warnf("unable to create the company-admin grant - creating company %s without it", org.ID)
 		}
 		// Associate User (Not associated) with Newly created org
 		if lfUser.Account.ID == NoAccount {

@@ -67,6 +67,17 @@ func (ac *Client) CreateProjectRoleGrant(ctx context.Context, orgSFID, projectSF
 	return ac.createUserRoleGrant(ctx, roleID, username, projectSFID+"|"+orgSFID, utils.ProjectOrgScope)
 }
 
+// UserGrantError is an ACS answer other than 201 Created to a user grant. Body may echo the request, so callers
+// that must not log the caller's identity log Status only.
+type UserGrantError struct {
+	Status int
+	Body   string
+}
+
+func (e *UserGrantError) Error() string {
+	return fmt.Sprintf("ACS create user grant returned %d: %s", e.Status, e.Body)
+}
+
 // CreateOrganizationRoleGrant grants a role at organization scope to a platform-verified LFID.
 // A nil grant means the assignment already existed and is not owned by this request.
 func (ac *Client) CreateOrganizationRoleGrant(ctx context.Context, orgSFID, roleID, username string) (*OrgGrant, error) {
@@ -106,7 +117,7 @@ func (ac *Client) createUserRoleGrant(ctx context.Context, roleID, username, obj
 	}
 	if status != http.StatusCreated {
 		log.WithField("status", status).Warn("ACS create user grant failed")
-		return nil, fmt.Errorf("ACS create user grant returned %d: %s", status, strings.TrimSpace(string(response[:min(len(response), 512)])))
+		return nil, &UserGrantError{Status: status, Body: strings.TrimSpace(string(response[:min(len(response), 512)]))}
 	}
 	var grants []OrgGrant
 	if err = json.Unmarshal(response, &grants); err != nil {
