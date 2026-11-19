@@ -175,6 +175,7 @@ provider:
         - Effect: Allow
           Action:
             - ssm:GetParameter
+            - ssm:GetParameters
           Resource:
             - "arn:aws:ssm:${self:provider.region}:${aws:accountId}:parameter/cla-*"
         - Effect: Allow

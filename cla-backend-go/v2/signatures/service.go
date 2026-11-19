@@ -149,7 +149,7 @@ func (s *Service) GetClaGroupCorporateContributorsCsv(ctx context.Context, claGr
 	var b bytes.Buffer
 	var contributors []*v1Models.CorporateContributor
 	var nextKey *string
-	// one page per export: the v1 lookup recounts the whole CLA group on every call
+	// one page per export: the v1 lookup recounts the company's rows on every call
 	batchSize := HugePageSize
 	for {
 		result, err := s.v1SignatureService.GetClaGroupCorporateContributors(ctx, claGroupID, &companyID, &batchSize, nextKey, nil)

@@ -5834,12 +5834,11 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 
 	log.WithFields(f).Debugf("total corporate contributor count: %d, page size: %d", totalCount, *pageSize)
 
-	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID))
 	// The sigtype_signed_approved_id GSI is not used here: historical acknowledgments may lack the
 	// key (the stream stamps it on new writes, no backfill), so the filter goes on the plain
 	// attributes. The search term is matched in memory (DynamoDB contains() is case-sensitive), so a
 	// search reads the company's rows in bigger evaluation windows to fill the page in fewer round trips
-	filter := corporateContributorFilter(companyID, false)
+	indexName, condition, filter := corporateContributorQuery(claGroupID, companyID, false)
 	evaluationLimit := *pageSize
 	if term != "" {
 		evaluationLimit = HugePageSize
@@ -5864,7 +5863,7 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 		ProjectionExpression:      expr.Projection(),
 		FilterExpression:          expr.Filter(),
 		TableName:                 aws.String(repo.signatureTableName),
-		IndexName:                 aws.String(SignatureProjectIDIndex),
+		IndexName:                 aws.String(indexName),
 		Limit:                     aws.Int64(evaluationLimit),
 	}
 
@@ -5877,6 +5876,9 @@ func (repo repository) GetClaGroupCorporateContributors(ctx context.Context, cla
 			"signature_id": {
 				S: aws.String(*nextKey),
 			},
+		}
+		if indexName == signatureUserCCLACompanyIndex {
+			queryInput.ExclusiveStartKey["signature_user_ccla_company_id"] = &dynamodb.AttributeValue{S: companyID}
 		}
 	}
 
@@ -6032,6 +6034,22 @@ func corporateContributorFilter(companyID *string, approvedOnly bool) expression
 	return filter
 }
 
+const signatureUserCCLACompanyIndex = "signature-user-ccla-company-index"
+
+// corporateContributorQuery reads by company + CLA group when a company is given (lfx-self-serve-ops#1494)
+func corporateContributorQuery(claGroupID string, companyID *string, approvedOnly bool) (string, expression.KeyConditionBuilder, expression.ConditionBuilder) {
+	if aws.StringValue(companyID) == "" {
+		return SignatureProjectIDIndex, expression.Key("signature_project_id").Equal(expression.Value(claGroupID)), corporateContributorFilter(companyID, approvedOnly)
+	}
+	filter := expression.Name("signature_signed").Equal(expression.Value(true))
+	if approvedOnly {
+		filter = filter.And(expression.Name("signature_approved").Equal(expression.Value(true)))
+	}
+	condition := expression.Key("signature_user_ccla_company_id").Equal(expression.Value(aws.StringValue(companyID))).
+		And(expression.Key("signature_project_id").Equal(expression.Value(claGroupID)))
+	return signatureUserCCLACompanyIndex, condition, filter
+}
+
 func corporateContributorSearchTerm(searchTerm *string) string {
 	if searchTerm == nil {
 		return ""
@@ -6087,8 +6105,7 @@ func (repo repository) CountClaGroupCorporateContributors(ctx context.Context, c
 		projection = corporateContributorSearchProjection()
 	}
 
-	condition := expression.Key("signature_project_id").Equal(expression.Value(claGroupID))
-	filter := corporateContributorFilter(companyID, approvedOnly)
+	indexName, condition, filter := corporateContributorQuery(claGroupID, companyID, approvedOnly)
 
 	beforeQuery, _ := utils.CurrentTime()
 	log.WithFields(f).Debugf("running total signature count query for claGroupID: %s, companyID: %s", claGroupID, aws.StringValue(companyID))
@@ -6106,7 +6123,7 @@ func (repo repository) CountClaGroupCorporateContributors(ctx context.Context, c
 		KeyConditionExpression:    expr.KeyCondition(),
 		ProjectionExpression:      expr.Projection(),
 		TableName:                 aws.String(repo.signatureTableName),
-		IndexName:                 aws.String(SignatureProjectIDIndex),
+		IndexName:                 aws.String(indexName),
 		Limit:                     aws.Int64(pageSize),
 	}
 
