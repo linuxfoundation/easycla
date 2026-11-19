@@ -21,9 +21,10 @@ import (
 const (
 	DecisionCollapse = "collapse"
 	DecisionDistinct = "distinct"
+	DecisionSkip     = "skip"
 )
 
-// Decision is one reviewed group: collapse (all old ids land on TargetSFID) or distinct (separate Accounts).
+// Decision is one reviewed group: collapse (all old ids land on TargetSFID), distinct (separate Accounts) or skip (not imported).
 type Decision struct {
 	Kind     string
 	OldIDs   []string
@@ -102,8 +103,12 @@ func ParseDecisions(r io.Reader) (*Decisions, error) {
 			if len(dec.OldIDs) < 2 {
 				return nil, fmt.Errorf("decisions line %d: distinct needs at least two old ids", line)
 			}
+		case DecisionSkip:
+			if dec.Target != "" {
+				return nil, fmt.Errorf("decisions line %d: skip must not set target_sfid", line)
+			}
 		default:
-			return nil, fmt.Errorf("decisions line %d: decision must be collapse|distinct", line)
+			return nil, fmt.Errorf("decisions line %d: decision must be collapse|distinct|skip", line)
 		}
 		for _, id := range dec.OldIDs {
 			if prev, dup := d.ByOldID[id]; dup {
@@ -124,6 +129,38 @@ func (d *Decisions) Collapse(oldID, target string) *Decision {
 	dec := d.ByOldID[oldID]
 	if dec != nil && dec.Kind == DecisionCollapse && accountKey(dec.Target) == accountKey(target) {
 		return dec
+	}
+	return nil
+}
+
+// Skip reports the recorded decision not to import oldID; an Account id matches in either form.
+func (d *Decisions) Skip(oldID string) *Decision {
+	if d == nil {
+		return nil
+	}
+	if dec := d.ByOldID[oldID]; dec != nil && dec.Kind == DecisionSkip {
+		return dec
+	}
+	if IsSFID(oldID) {
+		return d.SkipsAccount(oldID)
+	}
+	return nil
+}
+
+// SkipsAccount reports the skip decision that names the Account of sfid, in either id form.
+func (d *Decisions) SkipsAccount(sfid string) *Decision {
+	if d == nil {
+		return nil
+	}
+	for _, dec := range d.List {
+		if dec.Kind != DecisionSkip {
+			continue
+		}
+		for _, id := range dec.OldIDs {
+			if IsSFID(id) && accountKey(id) == accountKey(sfid) {
+				return dec
+			}
+		}
 	}
 	return nil
 }

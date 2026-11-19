@@ -55,12 +55,13 @@ func BuildPlan(ctx context.Context, deps Deps, opts Options) (*Plan, error) {
 	groups := mergeReplayed(inv.EligibleGroups(), replayed)
 
 	for _, g := range groups {
-		if g.Replayed {
-			continue
+		if !skipGroup(g, decisions) && !g.Replayed {
+			classify(ctx, deps, g, mapping, shared, opts)
 		}
-		classify(ctx, deps, g, mapping, shared, opts)
 	}
+	checkSkips(deps, decisions, groups)
 	livenessGuard(groups)
+	checkTargets(ctx, deps, groups)
 	targets := applyDecisions(groups, inv, mapping, decisions)
 	for _, g := range groups {
 		if !g.Replayed {
@@ -76,7 +77,7 @@ func BuildPlan(ctx context.Context, deps Deps, opts Options) (*Plan, error) {
 	known := knownAccountsFromGroups(shared, groups)
 	groups = filterIDs(groups, opts.IDs)
 	suggestAccounts(ctx, deps, shared, known, groups, func(g *Group) bool {
-		return g.Err == nil && (g.Route == RouteRewrite || g.Route == RouteManual)
+		return g.Err == nil && (g.Route == RouteRewrite || g.Route == RouteManual) && g.ManualReason != ReasonNotImported
 	})
 
 	plan := &Plan{Stage: opts.Stage, Apply: opts.Apply, Groups: groups, Targets: targets, mapping: mapping, decisions: decisions, shared: shared, state: state, inv: inv}
@@ -303,6 +304,105 @@ func classify(ctx context.Context, deps Deps, g *Group, mapping *Mapping, shared
 	}
 	g.NewID, g.Action = newID, action
 }
+
+// skipGroup applies the skip decision of the group, if there is one: the group is not imported, and a rewrite that
+// already began fails instead of resuming.
+func skipGroup(g *Group, decisions *Decisions) bool {
+	dec := decisions.Skip(g.Key)
+	if dec == nil {
+		return false
+	}
+	g.Decision = dec
+	if g.Replayed {
+		g.stop(ReasonSkipConflict, fmt.Errorf("skip decision for %s conflicts with its unfinished rewrite to %s: drop the decision to finish the rewrite, or undo the rewrite by hand", g.Key, g.NewID))
+		return true
+	}
+	g.Route, g.ManualReason = RouteManual, ReasonNotImported
+	return true
+}
+
+// checkSkips stops every rewrite onto the Account of a skipped id and reports a skip decision that names no eligible
+// group: its organization would be imported as usual.
+func checkSkips(deps Deps, decisions *Decisions, groups []*Group) {
+	if decisions == nil {
+		return
+	}
+	skipped := map[string]bool{}
+	for _, g := range groups {
+		if g.Decision != nil && g.Decision.Kind == DecisionSkip {
+			skipped[accountKey(g.Key)] = true
+		}
+		if g.Err == nil && g.Route == RouteRewrite && g.NewID != "" && decisions.SkipsAccount(g.NewID) != nil {
+			g.stop(ReasonSkipConflict, fmt.Errorf("target %s of %s is kept out of the import by a skip decision", g.NewID, g.Key))
+		}
+	}
+	for _, dec := range decisions.List {
+		if dec.Kind != DecisionSkip {
+			continue
+		}
+		for _, id := range dec.OldIDs {
+			if !skipped[accountKey(id)] {
+				fmt.Fprintf(deps.Out, "WARNING: skip decision for %s matches no eligible group\n", id)
+			}
+		}
+	}
+}
+
+// checkTargets asks member-service about every rewrite destination, also of an unfinished rewrite: an Account it
+// cannot read is never one, and a 403 while no Account answered 200 or 404 is the access error of livenessGuard.
+func checkTargets(ctx context.Context, deps Deps, groups []*Group) {
+	if deps.Members == nil {
+		return
+	}
+	seen := 0
+	forbidden := map[*Group]error{}
+	for _, g := range groups {
+		if g.Live == LiveLive || g.Live == LiveDead {
+			seen++
+		}
+		if g.Err != nil || g.Route != RouteRewrite || g.NewID == "" {
+			continue
+		}
+		live, err := liveness(ctx, deps, g.NewID)
+		switch live {
+		case LiveLive:
+			seen++
+		case LiveDead:
+			seen++
+			g.stop(ReasonTargetNotLive, fmt.Errorf("target check failed for %s: member-service answered 404", g.NewID))
+		case LiveUnregistered:
+			forbidden[g] = err
+		default:
+			g.Err = fmt.Errorf("target check failed for %s: %w", g.NewID, err)
+		}
+	}
+	for g, err := range forbidden {
+		if seen > 0 {
+			g.stop(ReasonTargetNotLive, fmt.Errorf("target check failed for %s: %w", g.NewID, err))
+			continue
+		}
+		g.Err = fmt.Errorf("target check failed for %s: member-service answered 200 or 404 for no Account and 403 for %d: the tool's client cannot see any b2b_org (access tuple missing?): %w", g.NewID, len(forbidden), err)
+	}
+}
+
+// stop takes a rewrite out of the plan for reason: one that already began fails with err, any other becomes a manual action.
+func (g *Group) stop(reason string, err error) {
+	g.ManualReason = reason
+	if g.Replayed {
+		g.Err = &stopError{reason: reason, err: err}
+		return
+	}
+	g.Route = RouteManual
+}
+
+// stopError is a group failure whose operator guidance is that of a manual reason.
+type stopError struct {
+	reason string
+	err    error
+}
+
+func (e *stopError) Error() string { return e.err.Error() }
+func (e *stopError) Unwrap() error { return e.err }
 
 // lookupOrg records the org-service view of the group's old id.
 func lookupOrg(ctx context.Context, deps Deps, g *Group) {

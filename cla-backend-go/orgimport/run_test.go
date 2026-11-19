@@ -494,7 +494,9 @@ func TestBuildPlanClassification(t *testing.T) {
 	fx.company("c-other-mapped", "Other Mapped Inc", "", "N/A", "cg-1")
 	fx.company("c-inactive", "Inactive", "", liveSFID2)
 	fx.platform.sfAccounts[liveSFID] = true
-	fx.platform.sfAccounts[targetSFID] = true
+	for _, target := range []string{targetSFID, targetSFID2, "0014100000DeadNew1", "0014100000DupNew01", "0014100000EmptyNew", "0014100000OtherNew"} {
+		fx.platform.sfAccounts[target] = true
+	}
 	fx.platform.orgs[lfID] = &Org{ID: lfID, Name: "Legacy Ltd (org-service)", Website: "https://legacy.example"}
 	fx.platform.orgs[targetSFID] = &Org{ID: targetSFID, Name: "Legacy Ltd"}
 
@@ -1022,6 +1024,23 @@ func TestRecheckRekeysLateEventsOfCompletedGroups(t *testing.T) {
 	assert.Empty(t, fx.events.rekeyed)
 	assert.Contains(t, fx.out.String(), "events recheck "+lfID+" -> "+targetSFID+": 0 listed, 0 re-keyed\n")
 	assert.Equal(t, []string{lfID}, fx.events.listed)
+}
+
+// A skip decision that names the source or the Account of a finished rewrite keeps the recheck away from it.
+func TestRecheckLeavesOutASkippedRewrite(t *testing.T) {
+	for name, id := range map[string]string{"source": lfID, "target in its 15-char form": targetSFID[:15]} {
+		t.Run(name, func(t *testing.T) {
+			fx, mapping, statePath := completedRewrite(t)
+			fx.events.sfidByEvent["e6"] = lfID
+			decisions := writeDecisions(t, t.TempDir(), "skip,"+id+",,heather,")
+			_, err := runIngest(t, fx, Options{Stage: "dev", Apply: true, Mapping: mapping, Decisions: decisions, State: statePath, Routes: []Route{RouteRewrite}})
+			require.NoError(t, err)
+			assert.Empty(t, fx.events.listed)
+			assert.Empty(t, fx.events.rekeyed)
+			assert.Equal(t, lfID, fx.events.sfidByEvent["e6"])
+			assert.Contains(t, fx.out.String(), "events recheck "+lfID+" -> "+targetSFID+": left out, a skip decision names it\n")
+		})
+	}
 }
 
 func TestRecheckSelection(t *testing.T) {
@@ -1687,12 +1706,12 @@ func TestAudit(t *testing.T) {
 
 	rows := readCSV(t, filepath.Join(dir, "audit.csv"))
 	require.Len(t, rows, 9)
-	require.Equal(t, []string{"company_id", "company_name", "signing_entity_name", "company_external_id", "id_shape", "active_ccla", "ccla_count", "ecla_count", "org_service", "website", "duplicate_sfid_group", "route", "manual_reason", "tier", "acs_roles", "suggested_account"}, rows[0])
+	require.Equal(t, []string{"company_id", "company_name", "signing_entity_name", "company_external_id", "id_shape", "active_ccla", "ccla_count", "ecla_count", "org_service", "website", "duplicate_sfid_group", "route", "manual_reason", "tier", "acs_roles", "suggested_account", "last_cla_activity"}, rows[0])
 	byID := map[string][]string{}
 	for _, r := range rows[1:] {
 		byID[r[0]] = r
 	}
-	assert.Equal(t, []string{"c-live", "Live Corp", "", liveSFID, "001", "true", "1", "", "200", "https://live.example", "false", "register", "", TierOK, "r1=2;r2=1", ""}, byID["c-live"])
+	assert.Equal(t, []string{"c-live", "Live Corp", "", liveSFID, "001", "true", "1", "", "200", "https://live.example", "false", "register", "", TierOK, "r1=2;r2=1", "", "2024-01-02"}, byID["c-live"])
 	assert.Equal(t, "r1=2;r2=1", byID["c-live-sub"][14], "ACS roles are per old id, so every row of the group shows them")
 	assert.Equal(t, "", byID["c-inactive"][14], "ids outside the eligible groups and duplicate sets are not looked up in ACS")
 	assert.Equal(t, "", byID["c-dead"][14], "an id without grants has an empty cell")

@@ -39,6 +39,10 @@ func (r *runner) recheckEvents(ctx context.Context, budget int) int {
 		if len(want) > 0 && !want[rec.OldID] && !want[rec.NewID] {
 			continue
 		}
+		if r.plan.decisions.Skip(rec.OldID) != nil || r.plan.decisions.SkipsAccount(rec.NewID) != nil {
+			fmt.Fprintf(r.deps.Out, "events recheck %s -> %s: left out, a skip decision names it\n", rec.OldID, rec.NewID)
+			continue
+		}
 		recs = append(recs, rec)
 	}
 	if len(recs) == 0 {
