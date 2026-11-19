@@ -173,8 +173,7 @@ try {
   await s1.page.getByTestId('org-easycla-managers-row').first().waitFor({ state: 'visible', timeout: 60000 });
   await sleep(1500);
   async function addId2(cid) {
-    await e2e.closeOverlay(s1.page);
-    await s1.page.getByTestId('org-easycla-managers-add').getByRole('button').click();
+    await e2e.clickClear(s1.page, s1.page.getByTestId('org-easycla-managers-add').getByRole('button'));
     const dialog = s1.page.getByTestId('org-easycla-add-manager-dialog');
     await dialog.waitFor({ state: 'visible', timeout: 20000 });
     const fields = dialog.locator('input');

@@ -36,9 +36,9 @@ You are assisting in this repository. The following rules are **mandatory** and 
 
 0. **Lint only with the pinned toolchain, memory-capped**
 
-   - `cla-backend-go` lint = golangci-lint **v1.64.8 built with and run under the CI Go toolchain** (`go 1.25.x`, `go.mod` / `build-pr.yml`).
+   - `cla-backend-go` lint = golangci-lint **v1.64.8 built with and run under the CI Go toolchain** (`go 1.26.x`, `go.mod` / `build-pr.yml`).
      Any other combination (newer Go, newer `GOTOOLCHAIN`) re-type-checks the module per linter, exceeds 30 GB RSS and OOM-kills the
-     whole session. Before linting: `GOTOOLCHAIN=go1.25.13 golangci-lint version` must report that Go version.
+     whole session. Before linting: `GOTOOLCHAIN=go1.26.11 golangci-lint version` must report that Go version.
    - Run it on Linux only, one at a time, with `--concurrency 4` (`make lint LINT_ARGS="--concurrency 4"`) inside a memory-capped cgroup
      (`systemd-run --user --scope -p MemoryMax=16G -p MemorySwapMax=0 …`). Never replace a shared `~/go/bin/golangci-lint` while other
      sessions run; install a pinned copy elsewhere and use `LINT_TOOL=<path>`.
