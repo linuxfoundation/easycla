@@ -127,9 +127,7 @@ func (s *service) createCompanyViaMemberService(ctx context.Context, f logrus.Fi
 			log.WithFields(f).WithError(err).Warn("member-service rejected the company request")
 			return nil, err
 		default:
-			// a rejected token request sent nothing to member-service
-			var authErr *memberService.AuthError
-			keep = !errors.As(err, &authErr) || !authErr.Token
+			keep = !errors.Is(err, memberService.ErrNotSent)
 			log.WithFields(f).WithError(err).Warn("member-service find-or-create failed")
 			return nil, fmt.Errorf("%w: %v", ErrCompanyDependencyFailed, err)
 		}

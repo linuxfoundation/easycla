@@ -40,6 +40,9 @@ var ErrInvalidRequest = errors.New("member-service: request rejected")
 // ErrAmbiguousDomain is returned when several Salesforce accounts share the website domain (find-or-create 409).
 var ErrAmbiguousDomain = errors.New("member-service: several accounts match the website domain")
 
+// ErrNotSent wraps a find-or-create failure that happened before the request left: member-service saw nothing.
+var ErrNotSent = errors.New("member-service: request not sent")
+
 // Action is the find-or-create outcome (lfx-self-serve#4998).
 type Action string
 
@@ -236,7 +239,7 @@ func (c *Client) FindOrCreateB2BOrg(ctx context.Context, name, website string) (
 	}
 	tok, err := c.getToken(ctx)
 	if err != nil {
-		return nil, "", err
+		return nil, "", fmt.Errorf("%w: %w", ErrNotSent, err)
 	}
 	payload, err := json.Marshal(map[string]string{"name": name, "website": website})
 	if err != nil {
