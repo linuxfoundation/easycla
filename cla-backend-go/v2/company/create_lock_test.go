@@ -217,6 +217,30 @@ func TestCreateCompanyLock(t *testing.T) {
 		assert.Equal(t, held, locks.calls, "Salesforce may still be writing, so the lock stays until it expires")
 	})
 
+	for name, transport := range map[string]*memberCreateHTTP{
+		"a rejected token request":                    {memberTokenStatus: http.StatusForbidden},
+		"a token request that does not get an answer": {memberTokenErr: errors.New("connection reset")},
+	} {
+		t.Run("released after "+name, func(t *testing.T) {
+			locks := &recordingLocks{}
+			fx := newMemberCreateFixture(t, transport, memberCreateRepo{})
+			fx.svc.EnableCreateLock(locks)
+			_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+			assert.ErrorIs(t, err, ErrCompanyDependencyFailed)
+			assert.Zero(t, fx.transport.count(findOrCreate), "nothing was sent to member-service")
+			assert.Equal(t, heldAndReleased, locks.calls)
+		})
+	}
+
+	t.Run("kept after a find-or-create that fails in transit", func(t *testing.T) {
+		locks := &recordingLocks{}
+		fx := newMemberCreateFixture(t, &memberCreateHTTP{memberErr: errors.New("connection reset")}, memberCreateRepo{})
+		fx.svc.EnableCreateLock(locks)
+		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+		assert.ErrorIs(t, err, ErrCompanyDependencyFailed)
+		assert.Equal(t, held, locks.calls, "the request may have reached Salesforce")
+	})
+
 	t.Run("kept after a failed company write", func(t *testing.T) {
 		locks := &recordingLocks{}
 		fx := newMemberCreateFixture(t, created(), memberCreateRepo{expectRow: true, createFailure: errors.New("dynamodb timeout")})

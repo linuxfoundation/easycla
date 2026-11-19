@@ -54,6 +54,21 @@ func (mr *MockServiceMockRecorder) AddGithubRepository(ctx, externalProjectID, i
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AddGithubRepository", reflect.TypeOf((*MockService)(nil).AddGithubRepository), ctx, externalProjectID, input)
 }
 
+// DisableProjectRepository mocks base method.
+func (m *MockService) DisableProjectRepository(ctx context.Context, projectSFID, repositoryID string) (*models.GithubRepository, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DisableProjectRepository", ctx, projectSFID, repositoryID)
+	ret0, _ := ret[0].(*models.GithubRepository)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// DisableProjectRepository indicates an expected call of DisableProjectRepository.
+func (mr *MockServiceMockRecorder) DisableProjectRepository(ctx, projectSFID, repositoryID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DisableProjectRepository", reflect.TypeOf((*MockService)(nil).DisableProjectRepository), ctx, projectSFID, repositoryID)
+}
+
 // DisableRepositoriesByProjectID mocks base method.
 func (m *MockService) DisableRepositoriesByProjectID(ctx context.Context, projectID string) (int, error) {
 	m.ctrl.T.Helper()

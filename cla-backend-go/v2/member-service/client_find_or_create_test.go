@@ -109,6 +109,25 @@ func TestFindOrCreateB2BOrg(t *testing.T) {
 		require.Error(t, err)
 		assert.Equal(t, 2, fake.tokenCalls, "a fresh token is requested after a 401")
 	})
+	t.Run("a failed token request is marked as not sent", func(t *testing.T) {
+		for name, tokenServer := range map[string]http.HandlerFunc{
+			"rejected":  func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusForbidden) },
+			"no answer": func(w http.ResponseWriter, _ *http.Request) { panic(http.ErrAbortHandler) },
+		} {
+			fake := &findOrCreateFake{status: http.StatusCreated, body: `{"uid":"0014100000Te0G7AAJ"}`}
+			client := newFindOrCreateClient(t, fake)
+			tokens := httptest.NewServer(tokenServer)
+			client.cfg.OAuthTokenURL = tokens.URL
+			_, _, err := client.FindOrCreateB2BOrg(context.Background(), "Org", "https://example.org")
+			tokens.Close()
+			assert.ErrorIs(t, err, ErrNotSent, name)
+			assert.Empty(t, fake.calls, name)
+		}
+		fake := &findOrCreateFake{status: http.StatusServiceUnavailable, body: `{"message":"salesforce down"}`}
+		_, _, err := newFindOrCreateClient(t, fake).FindOrCreateB2BOrg(context.Background(), "Org", "https://example.org")
+		require.Error(t, err)
+		assert.NotErrorIs(t, err, ErrNotSent, "a request that left is never marked")
+	})
 	t.Run("missing name or website is refused before any call", func(t *testing.T) {
 		fake := &findOrCreateFake{status: http.StatusCreated, body: `{"uid":"` + uid + `"}`}
 		client := newFindOrCreateClient(t, fake)

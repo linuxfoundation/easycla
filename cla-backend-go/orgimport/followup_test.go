@@ -69,6 +69,92 @@ func TestUnregisteredAccountsArePending(t *testing.T) {
 	assert.Contains(t, fx.out.String(), " unregistered=1 ")
 }
 
+// A usable mapping row moves an Account that answers 403 to the rewrite route; any other one stays pending.
+func TestUnregisteredAccountWithMappingIsRewritten(t *testing.T) {
+	fx := newFixture()
+	fx.company("c-live", "Live Corp", "", liveSFID, "cg-1")
+	fx.company("c-unreg", "Fresh Corp", "", unregSFID, "cg-1")
+	fx.company("c-unreg2", "Other Corp", "", unregSFID2, "cg-1")
+	fx.platform.sfAccounts[liveSFID] = true
+	fx.platform.sfAccounts[targetSFID] = true
+	fx.platform.sfAccounts[targetSFID2] = true
+	fx.platform.forbidden = map[string]int{unregSFID: -1, unregSFID2: -1}
+	fx.platform.orgs[unregSFID] = &Org{ID: unregSFID, Name: "Fresh Corp", Website: "https://fresh.example"}
+	fx.platform.orgs[targetSFID] = &Org{ID: targetSFID, Name: "Fresh Corporation"}
+	fx.platform.addGrant(unregSFID, "alice", "role-cla-manager", "")
+	dir := t.TempDir()
+	mapping := writeMapping(t, dir, unregSFID+","+targetSFID+",matched,true", unregSFID2+","+targetSFID2+",matched,false")
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: filepath.Join(dir, "state.jsonl"), Routes: []Route{RouteRewrite}}
+
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	g := groupByKey(plan.Groups, unregSFID)
+	require.NotNil(t, g)
+	assert.Equal(t, LiveUnregistered, g.Live)
+	assert.Equal(t, RouteRewrite, g.Route)
+	assert.Equal(t, targetSFID, g.NewID)
+	assert.Equal(t, ActionMatched, g.Action)
+	assert.Empty(t, g.ManualReason)
+	assert.False(t, g.Pending())
+	assert.False(t, g.AllGrants, "a matched Account gets the EasyCLA roles only")
+	other := groupByKey(plan.Groups, unregSFID2)
+	require.NotNil(t, other)
+	assert.Equal(t, RouteRegister, other.Route, "a mapping row that is not approved moves nothing")
+	assert.Equal(t, ReasonUnregistered, other.ManualReason)
+	assert.Empty(t, other.NewID)
+	require.Len(t, plan.Rewrite, 1)
+	assert.Equal(t, unregSFID, plan.Rewrite[0].OldID)
+	assert.Equal(t, 1, plan.Unregistered(), "only the Account that no mapping row moves")
+	assert.Equal(t, 1, plan.Pending())
+
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+	require.NoError(t, err)
+	assert.Equal(t, 1, sum.Rewritten)
+	assert.Equal(t, 1, sum.Pending)
+	assert.Zero(t, sum.Failed)
+	assert.Equal(t, []string{"c-unreg:" + unregSFID + "->" + targetSFID}, fx.companies.updates)
+	assert.Equal(t, unregSFID, fx.companies.rows["c-unreg"].PreviousCompanyExternalID)
+	assert.Equal(t, unregSFID2, fx.companies.rows["c-unreg2"].CompanyExternalID)
+	assert.Len(t, mustListOrgGrants(t, fx, targetSFID), 1)
+	assert.Empty(t, mustListOrgGrants(t, fx, unregSFID))
+	assert.Equal(t, []string{targetSFID}, fx.platform.registered, "the old id is never registered")
+
+	// --register-unregistered does not override the mapping row
+	fx2 := newFixture()
+	fx2.company("c-live", "Live Corp", "", liveSFID, "cg-1")
+	fx2.company("c-unreg", "Fresh Corp", "", unregSFID, "cg-1")
+	fx2.platform.sfAccounts[liveSFID] = true
+	fx2.platform.sfAccounts[targetSFID] = true
+	fx2.platform.forbidden = map[string]int{unregSFID: -1}
+	plan, err = BuildPlan(context.Background(), fx2.deps(), Options{Mapping: mapping, RegisterUnregistered: true})
+	require.NoError(t, err)
+	require.Len(t, plan.Rewrite, 1)
+	assert.Equal(t, unregSFID, plan.Rewrite[0].OldID)
+	require.Len(t, plan.Register, 1)
+	assert.Equal(t, liveSFID, plan.Register[0].OldID)
+}
+
+// A mapping row does not turn a missing access tuple into rewrites: when no Account answers 200 or 404 nothing is planned.
+func TestAllForbiddenWithMappingIsStillAnAccessError(t *testing.T) {
+	fx := newFixture()
+	fx.company("c-a", "A", "", unregSFID, "cg-1")
+	fx.company("c-b", "B", "", unregSFID2, "cg-1")
+	fx.platform.sfAccounts[targetSFID] = true
+	fx.platform.forbidden = map[string]int{unregSFID: -1, unregSFID2: -1}
+	mapping := writeMapping(t, t.TempDir(), unregSFID+","+targetSFID+",matched,true")
+
+	plan, err := BuildPlan(context.Background(), fx.deps(), Options{Mapping: mapping})
+	require.NoError(t, err)
+	g := groupByKey(plan.Groups, unregSFID)
+	require.NotNil(t, g)
+	assert.Equal(t, LiveError, g.Live)
+	assert.Empty(t, g.Route)
+	require.Error(t, g.Err)
+	assert.ErrorContains(t, g.Err, "403 for 2")
+	assert.Empty(t, plan.Rewrite)
+	assert.Empty(t, plan.Register)
+}
+
 // When every GET answers 403 the client cannot see any b2b_org at all: that is the old error shape.
 func TestAllForbiddenIsAnAccessError(t *testing.T) {
 	fx := newFixture()

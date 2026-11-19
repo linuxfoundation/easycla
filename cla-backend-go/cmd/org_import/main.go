@@ -27,6 +27,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/ses"
 	"github.com/aws/aws-sdk-go/service/ssm"
+	"github.com/sirupsen/logrus"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/company"
 	"github.com/linuxfoundation/easycla/cla-backend-go/config"
@@ -156,6 +157,7 @@ func run(args []string, stdin io.Reader) int {
 	}
 	if os.Getenv("LOG_LEVEL") == "" {
 		_ = os.Setenv("LOG_LEVEL", "warn")
+		log.GetLogger().SetLevel(logrus.WarnLevel)
 	}
 	cmd := args[0]
 	fs := flag.NewFlagSet("org_import "+cmd, flag.ContinueOnError)

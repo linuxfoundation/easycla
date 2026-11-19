@@ -63,6 +63,7 @@ type memberCreateHTTP struct {
 	memberBody        string
 	memberErr         error
 	memberTokenStatus int
+	memberTokenErr    error
 	orgStatus         int
 	rolesStatus       int
 	scopeStatus       int
@@ -72,6 +73,18 @@ type memberCreateHTTP struct {
 	mu       sync.Mutex
 	calls    []string
 	payloads []map[string]string
+}
+
+// memberToken answers the member-service token request as configured
+func (h *memberCreateHTTP) memberToken(response *http.Response) (string, error) {
+	if h.memberTokenErr != nil {
+		return "", h.memberTokenErr
+	}
+	if h.memberTokenStatus != 0 {
+		response.StatusCode = h.memberTokenStatus
+		return `{"error":"token failure"}`, nil
+	}
+	return `{"access_token":"member-token","token_type":"Bearer","expires_in":3600}`, nil
 }
 
 func (h *memberCreateHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -85,9 +98,9 @@ func (h *memberCreateHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 		response.Body = &claGroupsTokenBody{Reader: strings.NewReader(`{"access_token":"unit-test-token","token_type":"Bearer","expires_in":3600}`), ready: h.tokenReady}
 		return response, nil
 	case r.URL.Host == msMemberHost && r.URL.Path == msOAuthPath:
-		body = `{"access_token":"member-token","token_type":"Bearer","expires_in":3600}`
-		if h.memberTokenStatus != 0 {
-			response.StatusCode, body = h.memberTokenStatus, `{"error":"token failure"}`
+		var tokenErr error
+		if body, tokenErr = h.memberToken(response); tokenErr != nil {
+			return nil, tokenErr
 		}
 	case r.URL.Host == msMemberHost && r.Method == http.MethodPost && r.URL.Path == "/b2b_orgs/find-or-create":
 		if h.memberErr != nil {
