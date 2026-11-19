@@ -9,7 +9,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -372,4 +374,204 @@ func TestLoadCLAAdminsFlag(t *testing.T) {
 			assert.Contains(t, cfg.MemberService.CLAAdminsFlagError, tc.wantError)
 		})
 	}
+}
+
+const acsDirectRolesTestKey = "cla-acs-direct-roles-enabled-test"
+
+// fakeParameterStore serves GetParameter and GetParameters and records the calls of each kind
+type fakeParameterStore struct {
+	missing     map[string]bool
+	values      map[string]string
+	batchError  string
+	failBatchOf string
+
+	mu          sync.Mutex
+	batchSizes  []int
+	failedSize  int
+	batchNames  []string
+	singleNames []string
+}
+
+func (f *fakeParameterStore) value(name string) (string, bool) {
+	if f.missing[name] {
+		return "", false
+	}
+	if value, ok := f.values[name]; ok {
+		return value, true
+	}
+	switch {
+	case strings.HasPrefix(name, "cla-gh-app-id-"):
+		return "123", true
+	case strings.Contains(name, "-enabled-"), strings.Contains(name, "-enable-services-for-parent-"), strings.Contains(name, "cla-sss-required-"):
+		return strconv.FormatBool(false), true
+	}
+	return "test-value", true
+}
+
+func (f *fakeParameterStore) session(t *testing.T) *session.Session {
+	t.Helper()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var input struct {
+			Name  string
+			Names []string
+		}
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/x-amz-json-1.1")
+		fail := func(code string) {
+			w.WriteHeader(http.StatusBadRequest)
+			assert.NoError(t, json.NewEncoder(w).Encode(map[string]string{"__type": code, "message": "test SSM error"}))
+		}
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if r.Header.Get("X-Amz-Target") == "AmazonSSM.GetParameters" {
+			f.batchSizes = append(f.batchSizes, len(input.Names))
+			f.batchNames = append(f.batchNames, input.Names...)
+			code := f.batchError
+			for _, name := range input.Names {
+				if name == f.failBatchOf {
+					code = "ThrottlingException"
+					f.failedSize = len(input.Names)
+				}
+			}
+			if code != "" {
+				fail(code)
+				return
+			}
+			parameters, invalid := []map[string]string{}, []string{}
+			for _, name := range input.Names {
+				if value, ok := f.value(name); ok {
+					parameters = append(parameters, map[string]string{"Name": name, "Value": value, "Type": "String"})
+				} else {
+					invalid = append(invalid, name)
+				}
+			}
+			assert.NoError(t, json.NewEncoder(w).Encode(map[string]interface{}{"Parameters": parameters, "InvalidParameters": invalid}))
+			return
+		}
+		f.singleNames = append(f.singleNames, input.Name)
+		value, ok := f.value(input.Name)
+		if !ok {
+			fail(ssm.ErrCodeParameterNotFound)
+			return
+		}
+		assert.NoError(t, json.NewEncoder(w).Encode(map[string]interface{}{
+			"Parameter": map[string]string{"Name": input.Name, "Value": value, "Type": "String"},
+		}))
+	}))
+	t.Cleanup(server.Close)
+	awsSession, err := session.NewSession(&aws.Config{
+		Region:      aws.String("us-east-1"),
+		Endpoint:    aws.String(server.URL),
+		Credentials: credentials.NewStaticCredentials("test", "test", ""),
+		MaxRetries:  aws.Int(0),
+	})
+	require.NoError(t, err)
+	return awsSession
+}
+
+func rolloutParameterStore() *fakeParameterStore {
+	return &fakeParameterStore{
+		missing: map[string]bool{"cla-org-lens-base-test": true, "cla-ss-trusted-client-ids-test": true},
+		values: map[string]string{
+			"cla-member-service-create-company-enabled-test": "true",
+			"cla-acs-direct-roles-enabled-test":              "true",
+			"cla-sss-base-url-test":                          "https://sss.invalid",
+			"cla-sss-auth0-audience-test":                    "sss-audience",
+			"cla-sss-enabled-test":                           "true",
+			"cla-member-service-base-url-test":               "https://member-service.invalid",
+		},
+	}
+}
+
+func assertRolloutConfig(t *testing.T, cfg Config) {
+	t.Helper()
+	assert.Equal(t, "test-value", cfg.Auth0.Domain)
+	assert.Equal(t, 123, cfg.GitHub.AppID)
+	assert.Equal(t, "test-value", cfg.DocuSignPrivateKey)
+	assert.True(t, cfg.MemberService.CreateCompanyEnabled)
+	assert.True(t, cfg.ACSDirectCLARolesEnabled)
+	assert.False(t, cfg.MemberService.CLAAdminsEnabled)
+	assert.Empty(t, cfg.MemberService.CLAAdminsFlagError)
+	assert.Equal(t, "https://member-service.invalid", cfg.MemberService.BaseURL)
+	assert.Equal(t, "", cfg.OrgLensURL)
+	assert.Nil(t, cfg.SelfServe.TrustedClientIDs)
+	assert.Equal(t, SSS{BaseURL: "https://sss.invalid", Audience: "sss-audience", Enabled: true}, cfg.SSS)
+}
+
+// easycla#5311: one GetParameter call per name at every cold start exceeded the Parameter Store rate limit
+func TestLoadConfigReadsParametersInBatches(t *testing.T) {
+	oldConfig := easyCLAConfig
+	t.Cleanup(func() { easyCLAConfig = oldConfig })
+	store := rolloutParameterStore()
+
+	cfg, err := LoadConfig("", store.session(t), "test")
+	require.NoError(t, err)
+	assertRolloutConfig(t, cfg)
+
+	assert.Empty(t, store.singleNames, "no parameter needs a call of its own")
+	names := map[string]bool{}
+	for _, name := range store.batchNames {
+		assert.False(t, names[name], "%s is read twice", name)
+		names[name] = true
+	}
+	assert.True(t, names["cla-member-service-create-company-enabled-test"])
+	assert.True(t, names["cla-acs-direct-roles-enabled-test"])
+	assert.GreaterOrEqual(t, len(names), 60)
+	assert.Len(t, store.batchSizes, (len(names)+9)/10)
+	for _, size := range store.batchSizes {
+		assert.LessOrEqual(t, size, 10)
+	}
+}
+
+func TestLoadConfigReadsOneByOneWhenBatchedReadsAreDenied(t *testing.T) {
+	oldConfig := easyCLAConfig
+	t.Cleanup(func() { easyCLAConfig = oldConfig })
+	store := rolloutParameterStore()
+	store.batchError = "AccessDeniedException"
+
+	cfg, err := LoadConfig("", store.session(t), "test")
+	require.NoError(t, err)
+	assertRolloutConfig(t, cfg)
+	assert.NotEmpty(t, store.batchSizes)
+	assert.Len(t, store.singleNames, len(store.batchNames), "every parameter is read on its own once")
+}
+
+func TestLoadConfigReadsOnlyTheFailedBatchOneByOne(t *testing.T) {
+	oldConfig := easyCLAConfig
+	t.Cleanup(func() { easyCLAConfig = oldConfig })
+	store := rolloutParameterStore()
+	store.failBatchOf = acsDirectRolesTestKey
+
+	cfg, err := LoadConfig("", store.session(t), "test")
+	require.NoError(t, err)
+	assertRolloutConfig(t, cfg)
+	require.NotZero(t, store.failedSize)
+	assert.Len(t, store.singleNames, store.failedSize)
+	assert.Contains(t, store.singleNames, acsDirectRolesTestKey)
+}
+
+func TestBatchedParametersGetParameter(t *testing.T) {
+	store := &fakeParameterStore{}
+	batched := &batchedParameters{
+		client:   ssm.New(store.session(t)),
+		found:    map[string]*ssm.Parameter{"cla-found-test": {Name: aws.String("cla-found-test"), Value: aws.String("batched")}},
+		notFound: map[string]bool{"cla-missing-test": true},
+	}
+
+	for _, name := range []string{"cla-found-test", "/cla-found-test"} {
+		out, err := batched.GetParameter(&ssm.GetParameterInput{Name: aws.String(name)})
+		require.NoError(t, err)
+		assert.Equal(t, "batched", aws.StringValue(out.Parameter.Value))
+	}
+	_, err := batched.GetParameter(&ssm.GetParameterInput{Name: aws.String("cla-missing-test")})
+	assert.True(t, isParameterNotFound(err))
+	assert.Empty(t, store.singleNames)
+
+	out, err := batched.GetParameter(&ssm.GetParameterInput{Name: aws.String("cla-other-test")})
+	require.NoError(t, err)
+	assert.Equal(t, "test-value", aws.StringValue(out.Parameter.Value))
+	assert.Equal(t, []string{"cla-other-test"}, store.singleNames)
 }

@@ -89,7 +89,8 @@ type fakeCapturedQuery struct {
 	attributeNames []string
 	filter         string
 	// startKey is the signature_id of the ExclusiveStartKey, when the query continues a page
-	startKey string
+	startKey      string
+	startKeyNames []string
 }
 
 type fakeAttrValue struct {
@@ -276,6 +277,10 @@ func (f *fakeSignaturesTable) handleQuery(w http.ResponseWriter, body []byte) {
 	if sk, ok := req.ExclusiveStartKey["signature_id"]; ok && sk.S != nil {
 		captured.startKey = *sk.S
 	}
+	for name := range req.ExclusiveStartKey {
+		captured.startKeyNames = append(captured.startKeyNames, name)
+	}
+	sort.Strings(captured.startKeyNames)
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.queries = append(f.queries, captured)
