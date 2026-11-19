@@ -447,3 +447,33 @@ func TestIsValidGitHubUsernameAcceptsBotSuffix(t *testing.T) {
 		assert.False(t, IsValidGitHubUsername(username), username)
 	}
 }
+
+func TestSearchGithubUserByEmailExcludesOrganizationsFromQuery(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/search/users", r.URL.Path)
+		assert.Equal(t, "contact@example.com in:email type:user", r.URL.Query().Get("q"))
+		w.Header().Set("Content-Type", "application/json")
+		_, err := io.WriteString(w, `{"total_count": 1, "items": [{"login": "example-bot", "id": 2, "type": "User"}]}`)
+		assert.NoError(t, err)
+	}))
+	defer srv.Close()
+
+	user, err := SearchGithubUserByEmail(context.Background(), newTestGithubClient(t, srv), "contact@example.com")
+	assert.NoError(t, err)
+	if assert.NotNil(t, user) {
+		assert.Equal(t, "example-bot", user.GetLogin())
+	}
+}
+
+func TestSearchGithubUserByEmailIgnoresOrganizationResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, err := io.WriteString(w, `{"total_count": 1, "items": [{"login": "example", "id": 1, "type": "Organization"}]}`)
+		assert.NoError(t, err)
+	}))
+	defer srv.Close()
+
+	user, err := SearchGithubUserByEmail(context.Background(), newTestGithubClient(t, srv), "contact@example.com")
+	assert.NoError(t, err)
+	assert.Nil(t, user)
+}
