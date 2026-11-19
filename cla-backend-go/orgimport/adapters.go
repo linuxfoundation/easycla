@@ -107,3 +107,30 @@ func (c DynamoECLACounter) CountECLAs(ctx context.Context, companyID string) (in
 		input.ExclusiveStartKey = out.LastEvaluatedKey
 	}
 }
+
+// LatestECLA returns the newest date_created on the same partition.
+func (c DynamoECLACounter) LatestECLA(ctx context.Context, companyID string) (string, error) {
+	input := &dynamodb.QueryInput{
+		TableName:                 aws.String(c.Table),
+		IndexName:                 aws.String("signature-user-ccla-company-index"),
+		KeyConditionExpression:    aws.String("signature_user_ccla_company_id = :id"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{":id": {S: aws.String(companyID)}},
+		ProjectionExpression:      aws.String("date_created"),
+	}
+	latest := ""
+	for {
+		out, err := c.DB.QueryWithContext(ctx, input)
+		if err != nil {
+			return "", fmt.Errorf("reading the ECLA dates of %s: %w", companyID, err)
+		}
+		for _, item := range out.Items {
+			if v := item["date_created"]; v != nil && aws.StringValue(v.S) > latest {
+				latest = aws.StringValue(v.S)
+			}
+		}
+		if len(out.LastEvaluatedKey) == 0 {
+			return latest, nil
+		}
+		input.ExclusiveStartKey = out.LastEvaluatedKey
+	}
+}

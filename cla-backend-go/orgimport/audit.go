@@ -40,6 +40,7 @@ type AuditRow struct {
 	OrgName      string
 	ACSRoles     string
 	Suggested    string
+	LastActivity string
 }
 
 // AuditResult is the audit output; Duplicates are the candidate-target sets (rows sharing an id,
@@ -116,6 +117,7 @@ func Audit(ctx context.Context, deps Deps, opts Options) (*AuditResult, error) {
 
 	res.collectDuplicates(byName, byDomain)
 	res.countECLAs(ctx, deps.ECLAs)
+	res.collectLastActivity(ctx, deps.ECLAs)
 	inDup := map[string]bool{}
 	for _, set := range res.Duplicates {
 		for _, r := range set {
@@ -285,6 +287,39 @@ func (res *AuditResult) countECLAs(ctx context.Context, counter ECLACounter) {
 	}
 }
 
+// collectLastActivity fills LastActivity (YYYY-MM-DD) for the active rows: the newest of the CCLA signing dates and,
+// when the counter dates them, of the employee acknowledgements (4 workers); "err" marks a failed lookup.
+func (res *AuditResult) collectLastActivity(ctx context.Context, counter ECLACounter) {
+	dater, dated := counter.(ECLADater)
+	var rows []*AuditRow
+	for _, ar := range res.Rows {
+		if ar.Row.ActiveCCLA {
+			rows = append(rows, ar)
+		}
+	}
+	runWorkers(len(rows), func(i int) {
+		ar := rows[i]
+		ar.LastActivity = day(ar.Row.CCLALastSignedOn)
+		if !dated {
+			return
+		}
+		d, err := dater.LatestECLA(ctx, ar.Row.CompanyID)
+		switch {
+		case err != nil:
+			ar.LastActivity = "err"
+		case day(d) > ar.LastActivity:
+			ar.LastActivity = day(d)
+		}
+	})
+}
+
+func day(date string) string {
+	if len(date) > 10 {
+		return date[:10]
+	}
+	return date
+}
+
 // addDuplicates appends a candidate set once: the same rows reached by name and by domain are one set.
 func (res *AuditResult) addDuplicates(rows []*Row) {
 	ids := make([]string, 0, len(rows))
@@ -391,7 +426,7 @@ func writeAuditReports(dir string, res *AuditResult) error {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
-	rows := [][]string{{"company_id", "company_name", "signing_entity_name", "company_external_id", "id_shape", "active_ccla", "ccla_count", "ecla_count", "org_service", "website", "duplicate_sfid_group", "route", "manual_reason", "tier", "acs_roles", "suggested_account"}}
+	rows := [][]string{{"company_id", "company_name", "signing_entity_name", "company_external_id", "id_shape", "active_ccla", "ccla_count", "ecla_count", "org_service", "website", "duplicate_sfid_group", "route", "manual_reason", "tier", "acs_roles", "suggested_account", "last_cla_activity"}}
 	var unresolvable [][]string
 	unresolvable = append(unresolvable, []string{"company_id", "company_name", "signing_entity_name", "company_external_id", "id_shape", "ccla_count", "ecla_count", "org_service", "manual_reason"})
 	for _, ar := range res.Rows {
@@ -400,7 +435,7 @@ func writeAuditReports(dir string, res *AuditResult) error {
 		if ar.ECLACounted {
 			ecla = strconv.Itoa(ar.ECLACount)
 		}
-		rows = append(rows, []string{r.CompanyID, r.CompanyName, r.SigningEntityName, r.ExternalID, string(ar.Shape), strconv.FormatBool(r.ActiveCCLA), strconv.Itoa(r.CCLACount), ecla, ar.OrgStatus, ar.Website, strconv.FormatBool(ar.Duplicate), string(ar.Route), ar.ManualReason, ar.Tier, ar.ACSRoles, ar.Suggested})
+		rows = append(rows, []string{r.CompanyID, r.CompanyName, r.SigningEntityName, r.ExternalID, string(ar.Shape), strconv.FormatBool(r.ActiveCCLA), strconv.Itoa(r.CCLACount), ecla, ar.OrgStatus, ar.Website, strconv.FormatBool(ar.Duplicate), string(ar.Route), ar.ManualReason, ar.Tier, ar.ACSRoles, ar.Suggested, ar.LastActivity})
 		if r.ActiveCCLA && ar.unresolvable() {
 			unresolvable = append(unresolvable, []string{r.CompanyID, r.CompanyName, r.SigningEntityName, r.ExternalID, string(ar.Shape), strconv.Itoa(r.CCLACount), ecla, ar.OrgStatus, ar.ManualReason})
 		}

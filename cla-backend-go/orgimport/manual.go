@@ -31,6 +31,8 @@ var suggestions = map[string]string{
 	"target_collision":          "Several old ids land on this Account (or it already has EasyCLA rows): record a collapse (one Account) or distinct (separate Accounts) decision with a reviewer in the decisions file (#3085), then re-run.",
 	"distinct_conflict":         "A distinct decision separates these ids but they resolve to the same Account: fix the mapping/Apex target or the decision.",
 	ReasonTargetFormsDiffer:     "Ids landing on this Account use both its 15- and 18-char form: normalize the mapping new_id (and any EasyCLA row already carrying the Account) to one form, then re-run.",
+	ReasonNotImported:           "A reviewer's skip decision (decisions file): the organization is not imported - no Account is created, matched or registered for it and its EasyCLA rows stay as they are; nothing to do.",
+	ReasonTargetNotLive:         "member-service cannot read the target Account (GET /b2b_orgs answered 404 or 403): it was deleted or merged in Salesforce. Name the live Account with sales ops, fix the mapping row and re-run.",
 	ReasonSFIDAliasForms:        "Rows of one Account carry both its 15- and 18-char id: normalize company_external_id to one form (m3-org-cleanup.md, #2749) so the rows form one group, then re-run; nothing is registered or rewritten meanwhile.",
 	"missing_website":           "Org-service has no website for the organization: automatic domain match is impossible — add a mapping row after sales ops name the Account.",
 	"shared_domain":             "Website domain is shared (github.com, nowebsite.com, mail provider): never matched automatically — add a mapping row after sales ops name the Account.",

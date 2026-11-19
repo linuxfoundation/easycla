@@ -98,6 +98,7 @@ func TestCollisionAcrossSFIDForms(t *testing.T) {
 
 func TestCollisionWithExistingRowInOtherForm(t *testing.T) {
 	fx, dir := collisionFixture(t)
+	fx.platform.sfAccounts[targetSFID15] = true
 	fx.company("c-existing", "Acme Holdings", "", targetSFID15)
 	mapping := writeMapping(t, dir, "lf-a,"+targetSFID+",matched,true")
 	plan, err := BuildPlan(context.Background(), fx.deps(), Options{Stage: "dev", Mapping: mapping})

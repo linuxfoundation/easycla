@@ -134,6 +134,86 @@ func TestUnregisteredAccountWithMappingIsRewritten(t *testing.T) {
 	assert.Equal(t, liveSFID, plan.Register[0].OldID)
 }
 
+// A mapping target that member-service cannot read is never a rewrite destination.
+func TestMappingTargetMustBeReadable(t *testing.T) {
+	const targetSFID3 = "0014100000NewThree"
+	fx := newFixture()
+	fx.company("c-dead", "Dead Corp", "", deadSFID, "cg-1")
+	fx.company("c-lf", "Legacy Corp", "", lfID, "cg-1")
+	fx.company("c-unreg", "Fresh Corp", "", unregSFID, "cg-1")
+	fx.platform.sfAccounts[targetSFID3] = true
+	fx.platform.forbidden = map[string]int{unregSFID: -1, targetSFID2: -1}
+	fx.platform.orgs[targetSFID] = &Org{ID: targetSFID, Name: "Gone Corp"}
+	fx.platform.orgs[targetSFID2] = &Org{ID: targetSFID2, Name: "Merged Corp"}
+	fx.platform.orgs[targetSFID3] = &Org{ID: targetSFID3, Name: "Fresh Corporation"}
+	fx.platform.addGrant(deadSFID, "alice", "role-cla-manager", "")
+	dir := t.TempDir()
+	mapping := writeMapping(t, dir, deadSFID+","+targetSFID+",matched,true", lfID+","+targetSFID2+",matched,true", unregSFID+","+targetSFID3+",matched,true")
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: filepath.Join(dir, "state.jsonl"), Routes: []Route{RouteRewrite}, OutDir: dir}
+
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	for key, target := range map[string]string{deadSFID: targetSFID, lfID: targetSFID2} {
+		g := groupByKey(plan.Groups, key)
+		require.NotNil(t, g, key)
+		assert.Equal(t, RouteManual, g.Route, key)
+		assert.Equal(t, "target_not_live", g.ManualReason, key)
+		assert.Equal(t, target, g.NewID, key)
+		assert.NoError(t, g.Err, key)
+	}
+	require.Len(t, plan.Rewrite, 1)
+	assert.Equal(t, unregSFID, plan.Rewrite[0].OldID)
+	require.Len(t, plan.Targets, 1)
+	assert.Equal(t, targetSFID3, plan.Targets[0].SFID)
+
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+	require.NoError(t, err)
+	assert.Equal(t, 1, sum.Rewritten)
+	assert.Equal(t, 2, sum.Manual)
+	assert.Zero(t, sum.Failed)
+	assert.Equal(t, []string{"c-unreg:" + unregSFID + "->" + targetSFID3}, fx.companies.updates)
+	assert.Equal(t, []string{targetSFID3}, fx.platform.registered)
+	assert.Len(t, mustListOrgGrants(t, fx, deadSFID), 1, "the grants of a group without a readable target stay where they are")
+	assert.Empty(t, mustListOrgGrants(t, fx, targetSFID))
+	assert.Equal(t, map[string]string{"route": "manual", "manual_reason": "target_not_live", "new_id": targetSFID},
+		csvCells(t, filepath.Join(dir, "plan.csv"), "key", deadSFID, "route", "manual_reason", "new_id"))
+	assert.Equal(t, map[string]string{"reason": "target_not_live", "new_id": targetSFID2},
+		csvCells(t, filepath.Join(dir, "manual_actions.csv"), "old_id", lfID, "reason", "new_id"))
+	actions := plan.ManualActions()
+	require.Len(t, actions, 2)
+	assert.Contains(t, actions[0].Suggested, "fix the mapping row")
+}
+
+// Without one Account that answers 200 or 404, a target that answers 403 is the access problem, not a missing Account.
+func TestForbiddenTargetWithoutAVisibleAccountIsAnAccessError(t *testing.T) {
+	fx := newFixture()
+	fx.company("c-lf", "Legacy Corp", "", lfID, "cg-1")
+	fx.platform.sfAccounts[targetSFID] = true
+	fx.platform.forbidden = map[string]int{targetSFID: -1}
+	mapping := writeMapping(t, t.TempDir(), lfID+","+targetSFID+",matched,true")
+
+	plan, err := BuildPlan(context.Background(), fx.deps(), Options{Mapping: mapping})
+	require.NoError(t, err)
+	g := groupByKey(plan.Groups, lfID)
+	require.NotNil(t, g)
+	require.Error(t, g.Err)
+	assert.ErrorContains(t, g.Err, "target check failed for "+targetSFID)
+	assert.ErrorContains(t, g.Err, "cannot see any b2b_org")
+	assert.Contains(t, SuggestError(g.Err), "auditor")
+	assert.Empty(t, plan.Rewrite)
+
+	fx.platform.forbidden = nil
+	fx.platform.tokenDenied = true
+	plan, err = BuildPlan(context.Background(), fx.deps(), Options{Mapping: mapping})
+	require.NoError(t, err)
+	g = groupByKey(plan.Groups, lfID)
+	require.NotNil(t, g)
+	require.Error(t, g.Err)
+	assert.ErrorContains(t, g.Err, "target check failed for "+targetSFID)
+	assert.NotContains(t, g.Err.Error(), "for no Account")
+	assert.Empty(t, plan.Rewrite)
+}
+
 // A mapping row does not turn a missing access tuple into rewrites: when no Account answers 200 or 404 nothing is planned.
 func TestAllForbiddenWithMappingIsStillAnAccessError(t *testing.T) {
 	fx := newFixture()
@@ -461,6 +541,54 @@ func TestSuggestedAccountFromCRM(t *testing.T) {
 	require.Len(t, rows, 2)
 	assert.Equal(t, "", rows[1][15])
 	assert.Equal(t, 2, strings.Count(fx.out.String(), "WARNING: account lookup"), "one warning per lookup key (domain, name)")
+}
+
+type eclaActivity struct {
+	latest map[string]string
+	fail   map[string]bool
+}
+
+func (f eclaActivity) CountECLAs(context.Context, string) (int, error) { return 0, nil }
+
+func (f eclaActivity) LatestECLA(_ context.Context, id string) (string, error) {
+	if f.fail[id] {
+		return "", errors.New("dynamo down")
+	}
+	return f.latest[id], nil
+}
+
+// last_cla_activity: the newest of the active CCLA signing dates and of the employee acknowledgements of a company row.
+func TestAuditLastCLAActivity(t *testing.T) {
+	fx := newFixture()
+	fx.company("c-ecla", "Acme", "", liveSFID, "cg-1")
+	fx.company("c-ccla", "Beta", "", liveSFID2, "cg-1", "cg-2")
+	fx.company("c-err", "Gamma", "", lfID, "cg-1")
+	fx.company("c-inactive", "Delta", "", "lf-inactive")
+	fx.sigs.items[2].SignedOn = "2025-06-07T08:09:10Z"
+	fx.platform.sfAccounts[liveSFID] = true
+	fx.platform.sfAccounts[liveSFID2] = true
+	deps := fx.deps()
+	deps.ECLAs = eclaActivity{latest: map[string]string{"c-ecla": "2026-05-03T10:11:12.123456+0000", "c-ccla": "2023-01-01T00:00:00Z"}, fail: map[string]bool{"c-err": true}}
+	dir := t.TempDir()
+	_, err := Audit(context.Background(), deps, Options{Stage: "dev", OutDir: dir})
+	require.NoError(t, err)
+	rows := readCSV(t, filepath.Join(dir, "audit.csv"))
+	require.Equal(t, "last_cla_activity", rows[0][len(rows[0])-1])
+	last := map[string]string{}
+	for _, r := range rows[1:] {
+		last[r[0]] = r[len(r)-1]
+	}
+	assert.Equal(t, map[string]string{"c-ecla": "2026-05-03", "c-ccla": "2025-06-07", "c-err": "err", "c-inactive": ""}, last)
+
+	deps.ECLAs = eclaCounterFunc(func(context.Context, string) (int, error) { return 0, nil })
+	dir = t.TempDir()
+	_, err = Audit(context.Background(), deps, Options{Stage: "dev", OutDir: dir})
+	require.NoError(t, err)
+	for _, r := range readCSV(t, filepath.Join(dir, "audit.csv"))[1:] {
+		if r[0] == "c-ecla" {
+			assert.Equal(t, "2024-01-02", r[len(r)-1], "without the acknowledgement dates the CCLA date stands")
+		}
+	}
 }
 
 // acs_roles: a per-org ACS failure is reported in the cell, not as an audit error.

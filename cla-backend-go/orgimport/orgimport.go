@@ -65,6 +65,8 @@ const (
 	ReasonNotEligible       = "not_eligible"
 	ReasonSFIDAliasForms    = "sfid_alias_forms"
 	ReasonTargetFormsDiffer = "target_forms_differ"
+	ReasonTargetNotLive     = "target_not_live"
+	ReasonNotImported       = "not_imported"
 
 	orgStatusErr = "err"
 )
@@ -105,6 +107,11 @@ type CCLALister interface {
 // ECLACounter counts employee acknowledgements referencing a company (audit only).
 type ECLACounter interface {
 	CountECLAs(ctx context.Context, companyID string) (int, error)
+}
+
+// ECLADater is an ECLACounter that also reports the newest employee acknowledgement of a company ("" when none).
+type ECLADater interface {
+	LatestECLA(ctx context.Context, companyID string) (string, error)
 }
 
 // EventRekeyer re-keys company-scoped events (events.RekeyRepository satisfies it).
@@ -197,6 +204,7 @@ type Row struct {
 	CCLACount         int
 	CLAGroupIDs       []string
 	CCLASignedOn      string
+	CCLALastSignedOn  string
 }
 
 // Group is the import unit: every row sharing one company_external_id.

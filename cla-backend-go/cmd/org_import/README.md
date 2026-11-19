@@ -94,7 +94,7 @@ report flags:     [--email-to a@x,b@y] [--no-email] [--no-aws-log] [--aws-log-gr
 | `--tranche N` | act on at most N groups (planning still classifies everything) |
 | `--ids` | only these groups; accepts old **or** new external ids (comma-separated) |
 | `--mapping` | Salesforce mapping CSV (§4); required for the rewrite route unless `--use-apex` |
-| `--decisions` | duplicate-review decisions CSV (§4.1): collapse/distinct verdicts for old ids landing on one Account |
+| `--decisions` | review decisions CSV (§4.1): collapse/distinct verdicts for old ids landing on one Account, and `skip` for organizations that are not imported |
 | `--shared-domains` | file replacing the built-in shared-domain list (§4.2; one domain per line, `#` comments) |
 | `--state` | append-only JSONL; one record per group per step; unfinished groups are replayed first on the next run. Required for `--apply` with the rewrite route (exit 2 otherwise) |
 | `--routes` | `register`, `rewrite` or both (default both) |
@@ -127,7 +127,7 @@ Output line: `audit stage=dev companies=N eligible_groups=M MISSING_SFID=a INVAL
 — the five tiers are 1:1 with `utils/audit_company_reachability.sh`; route counts are per row (only rows in eligible groups have a route).
 
 Files (`--out-dir`):
-- `audit.csv` — `company_id, company_name, signing_entity_name, company_external_id, id_shape(001|lf|empty|other), active_ccla, ccla_count, ecla_count, org_service(200|404|err), website, duplicate_sfid_group, route, manual_reason, tier, acs_roles, suggested_account`.
+- `audit.csv` — `company_id, company_name, signing_entity_name, company_external_id, id_shape(001|lf|empty|other), active_ccla, ccla_count, ecla_count, org_service(200|404|err), website, duplicate_sfid_group, route, manual_reason, tier, acs_roles, suggested_account, last_cla_activity` (`YYYY-MM-DD` of the newest active CCLA signing or employee acknowledgement of the row).
   `ecla_count` is filled only for active rows that are manual, duplicate or unresolvable and for every row of `possible_duplicates.csv` (cheap); `-1` = count failed.
   `acs_roles` (`role=count;…` of the ACS grants scoped to the old id; `err` = listing failed) is filled in `audit.csv` for eligible `001`/`lf` groups and
   for duplicate-set rows with those id shapes (`possible_duplicates.csv` has no `acs_roles` column). `suggested_account` lists up to three existing Accounts a dead/legacy/manual/duplicate row could belong to:
@@ -195,6 +195,8 @@ Files (all rewritten after apply with the final state):
 Manual reasons: `empty_external_id`, `invalid_id_shape`, `mapping_ambiguous`, `mapping_not_approved`, `mapping_same_id` (also the 15/18-char form of the same Account),
 `sfid_alias_forms` (rows of one Account carry both its 15- and 18-char id — normalize them to one form first; §4), `target_forms_differ`
 (ids landing on one Account use both forms — normalize the mapping/rows first; a decision does not lift it),
+`target_not_live` (member-service cannot read the `new_id`: GET answered 404 or 403, the Account was deleted or merged — fix the mapping row),
+`not_imported` (a `skip` decision of a reviewer, §4.1 — nothing to do),
 `target_collision` (several old ids → one Account, or the Account already has EasyCLA rows, and no decision covers it — §4.1), `distinct_conflict`
 (a `distinct` decision spans two ids resolved to the same Account), `missing_website` / `shared_domain` (Apex path only, §4.2),
 `apex_match_needs_approval`, `apex_error`, `not_eligible` (the register POST answered 422: the Account is neither a company Account nor holds a membership — excluded, nothing to do);
@@ -268,12 +270,16 @@ Outcome of the human duplicate review. CSV with header `decision,old_ids,target_
 decision,old_ids,target_sfid,reviewer,note
 collapse,lfaaaa000000000000001;lfbbbb000000000000002,0014100000NewNewNe,michal,same company (Acme Inc / Acme GmbH)
 distinct,lfcccc000000000000003;lfdddd000000000000004,,michal,different companies despite the shared domain
+skip,lfeeee000000000000005,,heather,not imported: the CCLA covers nobody
 ```
 
 - `collapse` — the listed old ids (and any EasyCLA rows already on `target_sfid`) are one organization: the Account may receive all of them.
   Without it every Account that would end up with more than one old id — including one that already has EasyCLA rows — is `target_collision`.
 - `distinct` — the listed old ids are different organizations; ≥2 ids, no target. If two of them still resolve to one Account the groups become
   `distinct_conflict` (fix the mapping). `reviewer` is required; an old id may appear in one decision only.
+- `skip` — the listed old ids (the `company_id` for a row without a usable id) are not imported: nothing is looked up, registered, rewritten
+  or listed in `to_salesforce.csv` for them and their EasyCLA rows stay as they are (`not_imported` in `plan.csv`, with the reviewer). No
+  target; an id that matches no eligible group gets a `WARNING`. Drop the mapping row of a skipped id, if there is one.
 - Decisions never change the mapping: the Account comes from `--mapping` / Apex; the decision only approves the collision.
 
 ### 4.2 Shared domains (`--shared-domains`)

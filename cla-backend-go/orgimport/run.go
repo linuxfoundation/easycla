@@ -54,13 +54,21 @@ func BuildPlan(ctx context.Context, deps Deps, opts Options) (*Plan, error) {
 	}
 	groups := mergeReplayed(inv.EligibleGroups(), replayed)
 
+	skipped := map[string]bool{}
 	for _, g := range groups {
 		if g.Replayed {
 			continue
 		}
+		if dec := decisions.Skip(g.Key); dec != nil {
+			g.Route, g.ManualReason, g.Decision = RouteManual, ReasonNotImported, dec
+			skipped[g.Key] = true
+			continue
+		}
 		classify(ctx, deps, g, mapping, shared, opts)
 	}
+	warnUnmatchedSkips(deps, decisions, skipped)
 	livenessGuard(groups)
+	checkTargets(ctx, deps, groups)
 	targets := applyDecisions(groups, inv, mapping, decisions)
 	for _, g := range groups {
 		if !g.Replayed {
@@ -76,7 +84,7 @@ func BuildPlan(ctx context.Context, deps Deps, opts Options) (*Plan, error) {
 	known := knownAccountsFromGroups(shared, groups)
 	groups = filterIDs(groups, opts.IDs)
 	suggestAccounts(ctx, deps, shared, known, groups, func(g *Group) bool {
-		return g.Err == nil && (g.Route == RouteRewrite || g.Route == RouteManual)
+		return g.Err == nil && (g.Route == RouteRewrite || g.Route == RouteManual) && g.ManualReason != ReasonNotImported
 	})
 
 	plan := &Plan{Stage: opts.Stage, Apply: opts.Apply, Groups: groups, Targets: targets, mapping: mapping, decisions: decisions, shared: shared, state: state, inv: inv}
@@ -302,6 +310,60 @@ func classify(ctx context.Context, deps Deps, g *Group, mapping *Mapping, shared
 		return
 	}
 	g.NewID, g.Action = newID, action
+}
+
+// warnUnmatchedSkips reports a skip decision that names no eligible group: its organization would be imported as usual.
+func warnUnmatchedSkips(deps Deps, decisions *Decisions, skipped map[string]bool) {
+	if decisions == nil {
+		return
+	}
+	for _, dec := range decisions.List {
+		if dec.Kind != DecisionSkip {
+			continue
+		}
+		for _, id := range dec.OldIDs {
+			if !skipped[id] {
+				fmt.Fprintf(deps.Out, "WARNING: skip decision for %s matches no eligible group\n", id)
+			}
+		}
+	}
+}
+
+// checkTargets asks member-service about every rewrite destination: an Account it cannot read is never one,
+// and a 403 while no Account answered 200 or 404 is the access error of livenessGuard.
+func checkTargets(ctx context.Context, deps Deps, groups []*Group) {
+	if deps.Members == nil {
+		return
+	}
+	seen := 0
+	forbidden := map[*Group]error{}
+	for _, g := range groups {
+		if g.Live == LiveLive || g.Live == LiveDead {
+			seen++
+		}
+		if g.Replayed || g.Err != nil || g.Route != RouteRewrite || g.NewID == "" {
+			continue
+		}
+		live, err := liveness(ctx, deps, g.NewID)
+		switch live {
+		case LiveLive:
+			seen++
+		case LiveDead:
+			seen++
+			g.Route, g.ManualReason = RouteManual, ReasonTargetNotLive
+		case LiveUnregistered:
+			forbidden[g] = err
+		default:
+			g.Err = fmt.Errorf("target check failed for %s: %w", g.NewID, err)
+		}
+	}
+	for g, err := range forbidden {
+		if seen > 0 {
+			g.Route, g.ManualReason = RouteManual, ReasonTargetNotLive
+			continue
+		}
+		g.Err = fmt.Errorf("target check failed for %s: member-service answered 200 or 404 for no Account and 403 for %d: the tool's client cannot see any b2b_org (access tuple missing?): %w", g.NewID, len(forbidden), err)
+	}
 }
 
 // lookupOrg records the org-service view of the group's old id.
