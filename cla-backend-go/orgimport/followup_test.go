@@ -221,7 +221,8 @@ func TestUnfinishedRewriteStopsWhenItsTargetIsNotReadable(t *testing.T) {
 			actions := plan.ManualActions()
 			require.Len(t, actions, 1)
 			assert.Equal(t, "target_not_live", actions[0].Reason)
-			assert.Contains(t, actions[0].Suggested, "fix the mapping row", "the guidance of an unreadable target, not of a client without access")
+			assert.Contains(t, actions[0].Suggested, "the state file pins that target", "the guidance of a resumed rewrite, not of a client without access")
+			assert.NotContains(t, actions[0].Suggested, "fix the mapping row")
 		})
 	}
 }

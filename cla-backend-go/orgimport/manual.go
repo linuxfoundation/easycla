@@ -62,6 +62,8 @@ func SuggestError(err error) string {
 	var authErr *member_service.AuthError
 	var stopped *stopError
 	switch {
+	case errors.As(err, &stopped) && stopped.reason == ReasonTargetNotLive:
+		return "member-service cannot read the target Account of this unfinished rewrite (GET /b2b_orgs answered 404 or 403) and the state file pins that target, so a changed mapping row does not move it. Re-run; if it stays unreadable, have sales ops restore the Account, or undo the rewrite by hand (its rows, grants and state record) before mapping another target."
 	case errors.As(err, &stopped):
 		return Suggest(stopped.reason)
 	case errors.As(err, &authErr) && authErr.Token:
