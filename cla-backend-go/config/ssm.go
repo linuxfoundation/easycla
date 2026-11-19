@@ -32,7 +32,7 @@ type ssmParameterReader interface {
 	GetParameter(*ssm.GetParameterInput) (*ssm.GetParameterOutput, error)
 }
 
-// batchedParameters answers GetParameter from GetParameters results; a name its batch did not deliver is read on its own
+// batchedParameters answers GetParameter from GetParameters results, a name its batch did not deliver is read on its own
 type batchedParameters struct {
 	client   *ssm.SSM
 	found    map[string]*ssm.Parameter
