@@ -28,6 +28,8 @@ type CreateLocks interface {
 
 const (
 	createLockKeyPrefix = "company_create:"
+	// a row without it is not a lock: the legacy session store writes this table under keys its callers choose
+	createLockOwner = "owner"
 	// longer than the 300 second Lambda timeout: a lease cannot expire under a creation that still runs
 	createLockTTL = 6 * time.Minute
 )
@@ -49,12 +51,12 @@ func (d DynamoCreateLocks) Acquire(ctx context.Context, domain string) (string, 
 	_, err = d.DB.PutItemWithContext(ctx, &dynamodb.PutItemInput{
 		TableName: aws.String(d.Table),
 		Item: map[string]*dynamodb.AttributeValue{
-			"key":    {S: aws.String(createLockKeyPrefix + domain)},
-			"value":  {S: aws.String(owner)},
-			"expire": {N: aws.String(strconv.FormatInt(now.Add(createLockTTL).Unix(), 10))},
+			"key":           {S: aws.String(createLockKeyPrefix + domain)},
+			createLockOwner: {S: aws.String(owner)},
+			"expire":        {N: aws.String(strconv.FormatInt(now.Add(createLockTTL).Unix(), 10))},
 		},
-		ConditionExpression:       aws.String("attribute_not_exists(#k) OR #e < :now"),
-		ExpressionAttributeNames:  map[string]*string{"#k": aws.String("key"), "#e": aws.String("expire")},
+		ConditionExpression:       aws.String("attribute_not_exists(#o) OR #e < :now"),
+		ExpressionAttributeNames:  map[string]*string{"#o": aws.String(createLockOwner), "#e": aws.String("expire")},
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{":now": {N: aws.String(strconv.FormatInt(now.Unix(), 10))}},
 	})
 	if isConditionalCheckFailed(err) {
@@ -71,8 +73,8 @@ func (d DynamoCreateLocks) Release(ctx context.Context, domain, owner string) er
 	_, err := d.DB.DeleteItemWithContext(ctx, &dynamodb.DeleteItemInput{
 		TableName:                 aws.String(d.Table),
 		Key:                       map[string]*dynamodb.AttributeValue{"key": {S: aws.String(createLockKeyPrefix + domain)}},
-		ConditionExpression:       aws.String("#v = :owner"),
-		ExpressionAttributeNames:  map[string]*string{"#v": aws.String("value")},
+		ConditionExpression:       aws.String("#o = :owner"),
+		ExpressionAttributeNames:  map[string]*string{"#o": aws.String(createLockOwner)},
 		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{":owner": {S: aws.String(owner)}},
 	})
 	if err != nil && !isConditionalCheckFailed(err) {

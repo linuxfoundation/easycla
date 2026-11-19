@@ -50,12 +50,12 @@ func (f *fakeLockTable) PutItemWithContext(_ aws.Context, in *dynamodb.PutItemIn
 	if f.fail != nil {
 		return nil, f.fail
 	}
-	if aws.StringValue(in.TableName) != lockTable || aws.StringValue(in.ConditionExpression) != "attribute_not_exists(#k) OR #e < :now" ||
-		aws.StringValue(in.ExpressionAttributeNames["#k"]) != "key" || aws.StringValue(in.ExpressionAttributeNames["#e"]) != "expire" {
+	if aws.StringValue(in.TableName) != lockTable || aws.StringValue(in.ConditionExpression) != "attribute_not_exists(#o) OR #e < :now" ||
+		aws.StringValue(in.ExpressionAttributeNames["#o"]) != createLockOwner || aws.StringValue(in.ExpressionAttributeNames["#e"]) != "expire" {
 		return nil, fmt.Errorf("unexpected put: table %q condition %q", aws.StringValue(in.TableName), aws.StringValue(in.ConditionExpression))
 	}
 	key := aws.StringValue(in.Item["key"].S)
-	if held, ok := f.items[key]; ok {
+	if held, ok := f.items[key]; ok && held[createLockOwner] != nil {
 		expire, expireErr := strconv.ParseInt(aws.StringValue(held["expire"].N), 10, 64)
 		now, nowErr := strconv.ParseInt(aws.StringValue(in.ExpressionAttributeValues[":now"].N), 10, 64)
 		if expireErr != nil || nowErr != nil {
@@ -75,12 +75,12 @@ func (f *fakeLockTable) DeleteItemWithContext(_ aws.Context, in *dynamodb.Delete
 	if f.fail != nil {
 		return nil, f.fail
 	}
-	if aws.StringValue(in.TableName) != lockTable || aws.StringValue(in.ConditionExpression) != "#v = :owner" || aws.StringValue(in.ExpressionAttributeNames["#v"]) != "value" {
+	if aws.StringValue(in.TableName) != lockTable || aws.StringValue(in.ConditionExpression) != "#o = :owner" || aws.StringValue(in.ExpressionAttributeNames["#o"]) != createLockOwner {
 		return nil, fmt.Errorf("unexpected delete: table %q condition %q", aws.StringValue(in.TableName), aws.StringValue(in.ConditionExpression))
 	}
 	key := aws.StringValue(in.Key["key"].S)
 	held, ok := f.items[key]
-	if !ok || aws.StringValue(held["value"].S) != aws.StringValue(in.ExpressionAttributeValues[":owner"].S) {
+	if !ok || held[createLockOwner] == nil || aws.StringValue(held[createLockOwner].S) != aws.StringValue(in.ExpressionAttributeValues[":owner"].S) {
 		return nil, awserr.New(dynamodb.ErrCodeConditionalCheckFailedException, "The conditional request failed", nil)
 	}
 	delete(f.items, key)
@@ -107,7 +107,7 @@ func TestDynamoCreateLocks(t *testing.T) {
 	require.NoError(t, err)
 	item := table.items[lockKey]
 	require.NotNil(t, item, "one item per domain under the company_create: prefix")
-	assert.Equal(t, first, aws.StringValue(item["value"].S))
+	assert.Equal(t, first, aws.StringValue(item[createLockOwner].S))
 	assert.Equal(t, strconv.FormatInt(now.Add(6*time.Minute).Unix(), 10), aws.StringValue(item["expire"].N), "longer than the 300 second Lambda timeout")
 
 	_, err = locks.Acquire(ctx, lockDomain)
@@ -128,6 +128,20 @@ func TestDynamoCreateLocks(t *testing.T) {
 	assert.Equal(t, []string{lockKey}, table.keys(), "and leaves the new holder's lock")
 	require.NoError(t, locks.Release(ctx, lockDomain, second))
 	assert.Empty(t, table.keys())
+
+	sessionRow := map[string]*dynamodb.AttributeValue{
+		"key":    {S: aws.String(lockKey)},
+		"value":  {S: aws.String("{}")},
+		"expire": {N: aws.String(strconv.FormatInt(now.Add(45*time.Minute).Unix(), 10))},
+	}
+	table.items[lockKey] = sessionRow
+	third, err := locks.Acquire(ctx, lockDomain)
+	require.NoError(t, err, "a row without an owner, as the legacy session store writes them, does not hold the lock")
+	assert.Equal(t, third, aws.StringValue(table.items[lockKey][createLockOwner].S))
+	table.items[lockKey] = sessionRow
+	require.NoError(t, locks.Release(ctx, lockDomain, third), "and a lock that such a row replaced is released without an error")
+	assert.Equal(t, []string{lockKey}, table.keys(), "the row is not the lock's to remove")
+	delete(table.items, lockKey)
 
 	table.fail = errors.New("dynamodb unavailable")
 	_, err = locks.Acquire(ctx, lockDomain)
@@ -185,13 +199,22 @@ func TestCreateCompanyLock(t *testing.T) {
 		assert.Equal(t, held, locks.calls, "a created company keeps the lock until it expires")
 	})
 
-	t.Run("released after a failed creation", func(t *testing.T) {
+	t.Run("released after a refused creation", func(t *testing.T) {
 		locks := &recordingLocks{releaseErr: errors.New("dynamodb unavailable")}
+		fx := newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusConflict, memberBody: `{"message":"2 accounts"}`}, memberCreateRepo{})
+		fx.svc.EnableCreateLock(locks)
+		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+		assert.ErrorIs(t, err, ErrCompanyAmbiguousDomain, "a failed release does not replace the creation's error")
+		assert.Equal(t, heldAndReleased, locks.calls)
+	})
+
+	t.Run("kept after a find-or-create without an answer", func(t *testing.T) {
+		locks := &recordingLocks{}
 		fx := newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusServiceUnavailable, memberBody: msEmptyJSON}, memberCreateRepo{})
 		fx.svc.EnableCreateLock(locks)
 		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
-		assert.ErrorIs(t, err, ErrCompanyDependencyFailed, "a failed release does not replace the creation's error")
-		assert.Equal(t, heldAndReleased, locks.calls)
+		assert.ErrorIs(t, err, ErrCompanyDependencyFailed)
+		assert.Equal(t, held, locks.calls, "Salesforce may still be writing, so the lock stays until it expires")
 	})
 
 	t.Run("kept after a failed company write", func(t *testing.T) {
