@@ -344,7 +344,7 @@ func TestCompanyCreatorUsesNativeOrganizationGrant(t *testing.T) {
 					assert.NotContains(t, text, testCallerEmail)
 					assert.NotContains(t, text, "private grant failure")
 					if reason, ok := entry.Data["acsReason"]; ok {
-						reasons = append(reasons, reason.(string))
+						reasons = append(reasons, fmt.Sprint(reason))
 					}
 				}
 				if tc.wantReason == "" {
