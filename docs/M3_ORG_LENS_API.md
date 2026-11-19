@@ -105,7 +105,7 @@ name. Each row carries the identity fields (`signatureID`, `name`, `linux_founda
 `invalidatedBy`, `invalidationReason`, `invalidationNote` (the M2 attribution attributes,
 whichever exist; pre-M2 invalidations carry only the free-text `note`, which is always
 echoed as `note`). Paging: `pageSize` (default 10) + `nextKey`; rows are read in
-`project-signature-index` order and a page is filled until `pageSize` matching rows or the
+`signature-user-ccla-company-index` order and a page is filled until `pageSize` matching rows or the
 end of the key range (matching happens in the backend, not in DynamoDB's case-sensitive
 `contains`). `nextKey` is returned while unread rows remain; with a `searchTerm` the page
 after the last match may come back empty with no `nextKey`.
@@ -325,8 +325,8 @@ that matter again at **prod rollout**:
   dynamo-events stream handler (`v2/dynamo_events/signatures.go`) stamps the key on new
   writes, including literal `ecla` rows (#5199), but acknowledgments written before that
   fix may lack it and no backfill has been run. M3 is unaffected —
-  `approvedContributorsCount` and the corporate-contributors list both filter
-  `project-signature-index` on `signature_user_ccla_company_id` + `signed`
+  `approvedContributorsCount` and the corporate-contributors list both read
+  `signature-user-ccla-company-index` by company + CLA group and filter on `signed`
   (+ `approved` for the count), and invalidate is PK-based.
 - **Known shape gaps** (documented in swagger): `userExternalID` is always empty in
   manager-request responses (v1 read projection); `invalidateECLA` looks up the signature

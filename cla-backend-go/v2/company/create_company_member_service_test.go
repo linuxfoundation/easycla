@@ -286,13 +286,15 @@ func TestCompanyCreatorUsesNativeOrganizationGrant(t *testing.T) {
 			grantStatus int
 			roleStatus  int
 			grantBody   string
-			wantError   bool
+			wantReason  string // acsReason on the grant-failure warning, "" when no such warning is expected
 		}{
 			{name: "created", grantStatus: http.StatusCreated},
 			{name: "already assigned", grantStatus: http.StatusConflict},
-			{name: "grant outage", grantStatus: http.StatusServiceUnavailable, wantError: true},
+			{name: "grant outage", grantStatus: http.StatusServiceUnavailable, wantReason: "other"},
 			{name: "creator already belongs to another organization", grantStatus: http.StatusBadRequest, grantBody: fmt.Sprintf(`{"Code":400,"Message":"user is %s"}`, OrgAssociated)},
-			{name: "role lookup outage", roleStatus: http.StatusServiceUnavailable, wantError: true},
+			{name: "role lookup outage", roleStatus: http.StatusServiceUnavailable},
+			{name: "creator refused by ACS", grantStatus: http.StatusBadRequest, grantBody: `{"error":{"name":"ValidationError","message":"user does not have valid corporate email"}}`, wantReason: "corporate-email"},
+			{name: "account not in the Organization Service yet", grantStatus: http.StatusBadRequest, grantBody: `{"error":{"name":"ValidationError","message":"acs - upstream service - not found"}}`, wantReason: "account-not-found"},
 		} {
 			t.Run(fmt.Sprintf("member=%t/%s", memberCreation, tc.name), func(t *testing.T) {
 				withCompanyRoleFlags(t, memberCreation, true)
@@ -311,7 +313,7 @@ func TestCompanyCreatorUsesNativeOrganizationGrant(t *testing.T) {
 					orgStatus:    http.StatusNotFound, rolesStatus: tc.roleStatus, scopeStatus: tc.grantStatus,
 					grantBody: tc.grantBody,
 				}
-				fx := newMemberCreateFixture(t, transport, memberCreateRepo{expectRow: memberCreation || !tc.wantError})
+				fx := newMemberCreateFixture(t, transport, memberCreateRepo{expectRow: true})
 				var output *models.CompanyOutput
 				var err error
 				if memberCreation {
@@ -322,20 +324,12 @@ func TestCompanyCreatorUsesNativeOrganizationGrant(t *testing.T) {
 						testCompanyName, "", testCompanySite, testCallerEmail, "u-jane", "",
 						&v2UserServiceModels.User{Username: testCallerUsername, Account: &v2UserServiceModels.Account{ID: NoAccount}})
 				}
-				if tc.wantError {
-					require.ErrorIs(t, err, ErrCompanyDependencyFailed)
-					assert.EqualError(t, err, ErrCompanyDependencyFailed.Error())
-					assert.Nil(t, output)
-				} else {
-					require.NoError(t, err)
-					require.NotNil(t, output)
-					assert.Equal(t, msAccountSFID, output.CompanyID)
-				}
-				if memberCreation || !tc.wantError {
-					require.NotNil(t, fx.created)
-					assert.Equal(t, []string{testCallerUsername}, fx.created.CompanyACL)
-					assert.Equal(t, "u-jane", fx.created.CompanyManagerID)
-				}
+				require.NoError(t, err, "a refused or failed grant never fails the company (lfx-self-serve#5916)")
+				require.NotNil(t, output)
+				assert.Equal(t, msAccountSFID, output.CompanyID)
+				require.NotNil(t, fx.created)
+				assert.Equal(t, []string{testCallerUsername}, fx.created.CompanyACL)
+				assert.Equal(t, "u-jane", fx.created.CompanyManagerID)
 				assert.Zero(t, transport.count(msOrgPath), "an ACS grant must not require Organization Service ingestion")
 				assert.Zero(t, transport.count(msOrgPath+"/scopes"))
 				wantGrants := 1
@@ -343,11 +337,20 @@ func TestCompanyCreatorUsesNativeOrganizationGrant(t *testing.T) {
 					wantGrants = 0
 				}
 				assert.Equal(t, wantGrants, transport.count(msGrantPath))
+				var reasons []string
 				for _, entry := range hook.AllEntries() {
 					text, formatErr := entry.String()
 					require.NoError(t, formatErr)
 					assert.NotContains(t, text, testCallerEmail)
 					assert.NotContains(t, text, "private grant failure")
+					if reason, ok := entry.Data["acsReason"]; ok {
+						reasons = append(reasons, fmt.Sprint(reason))
+					}
+				}
+				if tc.wantReason == "" {
+					assert.Empty(t, reasons)
+				} else {
+					assert.Equal(t, []string{tc.wantReason}, reasons, "the warning names the ACS refusal without its body")
 				}
 			})
 		}
@@ -508,7 +511,7 @@ func TestCreateCompanyViaMemberService(t *testing.T) {
 		assert.Equal(t, 0, fx.transport.count(msOrgPath+"/scopes"))
 	})
 
-	t.Run("grant dependency failures keep the creator-owned row and fail typed", func(t *testing.T) {
+	t.Run("grant failures keep the creator-owned row and still return the company", func(t *testing.T) {
 		for name, transport := range map[string]*memberCreateHTTP{
 			"organization service outage": {memberStatus: http.StatusCreated, memberBody: accountJSON(testCompanyName), orgStatus: http.StatusInternalServerError},
 			"role lookup failure":         {memberStatus: http.StatusCreated, memberBody: accountJSON(testCompanyName), orgStatus: http.StatusOK, rolesStatus: http.StatusInternalServerError},
@@ -516,8 +519,9 @@ func TestCreateCompanyViaMemberService(t *testing.T) {
 		} {
 			fx := newMemberCreateFixture(t, transport, memberCreateRepo{expectRow: true})
 			out, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
-			assert.True(t, errors.Is(err, ErrCompanyDependencyFailed), "%s: %v", name, err)
-			assert.Nil(t, out, name)
+			require.NoError(t, err, "%s: a failed grant never fails the company (lfx-self-serve#5916)", name)
+			require.NotNil(t, out, name)
+			assert.Equal(t, msAccountSFID, out.CompanyID, name)
 			require.NotNil(t, fx.created, "%s: the creator-owned row is persisted before the grant", name)
 			assert.Equal(t, []string{testCallerUsername}, fx.created.CompanyACL, name)
 			assert.Equal(t, "u-jane", fx.created.CompanyManagerID, name)
@@ -528,7 +532,7 @@ func TestCreateCompanyViaMemberService(t *testing.T) {
 	t.Run("a retry after a failed grant finds the owned row instead of creating an unowned one", func(t *testing.T) {
 		first := newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusCreated, memberBody: accountJSON(testCompanyName), orgStatus: http.StatusOK, scopeStatus: http.StatusInternalServerError}, memberCreateRepo{expectRow: true})
 		_, err := first.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
-		assert.True(t, errors.Is(err, ErrCompanyDependencyFailed), "%v", err)
+		require.NoError(t, err)
 		require.NotNil(t, first.created)
 		retry := newMemberCreateFixture(t, matched(testCompanyName), memberCreateRepo{expectLookup: true, existingBySF: first.created})
 		_, err = retry.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
@@ -607,7 +611,7 @@ func TestCreateCompanyViaMemberService(t *testing.T) {
 		t.Cleanup(hook.Reset)
 		fx := newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusCreated, memberBody: accountJSON(testCompanyName), orgStatus: http.StatusOK, scopeStatus: http.StatusInternalServerError}, memberCreateRepo{expectRow: true})
 		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
-		require.Error(t, err)
+		require.NoError(t, err)
 		fx = newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusCreated, memberBody: accountJSON(testCompanyName), orgStatus: http.StatusNotFound}, memberCreateRepo{expectRow: true})
 		_, err = fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
 		require.NoError(t, err)

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/sirupsen/logrus"
 
@@ -25,8 +26,88 @@ type configLookupResponse struct {
 	value string
 }
 
+const ssmBatchSize = 10
+
+type ssmParameterReader interface {
+	GetParameter(*ssm.GetParameterInput) (*ssm.GetParameterOutput, error)
+}
+
+// batchedParameters answers GetParameter from GetParameters results, a name its batch did not deliver is read on its own
+type batchedParameters struct {
+	client   *ssm.SSM
+	found    map[string]*ssm.Parameter
+	notFound map[string]bool
+}
+
+func ssmParameterName(name string) string {
+	return strings.TrimPrefix(name, "/")
+}
+
+// loadBatchedParameters reads the names 10 per call instead of one call per name (easycla#5311)
+func loadBatchedParameters(client *ssm.SSM, names []string, f logrus.Fields) *batchedParameters {
+	batched := &batchedParameters{client: client, found: map[string]*ssm.Parameter{}, notFound: map[string]bool{}}
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	for start := 0; start < len(names); start += ssmBatchSize {
+		batch := names[start:min(start+ssmBatchSize, len(names))]
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			out, err := client.GetParameters(&ssm.GetParametersInput{
+				Names:          aws.StringSlice(batch),
+				WithDecryption: aws.Bool(false),
+			})
+			if err != nil {
+				log.WithFields(f).WithError(err).Warnf("unable to read %d SSM parameters in one call - reading them one by one", len(batch))
+				return
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			for _, parameter := range out.Parameters {
+				if parameter != nil && parameter.Name != nil && parameter.Value != nil {
+					batched.found[ssmParameterName(*parameter.Name)] = parameter
+				}
+			}
+			for _, name := range out.InvalidParameters {
+				if name != nil {
+					batched.notFound[ssmParameterName(*name)] = true
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	return batched
+}
+
+func (b *batchedParameters) GetParameter(input *ssm.GetParameterInput) (*ssm.GetParameterOutput, error) {
+	name := ssmParameterName(aws.StringValue(input.Name))
+	if parameter, ok := b.found[name]; ok {
+		return &ssm.GetParameterOutput{Parameter: parameter}, nil
+	}
+	if b.notFound[name] {
+		return nil, awserr.New(ssm.ErrCodeParameterNotFound, fmt.Sprintf("parameter %s not found", name), nil)
+	}
+	return b.client.GetParameter(input)
+}
+
+func optionalSSMKeys(stage string) []string {
+	return []string{
+		fmt.Sprintf("cla-sss-base-url-%s", stage),
+		fmt.Sprintf("cla-sss-auth0-audience-%s", stage),
+		fmt.Sprintf("cla-sss-required-%s", stage),
+		fmt.Sprintf("cla-sss-enabled-%s", stage),
+		fmt.Sprintf("cla-ss-trusted-client-ids-%s", stage),
+		fmt.Sprintf("cla-member-service-base-url-%s", stage),
+		fmt.Sprintf("cla-member-service-auth0-audience-%s", stage),
+		fmt.Sprintf("cla-org-lens-base-%s", stage),
+		fmt.Sprintf("cla-member-service-cla-admins-enabled-%s", stage),
+		fmt.Sprintf("cla-member-service-create-company-enabled-%s", stage),
+		fmt.Sprintf("cla-acs-direct-roles-enabled-%s", stage),
+	}
+}
+
 // getSSMString is a generic routine to fetch the specified key value
-func getSSMString(ssmClient *ssm.SSM, key string) (string, error) {
+func getSSMString(ssmClient ssmParameterReader, key string) (string, error) {
 	value, err := ssmClient.GetParameter(&ssm.GetParameterInput{
 		Name:           aws.String(key),
 		WithDecryption: aws.Bool(false),
@@ -48,7 +129,7 @@ func loadSSMConfig(awsSession *session.Session, stage string) (Config, error) { 
 	config := Config{}
 	config.SignatureQueryDefaultValue = "all"
 
-	ssmClient := ssm.New(awsSession)
+	ssmAPI := ssm.New(awsSession)
 
 	// AWS Region
 	config.AWS.Region = *awsSession.Config.Region
@@ -110,6 +191,8 @@ func loadSSMConfig(awsSession *session.Session, stage string) (Config, error) { 
 		fmt.Sprintf("cla-logo-url-%s", stage),
 		fmt.Sprintf("cla-docusign-private-key-%s", stage),
 	}
+
+	ssmClient := loadBatchedParameters(ssmAPI, append(optionalSSMKeys(stage), ssmKeys...), f)
 
 	// For each key to lookup
 	for _, key := range ssmKeys {
@@ -293,7 +376,7 @@ func loadSSMConfig(awsSession *session.Session, stage string) (Config, error) { 
 // loadOptionalSelfServeConfig fetches the comma-separated allow-list of trusted LFX Self Serve
 // Auth0 client IDs without aborting startup when the key is missing, so the SSM parameter can
 // be provisioned independently of this code being deployed.
-func loadOptionalSelfServeConfig(ssmClient *ssm.SSM, stage string, config *Config, f logrus.Fields) {
+func loadOptionalSelfServeConfig(ssmClient ssmParameterReader, stage string, config *Config, f logrus.Fields) {
 	key := fmt.Sprintf("cla-ss-trusted-client-ids-%s", stage)
 	out, err := ssmClient.GetParameter(&ssm.GetParameterInput{
 		Name:           aws.String(key),
@@ -339,7 +422,7 @@ func parseTrustedClientIDs(value string) []string {
 // are missing, so the SSM parameters can be provisioned before the feature is
 // switched on. A stage that requires SSS must reject an empty configuration at
 // the call site rather than silently skipping the screening check.
-func loadOptionalSSSConfig(ssmClient *ssm.SSM, stage string, config *Config, f logrus.Fields) error {
+func loadOptionalSSSConfig(ssmClient ssmParameterReader, stage string, config *Config, f logrus.Fields) error {
 	keys := []string{
 		fmt.Sprintf("cla-sss-base-url-%s", stage),
 		fmt.Sprintf("cla-sss-auth0-audience-%s", stage),
@@ -392,7 +475,7 @@ func loadOptionalSSSConfig(ssmClient *ssm.SSM, stage string, config *Config, f l
 // not silently misattributed to "not set". Returns "" when the value is unreadable.
 // loadCLAAdminsFlag reads the publisher switch: a missing parameter is off; an unreadable or malformed one is
 // recorded in CLAAdminsFlagError for the publisher paths to refuse, without failing every other binary
-func loadCLAAdminsFlag(ssmClient *ssm.SSM, stage string, config *Config, f logrus.Fields) {
+func loadCLAAdminsFlag(ssmClient ssmParameterReader, stage string, config *Config, f logrus.Fields) {
 	enabled, err := getOptionalSSMBool(ssmClient, fmt.Sprintf("cla-member-service-cla-admins-enabled-%s", stage), f)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("CLA-manager publisher flag unreadable - its consumers fail closed")
@@ -402,7 +485,7 @@ func loadCLAAdminsFlag(ssmClient *ssm.SSM, stage string, config *Config, f logru
 }
 
 // loadCreateCompanyFlag reads the create-company switch: a missing, unreadable or malformed parameter keeps it off
-func loadCreateCompanyFlag(ssmClient *ssm.SSM, stage string, config *Config, f logrus.Fields) {
+func loadCreateCompanyFlag(ssmClient ssmParameterReader, stage string, config *Config, f logrus.Fields) {
 	enabled, err := getOptionalSSMBool(ssmClient, fmt.Sprintf("cla-member-service-create-company-enabled-%s", stage), f)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("create-company switch unreadable - keeping the Organization Service path")
@@ -411,7 +494,7 @@ func loadCreateCompanyFlag(ssmClient *ssm.SSM, stage string, config *Config, f l
 	config.MemberService.CreateCompanyEnabled = enabled
 }
 
-func loadACSDirectRolesFlag(ssmClient *ssm.SSM, stage string, config *Config, f logrus.Fields) {
+func loadACSDirectRolesFlag(ssmClient ssmParameterReader, stage string, config *Config, f logrus.Fields) {
 	enabled, err := getOptionalSSMBool(ssmClient, fmt.Sprintf("cla-acs-direct-roles-enabled-%s", stage), f)
 	config.ACSDirectCLARolesEnabled = enabled
 	if err != nil {
@@ -421,7 +504,7 @@ func loadACSDirectRolesFlag(ssmClient *ssm.SSM, stage string, config *Config, f 
 
 // getOptionalSSMBool reads an optional flag: a missing parameter is false, any other read failure is an error so
 // a worker never starts with the feature silently off
-func getOptionalSSMBool(ssmClient *ssm.SSM, key string, f logrus.Fields) (bool, error) {
+func getOptionalSSMBool(ssmClient ssmParameterReader, key string, f logrus.Fields) (bool, error) {
 	out, err := ssmClient.GetParameter(&ssm.GetParameterInput{
 		Name:           aws.String(key),
 		WithDecryption: aws.Bool(false),
@@ -444,7 +527,7 @@ func getOptionalSSMBool(ssmClient *ssm.SSM, key string, f logrus.Fields) (bool, 
 	return enabled, nil
 }
 
-func getOptionalSSMString(ssmClient *ssm.SSM, key string, f logrus.Fields) string {
+func getOptionalSSMString(ssmClient ssmParameterReader, key string, f logrus.Fields) string {
 	out, err := ssmClient.GetParameter(&ssm.GetParameterInput{
 		Name:           aws.String(key),
 		WithDecryption: aws.Bool(false),

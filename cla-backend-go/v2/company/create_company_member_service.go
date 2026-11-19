@@ -134,11 +134,10 @@ func (s *service) createCompanyViaMemberService(ctx context.Context, f logrus.Fi
 		log.WithFields(f).Warnf("an EasyCLA company named %q already exists with a different Salesforce account - refusing to create another", companyName)
 		return nil, fmt.Errorf("%w: %s", ErrCompanyExists, companyName)
 	}
-	// the creator-owned row exists before the grant, so a failed grant leaves an owned row for the retry, not a gap
+	// best effort: the creator owns the row already, and a refused or failed grant must not fail a company that
+	// exists (lfx-self-serve#5916)
 	if action == memberService.ActionCreated {
-		if grantErr := s.grantCreatorIfOrgKnown(ctx, f, b2b.UID, userEmail, userID, lfUser.Username); grantErr != nil {
-			return nil, grantErr
-		}
+		s.grantCreatorIfOrgKnown(ctx, f, b2b.UID, userEmail, userID, lfUser.Username)
 	}
 	return &models.CompanyOutput{
 		CompanyName:       created.CompanyName,
@@ -189,52 +188,49 @@ func (s *service) companyBySFID(ctx context.Context, sfid string) (*v1Models.Com
 	return existing, err
 }
 
-// grantCreatorIfOrgKnown skips the Organization Service readiness probe in ACS-direct mode.
-func (s *service) grantCreatorIfOrgKnown(ctx context.Context, f logrus.Fields, sfid, userEmail, userID, username string) error {
+// grantCreatorIfOrgKnown grants company-admin on the new account to the creator, best effort: every failure is a
+// warning and the company stays created without the grant. It skips the Organization Service readiness probe in
+// ACS-direct mode; there the ACS answer is not logged because it may echo the request, only its status is.
+func (s *service) grantCreatorIfOrgKnown(ctx context.Context, f logrus.Fields, sfid, userEmail, userID, username string) {
 	orgClient := orgService.GetClient()
 	direct := acsService.DirectCLARolesEnabled()
-	var orgErr error
 	if !direct {
-		_, orgErr = orgClient.GetOrganization(ctx, sfid)
+		if _, orgErr := orgClient.GetOrganization(ctx, sfid); orgErr != nil {
+			if isOrgNotFound(orgErr) {
+				log.WithFields(f).Warnf("the Organization Service does not know account %s yet - creating the company without the company-admin grant for user %s", sfid, userID)
+			} else {
+				log.WithFields(f).WithError(orgErr).Warnf("unable to read account %s from the Organization Service - creating the company without the company-admin grant for user %s", sfid, userID)
+			}
+			return
+		}
 	}
+	roleID, adminErr := acsService.GetClient().GetRoleID(utils.CompanyAdminRole)
+	if adminErr != nil {
+		entry := log.WithFields(f)
+		if !direct {
+			entry = entry.WithError(adminErr)
+		}
+		entry.Warnf("problem getting the company-admin role ID - creating the company without the company-admin grant for user %s", userID)
+		return
+	}
+	scopeErr := orgClient.CreateCLAOrgUserRoleScope(ctx, userEmail, username, sfid, roleID)
 	switch {
-	case orgErr == nil:
-		roleID, adminErr := acsService.GetClient().GetRoleID(utils.CompanyAdminRole)
-		if adminErr != nil {
-			entry := log.WithFields(f)
-			if !direct {
-				entry = entry.WithError(adminErr)
-			}
-			entry.Warn("problem getting the company-admin role ID")
-			if direct {
-				return ErrCompanyDependencyFailed
-			}
-			return fmt.Errorf("%w: %v", ErrCompanyDependencyFailed, adminErr)
-		}
-		scopeErr := orgClient.CreateCLAOrgUserRoleScope(ctx, userEmail, username, sfid, roleID)
-		if isOrgAssociated(scopeErr) {
-			// ACS allows one organization-scope association per user; the Org Service path has always tolerated this
-			log.WithFields(f).Warnf("user %s already belongs to another organization - creating the company without the company-admin grant", userID)
-			return nil
-		}
-		if scopeErr != nil {
-			entry := log.WithFields(f)
-			if !direct {
-				entry = entry.WithError(scopeErr)
-			}
-			entry.Warnf("problem creating the company-admin scope for user %s", userID)
-			if direct {
-				return ErrCompanyDependencyFailed
-			}
-			return fmt.Errorf("%w: %v", ErrCompanyDependencyFailed, scopeErr)
-		}
-		return nil
-	case isOrgNotFound(orgErr):
-		log.WithFields(f).Warnf("the Organization Service does not know account %s yet - creating the company without the company-admin grant for user %s", sfid, userID)
-		return nil
+	case scopeErr == nil:
+	case isOrgAssociated(scopeErr):
+		// ACS allows one organization-scope association per user; the Org Service path has always tolerated this
+		log.WithFields(f).Warnf("user %s already belongs to another organization - creating the company without the company-admin grant", userID)
 	default:
-		log.WithFields(f).WithError(orgErr).Warn("unable to read the account from the Organization Service")
-		return fmt.Errorf("%w: %v", ErrCompanyDependencyFailed, orgErr)
+		// refused (ACS 400: the account is not in the Organization Service yet, or no corporate e-mail) or an outage;
+		// the creator keeps the EasyCLA company ACL either way
+		entry := log.WithFields(f)
+		if !direct {
+			entry = entry.WithError(scopeErr)
+		}
+		var grantErr *acsService.UserGrantError
+		if errors.As(scopeErr, &grantErr) {
+			entry = entry.WithField("acsStatus", grantErr.Status)
+		}
+		entry.WithField("acsReason", acsGrantReason(scopeErr)).Warnf("problem creating the company-admin scope for user %s - creating the company without the grant", userID)
 	}
 }
 

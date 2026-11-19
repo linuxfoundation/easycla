@@ -258,8 +258,8 @@ func TestCountClaGroupCorporateContributors(t *testing.T) {
 	assert.Equal(t, int64(1), other)
 
 	for _, query := range table.queries {
-		assert.Equal(t, SignatureProjectIDIndex, query.indexName)
-		assert.Equal(t, int64(HugePageSize), query.limit, "the count walks the whole index partition")
+		assert.Equal(t, fakeEmployeeIndex, query.indexName)
+		assert.Equal(t, int64(HugePageSize), query.limit, "the count walks the company's rows of the CLA group")
 	}
 }
 
@@ -505,13 +505,13 @@ func TestGetClaGroupCorporateContributorsPageAfterTheLastMatchIsEmpty(t *testing
 	items, _ := boundaryContributorItems()
 	for i := 41; i <= 45; i++ {
 		trailing := fakeEclaItem(i, fmt.Sprintf("dev%03d@example.com", i))
-		trailing["signature_user_ccla_company_id"] = fakeS("company-2")
+		trailing["signature_signed"] = fakeFalse()
 		items = append(items, trailing)
 	}
 	repo, table := newCorporateContributorsRepo(t, items)
 	table.maxRawPage = 3
 
-	// 14 matches, pages of 7: the second page fills up with only another company's rows still
+	// 14 matches, pages of 7: the second page fills up with only unsigned rows of the company still
 	// ahead in the key range, so a continuation is handed out and the third page comes back empty
 	pages, ids := collectContributorPages(t, repo, aws.Int64(7), nil)
 	require.Len(t, pages, 3)
@@ -531,7 +531,7 @@ func TestCountClaGroupCorporateContributorsAcrossRawPageBoundaries(t *testing.T)
 	count, err := repo.CountClaGroupCorporateContributors(context.Background(), "cla-group-1", aws.String("company-1"), false, nil)
 	require.NoError(t, err)
 	assert.Equal(t, int64(len(expected)), count)
-	assert.Len(t, table.queries, 14, "40 rows in windows of 3")
+	assert.Len(t, table.queries, 6, "the company's 18 rows in windows of 3")
 
 	searched, err := repo.CountClaGroupCorporateContributors(context.Background(), "cla-group-1", aws.String("company-1"), false, aws.String("DEV03"))
 	require.NoError(t, err)
@@ -582,4 +582,60 @@ func TestGetClaGroupCorporateContributorsSearchMatchesEachFieldInIsolation(t *te
 	require.NoError(t, err)
 	assert.Len(t, all.List, len(fields))
 	assert.Equal(t, int64(len(fields)), all.TotalCount)
+}
+
+// lfx-self-serve-ops#1494: one acknowledgment of the company behind 40 signatures of another company
+func TestCorporateContributorsReadOnlyTheCompanyRows(t *testing.T) {
+	var items []map[string]interface{}
+	for i := 1; i <= 40; i++ {
+		other := fakeEclaItem(i, fmt.Sprintf("dev%03d@example.com", i))
+		other["signature_user_ccla_company_id"] = fakeS("company-2")
+		items = append(items, other)
+	}
+	items = append(items, fakeEclaItem(41, "dev041@example.com"))
+	repo, table := newCorporateContributorsRepo(t, items)
+	table.maxRawPage = 5
+
+	result, err := repo.GetClaGroupCorporateContributors(context.Background(), "cla-group-1", aws.String("company-1"), aws.Int64(10), nil, nil)
+	require.NoError(t, err)
+	require.Len(t, result.List, 1)
+	assert.Equal(t, "sig-041", result.List[0].SignatureID)
+	assert.Equal(t, int64(1), result.TotalCount)
+	assert.Equal(t, "", result.NextKey)
+	require.Len(t, table.queries, 2, "one count query and one page query, whatever the size of the CLA group")
+
+	approved, err := repo.CountClaGroupCorporateContributors(context.Background(), "cla-group-1", aws.String("company-1"), true, nil)
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), approved)
+	require.Len(t, table.queries, 3)
+	for _, query := range table.queries {
+		assert.Equal(t, fakeEmployeeIndex, query.indexName)
+	}
+}
+
+func TestCorporateContributorsNextKeyCarriesTheCompanyIndexKeys(t *testing.T) {
+	items := []map[string]interface{}{fakeEclaItem(1, "dev001@example.com"), fakeEclaItem(2, "dev002@example.com"), fakeEclaItem(3, "dev003@example.com")}
+	repo, table := newCorporateContributorsRepo(t, items)
+
+	first, err := repo.GetClaGroupCorporateContributors(context.Background(), "cla-group-1", aws.String("company-1"), aws.Int64(2), nil, nil)
+	require.NoError(t, err)
+	require.Len(t, first.List, 2)
+	require.NotEmpty(t, first.NextKey)
+
+	second, err := repo.GetClaGroupCorporateContributors(context.Background(), "cla-group-1", aws.String("company-1"), aws.Int64(2), aws.String(first.NextKey), nil)
+	require.NoError(t, err)
+	require.Len(t, second.List, 1)
+	assert.Equal(t, "sig-003", second.List[0].SignatureID)
+	last := table.queries[len(table.queries)-1]
+	assert.Equal(t, fakeEmployeeIndex, last.indexName)
+	assert.Equal(t, []string{"signature_id", "signature_project_id", "signature_user_ccla_company_id"}, last.startKeyNames)
+}
+
+func TestCorporateContributorsWithoutACompanyKeepTheCLAGroupIndex(t *testing.T) {
+	repo, table := newCorporateContributorsRepo(t, corporateContributorItems())
+
+	_, err := repo.CountClaGroupCorporateContributors(context.Background(), "cla-group-1", nil, false, nil)
+	require.NoError(t, err)
+	require.Len(t, table.queries, 1)
+	assert.Equal(t, SignatureProjectIDIndex, table.queries[0].indexName)
 }
