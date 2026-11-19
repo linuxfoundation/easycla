@@ -102,7 +102,7 @@ func TestSkipDecisionKeepsAGroupOutOfTheImport(t *testing.T) {
 	fx.platform.orgs[targetSFID2] = &Org{ID: targetSFID2, Name: "Legacy Skipped Ltd"}
 	dir := t.TempDir()
 	mapping := writeMapping(t, dir, lfID+","+targetSFID+",matched,true", "lf-skip-mapped,"+targetSFID2+",matched,true")
-	decisions := writeDecisions(t, dir, "skip,"+liveSFID2+";lf-skip-mapped,,heather,not a company", "skip,"+deadSkipSFID+" c-empty-skip lf-typo,,juan,")
+	decisions := writeDecisions(t, dir, "skip,"+liveSFID2[:15]+";lf-skip-mapped,,heather,not a company", "skip,"+deadSkipSFID+" c-empty-skip lf-typo,,juan,")
 	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, Decisions: decisions, State: filepath.Join(dir, "state.jsonl"), OutDir: dir}
 
 	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
@@ -188,6 +188,15 @@ func TestSkipDecisionConflictsWithARewriteOntoItsAccount(t *testing.T) {
 			assert.Contains(t, a.Suggested, "drop that decision")
 		}
 	}
+
+	require.NoError(t, os.WriteFile(opts.State, []byte(`{"ts":"2026-09-29T11:00:00Z","old_id":"`+lfID+`","new_id":"`+liveSFID+`","company_ids":["c-lf"],"step":"copy_grants","status":"ok"}`+"\n"), 0o600))
+	plan, err = BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	g = groupByKey(plan.Groups, lfID)
+	require.NotNil(t, g)
+	assert.True(t, g.Replayed)
+	assert.ErrorContains(t, g.Err, "kept out of the import by a skip decision", "an unfinished rewrite onto that Account fails instead of resuming")
+	assert.Empty(t, plan.Rewrite)
 
 	d, err := LoadDecisions(decisions)
 	require.NoError(t, err)

@@ -133,13 +133,16 @@ func (d *Decisions) Collapse(oldID, target string) *Decision {
 	return nil
 }
 
-// Skip reports the recorded decision not to import oldID.
+// Skip reports the recorded decision not to import oldID; an Account id matches in either form.
 func (d *Decisions) Skip(oldID string) *Decision {
 	if d == nil {
 		return nil
 	}
 	if dec := d.ByOldID[oldID]; dec != nil && dec.Kind == DecisionSkip {
 		return dec
+	}
+	if IsSFID(oldID) {
+		return d.SkipsAccount(oldID)
 	}
 	return nil
 }

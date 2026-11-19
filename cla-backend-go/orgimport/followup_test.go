@@ -219,6 +219,34 @@ func TestUnfinishedRewriteStopsWhenItsTargetIsNotReadable(t *testing.T) {
 	}
 }
 
+// A resumed rewrite with nothing left but its registration runs it although the target still answers 403: that POST settles it.
+func TestUnfinishedRewriteRegistersATargetThatAnswers403(t *testing.T) {
+	fx, mapping, statePath := rewriteFixture(t)
+	fx.platform.forbidden = map[string]int{targetSFID: 2}
+	require.NoError(t, os.WriteFile(statePath, []byte(`{"ts":"2026-09-29T11:00:00Z","old_id":"`+lfID+`","new_id":"`+targetSFID+`","company_ids":["c-parent","c-sub"],"step":"delete_old_grants","status":"ok"}`+"\n"), 0o600))
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}}
+
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	g := groupByKey(plan.Groups, lfID)
+	require.NotNil(t, g)
+	assert.True(t, g.Replayed)
+	assert.NoError(t, g.Err)
+	require.Len(t, plan.Rewrite, 1)
+
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+	require.NoError(t, err)
+	assert.Equal(t, 1, sum.Rewritten)
+	assert.Equal(t, []string{targetSFID}, fx.platform.registered)
+
+	delete(fx.platform.sfAccounts, targetSFID)
+	fx.platform.forbidden = nil
+	require.NoError(t, os.WriteFile(statePath, []byte(`{"ts":"2026-09-29T11:00:00Z","old_id":"`+lfID+`","new_id":"`+targetSFID+`","company_ids":["c-parent","c-sub"],"step":"register","status":"failed"}`+"\n"), 0o600))
+	plan, err = BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	assert.ErrorContains(t, groupByKey(plan.Groups, lfID).Err, "target check failed for "+targetSFID, "a 404 still stops it")
+}
+
 // Without one Account that answers 200 or 404, a target that answers 403 is the access problem, not a missing Account.
 func TestForbiddenTargetWithoutAVisibleAccountIsAnAccessError(t *testing.T) {
 	fx := newFixture()

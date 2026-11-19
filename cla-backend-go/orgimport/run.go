@@ -244,6 +244,7 @@ func replayGroups(ctx context.Context, deps Deps, inv *Inventory, state *State) 
 		if len(g.Rows) == 0 {
 			return nil, fmt.Errorf("state: unfinished group %s has no company ids", rec.key())
 		}
+		g.registerOnly = rec.Step == StepRegister || rec.Status == statusOK && (rec.Step == StepCleanup || rec.Step == StepRows && g.RowTargeted())
 		out = append(out, g)
 	}
 	return out, nil
@@ -330,7 +331,7 @@ func checkSkips(deps Deps, decisions *Decisions, groups []*Group) {
 	skipped := map[string]bool{}
 	for _, g := range groups {
 		if g.Decision != nil && g.Decision.Kind == DecisionSkip {
-			skipped[g.Key] = true
+			skipped[accountKey(g.Key)] = true
 		}
 		if g.Err == nil && g.Route == RouteRewrite && g.NewID != "" && decisions.SkipsAccount(g.NewID) != nil {
 			g.stop(ReasonSkipConflict, fmt.Errorf("target %s of %s is kept out of the import by a skip decision", g.NewID, g.Key))
@@ -341,7 +342,7 @@ func checkSkips(deps Deps, decisions *Decisions, groups []*Group) {
 			continue
 		}
 		for _, id := range dec.OldIDs {
-			if !skipped[id] {
+			if !skipped[accountKey(id)] {
 				fmt.Fprintf(deps.Out, "WARNING: skip decision for %s matches no eligible group\n", id)
 			}
 		}
@@ -378,7 +379,10 @@ func checkTargets(ctx context.Context, deps Deps, groups []*Group) {
 	}
 	for g, err := range forbidden {
 		if seen > 0 {
-			g.stop(ReasonTargetNotLive, fmt.Errorf("target check failed for %s: %w", g.NewID, err))
+			// the registration that a resumed rewrite still owes is what settles a 403 on its target
+			if !g.registerOnly {
+				g.stop(ReasonTargetNotLive, fmt.Errorf("target check failed for %s: %w", g.NewID, err))
+			}
 			continue
 		}
 		g.Err = fmt.Errorf("target check failed for %s: member-service answered 200 or 404 for no Account and 403 for %d: the tool's client cannot see any b2b_org (access tuple missing?): %w", g.NewID, len(forbidden), err)
