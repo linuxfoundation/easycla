@@ -973,7 +973,7 @@ func (h *Handlers) MethodNotAllowed(w http.ResponseWriter, r *http.Request) {
 	// the same path+method exists in v1. Hug can return 404 ("not defined") for
 	// these method+version combinations, not 405.
 	//
-	// Cypress functional tests currently expect 404 for these cases:
+	// These cases answer 404:
 	//   - POST/PUT /v2/company
 	//   - DELETE /v2/company/{company_id}
 	//   - DELETE /v2/project/{project_id}

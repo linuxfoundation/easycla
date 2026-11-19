@@ -97,6 +97,7 @@ type Service interface {
 	CreateCompany(ctx context.Context, params *v2Ops.CreateCompanyParams) (*models.CompanyOutput, error)
 	CreateCompanyFromSFModel(ctx context.Context, orgModel *orgModels.Organization, authUser *auth.User) (*models.CompanyOutput, error)
 	EnableMemberServiceCreate(client *memberService.Client)
+	EnableCreateLock(locks CreateLocks)
 	GetCompanyByName(ctx context.Context, companyName string) (*models.Company, error)
 	GetCompanyBySigningEntityName(ctx context.Context, signingEntityName string) (*models.Company, error)
 	GetCompanyByID(ctx context.Context, companyID string) (*models.Company, error)

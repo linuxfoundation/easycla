@@ -65,12 +65,14 @@ const summary = (v) => `${v.requested} -> ${v.path}; cards=${v.cards}; nav=${JSO
 const crashed = (v) => /something went wrong|unexpected error|internal server error|cannot read propert|TypeError/i.test(v.text + ' ' + v.alerts);
 
 // Open the organization selector (the visible navbar copy) and wait for its option rows: a single click right after the
-// shell re-renders is sometimes lost, so retry a few times (bounded) instead of trusting one fixed pause.
+// shell re-renders is sometimes lost, so retry a few times (bounded) instead of trusting one fixed pause. The trigger
+// toggles, so an open panel whose rows are still loading is never clicked again.
 async function openSelector(page) {
   const options = page.locator('[role="option"][data-testid^="org-item-"]');
   for (let i = 0; i < 4; i++) {
-    await (await e2e.orgSelector(page)).click({ timeout: 5000 }).catch(() => {});
-    if (await e2e.visible(options.first(), 3000)) return true;
+    const open = await page.locator('.org-selector-panel').first().isVisible().catch(() => false);
+    if (!open) await (await e2e.orgSelector(page)).click({ timeout: 5000 }).catch(() => {});
+    if (await e2e.visible(options.first(), 5000)) return true;
   }
   return false;
 }

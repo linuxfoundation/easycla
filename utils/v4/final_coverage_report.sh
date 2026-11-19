@@ -52,14 +52,6 @@ echo "  V4 (REMOTE=1): https://api-gw.dev.platform.linuxfoundation.org/cla-servi
 echo "  Local (default): http://localhost:5001"
 echo ""
 
-echo "Cypress Test Coverage:"
-echo "====================="
-v4_cypress_files=$(find tests/functional/cypress/e2e/v4 -name "*.cy.ts" 2>/dev/null | wc -l)
-v3_cypress_files=$(find tests/functional/cypress/e2e/v3 -name "*.cy.ts" 2>/dev/null | wc -l)
-echo "V4 Cypress test files: $v4_cypress_files"
-echo "V3 Cypress test files: $v3_cypress_files"
-echo ""
-
 echo "Swagger API Definitions:"
 echo "======================="
 if [ -f "cla-backend-go/swagger/cla.v2.compiled.yaml" ]; then

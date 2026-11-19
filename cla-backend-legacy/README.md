@@ -41,7 +41,7 @@ bin/legacy-api-lambda
 
 ## Local run
 
-Local v1/v2 testing should use port `5000`, which matches the existing Cypress local helpers.
+Local v1/v2 testing should use port `5000`.
 
 ```bash
 source setenv.sh
@@ -60,25 +60,6 @@ A successful response should include:
 ```text
 X-EasyCLA-Backend: cla-backend-legacy
 X-EasyCLA-Backend-Version: go
-```
-
-## Cypress functional coverage
-
-Cypress stays pointed at the existing legacy API shape. For local runs, the current helper
-already targets `localhost:5000` for `/v1` and `/v2`.
-
-```bash
-cd tests/functional
-npm ci
-V=1 ALL=1 ./utils/run-single-test-local.sh
-V=2 ALL=1 ./utils/run-single-test-local.sh
-```
-
-Examples:
-
-```bash
-V=2 ./utils/run-single-test-local.sh health
-V=1 ./utils/run-single-test-local.sh project
 ```
 
 ## Deployment model
