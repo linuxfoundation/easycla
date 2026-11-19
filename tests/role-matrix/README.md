@@ -76,7 +76,7 @@ new endpoint can also mean "route not deployed". A `manager` persona disambiguat
 
 ## Fixtures
 
-Defaults match `tests/functional/cypress/appConfig/config.dev.ts`. Override with
+Defaults are Infosys Limited / SUN on dev. Override with
 `RM_COMPANY_ID`, `RM_COMPANY_SFID`, `RM_PROJECT_SFID`, `RM_CLA_GROUP_ID`. The CCLA signature,
 its ACL, the auto-ECLA flag and an ECLA signature id are discovered at run time; the ECLA id
 needs a persona that can read the ECLA list (a manager).

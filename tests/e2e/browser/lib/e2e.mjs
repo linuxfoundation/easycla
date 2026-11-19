@@ -314,12 +314,25 @@ export async function ensureOrgSelected(page, uid, name) {
   return trigger();
 }
 
+const SELECTOR_BACKDROP = '[data-testid="selector-backdrop"], [class*="selector-backdrop"]';
 export async function closeOverlay(page) {
-  for (let i = 0; i < 3; i++) {
-    const panel = page.locator('.org-selector-panel, [data-testid="selector-backdrop"], [class*="selector-backdrop"]').first();
-    if (!(await panel.isVisible().catch(() => false))) return;
+  const overlay = page.locator(`.org-selector-panel, ${SELECTOR_BACKDROP}`).first();
+  const gone = () => overlay.waitFor({ state: 'hidden', timeout: 1500 }).then(() => true).catch(() => false);
+  for (let i = 0; i < 4; i++) {
+    if (!(await overlay.isVisible().catch(() => false))) return;
     await page.keyboard.press('Escape').catch(() => {});
-    await sleep(500);
+    if (await gone()) return;
+    // Escape is ignored while the selector does not hold the focus; its backdrop closes it on click
+    await page.locator(SELECTOR_BACKDROP).first().dispatchEvent('click', {}, { timeout: 1500 }).catch(() => {});
+    if (await gone()) return;
+  }
+}
+
+// Self Serve can open the selector again after closeOverlay returned: a click its backdrop swallowed is retried
+export async function clickClear(page, locator, tries = 3) {
+  for (let i = 1; ; i++) {
+    await closeOverlay(page);
+    try { return await locator.click({ timeout: 10000 }); } catch (err) { if (i >= tries) throw err; }
   }
 }
 

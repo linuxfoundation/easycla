@@ -23,6 +23,7 @@ type service struct {
 	// createViaMemberService is the cla-member-service-create-company-enabled switch; members may be nil (explicit failure)
 	createViaMemberService bool
 	members                *memberService.Client
+	createLocks            CreateLocks
 }
 
 type claGroupModel struct {

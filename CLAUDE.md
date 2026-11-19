@@ -20,11 +20,11 @@ The frontend consoles (Project/Corporate/Contributor) live in **separate reposit
 - `cla-sss-base/` — standalone Go module (own `go.mod`): client for the Sanctions Screening Service (SSS).
 - `scripts/`, `utils/` — operational shell/Python scripts (data audits, DynamoDB manipulation, deploys, credential rotation). Many `utils/*.sh` scripts operate directly against AWS environments.
 - `infra/` — infrastructure config.
-- `tests/` — functional/REST tests, Postman collections, py2go comparison tests.
+- `tests/` — E2E and REST tests, Postman collections, py2go comparison tests.
 
 ## Go Backend (cla-backend-go) — Primary Workflow
 
-Requires Go 1.25+. All commands run from `cla-backend-go/`.
+Requires Go 1.26+. All commands run from `cla-backend-go/`.
 
 ```bash
 make setup          # one-time: install swagger, golangci-lint, goimports; sets up swagger venv
@@ -41,10 +41,10 @@ Run a single test: `go test -v ./signatures/ -run TestName`
 
 ### Lint safely (memory)
 
-golangci-lint v1.64.8 must be the binary built with the CI Go toolchain (`go 1.25.x`, see `go.mod`/`build-pr.yml`) and run under that
+golangci-lint v1.64.8 must be the binary built with the CI Go toolchain (`go 1.26.x`, see `go.mod`/`build-pr.yml`) and run under that
 toolchain. A v1.64.8 binary built with a newer Go, or run with a newer `GOTOOLCHAIN`, type-checks every package again per linter and grows
 past 30 GB RSS on this module — it OOM-kills the whole shell/tmux session, not just the linter. Rules: Linux only; pinned toolchain
-(`GOTOOLCHAIN=go1.25.13 golangci-lint version` must print the same Go version); `LINT_ARGS="--concurrency 4"` on shared machines; run it in
+(`GOTOOLCHAIN=go1.26.11 golangci-lint version` must print the same Go version); `LINT_ARGS="--concurrency 4"` on shared machines; run it in
 its own memory-capped cgroup (`systemd-run --user --scope -p MemoryMax=16G -p MemorySwapMax=0 make lint`); one lint at a time; never overwrite
 a shared `~/go/bin/golangci-lint` while other sessions may use it — install a pinned copy elsewhere and point `LINT_TOOL` at it.
 
@@ -79,7 +79,7 @@ make lambdas        # build deployment artifact bin/legacy-api-lambda
 STAGE=dev ADDR=":5000" make run-local   # run locally on :5000 pointing at dev environment
 ```
 
-Health check: `http://localhost:5000/v2/health` (response includes `X-EasyCLA-Backend: cla-backend-legacy`). Port 5000 matches the Cypress functional-test helpers (`tests/functional/utils/run-single-test-local.sh` with `V=1`/`V=2`).
+Health check: `http://localhost:5000/v2/health` (response includes `X-EasyCLA-Backend: cla-backend-legacy`).
 
 Deployment: the built binary is copied into `cla-backend/bin/` and deployed from the `cla-backend` Serverless stack (`yarn deploy:dev`, `yarn deploy:staging`, or `yarn deploy:prod` from `cla-backend/`).
 
@@ -98,4 +98,4 @@ Be careful: scripts in `utils/` and `scripts/` can mutate DynamoDB in whichever 
 
 ## CI
 
-GitHub Actions in `.github/workflows/`: `build-pr.yml` (build/test/lint), `cypress-functional-pr.yml` (functional E2E; disabled on PRs since 2026-10 — manual `workflow_dispatch` only, and the post-deploy Cypress job in `deploy-dev.yml` is gated off the same way), CodeQL/security/license scans for the Go backends, and `deploy-dev.yml` / `deploy-prod.yml` for deployment (both build `cla-backend-go` and `cla-backend-legacy`, then deploy through the `cla-backend` stack).
+GitHub Actions in `.github/workflows/`: `build-pr.yml` (build/test/lint), CodeQL/security/license scans for the Go backends, and `deploy-dev.yml` / `deploy-prod.yml` for deployment (both build `cla-backend-go` and `cla-backend-legacy`, then deploy through the `cla-backend` stack).

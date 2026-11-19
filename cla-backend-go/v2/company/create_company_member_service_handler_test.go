@@ -37,6 +37,7 @@ func TestCreateCompanyHandlerMapsMemberServiceErrors(t *testing.T) {
 		"ambiguous domain":                {fmt.Errorf("%w: https://acme.example.invalid", ErrCompanyAmbiguousDomain), http.StatusConflict, "company_ambiguous_domain"},
 		"not configured":                  {ErrMemberServiceNotConfigured, http.StatusInternalServerError, "500"},
 		"already exists":                  {fmt.Errorf("%w: 001410000MemberAQA", ErrCompanyExists), http.StatusConflict, ""},
+		"create in progress":              {fmt.Errorf("%w: example.invalid", ErrCompanyCreateInProgress), http.StatusConflict, "company_create_in_progress"},
 		"not eligible":                    {fmt.Errorf("%w: member-service: person account", ErrCompanyNotEligible), http.StatusUnprocessableEntity, "company_not_eligible"},
 		"unavailable":                     {fmt.Errorf("%w: member-service: POST returned 503: upstream body", ErrCompanyDependencyFailed), http.StatusInternalServerError, "500"},
 		"exists with a website-like name": {fmt.Errorf("%w: Example website already exists Ltd", ErrCompanyExists), http.StatusConflict, ""},
@@ -63,6 +64,10 @@ func TestCreateCompanyHandlerMapsMemberServiceErrors(t *testing.T) {
 			if errors.Is(tc.err, ErrCompanyExists) {
 				assert.Contains(t, payload.Message, "organization already exists", "same body as the legacy conflict")
 				assert.NotContains(t, payload.Message, "website already exists", "typed conflicts are mapped before the legacy substring check")
+				return
+			}
+			if errors.Is(tc.err, ErrCompanyCreateInProgress) {
+				assert.Equal(t, ErrCompanyCreateInProgress.Error(), payload.Message)
 				return
 			}
 			if errors.Is(tc.err, ErrCompanyNotEligible) || errors.Is(tc.err, ErrCompanyDependencyFailed) {
