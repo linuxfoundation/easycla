@@ -79,15 +79,11 @@ func Configure(api *operations.ClaAPI, service Service, eventService events.Serv
 						claUser.LFUsername, params.ProjectSFID),
 				})
 			}
-			ghRepo, err := service.GetRepository(ctx, params.RepositoryID)
+			ghRepo, err := service.DisableProjectRepository(ctx, params.ProjectSFID, params.RepositoryID)
 			if err != nil {
 				if _, ok := err.(*utils.GitHubRepositoryNotFound); ok {
 					return github_repositories.NewDeleteProjectGithubRepositoryNotFound()
 				}
-				return github_repositories.NewDeleteProjectGithubRepositoryBadRequest().WithPayload(errorResponse(err))
-			}
-			err = service.DisableRepository(ctx, params.RepositoryID)
-			if err != nil {
 				return github_repositories.NewDeleteProjectGithubRepositoryBadRequest().WithPayload(errorResponse(err))
 			}
 			eventService.LogEventWithContext(ctx, &events.LogEventArgs{

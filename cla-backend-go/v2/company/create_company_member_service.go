@@ -104,10 +104,10 @@ func (s *service) createCompanyViaMemberService(ctx context.Context, f logrus.Fi
 	if lockErr != nil {
 		return nil, lockErr
 	}
-	// once the company write has started the lock stays until it expires: the index lookups of the next request may not list the row yet
-	written := false
+	// once a write may have happened the lock stays until it expires: the next request's index lookups may miss the new row, and a find-or-create without an answer may still be writing
+	keep := false
 	defer func() {
-		if err != nil && !written {
+		if err != nil && !keep {
 			release()
 		}
 	}()
@@ -127,6 +127,9 @@ func (s *service) createCompanyViaMemberService(ctx context.Context, f logrus.Fi
 			log.WithFields(f).WithError(err).Warn("member-service rejected the company request")
 			return nil, err
 		default:
+			// a rejected token request sent nothing to member-service
+			var authErr *memberService.AuthError
+			keep = !errors.As(err, &authErr) || !authErr.Token
 			log.WithFields(f).WithError(err).Warn("member-service find-or-create failed")
 			return nil, fmt.Errorf("%w: %v", ErrCompanyDependencyFailed, err)
 		}
@@ -165,7 +168,7 @@ func (s *service) createCompanyViaMemberService(ctx context.Context, f logrus.Fi
 		row.CompanyManagerID = userID
 		row.CompanyACL = []string{lfUser.Username}
 	}
-	written = true
+	keep = true
 	created, createErr := s.companyRepo.CreateCompany(ctx, row)
 	if createErr != nil {
 		log.WithFields(f).WithError(createErr).Warnf("failed to create EasyCLA company %s", companyName)

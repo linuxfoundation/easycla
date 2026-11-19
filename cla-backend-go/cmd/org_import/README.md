@@ -170,7 +170,8 @@ stage=dev mode=dry-run eligible=4 registered=0 rewritten=0 pending=1 manual=1 fa
 ```
 
 - `live=live|dead|unregistered|unverified|error` — member-service `GET /b2b_orgs/{id}`; `unregistered` = 403 while other Accounts answer 200
-  (the Account has no b2b_org yet; the group stays `pending`/`unregistered` unless `--register-unregistered`); `unverified` = member-service
+  (no b2b_org yet, or an Account member-service cannot read; a usable mapping row makes the group a `rewrite`, otherwise it stays
+  `pending`/`unregistered` unless `--register-unregistered`); `unverified` = member-service
   not configured for the stage (the group stays `pending`/`crm_unverified`, nothing is written); `error` is never treated as dead.
 - `pending` — rewrite candidates without a resolved new id (no mapping row, or a `register` POST answered 404 = dead account) and register
   candidates that are `unregistered`/`crm_unverified`. Rewrite ones appear in `to_salesforce.csv`.
@@ -335,7 +336,7 @@ GitHub Actions `.github/workflows/org-import-sweep.yml`:
 |---|---|---|
 | setup | `loading SSM config` / `STAGE is not set` | wrong account/profile or missing stage |
 | planning | `live=error` | member-service GET failed (403 on every Account = missing `auditor`/access tuple, token 403, network) — fix access; nothing is classified dead |
-| planning | `live=unregistered` / `unregistered` | the Account answers 403 while others answer 200: no b2b_org yet; pending unless `--register-unregistered` |
+| planning | `live=unregistered` / `unregistered` | the Account answers 403 while others answer 200: no b2b_org yet; pending unless `--register-unregistered` or a usable mapping row rewrites it |
 | apply | `WARNING: b2b_org … not yet visible after 5 checks` | the POST succeeded but the GET still answers 403/404 (FGA tuples pending); re-check later, nothing to redo |
 | planning | `live=unverified` / `crm_unverified` | no member-service params for the stage; groups stay pending, nothing is registered |
 | apply | `rewrite apply requires --state` / `member-service is not configured` | refused before the first write; every planned group is reported as failed |

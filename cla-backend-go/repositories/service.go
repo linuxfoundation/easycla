@@ -26,6 +26,7 @@ type Service interface {
 	EnableRepository(ctx context.Context, repositoryID string) error
 	EnableRepositoryWithCLAGroupID(ctx context.Context, repositoryID, claGroupID string) error
 	DisableRepository(ctx context.Context, repositoryID string) error
+	DisableProjectRepository(ctx context.Context, projectSFID, repositoryID string) (*models.GithubRepository, error)
 	UpdateClaGroupID(ctx context.Context, repositoryID, claGroupID string) error
 	ListProjectRepositories(ctx context.Context, externalProjectID string, enabled *bool) (*models.GithubListRepositories, error)
 	GetRepository(ctx context.Context, repositoryID string) (*models.GithubRepository, error)
@@ -200,6 +201,21 @@ func (s *service) EnableRepositoryWithCLAGroupID(ctx context.Context, repository
 
 func (s *service) DisableRepository(ctx context.Context, repositoryID string) error {
 	return s.repo.GitHubDisableRepository(ctx, repositoryID)
+}
+
+// DisableProjectRepository disables the repository only when it is bound to projectSFID (lfx-self-serve-ops#748)
+func (s *service) DisableProjectRepository(ctx context.Context, projectSFID, repositoryID string) (*models.GithubRepository, error) {
+	ghRepo, err := s.repo.GitHubGetRepository(ctx, repositoryID)
+	if err != nil {
+		return nil, err
+	}
+	if ghRepo == nil || ghRepo.RepositoryProjectSfid != projectSFID {
+		return nil, &utils.GitHubRepositoryNotFound{Message: fmt.Sprintf("repository %s does not belong to project %s", repositoryID, projectSFID)}
+	}
+	if err = s.repo.GitHubDisableRepositoryForProject(ctx, repositoryID, projectSFID); err != nil {
+		return nil, err
+	}
+	return ghRepo, nil
 }
 
 func (s *service) ListProjectRepositories(ctx context.Context, externalProjectID string, enabled *bool) (*models.GithubListRepositories, error) {
