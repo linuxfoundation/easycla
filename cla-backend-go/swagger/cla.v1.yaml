@@ -1241,7 +1241,7 @@ paths:
           type: string
           description: the organization website
           x-omitempty: false
-          pattern: "^((http|https):\\/\\/)?(www.)?[a-zA-Z0-9]+(\\.[a-zA-Z]{2,}){1,3}(#?\\/?[a-zA-Z0-9#]+)*\\/?(\\?[a-zA-Z0-9-_]+=[a-zA-Z0-9-%]+&?)?$"
+          pattern: "^((http|https):\\/\\/)?(www.)?[a-zA-Z0-9](-*[a-zA-Z0-9])*(\\.[a-zA-Z](-*[a-zA-Z])+){1,3}(#?\\/?[a-zA-Z0-9#]+)*\\/?(\\?[a-zA-Z0-9-_]+=[a-zA-Z0-9-%]+&?)?$"
         - $ref: '#/parameters/filter'
       responses:
         '200':

@@ -23,12 +23,14 @@ import (
 	"github.com/aws/aws-sdk-go/aws/request"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/golang/mock/gomock"
+	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/company"
 	mock_company "github.com/linuxfoundation/easycla/cla-backend-go/company/mocks"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/orgimport"
 	"github.com/linuxfoundation/easycla/cla-backend-go/signatures"
 	member_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
@@ -44,6 +46,22 @@ func TestRunUsageErrors(t *testing.T) {
 	assert.Equal(t, 2, run([]string{"ingest", "--routes", "delete"}, strings.NewReader("")))
 	assert.Equal(t, 2, run([]string{"ingest", "--apply", "--yes", "--out-dir", t.TempDir()}, strings.NewReader("")), "rewrite apply needs --state")
 	assert.Equal(t, 2, run([]string{"ingest", "--apply", "--yes", "--routes", "rewrite", "--out-dir", t.TempDir()}, strings.NewReader("")))
+}
+
+// The logger reads LOG_LEVEL when the program starts, so the default has to be set on the logger itself.
+func TestRunDefaultsTheLoggerToWarn(t *testing.T) {
+	logger := log.GetLogger()
+	previous := logger.GetLevel()
+	t.Cleanup(func() { logger.SetLevel(previous) })
+	t.Setenv("LOG_LEVEL", "")
+	logger.SetLevel(logrus.DebugLevel)
+	assert.Equal(t, 2, run([]string{"bogus"}, strings.NewReader("")))
+	assert.Equal(t, logrus.WarnLevel, logger.GetLevel())
+
+	t.Setenv("LOG_LEVEL", "debug")
+	logger.SetLevel(logrus.DebugLevel)
+	assert.Equal(t, 2, run([]string{"bogus"}, strings.NewReader("")))
+	assert.Equal(t, logrus.DebugLevel, logger.GetLevel(), "an exported level is kept")
 }
 
 func TestSnapshotInputs(t *testing.T) {

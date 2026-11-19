@@ -172,11 +172,11 @@ func (p *Plan) Pending() int {
 	return n
 }
 
-// Unregistered counts the Accounts whose GET /b2b_orgs answered 403 (no b2b_org yet).
+// Unregistered counts the Accounts whose GET /b2b_orgs answered 403 (no b2b_org yet) and that no mapping row moves.
 func (p *Plan) Unregistered() int {
 	n := 0
 	for _, g := range p.Groups {
-		if g.Live == LiveUnregistered {
+		if g.Live == LiveUnregistered && g.Route == RouteRegister {
 			n++
 		}
 	}
@@ -270,12 +270,17 @@ func classify(ctx context.Context, deps Deps, g *Group, mapping *Mapping, shared
 			lookupOrg(ctx, deps, g)
 			return
 		case LiveUnregistered:
-			g.Route, g.liveErr = RouteRegister, liveErr
-			if !opts.RegisterUnregistered {
-				g.ManualReason = ReasonUnregistered
+			g.liveErr = liveErr
+			// a usable mapping row is the operator's resolution: since lfx-self-serve#3401 a 403 is an Account that member-service cannot read
+			if newID, _, reason := mapping.Resolve(g.OldID); reason != "" || newID == "" {
+				g.Route = RouteRegister
+				if !opts.RegisterUnregistered {
+					g.ManualReason = ReasonUnregistered
+				}
+				lookupOrg(ctx, deps, g)
+				return
 			}
-			lookupOrg(ctx, deps, g)
-			return
+			g.Route = RouteRewrite
 		case LiveDead:
 			g.Route = RouteRewrite
 		default:
