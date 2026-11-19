@@ -24,7 +24,7 @@ The frontend consoles (Project/Corporate/Contributor) live in **separate reposit
 
 ## Go Backend (cla-backend-go) — Primary Workflow
 
-Requires Go 1.25+. All commands run from `cla-backend-go/`.
+Requires Go 1.26+. All commands run from `cla-backend-go/`.
 
 ```bash
 make setup          # one-time: install swagger, golangci-lint, goimports; sets up swagger venv
@@ -41,10 +41,10 @@ Run a single test: `go test -v ./signatures/ -run TestName`
 
 ### Lint safely (memory)
 
-golangci-lint v1.64.8 must be the binary built with the CI Go toolchain (`go 1.25.x`, see `go.mod`/`build-pr.yml`) and run under that
+golangci-lint v1.64.8 must be the binary built with the CI Go toolchain (`go 1.26.x`, see `go.mod`/`build-pr.yml`) and run under that
 toolchain. A v1.64.8 binary built with a newer Go, or run with a newer `GOTOOLCHAIN`, type-checks every package again per linter and grows
 past 30 GB RSS on this module — it OOM-kills the whole shell/tmux session, not just the linter. Rules: Linux only; pinned toolchain
-(`GOTOOLCHAIN=go1.25.13 golangci-lint version` must print the same Go version); `LINT_ARGS="--concurrency 4"` on shared machines; run it in
+(`GOTOOLCHAIN=go1.26.11 golangci-lint version` must print the same Go version); `LINT_ARGS="--concurrency 4"` on shared machines; run it in
 its own memory-capped cgroup (`systemd-run --user --scope -p MemoryMax=16G -p MemorySwapMax=0 make lint`); one lint at a time; never overwrite
 a shared `~/go/bin/golangci-lint` while other sessions may use it — install a pinned copy elsewhere and point `LINT_TOOL` at it.
 
