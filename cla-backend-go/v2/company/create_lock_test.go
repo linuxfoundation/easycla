@@ -194,6 +194,15 @@ func TestCreateCompanyLock(t *testing.T) {
 		assert.Equal(t, heldAndReleased, locks.calls)
 	})
 
+	t.Run("kept after a failed company write", func(t *testing.T) {
+		locks := &recordingLocks{}
+		fx := newMemberCreateFixture(t, created(), memberCreateRepo{expectRow: true, createFailure: errors.New("dynamodb timeout")})
+		fx.svc.EnableCreateLock(locks)
+		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+		assert.ErrorIs(t, err, ErrCompanyDependencyFailed)
+		assert.Equal(t, held, locks.calls, "the row may have been written, so the lock stays until it expires")
+	})
+
 	t.Run("a held lock refuses the creation before any Salesforce call", func(t *testing.T) {
 		locks := &recordingLocks{acquireErr: ErrCreateLockHeld}
 		fx := newMemberCreateFixture(t, created(), memberCreateRepo{})

@@ -104,9 +104,10 @@ func (s *service) createCompanyViaMemberService(ctx context.Context, f logrus.Fi
 	if lockErr != nil {
 		return nil, lockErr
 	}
-	// a created company keeps the lock until it expires: the index lookups of the next request may not list it yet
+	// once the company write has started the lock stays until it expires: the index lookups of the next request may not list the row yet
+	written := false
 	defer func() {
-		if err != nil {
+		if err != nil && !written {
 			release()
 		}
 	}()
@@ -164,6 +165,7 @@ func (s *service) createCompanyViaMemberService(ctx context.Context, f logrus.Fi
 		row.CompanyManagerID = userID
 		row.CompanyACL = []string{lfUser.Username}
 	}
+	written = true
 	created, createErr := s.companyRepo.CreateCompany(ctx, row)
 	if createErr != nil {
 		log.WithFields(f).WithError(createErr).Warnf("failed to create EasyCLA company %s", companyName)
