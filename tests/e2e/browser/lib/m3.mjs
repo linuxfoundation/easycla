@@ -96,8 +96,7 @@ export function m3(session, { sfid, name, group, sig }) {
       }
     }
     await card.waitFor({ state: 'visible', timeout: 60000 });
-    await e2e.closeOverlay(page);
-    await card.click();
+    await e2e.clickClear(page, card);
     await page.getByTestId('org-easycla-detail-status').waitFor({ timeout: 60000 });
     await e2e.hideOverlays(page);
     await e2e.closeOverlay(page);
@@ -107,18 +106,16 @@ export function m3(session, { sfid, name, group, sig }) {
   }
 
   async function tab(t) {
-    await e2e.closeOverlay(page);
-    await page.getByTestId(`org-easycla-detail-tab-${t}`).click();
+    await e2e.clickClear(page, page.getByTestId(`org-easycla-detail-tab-${t}`));
     await sleep(2500);
     await e2e.closeOverlay(page);
   }
 
   const approvalDialog = () => page.getByTestId('org-easycla-approval-dialog');
   async function openAdd() {
-    await e2e.closeOverlay(page);
     const add = page.getByTestId('org-easycla-approval-add').getByRole('button');
     await add.waitFor({ state: 'visible', timeout: 60000 });
-    await add.click();
+    await e2e.clickClear(page, add);
     await approvalDialog().waitFor({ state: 'visible', timeout: 20000 });
   }
   async function pickKind(re) {

@@ -67,6 +67,7 @@ type memberCreateHTTP struct {
 	rolesStatus       int
 	scopeStatus       int
 	grantBody         string
+	memberGate        func()
 
 	mu       sync.Mutex
 	calls    []string
@@ -91,6 +92,9 @@ func (h *memberCreateHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 	case r.URL.Host == msMemberHost && r.Method == http.MethodPost && r.URL.Path == "/b2b_orgs/find-or-create":
 		if h.memberErr != nil {
 			return nil, h.memberErr
+		}
+		if h.memberGate != nil {
+			h.memberGate()
 		}
 		var payload map[string]string
 		require.NoError(h.t, json.NewDecoder(r.Body).Decode(&payload))
@@ -287,14 +291,15 @@ func TestCompanyCreatorUsesNativeOrganizationGrant(t *testing.T) {
 			roleStatus  int
 			grantBody   string
 			wantReason  string // acsReason on the grant-failure warning, "" when no such warning is expected
+			wantStatus  int    // acsStatus on that warning
 		}{
 			{name: "created", grantStatus: http.StatusCreated},
 			{name: "already assigned", grantStatus: http.StatusConflict},
-			{name: "grant outage", grantStatus: http.StatusServiceUnavailable, wantReason: "other"},
+			{name: "grant outage", grantStatus: http.StatusServiceUnavailable, wantReason: "other", wantStatus: http.StatusServiceUnavailable},
 			{name: "creator already belongs to another organization", grantStatus: http.StatusBadRequest, grantBody: fmt.Sprintf(`{"Code":400,"Message":"user is %s"}`, OrgAssociated)},
 			{name: "role lookup outage", roleStatus: http.StatusServiceUnavailable},
-			{name: "creator refused by ACS", grantStatus: http.StatusBadRequest, grantBody: `{"error":{"name":"ValidationError","message":"user does not have valid corporate email"}}`, wantReason: "corporate-email"},
-			{name: "account not in the Organization Service yet", grantStatus: http.StatusBadRequest, grantBody: `{"error":{"name":"ValidationError","message":"acs - upstream service - not found"}}`, wantReason: "account-not-found"},
+			{name: "creator refused by ACS", grantStatus: http.StatusBadRequest, grantBody: `{"error":{"name":"ValidationError","message":"user does not have valid corporate email"}}`, wantReason: "corporate-email", wantStatus: http.StatusBadRequest},
+			{name: "account not in the Organization Service yet", grantStatus: http.StatusBadRequest, grantBody: `{"error":{"name":"ValidationError","message":"acs - upstream service - not found"}}`, wantReason: "account-not-found", wantStatus: http.StatusBadRequest},
 		} {
 			t.Run(fmt.Sprintf("member=%t/%s", memberCreation, tc.name), func(t *testing.T) {
 				withCompanyRoleFlags(t, memberCreation, true)
@@ -337,7 +342,7 @@ func TestCompanyCreatorUsesNativeOrganizationGrant(t *testing.T) {
 					wantGrants = 0
 				}
 				assert.Equal(t, wantGrants, transport.count(msGrantPath))
-				var reasons []string
+				var reasons, statuses []string
 				for _, entry := range hook.AllEntries() {
 					text, formatErr := entry.String()
 					require.NoError(t, formatErr)
@@ -346,11 +351,16 @@ func TestCompanyCreatorUsesNativeOrganizationGrant(t *testing.T) {
 					if reason, ok := entry.Data["acsReason"]; ok {
 						reasons = append(reasons, fmt.Sprint(reason))
 					}
+					if status, ok := entry.Data["acsStatus"]; ok {
+						statuses = append(statuses, fmt.Sprint(status))
+					}
 				}
 				if tc.wantReason == "" {
 					assert.Empty(t, reasons)
+					assert.Empty(t, statuses)
 				} else {
 					assert.Equal(t, []string{tc.wantReason}, reasons, "the warning names the ACS refusal without its body")
+					assert.Equal(t, []string{fmt.Sprint(tc.wantStatus)}, statuses, "the warning carries the ACS status")
 				}
 			})
 		}

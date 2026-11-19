@@ -27,14 +27,6 @@ echo "=== V4 API Coverage Analysis ==="
 v4_result=$?
 echo ""
 
-echo "=== Cypress Test Files Coverage ==="
-echo "V3 Cypress test files:"
-ls -1 tests/functional/cypress/e2e/v3/*.cy.ts | sed 's|.*/||' | sort
-echo ""
-echo "V4 Cypress test files:"
-ls -1 tests/functional/cypress/e2e/v4/*.cy.ts | sed 's|.*/||' | sort
-echo ""
-
 echo "=== Script Counts ==="
 v3_scripts=$(find utils/v3 -name "*.sh" -not -path "*/shared/*" | wc -l)
 v4_scripts=$(find utils/v4 -name "*.sh" -not -path "*/shared/*" | wc -l)
@@ -105,7 +97,6 @@ if [ $v3_result -eq 0 ] && [ $v4_result -eq 0 ] && [ $v3_syntax_errors -eq 0 ] &
     echo "✓ V4 APIs: 100% coverage"
     echo "✓ All scripts have valid syntax"
     echo "✓ API URL handling implemented for both local and remote modes"
-    echo "✓ Comprehensive test coverage with Cypress tests"
     echo ""
     echo "The project now has complete API test coverage with shell scripts"
     echo "for all V3 and V4 endpoints, organized by swagger tags."

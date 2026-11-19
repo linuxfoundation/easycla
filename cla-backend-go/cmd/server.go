@@ -456,6 +456,7 @@ func server(localMode bool) http.Handler {
 	}
 	if configFile.MemberService.CreateCompanyEnabled {
 		v2CompanyService.EnableMemberServiceCreate(members)
+		v2CompanyService.EnableCreateLock(v2Company.DynamoCreateLocks{DB: dynamodb.New(awsSession), Table: fmt.Sprintf("cla-%s-store", stage)})
 	}
 	v2CurrentUserService := v2CurrentUser.NewService()
 

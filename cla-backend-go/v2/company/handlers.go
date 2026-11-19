@@ -424,6 +424,9 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 				if errors.Is(err, ErrCompanyAmbiguousDomain) {
 					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{Code: "company_ambiguous_domain", Message: err.Error(), XRequestID: reqID})
 				}
+				if errors.Is(err, ErrCompanyCreateInProgress) {
+					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{Code: "company_create_in_progress", Message: ErrCompanyCreateInProgress.Error(), XRequestID: reqID})
+				}
 				if errors.Is(err, ErrCompanyExists) {
 					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(errorResponse(reqID, errors.New("organization already exists")))
 				}

@@ -22,7 +22,7 @@ func loadLocalConfig(configFilePath string) (Config, error) {
 		return Config{}, err
 	}
 
-	localConfig := Config{}
+	localConfig := Config{SSS: SSS{Enabled: true}}
 	err = json.Unmarshal(content, &localConfig)
 	if err != nil {
 		return Config{}, err
