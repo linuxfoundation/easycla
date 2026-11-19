@@ -152,6 +152,51 @@ func TestSkipDecisionKeepsAGroupOutOfTheImport(t *testing.T) {
 	assert.Equal(t, "not_imported", reasons[deadSkipSFID])
 }
 
+// The Account of a skipped organization is no rewrite destination for another group, whatever a collapse decision says.
+func TestSkipDecisionConflictsWithARewriteOntoItsAccount(t *testing.T) {
+	fx := newFixture()
+	fx.company("c-live-skip", "Live Skipped Corp", "", liveSFID, "cg-1")
+	fx.company("c-lf", "Legacy Ltd", "", lfID, "cg-1")
+	fx.platform.sfAccounts[liveSFID] = true
+	fx.platform.orgs[liveSFID] = &Org{ID: liveSFID, Name: "Live Skipped Corp"}
+	dir := t.TempDir()
+	mapping := writeMapping(t, dir, lfID+","+liveSFID+",matched,true")
+	decisions := writeDecisions(t, dir, "skip,"+liveSFID+";lf-other,,heather,", "collapse,"+lfID+","+liveSFID+",michal,")
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, Decisions: decisions, State: filepath.Join(dir, "state.jsonl"), OutDir: dir}
+
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	g := groupByKey(plan.Groups, lfID)
+	require.NotNil(t, g)
+	assert.Equal(t, RouteManual, g.Route)
+	assert.Equal(t, "skip_conflict", g.ManualReason)
+	assert.NoError(t, g.Err)
+	assert.Empty(t, plan.Register)
+	assert.Empty(t, plan.Rewrite)
+	assert.Empty(t, plan.Targets)
+	for _, c := range fx.platform.calls {
+		assert.NotContains(t, c, liveSFID, "nothing is asked about the Account of a skipped organization")
+	}
+
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+	require.NoError(t, err)
+	assert.Equal(t, 2, sum.Manual)
+	assert.Empty(t, fx.platform.registered)
+	assert.Empty(t, fx.companies.updates)
+	for _, a := range plan.ManualActions() {
+		if a.Group.Key == lfID {
+			assert.Contains(t, a.Suggested, "drop that decision")
+		}
+	}
+
+	d, err := LoadDecisions(decisions)
+	require.NoError(t, err)
+	assert.NotNil(t, d.SkipsAccount(liveSFID[:15]), "the 15-char form names the same Account")
+	assert.Nil(t, d.SkipsAccount(targetSFID))
+	assert.Nil(t, d.SkipsAccount("lf-other"), "only an Account id is a destination")
+	assert.Nil(t, (*Decisions)(nil).SkipsAccount(liveSFID))
+}
+
 func TestSharedDomains(t *testing.T) {
 	def, err := LoadSharedDomains("")
 	require.NoError(t, err)
@@ -381,6 +426,32 @@ func TestReplayedGroupSkipsDecisionPass(t *testing.T) {
 	assert.True(t, g.Replayed)
 	assert.Equal(t, RouteRewrite, g.Route, "an unfinished rewrite resumes regardless of collisions")
 	assert.Empty(t, g.ManualReason)
+}
+
+// A skip decision for a rewrite that already began neither resumes it nor passes silently: the group fails.
+func TestSkipDecisionStopsAnUnfinishedRewrite(t *testing.T) {
+	fx, mapping, statePath := rewriteFixture(t)
+	require.NoError(t, os.WriteFile(statePath, []byte(`{"ts":"2026-09-29T11:00:00Z","old_id":"`+lfID+`","new_id":"`+targetSFID+`","company_ids":["c-parent","c-sub"],"step":"rows","status":"ok"}`+"\n"), 0o600))
+	dir := t.TempDir()
+	decisions := writeDecisions(t, dir, "skip,"+lfID+",,heather,")
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, Decisions: decisions, State: statePath, Routes: []Route{RouteRewrite}, OutDir: dir}
+
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	g := groupByKey(plan.Groups, lfID)
+	require.NotNil(t, g)
+	assert.True(t, g.Replayed)
+	assert.ErrorContains(t, g.Err, "skip decision for "+lfID+" conflicts with its unfinished rewrite to "+targetSFID)
+	assert.Empty(t, plan.Rewrite)
+	assert.NotContains(t, fx.out.String(), "WARNING: skip decision")
+
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+	assert.Error(t, err)
+	assert.Equal(t, 1, sum.Failed)
+	assert.Zero(t, sum.Rewritten)
+	assert.Empty(t, fx.platform.registered)
+	assert.Empty(t, fx.companies.updates)
+	assert.Equal(t, map[string]string{"decision": "skip", "reviewer": "heather"}, csvCells(t, filepath.Join(dir, "plan.csv"), "key", lfID, "decision", "reviewer"))
 }
 
 const legacyGitHubSite = "https://github.com/legacy-ltd"

@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
@@ -108,14 +109,16 @@ func (c DynamoECLACounter) CountECLAs(ctx context.Context, companyID string) (in
 	}
 }
 
-// LatestECLA returns the newest date_created on the same partition.
+// LatestECLA returns the newest day of the signed rows of the same partition.
 func (c DynamoECLACounter) LatestECLA(ctx context.Context, companyID string) (string, error) {
+	dates := []string{"signed_on", "user_docusign_date_signed", "date_created", "approx_date_created", "date_modified"}
 	input := &dynamodb.QueryInput{
 		TableName:                 aws.String(c.Table),
 		IndexName:                 aws.String("signature-user-ccla-company-index"),
 		KeyConditionExpression:    aws.String("signature_user_ccla_company_id = :id"),
-		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{":id": {S: aws.String(companyID)}},
-		ProjectionExpression:      aws.String("date_created"),
+		FilterExpression:          aws.String("signature_signed = :signed"),
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{":id": {S: aws.String(companyID)}, ":signed": {BOOL: aws.Bool(true)}},
+		ProjectionExpression:      aws.String(strings.Join(dates, ", ")),
 	}
 	latest := ""
 	for {
@@ -124,8 +127,14 @@ func (c DynamoECLACounter) LatestECLA(ctx context.Context, companyID string) (st
 			return "", fmt.Errorf("reading the ECLA dates of %s: %w", companyID, err)
 		}
 		for _, item := range out.Items {
-			if v := item["date_created"]; v != nil && aws.StringValue(v.S) > latest {
-				latest = aws.StringValue(v.S)
+			values := make([]string, 0, len(dates))
+			for _, name := range dates {
+				if v := item[name]; v != nil {
+					values = append(values, aws.StringValue(v.S))
+				}
+			}
+			if d := signedDay(values...); d > latest {
+				latest = d
 			}
 		}
 		if len(out.LastEvaluatedKey) == 0 {

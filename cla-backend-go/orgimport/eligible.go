@@ -82,7 +82,7 @@ func LoadInventory(ctx context.Context, deps Deps) (*Inventory, error) {
 		if d := firstNonEmpty(s.SignedOn, s.DateCreated); d != "" && (signedOn[s.SignatureReferenceID] == "" || d < signedOn[s.SignatureReferenceID]) {
 			signedOn[s.SignatureReferenceID] = d
 		}
-		if d := firstNonEmpty(s.SignedOn, s.DateCreated); d > lastSigned[s.SignatureReferenceID] {
+		if d := signedDay(s.SignedOn, s.UserDocusignDateSigned, s.DateCreated, s.ApproxDateCreated, s.DateModified); d > lastSigned[s.SignatureReferenceID] {
 			lastSigned[s.SignatureReferenceID] = d
 		}
 	}

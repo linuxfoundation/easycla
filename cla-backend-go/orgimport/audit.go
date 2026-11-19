@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 )
 
 // Tiers mirror utils/audit_company_reachability.sh so counts can be cross-checked.
@@ -287,8 +289,8 @@ func (res *AuditResult) countECLAs(ctx context.Context, counter ECLACounter) {
 	}
 }
 
-// collectLastActivity fills LastActivity (YYYY-MM-DD) for the active rows: the newest of the CCLA signing dates and,
-// when the counter dates them, of the employee acknowledgements (4 workers); "err" marks a failed lookup.
+// collectLastActivity fills LastActivity (YYYY-MM-DD) for the active rows: the newest of the CCLA signing days and,
+// when the counter dates them, of the signed employee acknowledgements (4 workers); "err" marks a failed lookup.
 func (res *AuditResult) collectLastActivity(ctx context.Context, counter ECLACounter) {
 	dater, dated := counter.(ECLADater)
 	var rows []*AuditRow
@@ -299,7 +301,7 @@ func (res *AuditResult) collectLastActivity(ctx context.Context, counter ECLACou
 	}
 	runWorkers(len(rows), func(i int) {
 		ar := rows[i]
-		ar.LastActivity = day(ar.Row.CCLALastSignedOn)
+		ar.LastActivity = ar.Row.CCLALastSignedOn
 		if !dated {
 			return
 		}
@@ -307,17 +309,23 @@ func (res *AuditResult) collectLastActivity(ctx context.Context, counter ECLACou
 		switch {
 		case err != nil:
 			ar.LastActivity = "err"
-		case day(d) > ar.LastActivity:
-			ar.LastActivity = day(d)
+		case d > ar.LastActivity:
+			ar.LastActivity = d
 		}
 	})
 }
 
-func day(date string) string {
-	if len(date) > 10 {
-		return date[:10]
+// signedDay is the UTC day of a signature, from its dates in the order my_clas reads them: signed_on, the DocuSign
+// completion, date_created, approx_date_created, date_modified.
+func signedDay(dates ...string) string {
+	d := firstNonEmpty(dates...)
+	if d == "" {
+		return ""
 	}
-	return date
+	if d = utils.FormatTimeString(d); len(d) > 10 {
+		return d[:10]
+	}
+	return d
 }
 
 // addDuplicates appends a candidate set once: the same rows reached by name and by domain are one set.

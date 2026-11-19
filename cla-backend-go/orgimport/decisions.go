@@ -144,6 +144,24 @@ func (d *Decisions) Skip(oldID string) *Decision {
 	return nil
 }
 
+// SkipsAccount reports the skip decision that names the Account of sfid, in either id form.
+func (d *Decisions) SkipsAccount(sfid string) *Decision {
+	if d == nil {
+		return nil
+	}
+	for _, dec := range d.List {
+		if dec.Kind != DecisionSkip {
+			continue
+		}
+		for _, id := range dec.OldIDs {
+			if IsSFID(id) && accountKey(id) == accountKey(sfid) {
+				return dec
+			}
+		}
+	}
+	return nil
+}
+
 // Distinct reports whether a recorded distinct decision separates oldID from any id in others.
 func (d *Decisions) Distinct(oldID string, others []string) *Decision {
 	if d == nil {

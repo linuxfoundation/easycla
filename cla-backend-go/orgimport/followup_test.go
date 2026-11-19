@@ -7,11 +7,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go/service/dynamodb"
+	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -182,6 +187,36 @@ func TestMappingTargetMustBeReadable(t *testing.T) {
 	actions := plan.ManualActions()
 	require.Len(t, actions, 2)
 	assert.Contains(t, actions[0].Suggested, "fix the mapping row")
+}
+
+// An unfinished rewrite resumes only onto a target that member-service can still read: nothing more is written for it.
+func TestUnfinishedRewriteStopsWhenItsTargetIsNotReadable(t *testing.T) {
+	for name, forbidden := range map[string]bool{"404": false, "403": true} {
+		t.Run(name, func(t *testing.T) {
+			fx, mapping, statePath := rewriteFixture(t)
+			delete(fx.platform.sfAccounts, targetSFID)
+			if forbidden {
+				fx.platform.forbidden = map[string]int{targetSFID: -1}
+			}
+			require.NoError(t, os.WriteFile(statePath, []byte(`{"ts":"2026-09-29T11:00:00Z","old_id":"`+lfID+`","new_id":"`+targetSFID+`","company_ids":["c-parent","c-sub"],"step":"copy_grants","status":"ok"}`+"\n"), 0o600))
+			opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}}
+
+			plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+			require.NoError(t, err)
+			g := groupByKey(plan.Groups, lfID)
+			require.NotNil(t, g)
+			assert.True(t, g.Replayed)
+			assert.ErrorContains(t, g.Err, "target check failed for "+targetSFID)
+			assert.Empty(t, plan.Rewrite)
+
+			sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+			assert.Error(t, err)
+			assert.Equal(t, 1, sum.Failed)
+			assert.Empty(t, fx.companies.updates)
+			assert.Empty(t, fx.platform.registered)
+			assert.Len(t, mustListOrgGrants(t, fx, lfID), 3, "the old grants stay")
+		})
+	}
 }
 
 // Without one Account that answers 200 or 404, a target that answers 403 is the access problem, not a missing Account.
@@ -564,11 +599,14 @@ func TestAuditLastCLAActivity(t *testing.T) {
 	fx.company("c-ccla", "Beta", "", liveSFID2, "cg-1", "cg-2")
 	fx.company("c-err", "Gamma", "", lfID, "cg-1")
 	fx.company("c-inactive", "Delta", "", "lf-inactive")
+	fx.company("c-docusign", "Epsilon", "", "lf-docusign", "cg-1")
 	fx.sigs.items[2].SignedOn = "2025-06-07T08:09:10Z"
+	fx.sigs.items[4].SignedOn, fx.sigs.items[4].DateCreated, fx.sigs.items[4].DateModified = "", "2022-03-04T05:06:07Z", "2026-01-01T00:00:00Z"
+	fx.sigs.items[4].UserDocusignDateSigned = "2022-03-09T23:30:00.000000-0700"
 	fx.platform.sfAccounts[liveSFID] = true
 	fx.platform.sfAccounts[liveSFID2] = true
 	deps := fx.deps()
-	deps.ECLAs = eclaActivity{latest: map[string]string{"c-ecla": "2026-05-03T10:11:12.123456+0000", "c-ccla": "2023-01-01T00:00:00Z"}, fail: map[string]bool{"c-err": true}}
+	deps.ECLAs = eclaActivity{latest: map[string]string{"c-ecla": "2026-05-03", "c-ccla": "2023-01-01"}, fail: map[string]bool{"c-err": true}}
 	dir := t.TempDir()
 	_, err := Audit(context.Background(), deps, Options{Stage: "dev", OutDir: dir})
 	require.NoError(t, err)
@@ -578,7 +616,8 @@ func TestAuditLastCLAActivity(t *testing.T) {
 	for _, r := range rows[1:] {
 		last[r[0]] = r[len(r)-1]
 	}
-	assert.Equal(t, map[string]string{"c-ecla": "2026-05-03", "c-ccla": "2025-06-07", "c-err": "err", "c-inactive": ""}, last)
+	assert.Equal(t, map[string]string{"c-ecla": "2026-05-03", "c-ccla": "2025-06-07", "c-err": "err", "c-inactive": "", "c-docusign": "2022-03-10"}, last,
+		"a CCLA without signed_on counts by its DocuSign completion, as a UTC day")
 
 	deps.ECLAs = eclaCounterFunc(func(context.Context, string) (int, error) { return 0, nil })
 	dir = t.TempDir()
@@ -589,6 +628,44 @@ func TestAuditLastCLAActivity(t *testing.T) {
 			assert.Equal(t, "2024-01-02", r[len(r)-1], "without the acknowledgement dates the CCLA date stands")
 		}
 	}
+}
+
+type eclaQueryDB struct {
+	dynamodbiface.DynamoDBAPI
+	inputs []dynamodb.QueryInput
+	pages  []*dynamodb.QueryOutput
+}
+
+func (d *eclaQueryDB) QueryWithContext(_ aws.Context, in *dynamodb.QueryInput, _ ...request.Option) (*dynamodb.QueryOutput, error) {
+	d.inputs = append(d.inputs, *in)
+	return d.pages[len(d.inputs)-1], nil
+}
+
+// LatestECLA dates every signed row the way my_clas does and returns the newest UTC day over all pages.
+func TestLatestECLAReadsSignedRowsInTheMyCLAsDateOrder(t *testing.T) {
+	s := func(v string) *dynamodb.AttributeValue { return &dynamodb.AttributeValue{S: aws.String(v)} }
+	db := &eclaQueryDB{pages: []*dynamodb.QueryOutput{
+		{Items: []map[string]*dynamodb.AttributeValue{
+			{"signed_on": s("2023-04-05T06:07:08Z"), "date_created": s("2020-01-01T00:00:00Z"), "date_modified": s("2026-11-01T00:00:00Z")},
+			{"date_modified": s("2024-08-09T23:30:00.000000-0700")},
+		}, LastEvaluatedKey: map[string]*dynamodb.AttributeValue{"signature_id": s("s-2")}},
+		{Items: []map[string]*dynamodb.AttributeValue{
+			{"user_docusign_date_signed": s("2022-02-03T04:05:06Z"), "date_created": s("2021-01-01T00:00:00Z")},
+			{},
+		}},
+	}}
+	got, err := DynamoECLACounter{DB: db, Table: "cla-dev-signatures"}.LatestECLA(context.Background(), "c-1")
+	require.NoError(t, err)
+	assert.Equal(t, "2024-08-10", got, "a row without date_created counts by its next date, a later date_modified of a dated row does not")
+	require.Len(t, db.inputs, 2)
+	in := db.inputs[0]
+	assert.Equal(t, "signature_signed = :signed", aws.StringValue(in.FilterExpression))
+	require.NotNil(t, in.ExpressionAttributeValues[":signed"])
+	assert.True(t, aws.BoolValue(in.ExpressionAttributeValues[":signed"].BOOL))
+	assert.Equal(t, "c-1", aws.StringValue(in.ExpressionAttributeValues[":id"].S))
+	assert.Equal(t, "signed_on, user_docusign_date_signed, date_created, approx_date_created, date_modified", aws.StringValue(in.ProjectionExpression))
+	assert.Empty(t, in.ExclusiveStartKey)
+	assert.Equal(t, db.pages[0].LastEvaluatedKey, db.inputs[1].ExclusiveStartKey)
 }
 
 // acs_roles: a per-org ACS failure is reported in the cell, not as an audit error.

@@ -67,6 +67,7 @@ const (
 	ReasonTargetFormsDiffer = "target_forms_differ"
 	ReasonTargetNotLive     = "target_not_live"
 	ReasonNotImported       = "not_imported"
+	ReasonSkipConflict      = "skip_conflict"
 
 	orgStatusErr = "err"
 )
@@ -109,7 +110,7 @@ type ECLACounter interface {
 	CountECLAs(ctx context.Context, companyID string) (int, error)
 }
 
-// ECLADater is an ECLACounter that also reports the newest employee acknowledgement of a company ("" when none).
+// ECLADater is an ECLACounter that also reports the day (YYYY-MM-DD) of the newest signed employee acknowledgement of a company ("" when none).
 type ECLADater interface {
 	LatestECLA(ctx context.Context, companyID string) (string, error)
 }

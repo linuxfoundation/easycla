@@ -195,8 +195,8 @@ Files (all rewritten after apply with the final state):
 Manual reasons: `empty_external_id`, `invalid_id_shape`, `mapping_ambiguous`, `mapping_not_approved`, `mapping_same_id` (also the 15/18-char form of the same Account),
 `sfid_alias_forms` (rows of one Account carry both its 15- and 18-char id — normalize them to one form first; §4), `target_forms_differ`
 (ids landing on one Account use both forms — normalize the mapping/rows first; a decision does not lift it),
-`target_not_live` (member-service cannot read the `new_id`: GET answered 404 or 403, the Account was deleted or merged — fix the mapping row),
-`not_imported` (a `skip` decision of a reviewer, §4.1 — nothing to do),
+`target_not_live` (member-service cannot read the `new_id`: GET answered 404 or 403, the Account was deleted or merged, or is not published yet — re-run, then fix the mapping row),
+`not_imported` (a `skip` decision of a reviewer, §4.1 — nothing to do), `skip_conflict` (the mapping target is the Account of a skipped id — change the mapping row or drop the decision),
 `target_collision` (several old ids → one Account, or the Account already has EasyCLA rows, and no decision covers it — §4.1), `distinct_conflict`
 (a `distinct` decision spans two ids resolved to the same Account), `missing_website` / `shared_domain` (Apex path only, §4.2),
 `apex_match_needs_approval`, `apex_error`, `not_eligible` (the register POST answered 422: the Account is neither a company Account nor holds a membership — excluded, nothing to do);
@@ -279,7 +279,8 @@ skip,lfeeee000000000000005,,heather,not imported: the CCLA covers nobody
   `distinct_conflict` (fix the mapping). `reviewer` is required; an old id may appear in one decision only.
 - `skip` — the listed old ids (the `company_id` for a row without a usable id) are not imported: nothing is looked up, registered, rewritten
   or listed in `to_salesforce.csv` for them and their EasyCLA rows stay as they are (`not_imported` in `plan.csv`, with the reviewer). No
-  target; an id that matches no eligible group gets a `WARNING`. Drop the mapping row of a skipped id, if there is one.
+  target; an id that matches no eligible group gets a `WARNING`. Drop the mapping row of a skipped id, if there is one. A group mapped
+  onto the Account of a skipped id is `skip_conflict`, and a skip for a rewrite that already began fails that group.
 - Decisions never change the mapping: the Account comes from `--mapping` / Apex; the decision only approves the collision.
 
 ### 4.2 Shared domains (`--shared-domains`)
