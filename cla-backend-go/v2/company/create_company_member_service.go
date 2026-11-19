@@ -35,7 +35,7 @@ var ErrCompanyAmbiguousDomain = errors.New("several organizations match the comp
 var ErrCompanyExists = errors.New("organization already exists")
 
 // ErrCompanyCreateInProgress reports another creation running for the same website domain (lfx-self-serve#5129)
-var ErrCompanyCreateInProgress = errors.New("a company for this website is being created - try again in a minute")
+var ErrCompanyCreateInProgress = errors.New("a company for this website is being created - try again in a few minutes")
 
 // ErrCompanyNotEligible reports a Salesforce account that member-service refuses to register as an organization
 var ErrCompanyNotEligible = errors.New("the organization is not eligible for EasyCLA")
@@ -65,8 +65,7 @@ func (s *service) EnableCreateLock(locks CreateLocks) {
 	s.createLocks = locks
 }
 
-// lockCreate takes the create lock of the domain and returns its release; a lock that cannot be taken for another
-// reason than being held is a warning, and the creation goes on without it
+// lockCreate takes the create lock of the domain and returns its release; no lock, no creation
 func (s *service) lockCreate(ctx context.Context, f logrus.Fields, domain string) (func(), error) {
 	if s.createLocks == nil {
 		return func() {}, nil
@@ -77,8 +76,8 @@ func (s *service) lockCreate(ctx context.Context, f logrus.Fields, domain string
 		return nil, fmt.Errorf("%w: %s", ErrCompanyCreateInProgress, domain)
 	}
 	if err != nil {
-		log.WithFields(f).WithError(err).Warn("unable to take the company create lock - creating the company without it")
-		return func() {}, nil
+		log.WithFields(f).WithError(err).Warn("unable to take the company create lock - refusing to create the company")
+		return nil, fmt.Errorf("%w: %v", ErrCompanyDependencyFailed, err)
 	}
 	return func() {
 		if releaseErr := s.createLocks.Release(ctx, domain, owner); releaseErr != nil {
@@ -89,7 +88,7 @@ func (s *service) lockCreate(ctx context.Context, f logrus.Fields, domain string
 
 // createCompanyViaMemberService matches or creates the Salesforce account through member-service and creates the
 // EasyCLA company on its 001 id; only a created account grants company-admin to the creator after the row exists.
-func (s *service) createCompanyViaMemberService(ctx context.Context, f logrus.Fields, companyName, signingEntityName, companyWebsite, userEmail, userID, note string, lfUser *v2UserServiceModels.User) (*models.CompanyOutput, error) {
+func (s *service) createCompanyViaMemberService(ctx context.Context, f logrus.Fields, companyName, signingEntityName, companyWebsite, userEmail, userID, note string, lfUser *v2UserServiceModels.User) (output *models.CompanyOutput, err error) {
 	f = memberServiceLogFields(f)
 	if s.members == nil {
 		log.WithFields(f).Warn("the create-company switch is on but the member-service client is not configured - refusing to create the company")
@@ -105,7 +104,12 @@ func (s *service) createCompanyViaMemberService(ctx context.Context, f logrus.Fi
 	if lockErr != nil {
 		return nil, lockErr
 	}
-	defer release()
+	// a created company keeps the lock until it expires: the index lookups of the next request may not list it yet
+	defer func() {
+		if err != nil {
+			release()
+		}
+	}()
 	if takenErr := s.companyNameTaken(ctx, f, companyName); takenErr != nil {
 		return nil, takenErr
 	}

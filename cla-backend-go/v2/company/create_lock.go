@@ -28,8 +28,8 @@ type CreateLocks interface {
 
 const (
 	createLockKeyPrefix = "company_create:"
-	// longer than a creation can run: every remote call of the flow times out after 30 seconds
-	createLockTTL = 2 * time.Minute
+	// longer than the 300 second Lambda timeout: a lease cannot expire under a creation that still runs
+	createLockTTL = 6 * time.Minute
 )
 
 // DynamoCreateLocks keeps the locks in the store table: one expiring item per domain

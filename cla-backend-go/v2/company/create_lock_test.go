@@ -108,7 +108,7 @@ func TestDynamoCreateLocks(t *testing.T) {
 	item := table.items[lockKey]
 	require.NotNil(t, item, "one item per domain under the company_create: prefix")
 	assert.Equal(t, first, aws.StringValue(item["value"].S))
-	assert.Equal(t, strconv.FormatInt(now.Add(2*time.Minute).Unix(), 10), aws.StringValue(item["expire"].N), "the expiry the table's TTL attribute reads")
+	assert.Equal(t, strconv.FormatInt(now.Add(6*time.Minute).Unix(), 10), aws.StringValue(item["expire"].N), "longer than the 300 second Lambda timeout")
 
 	_, err = locks.Acquire(ctx, lockDomain)
 	assert.ErrorIs(t, err, ErrCreateLockHeld)
@@ -116,7 +116,7 @@ func TestDynamoCreateLocks(t *testing.T) {
 	require.NoError(t, err, "another domain has its own lock")
 	require.NoError(t, locks.Release(ctx, "other.invalid", other))
 
-	now = now.Add(2 * time.Minute)
+	now = now.Add(6 * time.Minute)
 	_, err = locks.Acquire(ctx, lockDomain)
 	assert.ErrorIs(t, err, ErrCreateLockHeld, "held through its last second")
 	now = now.Add(time.Second)
@@ -175,22 +175,22 @@ func TestCreateCompanyLock(t *testing.T) {
 	held := []string{"acquire " + lockDomain}
 	heldAndReleased := []string{"acquire " + lockDomain, "release " + lockDomain + " owner-1"}
 
-	t.Run("taken on the website domain and released after the creation", func(t *testing.T) {
+	t.Run("taken on the website domain and kept after the creation", func(t *testing.T) {
 		locks := &recordingLocks{}
 		fx := newMemberCreateFixture(t, created(), memberCreateRepo{expectRow: true})
 		fx.svc.EnableCreateLock(locks)
 		output, err := fx.svc.CreateCompany(context.Background(), memberCreateParams("https://www.Acme.Example.invalid/about", ""))
 		require.NoError(t, err)
 		require.NotNil(t, output)
-		assert.Equal(t, heldAndReleased, locks.calls)
+		assert.Equal(t, held, locks.calls, "a created company keeps the lock until it expires")
 	})
 
 	t.Run("released after a failed creation", func(t *testing.T) {
-		locks := &recordingLocks{}
+		locks := &recordingLocks{releaseErr: errors.New("dynamodb unavailable")}
 		fx := newMemberCreateFixture(t, &memberCreateHTTP{memberStatus: http.StatusServiceUnavailable, memberBody: msEmptyJSON}, memberCreateRepo{})
 		fx.svc.EnableCreateLock(locks)
 		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
-		assert.ErrorIs(t, err, ErrCompanyDependencyFailed)
+		assert.ErrorIs(t, err, ErrCompanyDependencyFailed, "a failed release does not replace the creation's error")
 		assert.Equal(t, heldAndReleased, locks.calls)
 	})
 
@@ -205,34 +205,25 @@ func TestCreateCompanyLock(t *testing.T) {
 		assert.Equal(t, held, locks.calls, "a lock that was not taken is not released")
 	})
 
-	t.Run("a lock that cannot be taken does not stop the creation", func(t *testing.T) {
+	t.Run("a lock that cannot be taken stops the creation before any Salesforce call", func(t *testing.T) {
 		locks := &recordingLocks{acquireErr: errors.New("dynamodb unavailable")}
-		fx := newMemberCreateFixture(t, created(), memberCreateRepo{expectRow: true})
+		fx := newMemberCreateFixture(t, created(), memberCreateRepo{})
 		fx.svc.EnableCreateLock(locks)
 		output, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
-		require.NoError(t, err)
-		require.NotNil(t, output)
-		assert.Equal(t, 1, fx.transport.count(findOrCreate))
+		assert.ErrorIs(t, err, ErrCompanyDependencyFailed)
+		assert.NotErrorIs(t, err, ErrCompanyCreateInProgress)
+		assert.Nil(t, output)
+		assert.Zero(t, fx.transport.count(findOrCreate))
 		assert.Equal(t, held, locks.calls)
-	})
-
-	t.Run("a failed release does not fail the creation", func(t *testing.T) {
-		locks := &recordingLocks{releaseErr: errors.New("dynamodb unavailable")}
-		fx := newMemberCreateFixture(t, created(), memberCreateRepo{expectRow: true})
-		fx.svc.EnableCreateLock(locks)
-		output, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
-		require.NoError(t, err)
-		require.NotNil(t, output)
-		assert.Equal(t, heldAndReleased, locks.calls)
 	})
 
 	t.Run("two creations at the same moment make one Salesforce call", func(t *testing.T) {
 		table := newFakeLockTable()
 		transport := created()
 		arrived, proceed := make(chan struct{}), make(chan struct{})
-		var held atomic.Bool
+		var gated atomic.Bool
 		transport.memberGate = func() {
-			if held.CompareAndSwap(false, true) {
+			if gated.CompareAndSwap(false, true) {
 				close(arrived)
 				<-proceed
 			}
@@ -266,7 +257,11 @@ func TestCreateCompanyLock(t *testing.T) {
 		case <-time.After(10 * time.Second):
 			t.Fatal("the first creation did not finish")
 		}
+		// the fixture's index lookups still answer "not found": a request right after the creation would pass them
+		output, err = fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
+		assert.ErrorIs(t, err, ErrCompanyCreateInProgress, "refused until the lease ends, while the indexes may not list the new company")
+		assert.Nil(t, output)
 		assert.Equal(t, 1, transport.count(findOrCreate))
-		assert.Empty(t, table.keys(), "the lock is gone when the creation ends")
+		assert.Equal(t, []string{lockKey}, table.keys())
 	})
 }
