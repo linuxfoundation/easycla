@@ -244,7 +244,6 @@ func replayGroups(ctx context.Context, deps Deps, inv *Inventory, state *State) 
 		if len(g.Rows) == 0 {
 			return nil, fmt.Errorf("state: unfinished group %s has no company ids", rec.key())
 		}
-		g.registerOnly = rec.Step == StepRegister || rec.Status == statusOK && (rec.Step == StepCleanup || rec.Step == StepRows && g.RowTargeted())
 		out = append(out, g)
 	}
 	return out, nil
@@ -315,7 +314,7 @@ func skipGroup(g *Group, decisions *Decisions) bool {
 	}
 	g.Decision = dec
 	if g.Replayed {
-		g.Err = fmt.Errorf("skip decision for %s conflicts with its unfinished rewrite to %s: drop the decision to finish the rewrite, or undo the rewrite by hand", g.Key, g.NewID)
+		g.stop(ReasonSkipConflict, fmt.Errorf("skip decision for %s conflicts with its unfinished rewrite to %s: drop the decision to finish the rewrite, or undo the rewrite by hand", g.Key, g.NewID))
 		return true
 	}
 	g.Route, g.ManualReason = RouteManual, ReasonNotImported
@@ -379,24 +378,31 @@ func checkTargets(ctx context.Context, deps Deps, groups []*Group) {
 	}
 	for g, err := range forbidden {
 		if seen > 0 {
-			// the registration that a resumed rewrite still owes is what settles a 403 on its target
-			if !g.registerOnly {
-				g.stop(ReasonTargetNotLive, fmt.Errorf("target check failed for %s: %w", g.NewID, err))
-			}
+			g.stop(ReasonTargetNotLive, fmt.Errorf("target check failed for %s: %w", g.NewID, err))
 			continue
 		}
 		g.Err = fmt.Errorf("target check failed for %s: member-service answered 200 or 404 for no Account and 403 for %d: the tool's client cannot see any b2b_org (access tuple missing?): %w", g.NewID, len(forbidden), err)
 	}
 }
 
-// stop takes a rewrite out of the plan: one that already began fails with err, any other becomes a manual action.
+// stop takes a rewrite out of the plan for reason: one that already began fails with err, any other becomes a manual action.
 func (g *Group) stop(reason string, err error) {
+	g.ManualReason = reason
 	if g.Replayed {
-		g.Err = err
+		g.Err = &stopError{reason: reason, err: err}
 		return
 	}
-	g.Route, g.ManualReason = RouteManual, reason
+	g.Route = RouteManual
 }
+
+// stopError is a group failure whose operator guidance is that of a manual reason.
+type stopError struct {
+	reason string
+	err    error
+}
+
+func (e *stopError) Error() string { return e.err.Error() }
+func (e *stopError) Unwrap() error { return e.err }
 
 // lookupOrg records the org-service view of the group's old id.
 func lookupOrg(ctx context.Context, deps Deps, g *Group) {

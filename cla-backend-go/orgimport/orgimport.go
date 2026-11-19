@@ -231,7 +231,6 @@ type Group struct {
 	Suggested    string
 	Err          error
 	liveErr      error
-	registerOnly bool // replayed with nothing left but the registration of NewID
 }
 
 // Summary is the one-line run result.

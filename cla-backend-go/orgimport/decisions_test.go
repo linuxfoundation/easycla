@@ -460,7 +460,12 @@ func TestSkipDecisionStopsAnUnfinishedRewrite(t *testing.T) {
 	assert.Zero(t, sum.Rewritten)
 	assert.Empty(t, fx.platform.registered)
 	assert.Empty(t, fx.companies.updates)
-	assert.Equal(t, map[string]string{"decision": "skip", "reviewer": "heather"}, csvCells(t, filepath.Join(dir, "plan.csv"), "key", lfID, "decision", "reviewer"))
+	assert.Equal(t, map[string]string{"decision": "skip", "reviewer": "heather", "manual_reason": "skip_conflict"},
+		csvCells(t, filepath.Join(dir, "plan.csv"), "key", lfID, "decision", "reviewer", "manual_reason"))
+	actions := plan.ManualActions()
+	require.Len(t, actions, 1)
+	assert.Equal(t, "skip_conflict", actions[0].Reason)
+	assert.Contains(t, actions[0].Suggested, "undone by hand", "not the advice for a transient error")
 }
 
 const legacyGitHubSite = "https://github.com/legacy-ltd"

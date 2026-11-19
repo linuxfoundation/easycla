@@ -1026,6 +1026,23 @@ func TestRecheckRekeysLateEventsOfCompletedGroups(t *testing.T) {
 	assert.Equal(t, []string{lfID}, fx.events.listed)
 }
 
+// A skip decision that names the source or the Account of a finished rewrite keeps the recheck away from it.
+func TestRecheckLeavesOutASkippedRewrite(t *testing.T) {
+	for name, id := range map[string]string{"source": lfID, "target in its 15-char form": targetSFID[:15]} {
+		t.Run(name, func(t *testing.T) {
+			fx, mapping, statePath := completedRewrite(t)
+			fx.events.sfidByEvent["e6"] = lfID
+			decisions := writeDecisions(t, t.TempDir(), "skip,"+id+",,heather,")
+			_, err := runIngest(t, fx, Options{Stage: "dev", Apply: true, Mapping: mapping, Decisions: decisions, State: statePath, Routes: []Route{RouteRewrite}})
+			require.NoError(t, err)
+			assert.Empty(t, fx.events.listed)
+			assert.Empty(t, fx.events.rekeyed)
+			assert.Equal(t, lfID, fx.events.sfidByEvent["e6"])
+			assert.Contains(t, fx.out.String(), "events recheck "+lfID+" -> "+targetSFID+": left out, a skip decision names it\n")
+		})
+	}
+}
+
 func TestRecheckSelection(t *testing.T) {
 	fx, mapping, statePath := completedRewrite(t)
 	fx.company("c-two", "Two Inc", "", twoSFID, "cg-1")
