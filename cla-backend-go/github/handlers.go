@@ -17,7 +17,7 @@ import (
 	"github.com/go-openapi/runtime"
 	"github.com/go-openapi/runtime/middleware"
 	"github.com/gofrs/uuid"
-	ghLib "github.com/google/go-github/v37/github"
+	ghLib "github.com/google/go-github/v93/github"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations"
 	gh "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/restapi/operations/github"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
@@ -72,8 +72,8 @@ func Configure(api *operations.ClaAPI, clientID, clientSecret, accessToken strin
 				utils.ToV1ErrorResponse(utils.ErrorResponseBadRequest(reqID, msg)))
 		}
 
-		client := ghLib.NewClient(tc)
-		if client == nil {
+		client, clientErr := ghLib.NewClient(ghLib.WithHTTPClient(tc))
+		if clientErr != nil || client == nil {
 			msg := "Unable to create GitHub client"
 			log.WithFields(f).Warn(msg)
 			return gh.NewGetOrgBadRequest().WithXRequestID(reqID).WithPayload(

@@ -31,6 +31,9 @@ var suggestions = map[string]string{
 	"target_collision":          "Several old ids land on this Account (or it already has EasyCLA rows): record a collapse (one Account) or distinct (separate Accounts) decision with a reviewer in the decisions file (#3085), then re-run.",
 	"distinct_conflict":         "A distinct decision separates these ids but they resolve to the same Account: fix the mapping/Apex target or the decision.",
 	ReasonTargetFormsDiffer:     "Ids landing on this Account use both its 15- and 18-char form: normalize the mapping new_id (and any EasyCLA row already carrying the Account) to one form, then re-run.",
+	ReasonNotImported:           "A reviewer's skip decision (decisions file): the organization is not imported - no Account is created, matched or registered for it and its EasyCLA rows stay as they are; nothing to do.",
+	ReasonSkipConflict:          "A skip decision conflicts with this rewrite: its target is the Account of a skipped id, or its own id is skipped although the rewrite already began. Change the mapping row or drop that decision, then re-run; a rewrite that already began can only be finished (without the decision) or undone by hand.",
+	ReasonTargetNotLive:         "member-service cannot read the target Account (GET /b2b_orgs answered 404 or 403): it was deleted or merged in Salesforce, or it is so new that member-service has not published it yet. Re-run; if it stays unreadable, name the live Account with sales ops and fix the mapping row.",
 	ReasonSFIDAliasForms:        "Rows of one Account carry both its 15- and 18-char id: normalize company_external_id to one form (m3-org-cleanup.md, #2749) so the rows form one group, then re-run; nothing is registered or rewritten meanwhile.",
 	"missing_website":           "Org-service has no website for the organization: automatic domain match is impossible — add a mapping row after sales ops name the Account.",
 	"shared_domain":             "Website domain is shared (github.com, nowebsite.com, mail provider): never matched automatically — add a mapping row after sales ops name the Account.",
@@ -57,7 +60,12 @@ const clientGrantAdvice = "EasyCLA's Auth0 M2M client has no client grant for th
 func SuggestError(err error) string {
 	msg := err.Error()
 	var authErr *member_service.AuthError
+	var stopped *stopError
 	switch {
+	case errors.As(err, &stopped) && stopped.reason == ReasonTargetNotLive:
+		return "member-service cannot read the target Account of this unfinished rewrite (GET /b2b_orgs answered 404 or 403) and the state file pins that target, so a changed mapping row does not move it. Re-run; if it stays unreadable, have sales ops restore the Account, or undo the rewrite by hand (its rows, grants and state record) before mapping another target."
+	case errors.As(err, &stopped):
+		return Suggest(stopped.reason)
 	case errors.As(err, &authErr) && authErr.Token:
 		if authErr.Status == 403 {
 			return clientGrantAdvice

@@ -13,7 +13,7 @@ import (
 
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
-	"github.com/google/go-github/v37/github" // with go modules enabled (GO111MODULE=on or outside GOPATH)0:w
+	"github.com/google/go-github/v93/github" // with go modules enabled (GO111MODULE=on or outside GOPATH)
 
 	"github.com/go-openapi/runtime/middleware"
 	"github.com/gofrs/uuid"

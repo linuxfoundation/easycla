@@ -17,7 +17,7 @@ import (
 	goapierrors "github.com/go-openapi/errors"
 	"github.com/go-openapi/strfmt"
 	"github.com/gofrs/uuid"
-	githubsdk "github.com/google/go-github/v37/github"
+	githubsdk "github.com/google/go-github/v93/github"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/github"

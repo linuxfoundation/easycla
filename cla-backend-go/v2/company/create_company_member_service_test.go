@@ -500,6 +500,7 @@ func TestCreateCompanyViaMemberService(t *testing.T) {
 		fx := newMemberCreateFixture(t, matched("Acme Incorporated"), memberCreateRepo{expectLookup: true, existingBySF: existing})
 		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
 		assert.True(t, errors.Is(err, ErrCompanyExists), "%v", err)
+		assert.Equal(t, "existing-uuid", blockingCompany(t, err).CompanyID)
 		assert.Equal(t, []string{"owner"}, existing.CompanyACL)
 		assert.Equal(t, 0, fx.transport.count(msOrgPath+"/scopes"))
 	})
@@ -570,6 +571,7 @@ func TestCreateCompanyViaMemberService(t *testing.T) {
 		out, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
 		assert.True(t, errors.Is(err, ErrCompanyExists), "%v", err)
 		assert.Nil(t, out)
+		assert.Equal(t, "legacy-uuid", blockingCompany(t, err).CompanyID)
 		assert.Equal(t, []string{"owner"}, legacy.CompanyACL)
 	})
 
@@ -578,6 +580,7 @@ func TestCreateCompanyViaMemberService(t *testing.T) {
 		fx := newMemberCreateFixture(t, created(testCompanyName), memberCreateRepo{existingByName: taken})
 		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
 		assert.True(t, errors.Is(err, ErrCompanyExists), "%v", err)
+		assert.Equal(t, "taken-uuid", blockingCompany(t, err).CompanyID)
 		assert.Equal(t, 0, fx.transport.count("/b2b_orgs/find-or-create"), "no Salesforce account for a taken name")
 		assert.Equal(t, []string{"owner"}, taken.CompanyACL)
 	})
@@ -614,6 +617,7 @@ func TestCreateCompanyViaMemberService(t *testing.T) {
 		fx := newMemberCreateFixture(t, matched("Acme Incorporated"), memberCreateRepo{expectLookup: true, existingByShort: short})
 		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
 		assert.True(t, errors.Is(err, ErrCompanyExists), "%v", err)
+		assert.Equal(t, "short-uuid", blockingCompany(t, err).CompanyID)
 		assert.Equal(t, []string{"owner"}, short.CompanyACL)
 		assert.Equal(t, 0, fx.transport.count(msOrgPath+"/scopes"))
 	})
@@ -623,6 +627,7 @@ func TestCreateCompanyViaMemberService(t *testing.T) {
 		fx := newMemberCreateFixture(t, created("Acme Incorporated"), memberCreateRepo{existingByName: taken})
 		_, err := fx.svc.CreateCompany(context.Background(), memberCreateParams(testCompanySite, ""))
 		assert.True(t, errors.Is(err, ErrCompanyExists), "%v", err)
+		assert.Equal(t, "taken-uuid", blockingCompany(t, err).CompanyID)
 		assert.Equal(t, 1, fx.transport.count("/b2b_orgs/find-or-create"), "the request name was free, the account's name is not")
 		assert.Equal(t, 0, fx.transport.count(msOrgPath), "no grant attempt")
 		assert.Equal(t, 0, fx.transport.count(msOrgPath+"/scopes"))
@@ -669,4 +674,12 @@ func TestCreateCompanyViaMemberService(t *testing.T) {
 		assert.Equal(t, 0, fx.transport.count("/b2b_orgs/find-or-create"))
 		assert.Equal(t, 1, fx.transport.count(msLookupPath))
 	})
+}
+
+func blockingCompany(t *testing.T, err error) *v1Models.Company {
+	t.Helper()
+	var exists *companyExistsError
+	require.True(t, errors.As(err, &exists), "%v", err)
+	require.NotNil(t, exists.company)
+	return exists.company
 }

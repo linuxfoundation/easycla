@@ -63,6 +63,149 @@ func TestParseDecisions(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestParseSkipDecision(t *testing.T) {
+	d, err := ParseDecisions(strings.NewReader("decision,old_ids,target_sfid,reviewer,note\n" +
+		"Skip,lf-a;c-empty,,heather,the CCLA covers nobody\n" +
+		"collapse,lf-c;lf-d," + targetSFID + ",michal,\n"))
+	require.NoError(t, err)
+	require.NotNil(t, d.ByOldID["lf-a"])
+	assert.Equal(t, "skip", d.ByOldID["lf-a"].Kind)
+	assert.Equal(t, "heather", d.ByOldID["c-empty"].Reviewer)
+	assert.Empty(t, d.ByOldID["lf-a"].Target)
+	assert.Nil(t, d.Collapse("lf-a", targetSFID), "a skip decision approves no collision")
+	for _, bad := range []string{
+		"decision,old_ids,target_sfid,reviewer\nskip,lf-a," + targetSFID + ",heather",
+		"decision,old_ids,target_sfid,reviewer\nskip,lf-a,,",
+		"decision,old_ids,target_sfid,reviewer\nskip,,,heather",
+		"decision,old_ids,target_sfid,reviewer\nskip,lf-a,,heather\ncollapse,lf-a;lf-b," + targetSFID + ",michal",
+	} {
+		_, err = ParseDecisions(strings.NewReader(bad))
+		assert.Error(t, err, bad)
+	}
+}
+
+// A skip decision keeps an organization out of the import: nothing is asked, registered, rewritten or handed to sales ops for it.
+func TestSkipDecisionKeepsAGroupOutOfTheImport(t *testing.T) {
+	const deadSkipSFID = "0014100000DeadSkip"
+	fx := newFixture()
+	fx.company("c-live", "Live Corp", "", liveSFID, "cg-1")
+	fx.company("c-live-skip", "Live Skipped Corp", "", liveSFID2, "cg-1")
+	fx.company("c-lf", "Legacy Ltd", "", lfID, "cg-1")
+	fx.company("c-lf-skip", "Legacy Skipped Ltd", "", "lf-skip-mapped", "cg-1")
+	fx.company("c-dead", "Dead Corp", "", deadSFID, "cg-1")
+	fx.company("c-dead-skip", "Dead Skipped Corp", "", deadSkipSFID, "cg-1")
+	fx.company("c-empty-skip", "Empty Skipped Inc", "", "", "cg-1")
+	for _, id := range []string{liveSFID, liveSFID2, targetSFID, targetSFID2} {
+		fx.platform.sfAccounts[id] = true
+	}
+	fx.platform.orgs[targetSFID] = &Org{ID: targetSFID, Name: "Legacy Ltd"}
+	fx.platform.orgs[targetSFID2] = &Org{ID: targetSFID2, Name: "Legacy Skipped Ltd"}
+	dir := t.TempDir()
+	mapping := writeMapping(t, dir, lfID+","+targetSFID+",matched,true", "lf-skip-mapped,"+targetSFID2+",matched,true")
+	decisions := writeDecisions(t, dir, "skip,"+liveSFID2[:15]+";lf-skip-mapped,,heather,not a company", "skip,"+deadSkipSFID+" c-empty-skip lf-typo,,juan,")
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, Decisions: decisions, State: filepath.Join(dir, "state.jsonl"), OutDir: dir}
+
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	skipped := map[string]string{liveSFID2: "heather", "lf-skip-mapped": "heather", deadSkipSFID: "juan", "c-empty-skip": "juan"}
+	for key, reviewer := range skipped {
+		g := groupByKey(plan.Groups, key)
+		require.NotNil(t, g, key)
+		assert.Equal(t, RouteManual, g.Route, key)
+		assert.Equal(t, "not_imported", g.ManualReason, key)
+		require.NotNil(t, g.Decision, key)
+		assert.Equal(t, "skip", g.Decision.Kind, key)
+		assert.Equal(t, reviewer, g.Decision.Reviewer, key)
+		assert.Empty(t, g.NewID, key)
+		assert.Empty(t, g.Live, key)
+		assert.False(t, g.Pending(), key)
+		assert.NoError(t, g.Err, key)
+		for _, c := range fx.platform.calls {
+			assert.NotContains(t, c, key, "nothing is asked about a skipped organization")
+		}
+	}
+	require.Len(t, plan.Register, 1)
+	assert.Equal(t, liveSFID, plan.Register[0].OldID)
+	require.Len(t, plan.Rewrite, 1)
+	assert.Equal(t, lfID, plan.Rewrite[0].OldID)
+	assert.Contains(t, fx.out.String(), "WARNING: skip decision for lf-typo matches no eligible group")
+	assert.Equal(t, 1, strings.Count(fx.out.String(), "WARNING: skip decision"))
+
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+	require.NoError(t, err)
+	assert.Equal(t, Summary{Stage: "dev", Mode: "apply", Eligible: 7, Registered: 1, Rewritten: 1, Pending: 1, Manual: 4}, sum)
+	assert.ElementsMatch(t, []string{liveSFID, targetSFID}, fx.platform.registered)
+	assert.Equal(t, []string{"c-lf:" + lfID + "->" + targetSFID}, fx.companies.updates)
+	assert.Equal(t, map[string]string{"route": "manual", "manual_reason": "not_imported", "decision": "skip", "reviewer": "heather", "new_id": ""},
+		csvCells(t, filepath.Join(dir, "plan.csv"), "key", "lf-skip-mapped", "route", "manual_reason", "decision", "reviewer", "new_id"))
+	toSF := readCSV(t, filepath.Join(dir, "to_salesforce.csv"))
+	require.Len(t, toSF, 2, "only the dead Account without a decision is handed to sales ops")
+	assert.Equal(t, deadSFID, toSF[1][0])
+	reasons := map[string]string{}
+	for _, a := range plan.ManualActions() {
+		reasons[a.Group.Key] = a.Reason
+		if a.Reason == "not_imported" {
+			assert.Contains(t, a.Suggested, "nothing to do")
+		}
+	}
+	assert.Equal(t, "not_imported", reasons["c-empty-skip"])
+	assert.Equal(t, "not_imported", reasons[deadSkipSFID])
+}
+
+// The Account of a skipped organization is no rewrite destination for another group, whatever a collapse decision says.
+func TestSkipDecisionConflictsWithARewriteOntoItsAccount(t *testing.T) {
+	fx := newFixture()
+	fx.company("c-live-skip", "Live Skipped Corp", "", liveSFID, "cg-1")
+	fx.company("c-lf", "Legacy Ltd", "", lfID, "cg-1")
+	fx.platform.sfAccounts[liveSFID] = true
+	fx.platform.orgs[liveSFID] = &Org{ID: liveSFID, Name: "Live Skipped Corp"}
+	dir := t.TempDir()
+	mapping := writeMapping(t, dir, lfID+","+liveSFID+",matched,true")
+	decisions := writeDecisions(t, dir, "skip,"+liveSFID+";lf-other,,heather,", "collapse,"+lfID+","+liveSFID+",michal,")
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, Decisions: decisions, State: filepath.Join(dir, "state.jsonl"), OutDir: dir}
+
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	g := groupByKey(plan.Groups, lfID)
+	require.NotNil(t, g)
+	assert.Equal(t, RouteManual, g.Route)
+	assert.Equal(t, "skip_conflict", g.ManualReason)
+	assert.NoError(t, g.Err)
+	assert.Empty(t, plan.Register)
+	assert.Empty(t, plan.Rewrite)
+	assert.Empty(t, plan.Targets)
+	for _, c := range fx.platform.calls {
+		assert.NotContains(t, c, liveSFID, "nothing is asked about the Account of a skipped organization")
+	}
+
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+	require.NoError(t, err)
+	assert.Equal(t, 2, sum.Manual)
+	assert.Empty(t, fx.platform.registered)
+	assert.Empty(t, fx.companies.updates)
+	for _, a := range plan.ManualActions() {
+		if a.Group.Key == lfID {
+			assert.Contains(t, a.Suggested, "drop that decision")
+		}
+	}
+
+	require.NoError(t, os.WriteFile(opts.State, []byte(`{"ts":"2026-09-29T11:00:00Z","old_id":"`+lfID+`","new_id":"`+liveSFID+`","company_ids":["c-lf"],"step":"copy_grants","status":"ok"}`+"\n"), 0o600))
+	plan, err = BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	g = groupByKey(plan.Groups, lfID)
+	require.NotNil(t, g)
+	assert.True(t, g.Replayed)
+	assert.ErrorContains(t, g.Err, "kept out of the import by a skip decision", "an unfinished rewrite onto that Account fails instead of resuming")
+	assert.Empty(t, plan.Rewrite)
+
+	d, err := LoadDecisions(decisions)
+	require.NoError(t, err)
+	assert.NotNil(t, d.SkipsAccount(liveSFID[:15]), "the 15-char form names the same Account")
+	assert.Nil(t, d.SkipsAccount(targetSFID))
+	assert.Nil(t, d.SkipsAccount("lf-other"), "only an Account id is a destination")
+	assert.Nil(t, (*Decisions)(nil).SkipsAccount(liveSFID))
+}
+
 func TestSharedDomains(t *testing.T) {
 	def, err := LoadSharedDomains("")
 	require.NoError(t, err)
@@ -133,6 +276,7 @@ func collisionFixture(t *testing.T) (*fixture, string) {
 	fx.company("c-b", "Acme GmbH", "", "lf-b", "cg-1")
 	fx.company("c-c", "Acme Labs", "", "lf-c", "cg-2")
 	fx.platform.sfAccounts[targetSFID] = true
+	fx.platform.sfAccounts[targetSFID2] = true
 	fx.platform.orgs[targetSFID] = &Org{ID: targetSFID, Name: "Acme"}
 	fx.platform.orgs["lf-a"] = &Org{ID: "lf-a", Name: "Acme Inc", Website: "https://acme.example"}
 	fx.platform.orgs["lf-b"] = &Org{ID: "lf-b", Name: "Acme GmbH", Website: "https://acme.example/de"}
@@ -291,6 +435,37 @@ func TestReplayedGroupSkipsDecisionPass(t *testing.T) {
 	assert.True(t, g.Replayed)
 	assert.Equal(t, RouteRewrite, g.Route, "an unfinished rewrite resumes regardless of collisions")
 	assert.Empty(t, g.ManualReason)
+}
+
+// A skip decision for a rewrite that already began neither resumes it nor passes silently: the group fails.
+func TestSkipDecisionStopsAnUnfinishedRewrite(t *testing.T) {
+	fx, mapping, statePath := rewriteFixture(t)
+	require.NoError(t, os.WriteFile(statePath, []byte(`{"ts":"2026-09-29T11:00:00Z","old_id":"`+lfID+`","new_id":"`+targetSFID+`","company_ids":["c-parent","c-sub"],"step":"rows","status":"ok"}`+"\n"), 0o600))
+	dir := t.TempDir()
+	decisions := writeDecisions(t, dir, "skip,"+lfID+",,heather,")
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, Decisions: decisions, State: statePath, Routes: []Route{RouteRewrite}, OutDir: dir}
+
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	g := groupByKey(plan.Groups, lfID)
+	require.NotNil(t, g)
+	assert.True(t, g.Replayed)
+	assert.ErrorContains(t, g.Err, "skip decision for "+lfID+" conflicts with its unfinished rewrite to "+targetSFID)
+	assert.Empty(t, plan.Rewrite)
+	assert.NotContains(t, fx.out.String(), "WARNING: skip decision")
+
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+	assert.Error(t, err)
+	assert.Equal(t, 1, sum.Failed)
+	assert.Zero(t, sum.Rewritten)
+	assert.Empty(t, fx.platform.registered)
+	assert.Empty(t, fx.companies.updates)
+	assert.Equal(t, map[string]string{"decision": "skip", "reviewer": "heather", "manual_reason": "skip_conflict"},
+		csvCells(t, filepath.Join(dir, "plan.csv"), "key", lfID, "decision", "reviewer", "manual_reason"))
+	actions := plan.ManualActions()
+	require.Len(t, actions, 1)
+	assert.Equal(t, "skip_conflict", actions[0].Reason)
+	assert.Contains(t, actions[0].Suggested, "undone by hand", "not the advice for a transient error")
 }
 
 const legacyGitHubSite = "https://github.com/legacy-ltd"

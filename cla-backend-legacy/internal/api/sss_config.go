@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
-	ssmTypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/logging"
 	sss "github.com/linuxfoundation/easycla/cla-sss-base"
 )
@@ -21,7 +20,7 @@ import (
 const sssConfigRetryInterval = 30 * time.Second
 
 type sssParameterClient interface {
-	GetParameter(context.Context, *ssm.GetParameterInput, ...func(*ssm.Options)) (*ssm.GetParameterOutput, error)
+	GetParameters(context.Context, *ssm.GetParametersInput, ...func(*ssm.Options)) (*ssm.GetParametersOutput, error)
 }
 
 type sssConfiguration struct {
@@ -38,21 +37,30 @@ func loadSSSConfig(ctx context.Context, client sssParameterClient, stage string)
 		fmt.Sprintf("cla-sss-required-%s", stage),
 		fmt.Sprintf("cla-sss-enabled-%s", stage),
 	}
+	out, err := client.GetParameters(ctx, &ssm.GetParametersInput{Names: keys})
+	if err != nil {
+		return sssConfiguration{}, fmt.Errorf("unable to read SSS parameters: %w", err)
+	}
 	values := make(map[string]string, len(keys))
-	for _, key := range keys {
-		out, err := client.GetParameter(ctx, &ssm.GetParameterInput{Name: &key})
-		if err != nil {
-			var notFound *ssmTypes.ParameterNotFound
-			if errors.As(err, &notFound) {
-				logging.Debugf("optional SSM key %s not provisioned", key)
-				continue
+	notProvisioned := make(map[string]bool, len(keys))
+	if out != nil {
+		for _, parameter := range out.Parameters {
+			if parameter.Name != nil && parameter.Value != nil {
+				values[strings.TrimPrefix(*parameter.Name, "/")] = strings.TrimSpace(*parameter.Value)
 			}
-			return sssConfiguration{}, fmt.Errorf("unable to read SSS parameter %s: %w", key, err)
 		}
-		if out == nil || out.Parameter == nil || out.Parameter.Value == nil {
+		for _, name := range out.InvalidParameters {
+			notProvisioned[strings.TrimPrefix(name, "/")] = true
+		}
+	}
+	for _, key := range keys {
+		if _, ok := values[key]; ok {
+			continue
+		}
+		if !notProvisioned[key] {
 			return sssConfiguration{}, fmt.Errorf("SSM returned an incomplete SSS parameter %s", key)
 		}
-		values[key] = strings.TrimSpace(*out.Parameter.Value)
+		logging.Debugf("optional SSM key %s not provisioned", key)
 	}
 	boolValue := func(key string, fallback bool) bool {
 		value := values[key]

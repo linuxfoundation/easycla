@@ -35,7 +35,7 @@ import (
 
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 
-	githubpkg "github.com/google/go-github/v37/github"
+	githubpkg "github.com/google/go-github/v93/github"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"golang.org/x/oauth2"
 )
@@ -333,7 +333,10 @@ func (s service) GetGithubOrganizationsFromApprovalList(ctx context.Context, sig
 			&oauth2.Token{AccessToken: githubAccessToken},
 		)
 		tc := oauth2.NewClient(utils.NewContext(), ts)
-		client := githubpkg.NewClient(tc)
+		client, clientErr := githubpkg.NewClient(githubpkg.WithHTTPClient(tc))
+		if clientErr != nil {
+			return nil, clientErr
+		}
 
 		opt := &githubpkg.ListOptions{
 			PerPage: 100,
@@ -390,7 +393,10 @@ func (s service) AddGithubOrganizationToApprovalList(ctx context.Context, signat
 			&oauth2.Token{AccessToken: githubAccessToken},
 		)
 		tc := oauth2.NewClient(utils.NewContext(), ts)
-		client := githubpkg.NewClient(tc)
+		client, clientErr := githubpkg.NewClient(githubpkg.WithHTTPClient(tc))
+		if clientErr != nil {
+			return nil, clientErr
+		}
 
 		opt := &githubpkg.ListOptions{
 			PerPage: 100,
@@ -462,7 +468,10 @@ func (s service) DeleteGithubOrganizationFromApprovalList(ctx context.Context, s
 			&oauth2.Token{AccessToken: githubAccessToken},
 		)
 		tc := oauth2.NewClient(context.Background(), ts)
-		client := githubpkg.NewClient(tc)
+		client, clientErr := githubpkg.NewClient(githubpkg.WithHTTPClient(tc))
+		if clientErr != nil {
+			return nil, clientErr
+		}
 
 		opt := &githubpkg.ListOptions{
 			PerPage: 100,

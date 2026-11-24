@@ -13,7 +13,8 @@ import (
 	"github.com/bradleyfalzon/ghinstallation/v2"
 	"github.com/shurcooL/githubv4"
 
-	"github.com/google/go-github/v37/github"
+	"github.com/google/go-github/v93/github"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"golang.org/x/oauth2"
 )
 
@@ -78,7 +79,7 @@ func NewGithubAppClient(installationID int64) (*github.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return github.NewClient(&http.Client{Transport: itr}), nil
+	return github.NewClient(github.WithHTTPClient(&http.Client{Transport: itr}))
 }
 
 // NewGithubV4AppClient creates a new github v4 client from the supplied installationID
@@ -102,5 +103,9 @@ func NewGithubOauthClientWithAccessToken(accessToken string) *github.Client {
 		&oauth2.Token{AccessToken: accessToken},
 	)
 	tc := oauth2.NewClient(ctx, ts)
-	return github.NewClient(tc)
+	client, err := github.NewClient(github.WithHTTPClient(tc))
+	if err != nil {
+		log.WithError(err).Warn("unable to create the GitHub client")
+	}
+	return client
 }
