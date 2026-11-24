@@ -5,15 +5,16 @@ package github
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"testing"
 	"time"
 
-	gh "github.com/google/go-github/v37/github"
+	"github.com/aws/aws-sdk-go/aws"
+	gh "github.com/google/go-github/v93/github"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/stretchr/testify/assert"
 )
@@ -22,10 +23,10 @@ func TestGetCommentBodyIncludesCoAuthorRemovalGuidance(t *testing.T) {
 	signed := []*UserCommitSummary{{
 		SHA: "abc1234xyz-123",
 		CommitAuthor: &gh.User{
-			ID:    gh.Int64(1234),
-			Login: gh.String("login_value"),
-			Name:  gh.String("author name"),
-			Email: gh.String("foo@bar.com"),
+			ID:    aws.Int64(1234),
+			Login: aws.String("login_value"),
+			Name:  aws.String("author name"),
+			Email: aws.String("foo@bar.com"),
 		},
 		Affiliated: true,
 		Authorized: true,
@@ -34,10 +35,10 @@ func TestGetCommentBodyIncludesCoAuthorRemovalGuidance(t *testing.T) {
 	missing := []*UserCommitSummary{{
 		SHA: "some_other_sha",
 		CommitAuthor: &gh.User{
-			ID:    gh.Int64(123456),
-			Login: gh.String("login_value2"),
-			Name:  gh.String("author name2"),
-			Email: gh.String("foo2@bar.com"),
+			ID:    aws.Int64(123456),
+			Login: aws.String("login_value2"),
+			Name:  aws.String("author name2"),
+			Email: aws.String("foo2@bar.com"),
 		},
 		Affiliated: false,
 		Authorized: false,
@@ -54,10 +55,10 @@ func TestGetCommentBodyOmitsCoAuthorRemovalGuidanceWhenNoCoAuthorIsMissing(t *te
 	missing := []*UserCommitSummary{{
 		SHA: "some_other_sha",
 		CommitAuthor: &gh.User{
-			ID:    gh.Int64(123456),
-			Login: gh.String("login_value2"),
-			Name:  gh.String("author name2"),
-			Email: gh.String("foo2@bar.com"),
+			ID:    aws.Int64(123456),
+			Login: aws.String("login_value2"),
+			Name:  aws.String("author name2"),
+			Email: aws.String("foo2@bar.com"),
 		},
 		Affiliated: false,
 		Authorized: false,
@@ -71,11 +72,9 @@ func TestGetCommentBodyOmitsCoAuthorRemovalGuidanceWhenNoCoAuthorIsMissing(t *te
 
 func newTestGithubClient(t *testing.T, server *httptest.Server) *gh.Client {
 	t.Helper()
-	client := gh.NewClient(server.Client())
-	baseURL, err := url.Parse(server.URL + "/")
+	baseURL := server.URL + "/"
+	client, err := gh.NewClient(gh.WithHTTPClient(server.Client()), gh.WithURLs(&baseURL, &baseURL))
 	assert.NoError(t, err)
-	client.BaseURL = baseURL
-	client.UploadURL = baseURL
 	return client
 }
 
@@ -446,4 +445,121 @@ func TestIsValidGitHubUsernameAcceptsBotSuffix(t *testing.T) {
 	for _, username := range []string{"[bot]", "ab[bot]", "a[bot]x", "a[bot][bot]", "foo-[bot]", "-foo[bot]", "fo--o[bot]", "renovate[BOT]", "renovate[bot"} {
 		assert.False(t, IsValidGitHubUsername(username), username)
 	}
+}
+
+func TestSearchGithubUserByEmailExcludesOrganizationsFromQuery(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/search/users", r.URL.Path)
+		assert.Equal(t, "contact@example.com in:email type:user", r.URL.Query().Get("q"))
+		w.Header().Set("Content-Type", "application/json")
+		_, err := io.WriteString(w, `{"total_count": 1, "items": [{"login": "example-bot", "id": 2, "type": "User"}]}`)
+		assert.NoError(t, err)
+	}))
+	defer srv.Close()
+
+	user, err := SearchGithubUserByEmail(context.Background(), newTestGithubClient(t, srv), "contact@example.com")
+	assert.NoError(t, err)
+	if assert.NotNil(t, user) {
+		assert.Equal(t, "example-bot", user.GetLogin())
+	}
+}
+
+func TestSearchGithubUserByEmailIgnoresOrganizationResult(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, err := io.WriteString(w, `{"total_count": 1, "items": [{"login": "example", "id": 1, "type": "Organization"}]}`)
+		assert.NoError(t, err)
+	}))
+	defer srv.Close()
+
+	user, err := SearchGithubUserByEmail(context.Background(), newTestGithubClient(t, srv), "contact@example.com")
+	assert.NoError(t, err)
+	assert.Nil(t, user)
+}
+
+func TestEditIssueCommentIfChangedUpdatesTheComment(t *testing.T) {
+	for name, tc := range map[string]struct {
+		existing string
+		edited   bool
+	}{
+		"changed body":            {existing: "old body", edited: true},
+		"same body after cleanup": {existing: "new body  \r\n", edited: false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			patches := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				assert.Equal(t, "/repos/o/r/issues/comments/55", r.URL.Path)
+				w.Header().Set("Content-Type", "application/json")
+				if r.Method == http.MethodPatch {
+					patches++
+					var sent map[string]interface{}
+					assert.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+					assert.Equal(t, map[string]interface{}{"body": "new body"}, sent)
+				} else {
+					assert.Equal(t, http.MethodGet, r.Method)
+				}
+				assert.NoError(t, json.NewEncoder(w).Encode(map[string]interface{}{"id": 55, "body": tc.existing}))
+			}))
+			defer srv.Close()
+
+			edited, err := EditIssueCommentIfChanged(context.Background(), newTestGithubClient(t, srv), "o", "r", 7, 55, "new body")
+			assert.NoError(t, err)
+			assert.Equal(t, tc.edited, edited)
+			if tc.edited {
+				assert.Equal(t, 1, patches)
+			} else {
+				assert.Equal(t, 0, patches)
+			}
+		})
+	}
+}
+
+func TestCreateStatusPostsTheStatus(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/repos/o/r/statuses/abc123", r.URL.Path)
+		var sent map[string]interface{}
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+		assert.Equal(t, map[string]interface{}{"state": "failure", "target_url": "https://sign.invalid", "description": "Missing CLA Authorization.", "context": "EasyCLA"}, sent)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		assert.NoError(t, json.NewEncoder(w).Encode(sent))
+	}))
+	defer srv.Close()
+
+	status := &Status{State: aws.String("failure"), TargetURL: aws.String("https://sign.invalid"), Description: aws.String("Missing CLA Authorization."), Context: aws.String("EasyCLA")}
+	created, resp, err := CreateStatus(context.Background(), newTestGithubClient(t, srv), "o", "r", "abc123", status)
+	assert.NoError(t, err)
+	if assert.NotNil(t, resp) {
+		assert.Equal(t, http.StatusCreated, resp.StatusCode)
+	}
+	assert.Equal(t, status, created)
+}
+
+func TestCreateLegacyActionRequiredCheckRunPostsTheCheckRun(t *testing.T) {
+	calls := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		assert.Equal(t, http.MethodPost, r.Method)
+		assert.Equal(t, "/repos/o/r/check-runs", r.URL.Path)
+		assert.Equal(t, "application/vnd.github.antiope-preview+json", r.Header.Get("Accept"))
+		var sent map[string]interface{}
+		assert.NoError(t, json.NewDecoder(r.Body).Decode(&sent))
+		assert.Equal(t, "CLA check", sent["name"])
+		assert.Equal(t, "abc123", sent["head_sha"])
+		assert.Equal(t, "completed", sent["status"])
+		assert.Equal(t, "action_required", sent["conclusion"])
+		assert.NotEmpty(t, sent["details_url"])
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, err := io.WriteString(w, `{"id": 1}`)
+		assert.NoError(t, err)
+	}))
+	defer srv.Close()
+
+	repoID := int64(2002)
+	missing := []*UserCommitSummary{{SHA: "abc123", CommitAuthor: &gh.User{ID: aws.Int64(1234), Login: aws.String("jane")}}}
+	err := createLegacyActionRequiredCheckRun(context.Background(), newTestGithubClient(t, srv), "o", "r", "abc123", 1001, &repoID, 7, missing, "https://api.invalid", "v2")
+	assert.NoError(t, err)
+	assert.Equal(t, 1, calls)
 }

@@ -25,7 +25,7 @@ import (
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/repositories"
 
-	"github.com/google/go-github/v37/github"
+	"github.com/google/go-github/v93/github"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 

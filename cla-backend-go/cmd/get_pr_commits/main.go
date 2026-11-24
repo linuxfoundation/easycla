@@ -16,7 +16,7 @@ import (
 	"strconv"
 	"strings"
 
-	gh "github.com/google/go-github/v37/github"
+	gh "github.com/google/go-github/v93/github"
 	easygh "github.com/linuxfoundation/easycla/cla-backend-go/github"
 	"golang.org/x/oauth2"
 )
@@ -33,10 +33,10 @@ func firstLine(s string) string {
 	return s
 }
 
-func newGithubOAuthClient(token string) *gh.Client {
+func newGithubOAuthClient(token string) (*gh.Client, error) {
 	src := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: token})
 	httpClient := oauth2.NewClient(context.Background(), src)
-	return gh.NewClient(httpClient)
+	return gh.NewClient(gh.WithHTTPClient(httpClient))
 }
 
 func githubTokenFilePath() string {
@@ -77,7 +77,10 @@ func main() {
 		die(err.Error())
 	}
 
-	client := newGithubOAuthClient(token)
+	client, err := newGithubOAuthClient(token)
+	if err != nil {
+		die(err.Error())
+	}
 
 	commits, err := easygh.ListPullRequestCommitsCompare(context.Background(), client, owner, repo, prNumber)
 	if err != nil {

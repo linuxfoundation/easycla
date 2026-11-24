@@ -23,7 +23,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 
-	"github.com/google/go-github/v37/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
@@ -125,10 +125,10 @@ func buildCompareAuthor(c *compareCommit) *github.User {
 	email := firstNonEmpty(out.GetEmail(), c.Commit.Author.Email)
 
 	if name != "" {
-		out.Name = github.String(name)
+		out.Name = utils.StringRef(name)
 	}
 	if email != "" {
-		out.Email = github.String(email)
+		out.Email = utils.StringRef(email)
 	}
 
 	return &out
@@ -160,19 +160,19 @@ func comparePayloadToRepositoryCommits(payload *compareResponse) []*github.Repos
 		}
 
 		rc := &github.RepositoryCommit{
-			SHA:    github.String(c.SHA),
+			SHA:    utils.StringRef(c.SHA),
 			Author: buildCompareAuthor(c),
 			Commit: &github.Commit{
-				Message: github.String(c.Commit.Message),
+				Message: utils.StringRef(c.Commit.Message),
 				Author:  &github.CommitAuthor{},
 			},
 		}
 
 		if name := strings.TrimSpace(c.Commit.Author.Name); name != "" {
-			rc.Commit.Author.Name = github.String(name)
+			rc.Commit.Author.Name = utils.StringRef(name)
 		}
 		if email := strings.TrimSpace(c.Commit.Author.Email); email != "" {
-			rc.Commit.Author.Email = github.String(email)
+			rc.Commit.Author.Email = utils.StringRef(email)
 		}
 
 		out = append(out, rc)
@@ -193,7 +193,7 @@ func fetchComparePage(
 		reqErr  error
 	)
 	for attempt := 1; attempt <= 6; attempt++ {
-		req, err := client.NewRequest("GET", path, nil)
+		req, err := client.NewRequest(ctx, "GET", path, nil)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -205,7 +205,7 @@ func fetchComparePage(
 		req.Header.Set("Accept", "application/vnd.github+json")
 
 		payload = compareResponse{}
-		resp, reqErr = client.Do(ctx, req, &payload)
+		resp, reqErr = client.Do(req, &payload)
 		if reqErr == nil {
 			return comparePayloadToRepositoryCommits(&payload), resp, nil
 		}
@@ -793,6 +793,7 @@ func (u UserCommitSummary) getUserInfo(tagUser bool) string {
 }
 
 // SearchGithubUserByEmail searches for a GitHub user by email using the GitHub search API.
+// Organizations are excluded because they can't author commits or sign a CLA.
 // Returns the first found *github.User, or nil if not found or on error.
 func SearchGithubUserByEmail(ctx context.Context, client *github.Client, email string) (*github.User, error) {
 	f := logrus.Fields{
@@ -801,7 +802,7 @@ func SearchGithubUserByEmail(ctx context.Context, client *github.Client, email s
 	}
 	log.WithFields(f).Debugf("Searching for GitHub user by email: %s", email)
 
-	query := fmt.Sprintf("%s in:email", email)
+	query := fmt.Sprintf("%s in:email type:user", email)
 	opts := &github.SearchOptions{
 		ListOptions: github.ListOptions{PerPage: 1},
 	}
@@ -816,8 +817,13 @@ func SearchGithubUserByEmail(ctx context.Context, client *github.Client, email s
 		log.WithFields(f).Debugf("No GitHub user found with email: %s", email)
 		return nil, nil
 	}
-	log.WithFields(f).Debugf("Found GitHub user by email: %s", *result.Users[0].Login)
-	return result.Users[0], nil
+	user := result.Users[0]
+	if strings.EqualFold(user.GetType(), "Organization") {
+		log.WithFields(f).Debugf("Ignoring GitHub organization found by email: %s", user.GetLogin())
+		return nil, nil
+	}
+	log.WithFields(f).Debugf("Found GitHub user by email: %s", user.GetLogin())
+	return user, nil
 }
 
 // GetGitHubUserByLogin fetches a GitHub user by their login (username).
@@ -1762,7 +1768,7 @@ func EditIssueCommentIfChanged(ctx context.Context, client *github.Client, owner
 	}
 	log.WithFields(f).Debugf("editing comment %d on %s/%s PR #%d (old=%d bytes, new=%d bytes)",
 		commentID, owner, repo, prNum, len(oldNorm), len(newNorm))
-	_, _, err = client.Issues.EditComment(ctx, owner, repo, commentID, &github.IssueComment{Body: &newBody})
+	_, _, err = client.Issues.UpdateComment(ctx, owner, repo, commentID, github.IssueCommentRequest{Body: newBody})
 	if err != nil {
 		return false, err
 	}
@@ -1907,8 +1913,7 @@ func updatePullRequest(ctx context.Context, installationID int64, pullRequestID 
 			}
 		} else {
 			// No previous comment - create new with the current body
-			newComment := &github.IssueComment{Body: &body}
-			_, _, err2 := client.Issues.CreateComment(ctx, owner, repo, pullRequestID, newComment)
+			_, _, err2 := client.Issues.CreateComment(ctx, owner, repo, pullRequestID, github.IssueCommentRequest{Body: body})
 			if err2 != nil {
 				log.WithFields(f).WithError(err2).Debug("unable to create comment")
 				return err2
@@ -2017,12 +2022,12 @@ func createLegacyActionRequiredCheckRun(ctx context.Context, client *github.Clie
 		},
 	}
 
-	req, err := client.NewRequest("POST", fmt.Sprintf("repos/%s/%s/check-runs", owner, repo), payload)
+	req, err := client.NewRequest(ctx, "POST", fmt.Sprintf("repos/%s/%s/check-runs", owner, repo), payload)
 	if err != nil {
 		return err
 	}
 	req.Header.Set("Accept", "application/vnd.github.antiope-preview+json")
-	resp, err := client.Do(ctx, req, nil)
+	resp, err := client.Do(req, nil)
 	if err != nil && resp != nil && resp.Response != nil {
 		log.WithFields(logrus.Fields{
 			"functionName":            "github.github_repository.createLegacyActionRequiredCheckRun",
@@ -2600,12 +2605,12 @@ type Status struct {
 // GitHub API docs:https://docs.github.com/en/rest/commits/statuses
 func CreateStatus(ctx context.Context, client *github.Client, owner, repo, sha string, status *Status) (*Status, *github.Response, error) {
 	u := fmt.Sprintf("repos/%v/%v/statuses/%v", owner, repo, sha)
-	req, err := client.NewRequest("POST", u, status)
+	req, err := client.NewRequest(ctx, "POST", u, status)
 	if err != nil {
 		return nil, nil, err
 	}
 	c := new(Status)
-	resp, err := client.Do(ctx, req, c)
+	resp, err := client.Do(req, c)
 	if err != nil {
 		return nil, resp, err
 	}

@@ -72,7 +72,7 @@ func LoadInventory(ctx context.Context, deps Deps) (*Inventory, error) {
 		return nil, fmt.Errorf("listing active CCLAs: %w", err)
 	}
 	active := map[string][]string{}
-	signedOn := map[string]string{}
+	signedOn, lastSigned := map[string]string{}, map[string]string{}
 	for _, s := range cclas {
 		if s == nil || s.SignatureReferenceID == "" || s.SignatureReferenceType != utils.SignatureReferenceTypeCompany ||
 			s.SignatureType != utils.SignatureTypeCCLA || !s.SignatureSigned || !s.SignatureApproved {
@@ -81,6 +81,9 @@ func LoadInventory(ctx context.Context, deps Deps) (*Inventory, error) {
 		active[s.SignatureReferenceID] = append(active[s.SignatureReferenceID], s.SignatureProjectID)
 		if d := firstNonEmpty(s.SignedOn, s.DateCreated); d != "" && (signedOn[s.SignatureReferenceID] == "" || d < signedOn[s.SignatureReferenceID]) {
 			signedOn[s.SignatureReferenceID] = d
+		}
+		if d := signedDay(s.SignedOn, s.UserDocusignDateSigned, s.DateCreated, s.ApproxDateCreated, s.DateModified); d > lastSigned[s.SignatureReferenceID] {
+			lastSigned[s.SignatureReferenceID] = d
 		}
 	}
 	companies, err := deps.Companies.GetCompanies(ctx)
@@ -102,6 +105,7 @@ func LoadInventory(ctx context.Context, deps Deps) (*Inventory, error) {
 			row.CCLACount = len(groups)
 			row.CLAGroupIDs = distinct(groups)
 			row.CCLASignedOn = signedOn[c.CompanyID]
+			row.CCLALastSignedOn = lastSigned[c.CompanyID]
 		}
 		inv.Rows = append(inv.Rows, row)
 		inv.ByID[row.CompanyID] = row

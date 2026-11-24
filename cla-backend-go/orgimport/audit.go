@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 )
 
 // Tiers mirror utils/audit_company_reachability.sh so counts can be cross-checked.
@@ -40,6 +42,7 @@ type AuditRow struct {
 	OrgName      string
 	ACSRoles     string
 	Suggested    string
+	LastActivity string
 }
 
 // AuditResult is the audit output; Duplicates are the candidate-target sets (rows sharing an id,
@@ -116,6 +119,7 @@ func Audit(ctx context.Context, deps Deps, opts Options) (*AuditResult, error) {
 
 	res.collectDuplicates(byName, byDomain)
 	res.countECLAs(ctx, deps.ECLAs)
+	res.collectLastActivity(ctx, deps.ECLAs)
 	inDup := map[string]bool{}
 	for _, set := range res.Duplicates {
 		for _, r := range set {
@@ -285,6 +289,45 @@ func (res *AuditResult) countECLAs(ctx context.Context, counter ECLACounter) {
 	}
 }
 
+// collectLastActivity fills LastActivity (YYYY-MM-DD) for the active rows: the newest of the CCLA signing days and,
+// when the counter dates them, of the signed employee acknowledgements (4 workers); "err" marks a failed lookup.
+func (res *AuditResult) collectLastActivity(ctx context.Context, counter ECLACounter) {
+	dater, dated := counter.(ECLADater)
+	var rows []*AuditRow
+	for _, ar := range res.Rows {
+		if ar.Row.ActiveCCLA {
+			rows = append(rows, ar)
+		}
+	}
+	runWorkers(len(rows), func(i int) {
+		ar := rows[i]
+		ar.LastActivity = ar.Row.CCLALastSignedOn
+		if !dated {
+			return
+		}
+		d, err := dater.LatestECLA(ctx, ar.Row.CompanyID)
+		switch {
+		case err != nil:
+			ar.LastActivity = "err"
+		case d > ar.LastActivity:
+			ar.LastActivity = d
+		}
+	})
+}
+
+// signedDay is the UTC day of a signature, from its dates in the order my_clas reads them: signed_on, the DocuSign
+// completion, date_created, approx_date_created, date_modified.
+func signedDay(dates ...string) string {
+	d := firstNonEmpty(dates...)
+	if d == "" {
+		return ""
+	}
+	if d = utils.FormatTimeString(d); len(d) > 10 {
+		return d[:10]
+	}
+	return d
+}
+
 // addDuplicates appends a candidate set once: the same rows reached by name and by domain are one set.
 func (res *AuditResult) addDuplicates(rows []*Row) {
 	ids := make([]string, 0, len(rows))
@@ -391,7 +434,7 @@ func writeAuditReports(dir string, res *AuditResult) error {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
-	rows := [][]string{{"company_id", "company_name", "signing_entity_name", "company_external_id", "id_shape", "active_ccla", "ccla_count", "ecla_count", "org_service", "website", "duplicate_sfid_group", "route", "manual_reason", "tier", "acs_roles", "suggested_account"}}
+	rows := [][]string{{"company_id", "company_name", "signing_entity_name", "company_external_id", "id_shape", "active_ccla", "ccla_count", "ecla_count", "org_service", "website", "duplicate_sfid_group", "route", "manual_reason", "tier", "acs_roles", "suggested_account", "last_cla_activity"}}
 	var unresolvable [][]string
 	unresolvable = append(unresolvable, []string{"company_id", "company_name", "signing_entity_name", "company_external_id", "id_shape", "ccla_count", "ecla_count", "org_service", "manual_reason"})
 	for _, ar := range res.Rows {
@@ -400,7 +443,7 @@ func writeAuditReports(dir string, res *AuditResult) error {
 		if ar.ECLACounted {
 			ecla = strconv.Itoa(ar.ECLACount)
 		}
-		rows = append(rows, []string{r.CompanyID, r.CompanyName, r.SigningEntityName, r.ExternalID, string(ar.Shape), strconv.FormatBool(r.ActiveCCLA), strconv.Itoa(r.CCLACount), ecla, ar.OrgStatus, ar.Website, strconv.FormatBool(ar.Duplicate), string(ar.Route), ar.ManualReason, ar.Tier, ar.ACSRoles, ar.Suggested})
+		rows = append(rows, []string{r.CompanyID, r.CompanyName, r.SigningEntityName, r.ExternalID, string(ar.Shape), strconv.FormatBool(r.ActiveCCLA), strconv.Itoa(r.CCLACount), ecla, ar.OrgStatus, ar.Website, strconv.FormatBool(ar.Duplicate), string(ar.Route), ar.ManualReason, ar.Tier, ar.ACSRoles, ar.Suggested, ar.LastActivity})
 		if r.ActiveCCLA && ar.unresolvable() {
 			unresolvable = append(unresolvable, []string{r.CompanyID, r.CompanyName, r.SigningEntityName, r.ExternalID, string(ar.Shape), strconv.Itoa(r.CCLACount), ecla, ar.OrgStatus, ar.ManualReason})
 		}

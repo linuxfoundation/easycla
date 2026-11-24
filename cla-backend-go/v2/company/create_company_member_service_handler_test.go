@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations"
 	v2CompanyOps "github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/restapi/operations/company"
@@ -182,4 +183,49 @@ func TestCreateCompanyHandlerDependencyFailuresAre500(t *testing.T) {
 		assert.Equal(t, http.StatusBadRequest, code, "the Organization Service path still answers as today")
 		assert.Equal(t, 1, fx.transport.count(msLookupPath))
 	})
+}
+
+func TestCreateCompanyConflictNamesTheExistingCompany(t *testing.T) {
+	existing := &v1Models.Company{CompanyID: "existing-uuid", CompanyExternalID: "001410000MemberAQA", CompanyName: "Acme Incorporated", SigningEntityName: "Acme EU"}
+	conflict := func(t *testing.T, err error) map[string]interface{} {
+		api := operations.NewEasyclaAPI(nil)
+		Configure(api, &fakeCreateCompanyService{err: err}, nil, "")
+		email := strfmt.Email("jane@example.invalid")
+		cname, site, reqID := testCompanyName, testCompanySite, "req-conflict"
+		responder := api.CompanyCreateCompanyHandler.Handle(v2CompanyOps.CreateCompanyParams{
+			HTTPRequest: httptest.NewRequest(http.MethodPost, "/v4/user/u-jane/company", nil),
+			XREQUESTID:  &reqID,
+			UserID:      "u-jane",
+			Input:       &models.CompanyInput{CompanyName: &cname, CompanyWebsite: &site, UserEmail: &email},
+		}, &auth.User{UserName: "jane", Email: "jane@example.invalid", ACL: auth.ACL{Allowed: true}})
+		recorder := httptest.NewRecorder()
+		responder.WriteResponse(recorder, runtime.JSONProducer())
+		require.Equal(t, http.StatusConflict, recorder.Code, recorder.Body.String())
+		var body map[string]interface{}
+		require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &body))
+		return body
+	}
+	t.Run("the body carries every id of the existing company", func(t *testing.T) {
+		body := conflict(t, &companyExistsError{company: existing, detail: existing.CompanyExternalID})
+		assert.Equal(t, map[string]interface{}{
+			"Message":           "organization already exists",
+			"x-request-id":      "req-conflict",
+			"companyID":         "existing-uuid",
+			"companyExternalID": "001410000MemberAQA",
+			"companyName":       "Acme Incorporated",
+			"signingEntityName": "Acme EU",
+		}, body)
+	})
+	for name, err := range map[string]error{
+		"an exists error without a company": &companyExistsError{detail: "Acme"},
+		"a wrapped exists error":            fmt.Errorf("%w: Acme", ErrCompanyExists),
+		"another creation in progress":      fmt.Errorf("%w: example.invalid", ErrCompanyCreateInProgress),
+	} {
+		t.Run(name, func(t *testing.T) {
+			body := conflict(t, err)
+			for _, key := range []string{"companyID", "companyExternalID", "companyName", "signingEntityName"} {
+				assert.NotContains(t, body, key)
+			}
+		})
+	}
 }
