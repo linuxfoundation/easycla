@@ -9,7 +9,7 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/golang/mock/gomock"
-	"github.com/google/go-github/v37/github"
+	"github.com/google/go-github/v93/github"
 	"github.com/linuxfoundation/easycla/cla-backend-go/events"
 	eventsMock "github.com/linuxfoundation/easycla/cla-backend-go/events/mock"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"

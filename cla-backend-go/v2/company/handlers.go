@@ -422,13 +422,13 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 					return company.NewCreateCompanyUnprocessableEntity().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{Code: "company_shared_domain", Message: err.Error(), XRequestID: reqID})
 				}
 				if errors.Is(err, ErrCompanyAmbiguousDomain) {
-					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{Code: "company_ambiguous_domain", Message: err.Error(), XRequestID: reqID})
+					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(companyConflict(reqID, "company_ambiguous_domain", err.Error(), nil))
 				}
 				if errors.Is(err, ErrCompanyCreateInProgress) {
-					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{Code: "company_create_in_progress", Message: ErrCompanyCreateInProgress.Error(), XRequestID: reqID})
+					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(companyConflict(reqID, "company_create_in_progress", ErrCompanyCreateInProgress.Error(), nil))
 				}
 				if errors.Is(err, ErrCompanyExists) {
-					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(errorResponse(reqID, errors.New("organization already exists")))
+					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(companyConflict(reqID, "", ErrCompanyExists.Error(), err))
 				}
 				if errors.Is(err, ErrCompanyNotEligible) {
 					return company.NewCreateCompanyUnprocessableEntity().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{Code: "company_not_eligible", Message: ErrCompanyNotEligible.Error(), XRequestID: reqID})
@@ -440,12 +440,10 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 					return company.NewCreateCompanyInternalServerError().WithXRequestID(reqID).WithPayload(utils.ErrorResponseInternalServerError(reqID, err.Error()))
 				}
 				if strings.Contains(err.Error(), "website already exists") {
-					formatErr := errors.New("website already exists")
-					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(errorResponse(reqID, formatErr))
+					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(companyConflict(reqID, "", "website already exists", nil))
 				}
 				if _, ok := err.(*organizations.CreateOrgConflict); ok {
-					formatErr := errors.New("organization already exists")
-					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(errorResponse(reqID, formatErr))
+					return company.NewCreateCompanyConflict().WithXRequestID(reqID).WithPayload(companyConflict(reqID, "", ErrCompanyExists.Error(), nil))
 				}
 				if errors.Is(err, ErrCompanyUserMismatch) || errors.Is(err, ErrCompanyNoGrantTarget) {
 					return company.NewCreateCompanyForbidden().WithXRequestID(reqID).WithPayload(utils.ErrorResponseForbidden(reqID, err.Error()))
@@ -781,6 +779,19 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 
 type codedResponse interface {
 	Code() string
+}
+
+// companyConflict is the 409 body of a company creation; it names the existing company when err carries one
+func companyConflict(reqID, code, message string, err error) *models.CompanyConflict {
+	out := &models.CompanyConflict{Code: code, Message: message, XRequestID: reqID}
+	var exists *companyExistsError
+	if errors.As(err, &exists) && exists.company != nil {
+		out.CompanyID = exists.company.CompanyID
+		out.CompanyExternalID = exists.company.CompanyExternalID
+		out.CompanyName = exists.company.CompanyName
+		out.SigningEntityName = exists.company.SigningEntityName
+	}
+	return out
 }
 
 func errorResponse(reqID string, err error) *models.ErrorResponse {

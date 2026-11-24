@@ -4627,7 +4627,7 @@ paths:
         '403':
           $ref: '#/responses/forbidden'
         '409':
-          $ref: '#/responses/conflict'
+          $ref: '#/responses/company-conflict'
         '422':
           $ref: '#/responses/unprocessable-entity'
         '500':
@@ -5212,6 +5212,14 @@ responses:
         description: The unique request ID value - assigned/set by the API Gateway based on the session
     schema:
       $ref: '#/definitions/error-response'
+  company-conflict:
+    description: Duplicate Resource
+    headers:
+      x-request-id:
+        type: string
+        description: The unique request ID value - assigned/set by the API Gateway based on the session
+    schema:
+      $ref: '#/definitions/company-conflict'
   accepted-request:
     description: Accepted request
     headers:
@@ -7165,6 +7173,34 @@ definitions:
       x-request-id:
         description: The unique request ID value - assigned/set by the API Gateway or the API based on the login session
         example: 'b1e86e26-d8c8-4fd8-9f8d-5c723d5dac9f'
+        type: string
+
+  company-conflict:
+    type: object
+    x-nullable: false
+    title: Company Conflict
+    description: Standard error format, with the existing company when one blocks the creation
+    properties:
+      Code:
+        description: The error code
+        type: string
+      Message:
+        description: The error message
+        type: string
+      x-request-id:
+        description: The unique request ID value - assigned/set by the API Gateway or the API based on the login session
+        type: string
+      companyID:
+        description: The internal ID of the existing company
+        type: string
+      companyExternalID:
+        description: The external (Salesforce) ID of the existing company
+        type: string
+      companyName:
+        description: The name of the existing company
+        type: string
+      signingEntityName:
+        description: The signing entity name of the existing company
         type: string
 
   success-response:

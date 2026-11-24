@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-openapi/strfmt"
 	"github.com/golang/mock/gomock"
 	"github.com/linuxfoundation/easycla/cla-backend-go/company"
 	mock_company "github.com/linuxfoundation/easycla/cla-backend-go/company/mocks"
@@ -306,6 +307,7 @@ func TestSearchOrganizationByNameDoesNotCreate(t *testing.T) {
 			defer ctrl.Finish()
 			repo := mock_company.NewMockIRepository(ctrl)
 			notFound(repo, resolveSFID, prospectSFID)
+			repo.EXPECT().GetCompanyByName(gomock.Any(), "Acme").Return(nil, nil)
 
 			result, err := newResolveService(repo).SearchOrganizationByName(context.Background(), "Acme", "", includeSigningEntityName, "")
 
@@ -330,6 +332,7 @@ func TestSearchOrganizationByNameDoesNotCreate(t *testing.T) {
 		repo.EXPECT().GetCompanyByExternalID(gomock.Any(), resolveSFID).Return(&models.Company{CompanyID: resolveCompanyID, CompanyExternalID: resolveSFID, CompanyName: "Acme"}, nil)
 		repo.EXPECT().IsCCLAEnabledForCompany(gomock.Any(), resolveCompanyID).Return(true, nil)
 		notFound(repo, prospectSFID)
+		repo.EXPECT().GetCompanyByName(gomock.Any(), "Acme").Return(nil, nil)
 
 		result, err := newResolveService(repo).SearchOrganizationByName(context.Background(), "Acme", "", false, "")
 
@@ -344,4 +347,75 @@ func TestSearchOrganizationByNameDoesNotCreate(t *testing.T) {
 			assert.True(t, strings.HasPrefix(call, "GET "), "the search must only read from the organization service: %s", call)
 		}
 	}
+}
+
+func TestSearchOrganizationByNameAddsNewCompanyNotListed(t *testing.T) {
+	const (
+		newSFID      = "001QP00001AbCdEfGH"
+		newCompanyID = "5d2c4f1a-7b3e-4c9d-8a6f-1e2d3c4b5a69"
+	)
+	setupResolveHTTP(t, nil, `{"Data":[`+
+		`{"ID":"`+resolveSFID+`","Name":"Acme Corp","Link":"https://acme.invalid","SigningEntityName":["Acme Labs"],"SalesforceB2BAccountID":"b2b-acme"}`+
+		`],"Metadata":{"TotalSize":1,"Offset":0,"PageSize":1000}}`)
+	row := func(externalID string, age time.Duration) *models.Company {
+		return &models.Company{CompanyID: newCompanyID, CompanyExternalID: externalID, CompanyName: "Acme New", SigningEntityName: "Acme New Inc", Created: strfmt.DateTime(time.Now().Add(-age))}
+	}
+	search := func(t *testing.T, name, website, filter string, includeSigningEntityName bool, expect func(repo *mock_company.MockIRepository)) []*models.Org {
+		ctrl := gomock.NewController(t)
+		defer ctrl.Finish()
+		repo := mock_company.NewMockIRepository(ctrl)
+		repo.EXPECT().GetCompanyByExternalID(gomock.Any(), resolveSFID).Return(nil, &utils.CompanyNotFound{CompanySFID: resolveSFID})
+		expect(repo)
+		result, err := newResolveService(repo).SearchOrganizationByName(context.Background(), name, website, includeSigningEntityName, filter)
+		require.NoError(t, err)
+		return result.List
+	}
+	for _, includeSigningEntityName := range []bool{false, true} {
+		t.Run(fmt.Sprintf("created minutes ago, includeSigningEntityName=%t", includeSigningEntityName), func(t *testing.T) {
+			list := search(t, " Acme New ", "", "", includeSigningEntityName, func(repo *mock_company.MockIRepository) {
+				repo.EXPECT().GetCompanyByName(gomock.Any(), "Acme New").Return(row(newSFID, 5*time.Minute), nil)
+				repo.EXPECT().IsCCLAEnabledForCompany(gomock.Any(), newCompanyID).Return(true, nil)
+			})
+			require.Len(t, list, 2)
+			assert.Equal(t, resolveSFID, list[0].OrganizationID)
+			assert.Equal(t, newSFID, list[1].OrganizationID)
+			assert.Equal(t, "Acme New", list[1].OrganizationName)
+			assert.True(t, *list[1].CclaEnabled)
+			assert.True(t, *list[1].HasB2bAccount)
+			if includeSigningEntityName {
+				assert.Equal(t, []string{"Acme New Inc"}, list[1].SigningEntityNames)
+			} else {
+				assert.Empty(t, list[1].SigningEntityNames)
+			}
+		})
+	}
+	notAdded := map[string]*models.Company{
+		"already listed under the 15-character id": row(resolveShortSFID, 5*time.Minute),
+		"older than the window":                    row(newSFID, 25*time.Hour),
+		"no creation time":                         {CompanyID: newCompanyID, CompanyExternalID: newSFID, CompanyName: "Acme New"},
+		"legacy id":                                row("lfoG2DJ5TSL5x3It1V", 5*time.Minute),
+		"no external id":                           row("", 5*time.Minute),
+		"no company of that name":                  nil,
+	}
+	for name, found := range notAdded {
+		t.Run(name, func(t *testing.T) {
+			list := search(t, "Acme New", "", "", false, func(repo *mock_company.MockIRepository) {
+				repo.EXPECT().GetCompanyByName(gomock.Any(), "Acme New").Return(found, nil)
+			})
+			require.Len(t, list, 1)
+			assert.Equal(t, resolveSFID, list[0].OrganizationID)
+		})
+	}
+	t.Run("a failed lookup leaves the organization service results", func(t *testing.T) {
+		list := search(t, "Acme New", "", "", false, func(repo *mock_company.MockIRepository) {
+			repo.EXPECT().GetCompanyByName(gomock.Any(), "Acme New").Return(nil, errors.New("dynamodb unavailable"))
+		})
+		require.Len(t, list, 1)
+	})
+	t.Run("only a pure name search looks up the name", func(t *testing.T) {
+		none := func(*mock_company.MockIRepository) {}
+		require.Len(t, search(t, "", "acme.invalid", "", false, none), 1)
+		require.Len(t, search(t, "Acme New", "acme.invalid", "", false, none), 1)
+		require.Len(t, search(t, "Acme New", "", "name eq Acme New", false, none), 1)
+	})
 }

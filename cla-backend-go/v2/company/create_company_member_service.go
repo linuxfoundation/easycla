@@ -34,6 +34,20 @@ var ErrCompanyAmbiguousDomain = errors.New("several organizations match the comp
 // ErrCompanyExists reports an EasyCLA company already recorded for the matched Account, or another Account under the same name
 var ErrCompanyExists = errors.New("organization already exists")
 
+// companyExistsError is ErrCompanyExists with the company that blocks the creation
+type companyExistsError struct {
+	company *v1Models.Company
+	detail  string
+}
+
+func (e *companyExistsError) Error() string {
+	return ErrCompanyExists.Error() + ": " + e.detail
+}
+
+func (e *companyExistsError) Unwrap() error {
+	return ErrCompanyExists
+}
+
 // ErrCompanyCreateInProgress reports another creation running for the same website domain (lfx-self-serve#5129)
 var ErrCompanyCreateInProgress = errors.New("a company for this website is being created - try again in a few minutes")
 
@@ -151,7 +165,7 @@ func (s *service) createCompanyViaMemberService(ctx context.Context, f logrus.Fi
 		}
 		if existing != nil {
 			log.WithFields(f).Warnf("the matched account is already EasyCLA company %s - refusing to create another", existing.CompanyID)
-			return nil, fmt.Errorf("%w: %s", ErrCompanyExists, b2b.UID)
+			return nil, &companyExistsError{company: existing, detail: b2b.UID}
 		}
 	}
 	row := &v1Models.Company{
@@ -174,7 +188,7 @@ func (s *service) createCompanyViaMemberService(ctx context.Context, f logrus.Fi
 	}
 	if created == nil || created.CompanyExternalID != b2b.UID {
 		log.WithFields(f).Warnf("an EasyCLA company named %q already exists with a different Salesforce account - refusing to create another", companyName)
-		return nil, fmt.Errorf("%w: %s", ErrCompanyExists, companyName)
+		return nil, &companyExistsError{company: created, detail: companyName}
 	}
 	// best effort: the creator owns the row already, and a refused or failed grant must not fail a company that
 	// exists (lfx-self-serve#5916)
@@ -210,7 +224,7 @@ func (s *service) companyNameTaken(ctx context.Context, f logrus.Fields, company
 	}
 	if existing != nil {
 		log.WithFields(f).Warnf("an EasyCLA company named %q already exists - refusing to create another", companyName)
-		return fmt.Errorf("%w: %s", ErrCompanyExists, companyName)
+		return &companyExistsError{company: existing, detail: companyName}
 	}
 	return nil
 }
