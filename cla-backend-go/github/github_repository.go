@@ -793,6 +793,7 @@ func (u UserCommitSummary) getUserInfo(tagUser bool) string {
 }
 
 // SearchGithubUserByEmail searches for a GitHub user by email using the GitHub search API.
+// Organizations are excluded because they can't author commits or sign a CLA.
 // Returns the first found *github.User, or nil if not found or on error.
 func SearchGithubUserByEmail(ctx context.Context, client *github.Client, email string) (*github.User, error) {
 	f := logrus.Fields{
@@ -801,7 +802,7 @@ func SearchGithubUserByEmail(ctx context.Context, client *github.Client, email s
 	}
 	log.WithFields(f).Debugf("Searching for GitHub user by email: %s", email)
 
-	query := fmt.Sprintf("%s in:email", email)
+	query := fmt.Sprintf("%s in:email type:user", email)
 	opts := &github.SearchOptions{
 		ListOptions: github.ListOptions{PerPage: 1},
 	}
@@ -816,8 +817,13 @@ func SearchGithubUserByEmail(ctx context.Context, client *github.Client, email s
 		log.WithFields(f).Debugf("No GitHub user found with email: %s", email)
 		return nil, nil
 	}
-	log.WithFields(f).Debugf("Found GitHub user by email: %s", *result.Users[0].Login)
-	return result.Users[0], nil
+	user := result.Users[0]
+	if strings.EqualFold(user.GetType(), "Organization") {
+		log.WithFields(f).Debugf("Ignoring GitHub organization found by email: %s", user.GetLogin())
+		return nil, nil
+	}
+	log.WithFields(f).Debugf("Found GitHub user by email: %s", user.GetLogin())
+	return user, nil
 }
 
 // GetGitHubUserByLogin fetches a GitHub user by their login (username).
