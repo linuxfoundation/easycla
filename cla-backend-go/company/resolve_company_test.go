@@ -416,7 +416,7 @@ func TestSearchOrganizationByNameAddsNewCompanyNotListed(t *testing.T) {
 	t.Run("listed accounts are compared by their canonical id", func(t *testing.T) {
 		const canonical, short, lowered = "001QP00001AbCdEYAV", "001QP00001AbCdE", "001qp00001abcdeyav"
 		listed := func(signingEntities string) string {
-			return `{"Data":[{"ID":"` + canonical + `","Name":"Acme New","SigningEntityName":[` + signingEntities + `],"SalesforceB2BAccountID":"b2b-new"}],"Metadata":{"TotalSize":1,"Offset":0,"PageSize":1000}}`
+			return `{"Data":[{"ID":"` + canonical + `","Name":"Acme New Listed","Link":"https://acme-new.invalid","SigningEntityName":[` + signingEntities + `],"SalesforceB2BAccountID":"b2b-new"}],"Metadata":{"TotalSize":1,"Offset":0,"PageSize":1000}}`
 		}
 		original := transport.searchBody
 		defer func() { transport.searchBody = original }()
@@ -430,7 +430,7 @@ func TestSearchOrganizationByNameAddsNewCompanyNotListed(t *testing.T) {
 			{name: "another letter case of the 18-character id", rowID: lowered, cclaLookups: 1},
 			{name: "the 15-character id", rowID: short, cclaLookups: 1},
 			{name: "listed with its signing entities", rowID: canonical, signingEntities: `"Acme New Corp"`, includeSigningEntityName: true, cclaLookups: 1, wantSigningEntityNames: []string{"Acme New Corp"}},
-			{name: "listed without signing entities yet", rowID: canonical, includeSigningEntityName: true, cclaLookups: 2, wantSigningEntityNames: []string{"Acme New Inc"}},
+			{name: "listed without signing entities yet keeps the listed record", rowID: lowered, includeSigningEntityName: true, cclaLookups: 2, wantSigningEntityNames: []string{"Acme New Inc"}},
 		} {
 			t.Run(tc.name, func(t *testing.T) {
 				transport.searchBody = listed(tc.signingEntities)
@@ -447,6 +447,10 @@ func TestSearchOrganizationByNameAddsNewCompanyNotListed(t *testing.T) {
 				require.NoError(t, err)
 				require.Len(t, result.List, 1, "one account, one row")
 				assert.Equal(t, canonical, result.List[0].OrganizationID)
+				assert.Equal(t, "Acme New Listed", result.List[0].OrganizationName)
+				assert.Equal(t, "https://acme-new.invalid", result.List[0].OrganizationWebsite)
+				require.NotNil(t, result.List[0].HasB2bAccount)
+				assert.True(t, *result.List[0].HasB2bAccount, "the organization service lists the account with a B2B id")
 				assert.Equal(t, tc.wantSigningEntityNames, result.List[0].SigningEntityNames)
 			})
 		}

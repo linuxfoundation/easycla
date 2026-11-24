@@ -898,10 +898,15 @@ func (s service) newCompanyNotListed(ctx context.Context, orgName string, includ
 	if includeSigningEntityName && signingEntityName == "" {
 		return nil
 	}
+	var upstream *orgServiceModels.Organization
 	for _, org := range listed {
-		if sameAccount(org.ID, company.CompanyExternalID) && (!includeSigningEntityName || len(org.SigningEntityName) > 0) {
+		if !sameAccount(org.ID, company.CompanyExternalID) {
+			continue
+		}
+		if !includeSigningEntityName || len(org.SigningEntityName) > 0 {
 			return nil
 		}
+		upstream = org
 	}
 	cclaEnabled, err := s.IsCCLAEnabledForCompany(ctx, company.CompanyID)
 	if err != nil {
@@ -914,6 +919,10 @@ func (s service) newCompanyNotListed(ctx context.Context, orgName string, includ
 		OrganizationName: company.CompanyName,
 		CclaEnabled:      &cclaEnabled,
 		HasB2bAccount:    &hasB2BAccount,
+	}
+	if upstream != nil {
+		hasB2BAccount = strings.TrimSpace(upstream.SalesforceB2BAccountID) != ""
+		org.OrganizationID, org.OrganizationName, org.OrganizationWebsite = upstream.ID, upstream.Name, upstream.Link
 	}
 	if includeSigningEntityName {
 		org.SigningEntityNames = []string{signingEntityName}
