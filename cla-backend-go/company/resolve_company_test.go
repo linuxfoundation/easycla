@@ -354,7 +354,7 @@ func TestSearchOrganizationByNameAddsNewCompanyNotListed(t *testing.T) {
 		newSFID      = "001QP00001AbCdEfGH"
 		newCompanyID = "5d2c4f1a-7b3e-4c9d-8a6f-1e2d3c4b5a69"
 	)
-	setupResolveHTTP(t, nil, `{"Data":[`+
+	transport := setupResolveHTTP(t, nil, `{"Data":[`+
 		`{"ID":"`+resolveSFID+`","Name":"Acme Corp","Link":"https://acme.invalid","SigningEntityName":["Acme Labs"],"SalesforceB2BAccountID":"b2b-acme"}`+
 		`],"Metadata":{"TotalSize":1,"Offset":0,"PageSize":1000}}`)
 	row := func(externalID string, age time.Duration) *models.Company {
@@ -381,7 +381,8 @@ func TestSearchOrganizationByNameAddsNewCompanyNotListed(t *testing.T) {
 			assert.Equal(t, newSFID, list[1].OrganizationID)
 			assert.Equal(t, "Acme New", list[1].OrganizationName)
 			assert.True(t, *list[1].CclaEnabled)
-			assert.True(t, *list[1].HasB2bAccount)
+			require.NotNil(t, list[1].HasB2bAccount)
+			assert.False(t, *list[1].HasB2bAccount, "a B2B account is only reported once the organization service lists it")
 			if includeSigningEntityName {
 				assert.Equal(t, []string{"Acme New Inc"}, list[1].SigningEntityNames)
 			} else {
@@ -411,6 +412,44 @@ func TestSearchOrganizationByNameAddsNewCompanyNotListed(t *testing.T) {
 			repo.EXPECT().GetCompanyByName(gomock.Any(), "Acme New").Return(nil, errors.New("dynamodb unavailable"))
 		})
 		require.Len(t, list, 1)
+	})
+	t.Run("listed accounts are compared by their canonical id", func(t *testing.T) {
+		const canonical, short, lowered = "001QP00001AbCdEYAV", "001QP00001AbCdE", "001qp00001abcdeyav"
+		listed := func(signingEntities string) string {
+			return `{"Data":[{"ID":"` + canonical + `","Name":"Acme New","SigningEntityName":[` + signingEntities + `],"SalesforceB2BAccountID":"b2b-new"}],"Metadata":{"TotalSize":1,"Offset":0,"PageSize":1000}}`
+		}
+		original := transport.searchBody
+		defer func() { transport.searchBody = original }()
+		for _, tc := range []struct {
+			name                     string
+			rowID, signingEntities   string
+			includeSigningEntityName bool
+			cclaLookups              int
+			wantSigningEntityNames   []string
+		}{
+			{name: "another letter case of the 18-character id", rowID: lowered, cclaLookups: 1},
+			{name: "the 15-character id", rowID: short, cclaLookups: 1},
+			{name: "listed with its signing entities", rowID: canonical, signingEntities: `"Acme New Corp"`, includeSigningEntityName: true, cclaLookups: 1, wantSigningEntityNames: []string{"Acme New Corp"}},
+			{name: "listed without signing entities yet", rowID: canonical, includeSigningEntityName: true, cclaLookups: 2, wantSigningEntityNames: []string{"Acme New Inc"}},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				transport.searchBody = listed(tc.signingEntities)
+				ctrl := gomock.NewController(t)
+				defer ctrl.Finish()
+				repo := mock_company.NewMockIRepository(ctrl)
+				found := row(tc.rowID, 5*time.Minute)
+				repo.EXPECT().GetCompanyByExternalID(gomock.Any(), canonical).Return(found, nil)
+				repo.EXPECT().GetCompanyByName(gomock.Any(), "Acme New").Return(found, nil)
+				repo.EXPECT().IsCCLAEnabledForCompany(gomock.Any(), newCompanyID).Return(false, nil).Times(tc.cclaLookups)
+
+				result, err := newResolveService(repo).SearchOrganizationByName(context.Background(), "Acme New", "", tc.includeSigningEntityName, "")
+
+				require.NoError(t, err)
+				require.Len(t, result.List, 1, "one account, one row")
+				assert.Equal(t, canonical, result.List[0].OrganizationID)
+				assert.Equal(t, tc.wantSigningEntityNames, result.List[0].SigningEntityNames)
+			})
+		}
 	})
 	t.Run("only a pure name search looks up the name", func(t *testing.T) {
 		none := func(*mock_company.MockIRepository) {}

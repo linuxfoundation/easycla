@@ -22,6 +22,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/user"
+	memberService "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
 	organization_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
 	orgServiceModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/models"
@@ -898,7 +899,7 @@ func (s service) newCompanyNotListed(ctx context.Context, orgName string, includ
 		return nil
 	}
 	for _, org := range listed {
-		if sameAccount(org.ID, company.CompanyExternalID) {
+		if sameAccount(org.ID, company.CompanyExternalID) && (!includeSigningEntityName || len(org.SigningEntityName) > 0) {
 			return nil
 		}
 	}
@@ -907,7 +908,7 @@ func (s service) newCompanyNotListed(ctx context.Context, orgName string, includ
 		log.WithFields(f).WithError(err).Warnf("problem checking if ccla is enabled for company: %s", company.CompanyID)
 		return nil
 	}
-	hasB2BAccount := true
+	hasB2BAccount := false
 	org := &models.Org{
 		OrganizationID:   company.CompanyExternalID,
 		OrganizationName: company.CompanyName,
@@ -925,5 +926,10 @@ func isAccountID(id string) bool {
 }
 
 func sameAccount(a, b string) bool {
+	canonicalA, okA := memberService.SFID18(a)
+	canonicalB, okB := memberService.SFID18(b)
+	if okA && okB {
+		return canonicalA == canonicalB
+	}
 	return len(a) >= 15 && len(b) >= 15 && a[:15] == b[:15]
 }
