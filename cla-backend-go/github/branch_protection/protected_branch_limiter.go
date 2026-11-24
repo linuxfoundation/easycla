@@ -7,7 +7,7 @@ import (
 	"context"
 	"fmt"
 
-	githubpkg "github.com/google/go-github/v37/github"
+	githubpkg "github.com/google/go-github/v93/github"
 	"github.com/linuxfoundation/easycla/cla-backend-go/github"
 	"github.com/shurcooL/githubv4"
 	"go.uber.org/ratelimit"

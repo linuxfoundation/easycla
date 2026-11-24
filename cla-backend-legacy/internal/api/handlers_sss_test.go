@@ -8,11 +8,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -62,26 +62,29 @@ func TestNewHandlersSurvivesUnreadableSSS(t *testing.T) {
 			var calls atomic.Int32
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				calls.Add(1)
-				var input struct{ Name string }
+				var input struct{ Names []string }
 				if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 					http.Error(w, err.Error(), http.StatusBadRequest)
 					return
 				}
 				w.Header().Set("Content-Type", "application/x-amz-json-1.1")
-				if mode != "not-provisioned" && (strings.Contains(input.Name, "required") || strings.Contains(input.Name, "enabled")) {
-					if err := json.NewEncoder(w).Encode(map[string]interface{}{
-						"Parameter": map[string]string{"Name": input.Name, "Value": "true", "Type": "String"},
-					}); err != nil {
+				if mode == "unreadable" || r.Header.Get("X-Amz-Target") != "AmazonSSM.GetParameters" {
+					w.WriteHeader(http.StatusBadRequest)
+					if err := json.NewEncoder(w).Encode(map[string]string{"__type": "ThrottlingException", "message": "test SSM error"}); err != nil {
 						t.Error(err)
 					}
 					return
 				}
-				code := "ParameterNotFound"
-				if mode == "unreadable" {
-					code = "ThrottlingException"
+				parameters := []map[string]string{}
+				invalid := []string{}
+				for _, name := range input.Names {
+					if mode != "not-provisioned" && (strings.Contains(name, "required") || strings.Contains(name, "enabled")) {
+						parameters = append(parameters, map[string]string{"Name": name, "Value": "true", "Type": "String"})
+						continue
+					}
+					invalid = append(invalid, name)
 				}
-				w.WriteHeader(http.StatusBadRequest)
-				if err := json.NewEncoder(w).Encode(map[string]string{"__type": code, "message": "test SSM error"}); err != nil {
+				if err := json.NewEncoder(w).Encode(map[string]interface{}{"Parameters": parameters, "InvalidParameters": invalid}); err != nil {
 					t.Error(err)
 				}
 			}))
@@ -110,7 +113,7 @@ func TestNewHandlersSurvivesUnreadableSSS(t *testing.T) {
 			} else if err != nil {
 				t.Fatalf("SSS startup terminated the service: %v\n%s", err, output)
 			}
-			wantCalls := int32(4)
+			wantCalls := int32(1)
 			if mode == "unreadable" {
 				wantCalls = 2
 			}
@@ -121,19 +124,23 @@ func TestNewHandlersSurvivesUnreadableSSS(t *testing.T) {
 	}
 }
 
-type sssParameterFunc func(context.Context, *ssm.GetParameterInput, ...func(*ssm.Options)) (*ssm.GetParameterOutput, error)
+type sssParameterFunc func(context.Context, *ssm.GetParametersInput, ...func(*ssm.Options)) (*ssm.GetParametersOutput, error)
 
-func (f sssParameterFunc) GetParameter(ctx context.Context, in *ssm.GetParameterInput, opts ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
+func (f sssParameterFunc) GetParameters(ctx context.Context, in *ssm.GetParametersInput, opts ...func(*ssm.Options)) (*ssm.GetParametersOutput, error) {
 	return f(ctx, in, opts...)
 }
 
-func sssTestParameter(in *ssm.GetParameterInput, values map[string]string) (*ssm.GetParameterOutput, error) {
-	key := strings.TrimSuffix(strings.TrimPrefix(aws.ToString(in.Name), "cla-sss-"), "-test")
-	value, ok := values[key]
-	if !ok {
-		return nil, fmt.Errorf("wrapped: %w", &ssmTypes.ParameterNotFound{})
+func sssTestParameters(in *ssm.GetParametersInput, values map[string]string) (*ssm.GetParametersOutput, error) {
+	out := &ssm.GetParametersOutput{}
+	for _, name := range in.Names {
+		value, ok := values[strings.TrimSuffix(strings.TrimPrefix(name, "cla-sss-"), "-test")]
+		if !ok {
+			out.InvalidParameters = append(out.InvalidParameters, name)
+			continue
+		}
+		out.Parameters = append(out.Parameters, ssmTypes.Parameter{Name: aws.String(name), Value: aws.String(value)})
 	}
-	return &ssm.GetParameterOutput{Parameter: &ssmTypes.Parameter{Value: &value}}, nil
+	return out, nil
 }
 
 func TestLoadSSSConfig(t *testing.T) {
@@ -162,34 +169,53 @@ func TestLoadSSSConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			calls := 0
-			client := sssParameterFunc(func(_ context.Context, in *ssm.GetParameterInput, _ ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
+			client := sssParameterFunc(func(_ context.Context, in *ssm.GetParametersInput, _ ...func(*ssm.Options)) (*ssm.GetParametersOutput, error) {
 				calls++
-				return sssTestParameter(in, tt.values)
+				return sssTestParameters(in, tt.values)
 			})
 			got, err := loadSSSConfig(context.Background(), client, "test")
-			if err != nil || got != tt.want || calls != 4 {
-				t.Fatalf("config=%+v error=%v calls=%d, want %+v and 4 calls", got, err, calls, tt.want)
+			if err != nil || got != tt.want || calls != 1 {
+				t.Fatalf("config=%+v error=%v calls=%d, want %+v and 1 call", got, err, calls, tt.want)
 			}
 		})
 	}
+	t.Run("names returned with a leading slash", func(t *testing.T) {
+		client := sssParameterFunc(func(_ context.Context, in *ssm.GetParametersInput, _ ...func(*ssm.Options)) (*ssm.GetParametersOutput, error) {
+			out, err := sssTestParameters(in, map[string]string{"required": "true", "enabled": "false"})
+			for i := range out.Parameters {
+				out.Parameters[i].Name = aws.String("/" + aws.ToString(out.Parameters[i].Name))
+			}
+			return out, err
+		})
+		got, err := loadSSSConfig(context.Background(), client, "test")
+		if want := (sssConfiguration{required: true}); err != nil || got != want {
+			t.Fatalf("config=%+v error=%v, want %+v", got, err, want)
+		}
+	})
+	t.Run("unreadable", func(t *testing.T) {
+		readErr := errors.New("SSM throttled")
+		client := sssParameterFunc(func(context.Context, *ssm.GetParametersInput, ...func(*ssm.Options)) (*ssm.GetParametersOutput, error) {
+			return nil, readErr
+		})
+		if _, err := loadSSSConfig(context.Background(), client, "test"); !errors.Is(err, readErr) {
+			t.Fatalf("unreadable configuration became optional: %v", err)
+		}
+	})
 	for _, key := range []string{"base-url", "auth0-audience", "required", "enabled"} {
-		t.Run("unreadable "+key, func(t *testing.T) {
-			readErr := errors.New("SSM throttled")
-			client := sssParameterFunc(func(_ context.Context, in *ssm.GetParameterInput, _ ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
-				if aws.ToString(in.Name) == "cla-sss-"+key+"-test" {
-					return nil, readErr
-				}
-				return sssTestParameter(in, nil)
+		t.Run("incomplete "+key, func(t *testing.T) {
+			client := sssParameterFunc(func(_ context.Context, in *ssm.GetParametersInput, _ ...func(*ssm.Options)) (*ssm.GetParametersOutput, error) {
+				out, err := sssTestParameters(in, nil)
+				out.InvalidParameters = slices.DeleteFunc(out.InvalidParameters, func(name string) bool { return name == "cla-sss-"+key+"-test" })
+				return out, err
 			})
-			_, err := loadSSSConfig(context.Background(), client, "test")
-			if !errors.Is(err, readErr) {
-				t.Fatalf("unreadable %s became optional: %v", key, err)
+			if _, err := loadSSSConfig(context.Background(), client, "test"); err == nil {
+				t.Fatalf("%s was neither delivered nor reported missing and became optional", key)
 			}
 		})
 	}
 	t.Run("incomplete success is not absence", func(t *testing.T) {
-		client := sssParameterFunc(func(context.Context, *ssm.GetParameterInput, ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
-			return &ssm.GetParameterOutput{}, nil
+		client := sssParameterFunc(func(context.Context, *ssm.GetParametersInput, ...func(*ssm.Options)) (*ssm.GetParametersOutput, error) {
+			return &ssm.GetParametersOutput{}, nil
 		})
 		if _, err := loadSSSConfig(context.Background(), client, "test"); err == nil {
 			t.Fatal("incomplete SSM response was treated as an absent parameter")
@@ -201,12 +227,12 @@ func TestSSSConfigRecovery(t *testing.T) {
 	readErr := errors.New("SSM throttled")
 	calls := 0
 	h := &Handlers{sssConfigStage: "test"}
-	h.sssConfigClient = sssParameterFunc(func(_ context.Context, in *ssm.GetParameterInput, _ ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
+	h.sssConfigClient = sssParameterFunc(func(_ context.Context, in *ssm.GetParametersInput, _ ...func(*ssm.Options)) (*ssm.GetParametersOutput, error) {
 		calls++
 		if calls <= 2 {
 			return nil, readErr
 		}
-		return sssTestParameter(in, map[string]string{"required": "true", "enabled": "false"})
+		return sssTestParameters(in, map[string]string{"required": "true", "enabled": "false"})
 	})
 	if err := h.initializeSSS(context.Background()); !errors.Is(err, readErr) || !h.sssRequired || !h.sssEnabled {
 		t.Fatalf("startup failure must retain a required, enabled pending policy: %v", err)
@@ -245,7 +271,7 @@ func TestSSSConfigRecovery(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	if calls != 6 || h.sssConfigErr != nil || !h.sssRequired || h.sssEnabled {
+	if calls != 3 || h.sssConfigErr != nil || !h.sssRequired || h.sssEnabled {
 		t.Fatalf("configuration must recover once, without racing or further reads: calls=%d pending=%v", calls, h.sssConfigErr)
 	}
 }
@@ -261,12 +287,12 @@ func TestSSSRecoveryRetainsRequiredPolicy(t *testing.T) {
 		sssConfigErr:   errors.New("startup SSM error"),
 		sssRequired:    true,
 		sssEnabled:     true,
-		sssConfigClient: sssParameterFunc(func(ctx context.Context, in *ssm.GetParameterInput, _ ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
+		sssConfigClient: sssParameterFunc(func(ctx context.Context, in *ssm.GetParametersInput, _ ...func(*ssm.Options)) (*ssm.GetParametersOutput, error) {
 			calls++
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			return sssTestParameter(in, values)
+			return sssTestParameters(in, values)
 		}),
 	}
 	canceled, cancel := context.WithCancel(context.Background())
@@ -297,8 +323,8 @@ func TestSSSRecoveryRetainsRequiredPolicy(t *testing.T) {
 	if h.sssClient == nil || h.sssConfigErr != nil || !h.sssRequired || !h.sssEnabled {
 		t.Fatal("required client was not recovered")
 	}
-	if calls != previousCalls+4 {
-		t.Fatalf("expired retry window must reload exactly once: calls=%d, want %d", calls, previousCalls+4)
+	if calls != previousCalls+1 {
+		t.Fatalf("expired retry window must reload exactly once: calls=%d, want %d", calls, previousCalls+1)
 	}
 	if _, err := h.checkCompanyCompliance(context.Background(), nil); err == nil || !strings.Contains(err.Error(), "external ID") {
 		t.Fatalf("recovered required screening must still enforce its prerequisites: %v", err)

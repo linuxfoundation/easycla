@@ -12,7 +12,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/sirupsen/logrus"
 
-	"github.com/google/go-github/v37/github"
+	"github.com/google/go-github/v93/github"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 )
 

@@ -14,7 +14,7 @@ import (
 	v1Repositories "github.com/linuxfoundation/easycla/cla-backend-go/repositories"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
-	gogithub "github.com/google/go-github/v37/github"
+	gogithub "github.com/google/go-github/v93/github"
 )
 
 // POST /v4/project/{projectSFID}/github/repositories only uses organizations the project may list
@@ -101,7 +101,7 @@ func TestEntitledOrganizationPicksTheEntitledRecord(t *testing.T) {
 // the repository fetched by id must belong to the entitled organization (case-insensitively)
 func TestRepositoryOwnedBy(t *testing.T) {
 	repo := func(owner string) *gogithub.Repository {
-		return &gogithub.Repository{FullName: gogithub.String(owner + "/repo"), Owner: &gogithub.User{Login: gogithub.String(owner)}}
+		return &gogithub.Repository{FullName: utils.StringRef(owner + "/repo"), Owner: &gogithub.User{Login: utils.StringRef(owner)}}
 	}
 	assert.NoError(t, repositoryOwnedBy(repo("Acme-Org"), "acme-org"))
 	assert.ErrorContains(t, repositoryOwnedBy(repo("other-org"), "acme-org"), `belongs to "other-org"`)

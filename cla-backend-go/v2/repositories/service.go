@@ -27,7 +27,7 @@ import (
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 
-	gogithub "github.com/google/go-github/v37/github"
+	gogithub "github.com/google/go-github/v93/github"
 	"github.com/linuxfoundation/easycla/cla-backend-go/github"
 
 	"github.com/aws/aws-sdk-go/aws"

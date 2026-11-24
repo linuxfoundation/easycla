@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-openapi/strfmt"
 
@@ -21,6 +22,7 @@ import (
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/user"
+	memberService "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
 	organization_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
 	orgServiceModels "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/models"
@@ -850,6 +852,11 @@ func (s service) SearchOrganizationByName(ctx context.Context, orgName string, w
 	for orgResult := range resultsChannel {
 		result.List = append(result.List, orgResult)
 	}
+	if websiteName == "" && filter == "" {
+		if added := s.newCompanyNotListed(ctx, orgName, includeSigningEntityName, orgs); added != nil {
+			result.List = append(result.List, added)
+		}
+	}
 
 	// Sort the results
 	sort.Slice(result.List, func(i, j int) bool {
@@ -863,4 +870,75 @@ func (s service) SearchOrganizationByName(ctx context.Context, orgName string, w
 	})
 
 	return result, nil
+}
+
+// newCompanyWindow bounds how long a company row counts as new for the organization search (lfx-self-serve#3795)
+const newCompanyWindow = 24 * time.Hour
+
+// newCompanyNotListed returns the company created under exactly this name while the organization service does not list its account yet
+func (s service) newCompanyNotListed(ctx context.Context, orgName string, includeSigningEntityName bool, listed []*orgServiceModels.Organization) *models.Org {
+	f := logrus.Fields{
+		"functionName":   "company.service.newCompanyNotListed",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"orgName":        orgName,
+	}
+	name := strings.TrimSpace(orgName)
+	if name == "" {
+		return nil
+	}
+	company, err := s.repo.GetCompanyByName(ctx, name)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("problem looking up the company by name")
+		return nil
+	}
+	if company == nil || !isAccountID(company.CompanyExternalID) || time.Since(time.Time(company.Created)) > newCompanyWindow {
+		return nil
+	}
+	signingEntityName := strings.TrimSpace(company.SigningEntityName)
+	if includeSigningEntityName && signingEntityName == "" {
+		return nil
+	}
+	var upstream *orgServiceModels.Organization
+	for _, org := range listed {
+		if !sameAccount(org.ID, company.CompanyExternalID) {
+			continue
+		}
+		if !includeSigningEntityName || len(org.SigningEntityName) > 0 {
+			return nil
+		}
+		upstream = org
+	}
+	cclaEnabled, err := s.IsCCLAEnabledForCompany(ctx, company.CompanyID)
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("problem checking if ccla is enabled for company: %s", company.CompanyID)
+		return nil
+	}
+	hasB2BAccount := false
+	org := &models.Org{
+		OrganizationID:   company.CompanyExternalID,
+		OrganizationName: company.CompanyName,
+		CclaEnabled:      &cclaEnabled,
+		HasB2bAccount:    &hasB2BAccount,
+	}
+	if upstream != nil {
+		hasB2BAccount = strings.TrimSpace(upstream.SalesforceB2BAccountID) != ""
+		org.OrganizationID, org.OrganizationName, org.OrganizationWebsite = upstream.ID, upstream.Name, upstream.Link
+	}
+	if includeSigningEntityName {
+		org.SigningEntityNames = []string{signingEntityName}
+	}
+	return org
+}
+
+func isAccountID(id string) bool {
+	return (len(id) == 15 || len(id) == 18) && strings.HasPrefix(id, "001") && utils.IsSalesForceID(id)
+}
+
+func sameAccount(a, b string) bool {
+	canonicalA, okA := memberService.SFID18(a)
+	canonicalB, okB := memberService.SFID18(b)
+	if okA && okB {
+		return canonicalA == canonicalB
+	}
+	return len(a) >= 15 && len(b) >= 15 && a[:15] == b[:15]
 }
