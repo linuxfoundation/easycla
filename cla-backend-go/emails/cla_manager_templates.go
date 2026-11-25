@@ -66,7 +66,7 @@ func RenderRequestAccessToCLAManagersTemplate(svc EmailTemplateService, claGroup
 	if err != nil {
 		return "", err
 	}
-	params.CLAGroupTemplateParams = claGroupParams
+	params.CLAGroupTemplateParams = claGroupParams.forCLAGroup(params.CLAGroupTemplateParams)
 
 	return RenderTemplate(claGroupModelVersion, RequestAccessToCLAManagersTemplateName, RequestAccessToCLAManagersTemplate, params)
 }
@@ -101,7 +101,7 @@ func RenderRequestApprovedToCLAManagersTemplate(svc EmailTemplateService, claGro
 	if err != nil {
 		return "", err
 	}
-	params.CLAGroupTemplateParams = claGroupParams
+	params.CLAGroupTemplateParams = claGroupParams.forCLAGroup(params.CLAGroupTemplateParams)
 
 	return RenderTemplate(claGroupModelVersion, RequestApprovedToCLAManagersTemplateName, RequestApprovedToCLAManagersTemplate, params)
 }
@@ -133,7 +133,7 @@ func RenderRequestApprovedToRequesterTemplate(svc EmailTemplateService, claGroup
 	if err != nil {
 		return "", err
 	}
-	params.CLAGroupTemplateParams = claGroupParams
+	params.CLAGroupTemplateParams = claGroupParams.forCLAGroup(params.CLAGroupTemplateParams)
 
 	return RenderTemplate(claGroupModelVersion, RequestApprovedToRequesterTemplateName, RequestApprovedToRequesterTemplate, params)
 }
@@ -167,7 +167,7 @@ func RenderRequestDeniedToCLAManagersTemplate(svc EmailTemplateService, claGroup
 	if err != nil {
 		return "", err
 	}
-	params.CLAGroupTemplateParams = claGroupParams
+	params.CLAGroupTemplateParams = claGroupParams.forCLAGroup(params.CLAGroupTemplateParams)
 
 	return RenderTemplate(claGroupModelVersion, RequestDeniedToCLAManagersTemplateName, RequestDeniedToCLAManagersTemplate, params)
 }
@@ -196,7 +196,7 @@ func RenderRequestDeniedToRequesterTemplate(svc EmailTemplateService, claGroupMo
 	if err != nil {
 		return "", err
 	}
-	params.CLAGroupTemplateParams = claGroupParams
+	params.CLAGroupTemplateParams = claGroupParams.forCLAGroup(params.CLAGroupTemplateParams)
 
 	return RenderTemplate(claGroupModelVersion, RequestDeniedToRequesterTemplateName, RequestDeniedToRequesterTemplate, params)
 }
@@ -228,7 +228,7 @@ func RenderClaManagerAddedEToUserTemplate(svc EmailTemplateService, claGroupMode
 	if err != nil {
 		return "", err
 	}
-	params.CLAGroupTemplateParams = claGroupParams
+	params.CLAGroupTemplateParams = claGroupParams.forCLAGroup(params.CLAGroupTemplateParams)
 
 	return RenderTemplate(claGroupModelVersion, ClaManagerAddedEToUserTemplateName, ClaManagerAddedEToUserTemplate, params)
 }

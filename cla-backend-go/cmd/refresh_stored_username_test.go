@@ -18,6 +18,10 @@ type stubUsersService struct {
 	updates    map[string]interface{}
 }
 
+func (s *stubUsersService) AddUserEmails(string, []string) (*models.User, error) {
+	panic("unexpected AddUserEmails call")
+}
+
 func (s *stubUsersService) UpdateUser(userID string, updates map[string]interface{}) (*models.User, error) {
 	s.called = true
 	s.calledWith = userID

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -176,4 +177,71 @@ func TestRewriteRestoresAMovingGrantWhoseDeleteAnswerIsLost(t *testing.T) {
 	assert.Contains(t, targetGrants(t, fx), "frank:contact:"+targetSFID)
 	assert.Empty(t, mustListOrgGrants(t, fx, lfID))
 	assert.Empty(t, droppedReport(t, opts.OutDir)[1:])
+}
+
+func TestRewriteReportsTheGrantsOfAUserWhoIsGoneFromThePlatform(t *testing.T) {
+	fx, mapping, statePath := rewriteFixture(t)
+	fx.platform.addGrant(lfID, "gone", "role-cla-manager", "proj-1")
+	fx.platform.addGrant(lfID, "gone", "role-contact", "")
+	fx.platform.createHook = func(username, _, _ string) error {
+		if username == "gone" {
+			return errors.New("[POST /v1/orgs/{salesforceID}/scopes][400] createOrgUsrRoleScopesBadRequest  &{Code:400 Message:organization-service - user does not exist on platform, please invite the user via ACS invite endpoint}")
+		}
+		return nil
+	}
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}, OutDir: t.TempDir()}
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, sum.Rewritten)
+	assert.Zero(t, sum.Failed, "one user who is gone does not stop the organization")
+	assert.Empty(t, mustListOrgGrants(t, fx, lfID))
+	for _, grant := range targetGrants(t, fx) {
+		assert.NotContains(t, grant, "gone:")
+	}
+	assert.ElementsMatch(t, [][]string{
+		{lfID, targetSFID, "gone", "cla-manager", objectTypeProjectOrganization, "proj-1|" + lfID},
+		{lfID, targetSFID, "gone", "contact", objectTypeOrganization, lfID},
+	}, droppedReport(t, opts.OutDir)[1:], "both grants of that user are reported")
+}
+
+func TestRewriteReportsALateUncopiedGrantWhoseDeleteAnswerIsLost(t *testing.T) {
+	fx, mapping, statePath := rewriteFixture(t)
+	added := false
+	fx.platform.listHook = func(orgID string) {
+		journal, readErr := os.ReadFile(filepath.Clean(statePath))
+		if readErr != nil || orgID != lfID || added || !strings.Contains(string(journal), StepEvents) {
+			return
+		}
+		added = true
+		fx.platform.addGrantLocked(lfID, "frank", "role-company-admin", "")
+		for _, g := range fx.platform.grants[lfID] {
+			if g.Username == "frank" {
+				fx.platform.lostDelete = g.GrantID
+			}
+		}
+	}
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}, OutDir: t.TempDir()}
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+
+	require.Error(t, err)
+	assert.Equal(t, 1, sum.Failed)
+	require.True(t, added, "the grant appeared after the copy step")
+
+	fx.platform.listHook, fx.platform.lostDelete = nil, ""
+	plan, err = BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	sum, err = Execute(context.Background(), fx.deps(), opts, plan)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, sum.Rewritten)
+	report := droppedReport(t, opts.OutDir)[1:]
+	require.Len(t, report, 1, "the grant that was deleted although the call failed is still reported")
+	assert.Equal(t, "company-admin", report[0][3])
 }

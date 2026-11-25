@@ -61,6 +61,7 @@ type fakeUsers struct {
 	byEmail          map[string]*v1Models.User
 	created          *v1Models.User
 	updates          map[string]interface{}
+	addedEmails      []string
 	createErr        error
 	notFound         func() error
 	lookupErr        error
@@ -99,6 +100,11 @@ func (f *fakeUsers) CreateUser(userModel *v1Models.User, _ *user.CLAUser) (*v1Mo
 
 func (f *fakeUsers) UpdateUser(userID string, updates map[string]interface{}) (*v1Models.User, error) {
 	f.updates = updates
+	return &v1Models.User{UserID: userID}, nil
+}
+
+func (f *fakeUsers) AddUserEmails(userID string, emails []string) (*v1Models.User, error) {
+	f.addedEmails = emails
 	return &v1Models.User{UserID: userID}, nil
 }
 

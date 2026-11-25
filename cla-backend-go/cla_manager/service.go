@@ -473,7 +473,8 @@ func (s service) sendClaManagerAddedEmailToUser(emailSvc emails.EmailTemplateSer
 	subject := fmt.Sprintf("EasyCLA: Added as CLA Manager for Project :%s", claGroupModel.ProjectName)
 	recipients := []string{emailParams.RecipientAddress}
 	body, err := emails.RenderClaManagerAddedEToUserTemplate(emailSvc, claGroupModel.Version, projectSFID, emails.ClaManagerAddedEToUserTemplateParams{
-		CommonEmailParams: emailParams,
+		CommonEmailParams:      emailParams,
+		CLAGroupTemplateParams: emails.CLAGroupTemplateParams{CLAGroupID: claGroupModel.ProjectID, CLAGroupName: claGroupModel.ProjectName},
 	})
 	if err != nil {
 		log.Warnf("email template render : %s failed : %v", emails.ClaManagerAddedEToUserTemplateName, err)
