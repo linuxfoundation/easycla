@@ -58,7 +58,7 @@ var columnLegend = [][]string{
 	// audit.csv
 	with("audit.csv", colCompanyID), with("audit.csv", colName), with("audit.csv", colSigning), with("audit.csv", colExternalID), with("audit.csv", colShape),
 	with("audit.csv", colActive), with("audit.csv", colCCLACount),
-	with("audit.csv", []string{"ecla_count", srcSignatures, colECLACount[2], colECLACount[3] + "; filled only for active rows that are manual, duplicate or unresolvable"}),
+	with("audit.csv", []string{"ecla_count", srcSignatures, colECLACount[2], colECLACount[3] + "; filled for rows without an active CCLA and for active rows that are manual, duplicate or unresolvable"}),
 	with("audit.csv", colOrgStatus), with("audit.csv", colWebsite),
 	with("audit.csv", []string{"duplicate_sfid_group", srcDerived, "rows sharing one company_external_id", "true = another row carries the same company_external_id with the same or an empty signing entity name (exact-id duplicate set)"}),
 	with("audit.csv", colRoute), with("audit.csv", colReason),
@@ -66,6 +66,7 @@ var columnLegend = [][]string{
 	with("audit.csv", []string{"acs_roles", srcACS, "list grants scoped to company_external_id (organization and project|organization scopes)", "role=count;... (e.g. cla-manager, cla-signatory, cla-manager-designee, contact, contributor, company-admin, viewer); copied to the target on a rewrite (an Account that existed before receives only cla-manager, cla-manager-designee, cla-signatory, contributor and contact, the others go to dropped_grants.csv), then deleted on the old id; filled for eligible 001/lf groups and duplicate-set rows; err = listing failed"}),
 	with("audit.csv", colSuggested),
 	with("audit.csv", []string{"last_cla_activity", srcSignatures, opCCLAQuery + "; signed rows of GSI signature-user-ccla-company-index", "YYYY-MM-DD (UTC) of the newest active CCLA or signed employee acknowledgement (ECLA) of this company row, each dated by its first of signed_on, user_docusign_date_signed, date_created, approx_date_created, date_modified; empty = no active CCLA, err = the lookup failed"}),
+	with("audit.csv", []string{"ccla_records", srcSignatures, "query signature_type=ccla, signature_reference_type=company, signature_reference_id=company_id, any state", "CCLA signature rows of this company_id in any state; with active_ccla=false it tells a company with an unsigned or invalidated CCLA (> 0) from one without any (0); -1 = listing failed"}),
 	// unresolvable.csv
 	with("unresolvable.csv", colCompanyID), with("unresolvable.csv", colName), with("unresolvable.csv", colSigning), with("unresolvable.csv", colExternalID), with("unresolvable.csv", colShape),
 	with("unresolvable.csv", colCCLACount), with("unresolvable.csv", colECLACount), with("unresolvable.csv", colOrgStatus), with("unresolvable.csv", colReason),

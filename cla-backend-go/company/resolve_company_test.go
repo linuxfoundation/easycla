@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -347,6 +348,41 @@ func TestSearchOrganizationByNameDoesNotCreate(t *testing.T) {
 			assert.True(t, strings.HasPrefix(call, "GET "), "the search must only read from the organization service: %s", call)
 		}
 	}
+}
+
+func TestSearchOrganizationByNameBoundsParallelLookups(t *testing.T) {
+	const (
+		limit  = 32
+		listed = 4 * limit
+	)
+	rows := make([]string, 0, listed)
+	for i := 0; i < listed; i++ {
+		rows = append(rows, fmt.Sprintf(`{"ID":"001QP%013d","Name":"Acme %03d","Link":"https://acme%d.invalid"}`, i, i, i))
+	}
+	setupResolveHTTP(t, nil, `{"Data":[`+strings.Join(rows, ",")+`],"Metadata":{"TotalSize":`+fmt.Sprint(listed)+`,"Offset":0,"PageSize":1000}}`)
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	repo := mock_company.NewMockIRepository(ctrl)
+	var running, peak atomic.Int32
+	repo.EXPECT().GetCompanyByExternalID(gomock.Any(), gomock.Any()).Times(listed).DoAndReturn(func(_ context.Context, id string) (*models.Company, error) {
+		now := running.Add(1)
+		for {
+			seen := peak.Load()
+			if now <= seen || peak.CompareAndSwap(seen, now) {
+				break
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+		running.Add(-1)
+		return nil, &utils.CompanyNotFound{CompanySFID: id}
+	})
+	repo.EXPECT().GetCompanyByName(gomock.Any(), "Acme").Return(nil, nil)
+
+	result, err := newResolveService(repo).SearchOrganizationByName(context.Background(), "Acme", "", false, "")
+
+	require.NoError(t, err)
+	assert.Len(t, result.List, listed)
+	assert.LessOrEqual(t, int(peak.Load()), limit)
 }
 
 func TestSearchOrganizationByNameAddsNewCompanyNotListed(t *testing.T) {

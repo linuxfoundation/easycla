@@ -619,10 +619,11 @@ func TestAuditLastCLAActivity(t *testing.T) {
 	_, err := Audit(context.Background(), deps, Options{Stage: "dev", OutDir: dir})
 	require.NoError(t, err)
 	rows := readCSV(t, filepath.Join(dir, "audit.csv"))
-	require.Equal(t, "last_cla_activity", rows[0][len(rows[0])-1])
+	col := len(rows[0]) - 2
+	require.Equal(t, "last_cla_activity", rows[0][col])
 	last := map[string]string{}
 	for _, r := range rows[1:] {
-		last[r[0]] = r[len(r)-1]
+		last[r[0]] = r[col]
 	}
 	assert.Equal(t, map[string]string{"c-ecla": "2026-05-03", "c-ccla": "2025-06-07", "c-err": "err", "c-inactive": "", "c-docusign": "2022-03-10"}, last,
 		"a CCLA without signed_on counts by its DocuSign completion, as a UTC day")
@@ -633,7 +634,7 @@ func TestAuditLastCLAActivity(t *testing.T) {
 	require.NoError(t, err)
 	for _, r := range readCSV(t, filepath.Join(dir, "audit.csv"))[1:] {
 		if r[0] == "c-ecla" {
-			assert.Equal(t, "2024-01-02", r[len(r)-1], "without the acknowledgement dates the CCLA date stands")
+			assert.Equal(t, "2024-01-02", r[col], "without the acknowledgement dates the CCLA date stands")
 		}
 	}
 }
@@ -721,4 +722,42 @@ func TestPlanSuggestedAccountFromInventory(t *testing.T) {
 	assert.Equal(t, newSFID+" Acme Inc. [inventory:name]", groupByKey(plan.Groups, "lf-acme-legacy-01").Suggested)
 	assert.Equal(t, "", groupByKey(plan.Groups, liveSFID2).Suggested)
 	assert.Empty(t, fx.platform.registered)
+}
+
+// ccla_records and ecla_count split the companies without an active CCLA (lfx-self-serve#5083).
+func TestAuditCountsRecordsOfCompaniesWithoutAnActiveCCLA(t *testing.T) {
+	fx := newFixture()
+	fx.company("c-active", "Acme", "", liveSFID, "cg-1")
+	fx.company("c-unsigned", "Beta", "", "lf-unsigned")
+	fx.company("c-acks", "Gamma", "", "lf-acks")
+	fx.company("c-empty", "Delta", "", "lf-empty")
+	unsigned := *fx.sigs.items[0]
+	unsigned.SignatureReferenceID, unsigned.SignatureSigned = "c-unsigned", false
+	invalidated := unsigned
+	invalidated.SignatureSigned, invalidated.SignatureApproved = true, false
+	fx.sigs.items = append(fx.sigs.items, &unsigned, &invalidated)
+	fx.platform.sfAccounts[liveSFID] = true
+	deps := fx.deps()
+	deps.ECLAs = eclaCounterFunc(func(_ context.Context, companyID string) (int, error) {
+		return map[string]int{"c-active": 5, "c-acks": 3}[companyID], nil
+	})
+	dir := t.TempDir()
+
+	_, err := Audit(context.Background(), deps, Options{Stage: "dev", OutDir: dir})
+
+	require.NoError(t, err)
+	rows := readCSV(t, filepath.Join(dir, "audit.csv"))
+	require.Equal(t, "ccla_records", rows[0][len(rows[0])-1])
+	require.Equal(t, []string{"active_ccla", "ccla_count", "ecla_count"}, rows[0][5:8])
+	got := map[string][]string{}
+	for _, r := range rows[1:] {
+		got[r[0]] = []string{r[5], r[6], r[7], r[len(r)-1]}
+	}
+	got["c-active"][2] = ""
+	assert.Equal(t, map[string][]string{
+		"c-active":   {"true", "1", "", "1"},
+		"c-unsigned": {"false", "0", "0", "2"},
+		"c-acks":     {"false", "0", "3", "0"},
+		"c-empty":    {"false", "0", "0", "0"},
+	}, got, "an unsigned or invalidated CCLA, acknowledgements only, or nothing")
 }
