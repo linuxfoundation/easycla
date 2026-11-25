@@ -381,10 +381,6 @@ func Configure(api *operations.ClaAPI, service IService, usersService users.Serv
 			log.WithFields(f).Debugf("companyName shorter than 3 characters; returning empty result")
 			return organization.NewSearchOrganizationOK().WithXRequestID(reqID).WithPayload(&models.OrgList{List: []*models.Org{}})
 		}
-		if shortWebsiteSearch(params) {
-			log.WithFields(f).Debugf("websiteName shorter than 3 characters; returning empty result")
-			return organization.NewSearchOrganizationOK().WithXRequestID(reqID).WithPayload(&models.OrgList{List: []*models.Org{}})
-		}
 
 		companyName, websiteName, filter := validateParams(params)
 
@@ -482,11 +478,6 @@ func companyInviteDecisionAllowed(ctx context.Context, service IService, company
 		return nil
 	}
 	return &companyACLError{message: fmt.Sprintf("EasyCLA - 403 Forbidden - access request %s does not belong to company %s", requestID, companyID)}
-}
-
-// shortWebsiteSearch reports a search by a website alone that is too short to narrow the result
-func shortWebsiteSearch(params organization.SearchOrganizationParams) bool {
-	return params.CompanyName == nil && params.DollarFilter == nil && params.WebsiteName != nil && len(strings.TrimSpace(*params.WebsiteName)) < 3
 }
 
 func validateParams(params organization.SearchOrganizationParams) (string, string, string) {

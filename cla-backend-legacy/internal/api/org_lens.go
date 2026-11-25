@@ -21,27 +21,35 @@ import (
 var orgLensAccountID = regexp.MustCompile(`^001[A-Za-z0-9]{15}$`)
 
 var (
-	orgLensBaseOnce  sync.Once
-	orgLensBaseValue string
+	orgLensBaseMu     sync.Mutex
+	orgLensBaseLoaded bool
+	orgLensBaseValue  string
 )
 
-// orgLensBase reads the optional setting cla-org-lens-base-{stage} once; unset or unreadable keeps the Corporate Console link
+// orgLensBase reads the optional setting cla-org-lens-base-{stage}; a set or an absent setting is kept for the process,
+// an unreadable one keeps the Corporate Console link for this e-mail and is read again for the next one
 func orgLensBase(ctx context.Context) string {
-	orgLensBaseOnce.Do(func() {
-		stage := store.StageFromEnv()
-		if stage == "" {
-			return
+	orgLensBaseMu.Lock()
+	defer orgLensBaseMu.Unlock()
+	if orgLensBaseLoaded {
+		return orgLensBaseValue
+	}
+	stage := store.StageFromEnv()
+	if stage == "" {
+		orgLensBaseLoaded = true
+		return ""
+	}
+	value, err := config.GetSSMParameter(ctx, "cla-org-lens-base-"+stage)
+	if err != nil {
+		var notFound *ssmtypes.ParameterNotFound
+		if errors.As(err, &notFound) {
+			orgLensBaseLoaded = true
+		} else {
+			logging.Warnf("unable to read cla-org-lens-base-%s, this e-mail keeps the Corporate Console link: %v", stage, err)
 		}
-		value, err := config.GetSSMParameter(ctx, "cla-org-lens-base-"+stage)
-		if err != nil {
-			var notFound *ssmtypes.ParameterNotFound
-			if !errors.As(err, &notFound) {
-				logging.Warnf("unable to read cla-org-lens-base-%s, e-mails keep the Corporate Console link: %v", stage, err)
-			}
-			return
-		}
-		orgLensBaseValue = strings.TrimSpace(value)
-	})
+		return ""
+	}
+	orgLensBaseValue, orgLensBaseLoaded = strings.TrimSpace(value), true
 	return orgLensBaseValue
 }
 

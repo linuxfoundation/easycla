@@ -413,6 +413,31 @@ func TestSearchOrganizationByNameStopsAtTheResultLimit(t *testing.T) {
 	assert.Equal(t, []string{"offset=0 pageSize=1000"}, transport.searches, "a broad search reads one page of the organization service")
 }
 
+func TestSearchOrganizationByNameReadsTheAccountOfANewCompanyBeyondTheLimit(t *testing.T) {
+	const (
+		newSFID      = "001QP00001AbCdEfGH"
+		newCompanyID = "5d2c4f1a-7b3e-4c9d-8a6f-1e2d3c4b5a69"
+	)
+	setupResolveHTTP(t, map[string]string{newSFID: `{"ID":"` + newSFID + `","Name":"Acme New","Link":"https://acmenew.invalid","SalesforceB2BAccountID":"b2b-new"}`},
+		`{"Data":[{"ID":"`+resolveSFID+`","Name":"Acme Corp","Link":"https://acme.invalid"}],"Metadata":{"TotalSize":2500,"Offset":0,"PageSize":1000}}`)
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	repo := mock_company.NewMockIRepository(ctrl)
+	repo.EXPECT().GetCompanyByExternalID(gomock.Any(), resolveSFID).Return(nil, &utils.CompanyNotFound{CompanySFID: resolveSFID})
+	repo.EXPECT().GetCompanyByName(gomock.Any(), "Acme New").Return(&models.Company{CompanyID: newCompanyID, CompanyExternalID: newSFID, CompanyName: "Acme New", Created: strfmt.DateTime(time.Now().Add(-5 * time.Minute))}, nil)
+	repo.EXPECT().IsCCLAEnabledForCompany(gomock.Any(), newCompanyID).Return(false, nil)
+
+	result, err := newResolveService(repo).SearchOrganizationByName(context.Background(), "Acme New", "", false, "")
+
+	require.NoError(t, err)
+	require.Len(t, result.List, 2)
+	added := result.List[1]
+	assert.Equal(t, newSFID, added.OrganizationID)
+	assert.Equal(t, "https://acmenew.invalid", added.OrganizationWebsite, "the row of a cut search carries what the organization service knows")
+	require.NotNil(t, added.HasB2bAccount)
+	assert.True(t, *added.HasB2bAccount)
+}
+
 func TestSearchOrganizationByNameAddsNewCompanyNotListed(t *testing.T) {
 	const (
 		newSFID      = "001QP00001AbCdEfGH"

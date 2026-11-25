@@ -137,7 +137,7 @@ func TestCLAManagerEmailsKeepTheCLAGroupOfTheSender(t *testing.T) {
 	const own = "00000000-0000-4000-8000-00000000000a"
 	svc := &documentSignedTemplateServiceStub{projectParams: lensTestCLAGroup(lensTestBase)}
 	ownPage := lensTestBase + "/org/" + lensTestCompany + "/easycla/" + own
-	group := CLAGroupTemplateParams{CLAGroupID: own}
+	group := CLAGroupTemplateParams{CLAGroupID: own, CLAGroupName: "Own Group"}
 	renders := map[string]func() (string, error){
 		"request access": func() (string, error) {
 			return RenderRequestAccessToCLAManagersTemplate(svc, utils.V2, "a0P000000000001AAA", RequestAccessToCLAManagersTemplateParams{CommonEmailParams: lensTestCommon(), CLAGroupTemplateParams: group})
@@ -153,9 +153,9 @@ func TestCLAManagerEmailsKeepTheCLAGroupOfTheSender(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			body, err := render()
 			assert.NoError(t, err)
-			assert.Contains(t, body, `<a href="`+ownPage+`"`, "the link goes to the CLA Group of the request")
+			assert.Contains(t, body, `<a href="`+ownPage+`" target="_blank">Own Group in the Organization lens</a>`, "the link and its name are the CLA Group of the request")
 			assert.NotContains(t, body, lensTestCLAGroupID, "the CLA Group of the project lookup is not used for the link")
-			assert.Contains(t, body, "Example Group", "the rest still comes from the lookup")
+			assert.NotContains(t, body, "Example Group", "the name of another CLA Group is not shown")
 		})
 	}
 	t.Run("a sender that names no CLA Group keeps the lookup", func(t *testing.T) {

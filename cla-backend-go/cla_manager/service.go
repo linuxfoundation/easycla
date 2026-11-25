@@ -474,7 +474,7 @@ func (s service) sendClaManagerAddedEmailToUser(emailSvc emails.EmailTemplateSer
 	recipients := []string{emailParams.RecipientAddress}
 	body, err := emails.RenderClaManagerAddedEToUserTemplate(emailSvc, claGroupModel.Version, projectSFID, emails.ClaManagerAddedEToUserTemplateParams{
 		CommonEmailParams:      emailParams,
-		CLAGroupTemplateParams: emails.CLAGroupTemplateParams{CLAGroupID: claGroupModel.ProjectID},
+		CLAGroupTemplateParams: emails.CLAGroupTemplateParams{CLAGroupID: claGroupModel.ProjectID, CLAGroupName: claGroupModel.ProjectName},
 	})
 	if err != nil {
 		log.Warnf("email template render : %s failed : %v", emails.ClaManagerAddedEToUserTemplateName, err)

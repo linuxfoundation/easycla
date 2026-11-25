@@ -211,7 +211,18 @@ func (s service) SearchUsers(searchField string, searchTerm string, fullMatch bo
 
 // AddUserEmails adds the addresses to the e-mail set of the user in one atomic update
 func (s service) AddUserEmails(userID string, emails []string) (*models.User, error) {
-	return s.repo.AddUserEmails(userID, emails)
+	userModel, err := s.repo.AddUserEmails(userID, emails)
+	if err != nil {
+		return nil, err
+	}
+	if len(emails) > 0 {
+		s.events.LogEvent(&events.LogEventArgs{
+			EventType: events.UserUpdated,
+			UserID:    userID,
+			EventData: &events.UserUpdatedEventData{},
+		})
+	}
+	return userModel, nil
 }
 
 // UpdateUserCompanyID updates the user's company ID

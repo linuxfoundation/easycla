@@ -865,7 +865,7 @@ func (s service) SearchOrganizationByName(ctx context.Context, orgName string, w
 		result.List = append(result.List, orgResult)
 	}
 	if websiteName == "" && filter == "" {
-		if added := s.newCompanyNotListed(ctx, orgName, includeSigningEntityName, orgs); added != nil {
+		if added := s.newCompanyNotListed(ctx, orgName, includeSigningEntityName, orgs, more); added != nil {
 			result.List = append(result.List, added)
 		}
 	}
@@ -888,7 +888,7 @@ func (s service) SearchOrganizationByName(ctx context.Context, orgName string, w
 const newCompanyWindow = 24 * time.Hour
 
 // newCompanyNotListed returns the company created under exactly this name while the organization service does not list its account yet
-func (s service) newCompanyNotListed(ctx context.Context, orgName string, includeSigningEntityName bool, listed []*orgServiceModels.Organization) *models.Org {
+func (s service) newCompanyNotListed(ctx context.Context, orgName string, includeSigningEntityName bool, listed []*orgServiceModels.Organization, cut bool) *models.Org {
 	f := logrus.Fields{
 		"functionName":   "company.service.newCompanyNotListed",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -919,6 +919,11 @@ func (s service) newCompanyNotListed(ctx context.Context, orgName string, includ
 			return nil
 		}
 		upstream = org
+	}
+	if upstream == nil && cut {
+		if org, orgErr := organization_service.GetClient().GetOrganization(ctx, company.CompanyExternalID); orgErr == nil {
+			upstream = org
+		}
 	}
 	cclaEnabled, err := s.IsCCLAEnabledForCompany(ctx, company.CompanyID)
 	if err != nil {

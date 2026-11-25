@@ -88,9 +88,12 @@ func (claParams CLAGroupTemplateParams) OrgLensURL(companySFID string) string {
 }
 
 // forCLAGroup keeps the CLA Group the sender named: the project lookup can answer with another CLA Group of the same foundation
-func (claParams CLAGroupTemplateParams) forCLAGroup(claGroupID string) CLAGroupTemplateParams {
-	if claGroupID != "" {
-		claParams.CLAGroupID = claGroupID
+func (claParams CLAGroupTemplateParams) forCLAGroup(sender CLAGroupTemplateParams) CLAGroupTemplateParams {
+	if sender.CLAGroupID != "" {
+		claParams.CLAGroupID = sender.CLAGroupID
+		if sender.CLAGroupName != "" {
+			claParams.CLAGroupName = sender.CLAGroupName
+		}
 	}
 	return claParams
 }
