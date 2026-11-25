@@ -28,6 +28,9 @@ import (
 )
 
 // Configure sets up the middleware handlers
+// companyByNamePage is the one page of the organization search that the lookup of a company by name reads
+const companyByNamePage = 1000
+
 func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo projects_cla_groups.Repository, LFXPortalURL string) { // nolint
 
 	api.CompanyGetCompanyByInternalIDHandler = company.GetCompanyByInternalIDHandlerFunc(
@@ -480,7 +483,7 @@ func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo 
 			if err != nil || companyModel == nil {
 				log.WithFields(f).Warnf("unable to lookup company by name '%s' in local database. trying organization service...", params.CompanyName)
 				osClient := organization_service.GetClient()
-				orgModels, orgLookupErr := osClient.SearchOrganization(ctx, params.CompanyName, "", "")
+				orgModels, _, orgLookupErr := osClient.SearchOrganizationPage(ctx, params.CompanyName, "", "", companyByNamePage)
 				if orgLookupErr != nil || len(orgModels) == 0 {
 					msg := fmt.Sprintf("unable to locate organization '%s' in the organization service", params.CompanyName)
 					log.WithFields(f).WithError(err).Warn(msg)

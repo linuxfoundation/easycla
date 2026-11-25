@@ -8,8 +8,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/sirupsen/logrus"
 
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
@@ -31,14 +29,6 @@ func WithGithubEmailRefresh(tokens IDPTokenSource) Option {
 	return func(s *service) {
 		s.idpTokens = tokens
 	}
-}
-
-// stringSet keeps user_emails a DynamoDB string set through the map based user update
-type stringSet []string
-
-func (s stringSet) MarshalDynamoDBAttributeValue(av *dynamodb.AttributeValue) error {
-	av.SS = aws.StringSlice(s)
-	return nil
 }
 
 const githubEmailRefreshTimeout = 5 * time.Second
@@ -68,14 +58,11 @@ func (s *service) refreshGithubEmails(ctx context.Context, userModel *v1Models.U
 		log.WithFields(f).WithError(err).Warn("unable to list the verified GitHub e-mail addresses - the stored e-mail addresses stay")
 		return userModel
 	}
-	emails, added := mergeEmails(userModel.Emails, verified)
-	if !added {
+	added := newEmails(userModel.Emails, verified)
+	if len(added) == 0 {
 		return userModel
 	}
-	updated, err := s.usersService.UpdateUser(userModel.UserID, map[string]interface{}{
-		"user_emails":   stringSet(emails),
-		"date_modified": time.Now().UTC().Format(time.RFC3339),
-	})
+	updated, err := s.usersService.AddUserEmails(userModel.UserID, added)
 	if err != nil || updated == nil {
 		log.WithFields(f).WithError(err).Warn("unable to store the verified GitHub e-mail addresses on the EasyCLA user record")
 		return userModel
@@ -83,19 +70,13 @@ func (s *service) refreshGithubEmails(ctx context.Context, userModel *v1Models.U
 	return updated
 }
 
-// mergeEmails returns the stored addresses plus the verified ones that are not stored yet, and whether any was added
-func mergeEmails(stored, verified []string) ([]string, bool) {
-	merged := make([]string, 0, len(stored)+len(verified))
-	for _, email := range stored {
-		if email = strings.TrimSpace(email); email != "" && !containsFold(merged, email) {
-			merged = append(merged, email)
-		}
-	}
-	kept := len(merged)
+// newEmails returns the verified addresses that are not stored yet
+func newEmails(stored, verified []string) []string {
+	added := make([]string, 0, len(verified))
 	for _, email := range verified {
-		if email = strings.ToLower(strings.TrimSpace(email)); email != "" && !containsFold(merged, email) {
-			merged = append(merged, email)
+		if email = strings.ToLower(strings.TrimSpace(email)); email != "" && !containsFold(stored, email) && !containsFold(added, email) {
+			added = append(added, email)
 		}
 	}
-	return merged, len(merged) > kept
+	return added
 }
