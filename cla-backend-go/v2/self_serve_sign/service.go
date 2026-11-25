@@ -71,6 +71,7 @@ type UsersService interface {
 	GetUserByGitLabUsername(gitLabUsername string) (*v1Models.User, error)
 	CreateUser(userModel *v1Models.User, claUser *user.CLAUser) (*v1Models.User, error)
 	UpdateUser(userID string, updates map[string]interface{}) (*v1Models.User, error)
+	AddUserEmails(userID string, emails []string) (*v1Models.User, error)
 }
 
 // CLAGroupService is the subset of the CLA Group service used to resolve the selected CLA Group

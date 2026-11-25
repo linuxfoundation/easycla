@@ -8,8 +8,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbattribute"
 	v1Models "github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v2/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/my_clas"
@@ -44,11 +42,11 @@ func TestPrepareSignRefreshesGithubEmails(t *testing.T) {
 		wantEmails []string
 	}{
 		{name: "stores the verified addresses", stored: []string{"lf@example.org"}, recordID: "26589865", tokens: &fakeIDPTokens{token: "gho_test"},
-			verified: []string{" New@Example.org ", "lf@example.org", "new@example.org"}, wantLookup: true, wantGithub: true, wantEmails: []string{"lf@example.org", "new@example.org"}},
+			verified: []string{" New@Example.org ", "lf@example.org", "new@example.org"}, wantLookup: true, wantGithub: true, wantEmails: []string{"new@example.org"}},
 		{name: "keeps a stored address that GitHub does not list", stored: []string{"lf@example.org", "Second@lf.example.org"}, recordID: "26589865", tokens: &fakeIDPTokens{token: "gho_test"},
-			verified: []string{"gh@example.org"}, wantLookup: true, wantGithub: true, wantEmails: []string{"lf@example.org", "Second@lf.example.org", "gh@example.org"}},
+			verified: []string{"gh@example.org"}, wantLookup: true, wantGithub: true, wantEmails: []string{"gh@example.org"}},
 		{name: "request with the LF username only", stored: []string{"lf@example.org"}, recordID: "26589865", noIDs: true, tokens: &fakeIDPTokens{token: "gho_test"},
-			verified: []string{"gh@example.org"}, wantLookup: true, wantGithub: true, wantEmails: []string{"lf@example.org", "gh@example.org"}},
+			verified: []string{"gh@example.org"}, wantLookup: true, wantGithub: true, wantEmails: []string{"gh@example.org"}},
 		{name: "same addresses are not written again", stored: []string{"LF@example.org", "new@example.org"}, recordID: "26589865", tokens: &fakeIDPTokens{token: "gho_test"},
 			verified: []string{"new@example.org", "lf@example.org"}, wantLookup: true, wantGithub: true},
 		{name: "no token without the scope", stored: []string{"lf@example.org"}, recordID: "26589865", tokens: &fakeIDPTokens{}, wantLookup: true},
@@ -100,14 +98,8 @@ func TestPrepareSignRefreshesGithubEmails(t *testing.T) {
 			} else {
 				assert.Zero(t, githubCalls)
 			}
-			if tt.wantEmails == nil {
-				assert.Nil(t, users.updates)
-				return
-			}
-			require.NotNil(t, users.updates)
-			assert.Equal(t, stringSet(tt.wantEmails), users.updates["user_emails"])
-			assert.NotEmpty(t, users.updates["date_modified"])
-			assert.Len(t, users.updates, 2)
+			assert.Nil(t, users.updates, "the e-mail set is never written as a whole")
+			assert.Equal(t, tt.wantEmails, users.addedEmails)
 		})
 	}
 }
@@ -133,12 +125,5 @@ func TestPrepareSignDoesNotRefreshEmailsForAnotherContributor(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, tokens.calls)
 	assert.Nil(t, users.updates)
-}
-
-func TestStringSetIsStoredAsADynamoDBStringSet(t *testing.T) {
-	av, err := dynamodbattribute.Marshal(stringSet{"a@example.org", "b@example.org"})
-
-	require.NoError(t, err)
-	assert.Equal(t, []string{"a@example.org", "b@example.org"}, aws.StringValueSlice(av.SS))
-	assert.Nil(t, av.L)
+	assert.Nil(t, users.addedEmails)
 }

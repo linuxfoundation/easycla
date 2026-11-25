@@ -481,6 +481,40 @@ func (osc *Client) SearchOrganization(ctx context.Context, orgName string, websi
 	return orgs, nil
 }
 
+// SearchOrganizationPage returns at most limit organizations of the search, and whether the search matches more
+func (osc *Client) SearchOrganizationPage(ctx context.Context, orgName string, websiteName string, filter string, limit int64) ([]*models.Organization, bool, error) {
+	f := logrus.Fields{
+		"functionName":   "organization_service.SearchOrganizationPage",
+		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
+		"orgName":        orgName,
+		"websiteName":    websiteName,
+		"filter":         filter,
+	}
+	tok, err := token.GetToken()
+	if err != nil {
+		log.WithFields(f).WithError(err).Warn("unable to fetch token")
+		return nil, false, err
+	}
+	params := &organizations.SearchOrgParams{
+		Name:         aws.String(orgName),
+		Website:      aws.StringValueSlice([]*string{&websiteName}),
+		DollarFilter: aws.String(filter),
+		Offset:       aws.String("0"),
+		PageSize:     aws.String(strconv.FormatInt(limit, 10)),
+		Context:      ctx,
+	}
+	result, err := osc.cl.Organizations.SearchOrg(params, runtimeClient.BearerToken(tok))
+	if err != nil {
+		log.WithFields(f).WithError(err).Warnf("unable to search organization with params: %+v", params)
+		return nil, false, err
+	}
+	orgs := result.Payload.Data
+	if int64(len(orgs)) > limit {
+		orgs = orgs[:limit]
+	}
+	return orgs, result.Payload.Metadata != nil && result.Payload.Metadata.TotalSize > limit, nil
+}
+
 // GetOrganization gets organization from organization id
 func (osc *Client) GetOrganization(ctx context.Context, orgID string) (*models.Organization, error) {
 	f := logrus.Fields{

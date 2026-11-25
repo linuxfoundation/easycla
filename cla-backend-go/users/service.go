@@ -17,6 +17,7 @@ type Service interface {
 	CreateUser(user *models.User, claUser *user.CLAUser) (*models.User, error)
 	Save(user *models.UserUpdate, claUser *user.CLAUser) (*models.User, error)
 	UpdateUser(userID string, updates map[string]interface{}) (*models.User, error)
+	AddUserEmails(userID string, emails []string) (*models.User, error)
 	Delete(userID string, claUser *user.CLAUser) error
 	GetUser(userID string) (*models.User, error)
 	GetUserByLFUserName(lfUserName string) (*models.User, error)
@@ -206,6 +207,22 @@ func (s service) GetUserByGitLabUsername(gitLabUsername string) (*models.User, e
 // SearchUsers attempts to locate the user by the searchField and searchTerm fields
 func (s service) SearchUsers(searchField string, searchTerm string, fullMatch bool) (*models.Users, error) {
 	return s.repo.SearchUsers(searchField, searchTerm, fullMatch)
+}
+
+// AddUserEmails adds the addresses to the e-mail set of the user in one atomic update
+func (s service) AddUserEmails(userID string, emails []string) (*models.User, error) {
+	userModel, err := s.repo.AddUserEmails(userID, emails)
+	if err != nil {
+		return nil, err
+	}
+	if len(emails) > 0 {
+		s.events.LogEvent(&events.LogEventArgs{
+			EventType: events.UserUpdated,
+			UserID:    userID,
+			EventData: &events.UserUpdatedEventData{},
+		})
+	}
+	return userModel, nil
 }
 
 // UpdateUserCompanyID updates the user's company ID

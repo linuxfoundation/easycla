@@ -35,6 +35,7 @@ Safety rules:
   its deletion: managers never lose access. ACS keeps a user's organization scope roles in one organization, so such a grant (`contact`)
   cannot be copied while it exists on the old id: it is created on the new id right after the old grants are deleted, and a user who holds an
   organization role in a third organization keeps that one - the grant is then listed in `dropped_grants.csv`.
+  A grant of a user who no longer exists on the platform cannot be created anywhere: it is deleted with the others and listed there too.
 - On an Account that existed before the rewrite or is shared (`matched`, or an old id under a collapse decision) only `cla-manager`, `cla-manager-designee`,
   `cla-signatory`, `contributor` and `contact` are copied; every other role (`company-admin`, `viewer`) is deleted with the old id and listed in
   `dropped_grants.csv`; the journal keeps the list by grant id, so a resumed run still reports it. An Account created for one group alone (`created`)
