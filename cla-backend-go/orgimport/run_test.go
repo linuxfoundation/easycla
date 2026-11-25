@@ -146,6 +146,8 @@ type fakePlatform struct {
 	nextGrant   int
 	failCreate  bool
 	failDelete  bool
+	oneOrg      bool
+	createHook  func(username, orgID, objectType string) error
 	failGetB2B  bool
 	noMembers   bool
 	listHook    func(orgID string)
@@ -182,6 +184,20 @@ func (p *fakePlatform) CreateUserRoleScope(_ context.Context, username, orgID, o
 	p.calls = append(p.calls, "create-grant:"+orgID+":"+username+":"+roleID+":"+objectID)
 	if p.failCreate {
 		return errors.New("org-service down")
+	}
+	if p.createHook != nil {
+		if err := p.createHook(username, orgID, objectType); err != nil {
+			return err
+		}
+	}
+	if p.oneOrg && objectType == objectTypeOrganization {
+		for other, grants := range p.grants {
+			for _, g := range grants {
+				if other != orgID && g.Username == username && g.ObjectTypeName == objectTypeOrganization {
+					return errors.New("[POST /v1/orgs/{salesforceID}/scopes][400] createOrgUsrRoleScopesBadRequest  &{Code:400 Message:organization-service - acs - user is already associated with other organization}")
+				}
+			}
+		}
 	}
 	p.nextGrant++
 	p.grants[orgID] = append(p.grants[orgID], acs_service.OrgGrant{Username: username, RoleID: roleID, RoleName: strings.TrimPrefix(roleID, "role-"), GrantID: fmt.Sprintf("g%d", p.nextGrant), ScopeID: fmt.Sprintf("s%d", p.nextGrant), ObjectTypeName: objectType, ObjectID: objectID})
@@ -1706,12 +1722,12 @@ func TestAudit(t *testing.T) {
 
 	rows := readCSV(t, filepath.Join(dir, "audit.csv"))
 	require.Len(t, rows, 9)
-	require.Equal(t, []string{"company_id", "company_name", "signing_entity_name", "company_external_id", "id_shape", "active_ccla", "ccla_count", "ecla_count", "org_service", "website", "duplicate_sfid_group", "route", "manual_reason", "tier", "acs_roles", "suggested_account", "last_cla_activity"}, rows[0])
+	require.Equal(t, []string{"company_id", "company_name", "signing_entity_name", "company_external_id", "id_shape", "active_ccla", "ccla_count", "ecla_count", "org_service", "website", "duplicate_sfid_group", "route", "manual_reason", "tier", "acs_roles", "suggested_account", "last_cla_activity", "ccla_records"}, rows[0])
 	byID := map[string][]string{}
 	for _, r := range rows[1:] {
 		byID[r[0]] = r
 	}
-	assert.Equal(t, []string{"c-live", "Live Corp", "", liveSFID, "001", "true", "1", "", "200", "https://live.example", "false", "register", "", TierOK, "r1=2;r2=1", "", "2024-01-02"}, byID["c-live"])
+	assert.Equal(t, []string{"c-live", "Live Corp", "", liveSFID, "001", "true", "1", "", "200", "https://live.example", "false", "register", "", TierOK, "r1=2;r2=1", "", "2024-01-02", "1"}, byID["c-live"])
 	assert.Equal(t, "r1=2;r2=1", byID["c-live-sub"][14], "ACS roles are per old id, so every row of the group shows them")
 	assert.Equal(t, "", byID["c-inactive"][14], "ids outside the eligible groups and duplicate sets are not looked up in ACS")
 	assert.Equal(t, "", byID["c-dead"][14], "an id without grants has an empty cell")

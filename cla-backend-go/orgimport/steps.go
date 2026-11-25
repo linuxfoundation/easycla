@@ -19,6 +19,9 @@ const (
 	objectTypeProjectOrganization = "project|organization"
 )
 
+// orgAssociated is how ACS refuses an organization scope grant to a user who holds one in another organization
+const orgAssociated = "already associated with other organization"
+
 // easyCLARoles are the only roles copied to an Account that existed before the rewrite (lfx-self-serve #5081).
 var easyCLARoles = map[string]bool{"cla-manager": true, "cla-manager-designee": true, "cla-signatory": true, "contributor": true, "contact": true}
 
@@ -82,7 +85,7 @@ func (r *runner) copyGrants(ctx context.Context, g *Group) error {
 	created, skipped := 0, 0
 	for _, gr := range oldGrants {
 		ok, createErr := r.ensureGrant(ctx, g, gr, have)
-		if createErr != nil {
+		if createErr != nil && !heldElsewhere(gr, createErr) {
 			return createErr
 		}
 		if ok {
@@ -263,12 +266,14 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 	}
 	sort.Slice(oldGrants, func(i, j int) bool { return oldGrants[i].GrantID < oldGrants[j].GrantID })
 	deleted, copied := 0, 0
+	var held []acs_service.OrgGrant
 	for _, gr := range oldGrants {
 		if gr.GrantID == "" || gr.RoleID == "" {
 			continue
 		}
 		created, ensureErr := r.ensureGrant(ctx, g, gr, have)
-		if ensureErr != nil {
+		moving := heldElsewhere(gr, ensureErr)
+		if ensureErr != nil && !moving {
 			return ensureErr
 		}
 		if created {
@@ -278,15 +283,46 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 			return fmt.Errorf("deleting %s grant %s: %w", gr.RoleName, gr.GrantID, err)
 		}
 		deleted++
-		if uncopied(g, gr, have) {
+		switch {
+		case moving:
 			g.drop(gr)
-			fmt.Fprintf(r.deps.Out, "grant deleted without a copy %s -> %s: %s grant %s on %s\n", g.OldID, g.NewID, firstNonEmpty(gr.RoleName, gr.RoleID), gr.GrantID, gr.ObjectID)
-		} else {
+			held = append(held, gr)
+		case uncopied(g, gr, have):
+			g.dropUncopied(r, gr)
+		default:
+			g.undrop(gr)
+		}
+	}
+	for _, gr := range held {
+		created, ensureErr := r.ensureGrant(ctx, g, gr, have)
+		switch {
+		case heldElsewhere(gr, ensureErr):
+			g.dropUncopied(r, gr)
+		case ensureErr != nil:
+			if restoreErr := r.deps.Orgs.CreateUserRoleScope(ctx, gr.Username, g.OldID, objectTypeOrganization, g.OldID, gr.RoleID); restoreErr != nil {
+				g.drop(gr)
+				return fmt.Errorf("%w; restoring it on %s: %v", ensureErr, g.OldID, restoreErr)
+			}
+			return ensureErr
+		default:
+			if created {
+				copied++
+			}
 			g.undrop(gr)
 		}
 	}
 	fmt.Fprintf(r.deps.Out, "grants %s: %d deleted (%d copied late)\n", g.OldID, deleted, copied)
 	return nil
+}
+
+// heldElsewhere tells the ACS refusal of an organization scope grant whose user holds one in another organization
+func heldElsewhere(gr acs_service.OrgGrant, err error) bool {
+	return err != nil && gr.ProjectSFID() == "" && strings.Contains(err.Error(), orgAssociated)
+}
+
+func (g *Group) dropUncopied(r *runner, gr acs_service.OrgGrant) {
+	g.drop(gr)
+	fmt.Fprintf(r.deps.Out, "grant deleted without a copy %s -> %s: %s grant %s on %s\n", g.OldID, g.NewID, firstNonEmpty(gr.RoleName, gr.RoleID), gr.GrantID, gr.ObjectID)
 }
 
 // registerNew registers the new id as a B2B org (step 9).

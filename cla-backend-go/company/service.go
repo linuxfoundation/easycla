@@ -762,6 +762,9 @@ func (s service) GetCompanyBySigningEntityName(ctx context.Context, signingEntit
 	return comp, nil
 }
 
+// searchLookupConcurrency keeps the company lookups of one organization search within the Lambda's file descriptors
+const searchLookupConcurrency = 32
+
 func (s service) SearchOrganizationByName(ctx context.Context, orgName string, websiteName string, includeSigningEntityName bool, filter string) (*models.OrgList, error) {
 	f := logrus.Fields{
 		"functionName":             "company.service.SearchOrganizationByName",
@@ -782,11 +785,14 @@ func (s service) SearchOrganizationByName(ctx context.Context, orgName string, w
 
 	resultsChannel := make(chan *models.Org, len(orgs))
 	var wg sync.WaitGroup
+	lookups := make(chan struct{}, searchLookupConcurrency)
 
 	wg.Add(len(orgs))
 	for _, org := range orgs {
+		lookups <- struct{}{}
 		go func(org *orgServiceModels.Organization) {
 			defer wg.Done()
+			defer func() { <-lookups }()
 			// get company by external ID
 			cclaEnabled := false
 			company, err := s.repo.GetCompanyByExternalID(ctx, org.ID)
