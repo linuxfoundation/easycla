@@ -125,6 +125,68 @@ func TestFetchComparePageRetriesThenSucceeds(t *testing.T) {
 	assert.Equal(t, 2, attempts)
 }
 
+func TestFetchComparePageDoesNotRetryForbidden(t *testing.T) {
+	attempts := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, err := io.WriteString(w, `{"message":"Resource not accessible by integration"}`)
+		assert.NoError(t, err)
+	}))
+	defer srv.Close()
+
+	client := newTestGithubClient(t, srv)
+	commits, resp, err := fetchComparePage(context.Background(), client, "o", "r", "base", "head", 1, 100, 7)
+	assert.Nil(t, commits)
+	var ghErr *gh.ErrorResponse
+	if assert.ErrorAs(t, err, &ghErr) {
+		assert.Equal(t, http.StatusForbidden, ghErr.Response.StatusCode)
+	}
+	if assert.NotNil(t, resp) {
+		assert.Equal(t, http.StatusForbidden, resp.StatusCode)
+	}
+	assert.Equal(t, 1, attempts)
+}
+
+func TestFetchComparePageRetriesRateLimits(t *testing.T) {
+	tests := []struct {
+		name   string
+		header string
+		body   string
+	}{
+		{name: "primary rate limit", header: "0", body: `{"message":"API rate limit exceeded"}`},
+		{name: "secondary rate limit", body: `{"message":"You have exceeded a secondary rate limit","documentation_url":"https://docs.github.com/rest/overview/rate-limits-for-the-rest-api#about-secondary-rate-limits"}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			attempts := 0
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				attempts++
+				w.Header().Set("Content-Type", "application/json")
+				if attempts == 1 {
+					if tt.header != "" {
+						w.Header().Set("X-RateLimit-Remaining", tt.header)
+					}
+					w.WriteHeader(http.StatusForbidden)
+					_, err := io.WriteString(w, tt.body)
+					assert.NoError(t, err)
+					return
+				}
+				_, err := io.WriteString(w, `{"commits":[{"sha":"abc123"}]}`)
+				assert.NoError(t, err)
+			}))
+			defer srv.Close()
+
+			client := newTestGithubClient(t, srv)
+			commits, _, err := fetchComparePage(context.Background(), client, "o", "r", "base", "head", 1, 100, 7)
+			assert.NoError(t, err)
+			assert.Len(t, commits, 1)
+			assert.Equal(t, 2, attempts)
+		})
+	}
+}
+
 func TestListPullRequestCommitsComparePreservesPageOrder(t *testing.T) {
 	oldLimit := ListCommitsParallelLimit
 	ListCommitsParallelLimit = 4
