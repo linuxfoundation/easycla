@@ -20,8 +20,9 @@ func VerifiedEmails(ctx context.Context, accessToken string) ([]string, error) {
 	return listVerifiedEmails(ctx, client)
 }
 
+// listVerifiedEmails leaves out the noreply.github.com addresses unless the account has no other verified one, as the pull request flow does
 func listVerifiedEmails(ctx context.Context, client *github.Client) ([]string, error) {
-	emails := make([]string, 0)
+	emails, noreply := make([]string, 0), make([]string, 0)
 	opts := &github.ListOptions{PerPage: 100}
 	for {
 		page, resp, err := client.Users.ListEmails(ctx, opts)
@@ -29,11 +30,19 @@ func listVerifiedEmails(ctx context.Context, client *github.Client) ([]string, e
 			return nil, err
 		}
 		for _, email := range page {
-			if address := strings.TrimSpace(email.GetEmail()); email.GetVerified() && address != "" {
+			address := strings.TrimSpace(email.GetEmail())
+			switch {
+			case !email.GetVerified() || address == "":
+			case strings.HasSuffix(strings.ToLower(address), "noreply.github.com"):
+				noreply = append(noreply, address)
+			default:
 				emails = append(emails, address)
 			}
 		}
 		if resp == nil || resp.NextPage == 0 {
+			if len(emails) == 0 {
+				return noreply, nil
+			}
 			return emails, nil
 		}
 		opts.Page = resp.NextPage

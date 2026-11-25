@@ -37,6 +37,31 @@ func TestListVerifiedEmails(t *testing.T) {
 	assert.Equal(t, []string{"first@example.org", "Second@Example.org"}, emails)
 }
 
+func TestListVerifiedEmailsPrefersAddressesThatAreNotNoreply(t *testing.T) {
+	tests := []struct {
+		name, body string
+		want       []string
+	}{
+		{"a real address next to a noreply one", `[{"email":"1+octocat@users.noreply.github.com","verified":true},{"email":"real@example.org","verified":true}]`, []string{"real@example.org"}},
+		{"only a noreply address", `[{"email":"1+octocat@users.noreply.github.com","verified":true},{"email":"pending@example.org","verified":false}]`, []string{"1+octocat@users.noreply.github.com"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, err := io.WriteString(w, tt.body)
+				assert.NoError(t, err)
+			}))
+			defer srv.Close()
+
+			emails, err := listVerifiedEmails(context.Background(), newTestGithubClient(t, srv))
+
+			assert.NoError(t, err)
+			assert.Equal(t, tt.want, emails)
+		})
+	}
+}
+
 func TestListVerifiedEmailsFails(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")

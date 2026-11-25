@@ -61,6 +61,7 @@ func TestRewriteRestoresAnOrganizationScopeGrantWhenItsMoveFails(t *testing.T) {
 	const user = "frank"
 	fx.platform.oneOrg = true
 	fx.platform.addGrant(lfID, user, "role-contact", "")
+	fx.platform.addGrant(lfID, "grace", "role-contact", "")
 	failures := 0
 	fx.platform.createHook = func(username, orgID, objectType string) error {
 		if username != user || orgID != targetSFID {
@@ -87,8 +88,9 @@ func TestRewriteRestoresAnOrganizationScopeGrantWhenItsMoveFails(t *testing.T) {
 	for _, g := range mustListOrgGrants(t, fx, lfID) {
 		restored = append(restored, g.Username+":"+g.RoleName)
 	}
-	assert.Equal(t, []string{user + ":contact"}, restored, "the grant is back on the old id, so the next run finds it")
+	assert.ElementsMatch(t, []string{user + ":contact", "grace:contact"}, restored, "every grant that waited for its move is back on the old id, so the next run finds it")
 	assert.NotContains(t, targetGrants(t, fx), user+":contact:"+targetSFID)
+	assert.NotContains(t, targetGrants(t, fx), "grace:contact:"+targetSFID)
 
 	fx.platform.createHook = nil
 	plan, err = BuildPlan(context.Background(), fx.deps(), opts)
@@ -98,5 +100,48 @@ func TestRewriteRestoresAnOrganizationScopeGrantWhenItsMoveFails(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, 1, sum.Rewritten)
 	assert.Contains(t, targetGrants(t, fx), user+":contact:"+targetSFID)
+	assert.Contains(t, targetGrants(t, fx), "grace:contact:"+targetSFID)
 	assert.Empty(t, mustListOrgGrants(t, fx, lfID))
+	assert.Empty(t, droppedReport(t, opts.OutDir)[1:], "a grant that was restored and then moved is not reported as dropped")
+}
+
+func TestRewriteRestoresHeldGrantsWhenALaterDeleteFails(t *testing.T) {
+	fx, mapping, statePath := rewriteFixture(t)
+	fx.platform.oneOrg = true
+	fx.platform.addGrant(lfID, "frank", "role-contact", "")
+	fx.platform.addGrant(lfID, "heidi", "role-cla-manager", "proj-1")
+	moved, last := grantIDOf(t, fx, lfID, "frank", "contact"), grantIDOf(t, fx, lfID, "heidi", "cla-manager")
+	require.Less(t, moved, last, "the cleanup deletes in grant id order")
+	fx.platform.deleteHook = func(grantID string) error {
+		if grantID == last {
+			return errors.New("org-service down")
+		}
+		return nil
+	}
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}, OutDir: t.TempDir()}
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+
+	require.Error(t, err)
+	assert.Equal(t, 1, sum.Failed)
+	var left []string
+	for _, g := range mustListOrgGrants(t, fx, lfID) {
+		left = append(left, g.Username+":"+g.RoleName)
+	}
+	assert.Contains(t, left, "frank:contact", "the grant deleted for its move is back on the old id")
+	assert.Contains(t, left, "heidi:cla-manager")
+	assert.NotContains(t, targetGrants(t, fx), "frank:contact:"+targetSFID)
+
+	fx.platform.deleteHook = nil
+	plan, err = BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	sum, err = Execute(context.Background(), fx.deps(), opts, plan)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, sum.Rewritten)
+	assert.Contains(t, targetGrants(t, fx), "frank:contact:"+targetSFID)
+	assert.Empty(t, mustListOrgGrants(t, fx, lfID))
+	assert.Empty(t, droppedReport(t, opts.OutDir)[1:])
 }

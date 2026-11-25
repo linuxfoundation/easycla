@@ -41,10 +41,15 @@ func (s stringSet) MarshalDynamoDBAttributeValue(av *dynamodb.AttributeValue) er
 	return nil
 }
 
+const githubEmailRefreshTimeout = 5 * time.Second
+
 func (s *service) refreshGithubEmails(ctx context.Context, userModel *v1Models.User, allowed *my_clas.Identity) *v1Models.User {
-	if s.idpTokens == nil || s.githubVerifiedEmails == nil || allowed.LfUsername == "" || userModel.GithubID == "" || !idBelongs(userModel.GithubID, allowed.GithubIDs) {
+	if s.idpTokens == nil || s.githubVerifiedEmails == nil || allowed.LfUsername == "" || userModel.GithubID == "" ||
+		(len(allowed.GithubIDs) > 0 && !idBelongs(userModel.GithubID, allowed.GithubIDs)) {
 		return userModel
 	}
+	ctx, cancel := context.WithTimeout(ctx, githubEmailRefreshTimeout)
+	defer cancel()
 	f := logrus.Fields{
 		"functionName":   "v2.self_serve_sign.service.refreshGithubEmails",
 		utils.XREQUESTID: ctx.Value(utils.XREQUESTID),
@@ -63,8 +68,8 @@ func (s *service) refreshGithubEmails(ctx context.Context, userModel *v1Models.U
 		log.WithFields(f).WithError(err).Warn("unable to list the verified GitHub e-mail addresses - the stored e-mail addresses stay")
 		return userModel
 	}
-	emails := uniqueLowerEmails(verified)
-	if len(emails) == 0 || sameEmails(emails, userModel.Emails) {
+	emails, added := mergeEmails(userModel.Emails, verified)
+	if !added {
 		return userModel
 	}
 	updated, err := s.usersService.UpdateUser(userModel.UserID, map[string]interface{}{
@@ -78,29 +83,19 @@ func (s *service) refreshGithubEmails(ctx context.Context, userModel *v1Models.U
 	return updated
 }
 
-func uniqueLowerEmails(emails []string) []string {
-	seen := make(map[string]struct{}, len(emails))
-	unique := make([]string, 0, len(emails))
-	for _, email := range emails {
-		email = strings.ToLower(strings.TrimSpace(email))
-		if _, ok := seen[email]; ok || email == "" {
-			continue
-		}
-		seen[email] = struct{}{}
-		unique = append(unique, email)
-	}
-	return unique
-}
-
-func sameEmails(emails, stored []string) bool {
-	stored = uniqueLowerEmails(stored)
-	if len(emails) != len(stored) {
-		return false
-	}
+// mergeEmails returns the stored addresses plus the verified ones that are not stored yet, and whether any was added
+func mergeEmails(stored, verified []string) ([]string, bool) {
+	merged := make([]string, 0, len(stored)+len(verified))
 	for _, email := range stored {
-		if !containsFold(emails, email) {
-			return false
+		if email = strings.TrimSpace(email); email != "" && !containsFold(merged, email) {
+			merged = append(merged, email)
 		}
 	}
-	return true
+	kept := len(merged)
+	for _, email := range verified {
+		if email = strings.ToLower(strings.TrimSpace(email)); email != "" && !containsFold(merged, email) {
+			merged = append(merged, email)
+		}
+	}
+	return merged, len(merged) > kept
 }

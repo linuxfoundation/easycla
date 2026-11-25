@@ -18,12 +18,14 @@ import (
 )
 
 type fakeIDPTokens struct {
-	token string
-	err   error
-	calls [][3]string
+	token    string
+	err      error
+	calls    [][3]string
+	deadline bool
 }
 
-func (f *fakeIDPTokens) IdentityAccessToken(_ context.Context, lfUsername, provider, userID string) (string, error) {
+func (f *fakeIDPTokens) IdentityAccessToken(ctx context.Context, lfUsername, provider, userID string) (string, error) {
+	_, f.deadline = ctx.Deadline()
 	f.calls = append(f.calls, [3]string{lfUsername, provider, userID})
 	return f.token, f.err
 }
@@ -33,6 +35,7 @@ func TestPrepareSignRefreshesGithubEmails(t *testing.T) {
 		name       string
 		stored     []string
 		recordID   string
+		noIDs      bool
 		tokens     *fakeIDPTokens
 		verified   []string
 		githubErr  error
@@ -41,7 +44,11 @@ func TestPrepareSignRefreshesGithubEmails(t *testing.T) {
 		wantEmails []string
 	}{
 		{name: "stores the verified addresses", stored: []string{"lf@example.org"}, recordID: "26589865", tokens: &fakeIDPTokens{token: "gho_test"},
-			verified: []string{" New@Example.org ", "lf@example.org", "new@example.org"}, wantLookup: true, wantGithub: true, wantEmails: []string{"new@example.org", "lf@example.org"}},
+			verified: []string{" New@Example.org ", "lf@example.org", "new@example.org"}, wantLookup: true, wantGithub: true, wantEmails: []string{"lf@example.org", "new@example.org"}},
+		{name: "keeps a stored address that GitHub does not list", stored: []string{"lf@example.org", "Second@lf.example.org"}, recordID: "26589865", tokens: &fakeIDPTokens{token: "gho_test"},
+			verified: []string{"gh@example.org"}, wantLookup: true, wantGithub: true, wantEmails: []string{"lf@example.org", "Second@lf.example.org", "gh@example.org"}},
+		{name: "request with the LF username only", stored: []string{"lf@example.org"}, recordID: "26589865", noIDs: true, tokens: &fakeIDPTokens{token: "gho_test"},
+			verified: []string{"gh@example.org"}, wantLookup: true, wantGithub: true, wantEmails: []string{"lf@example.org", "gh@example.org"}},
 		{name: "same addresses are not written again", stored: []string{"LF@example.org", "new@example.org"}, recordID: "26589865", tokens: &fakeIDPTokens{token: "gho_test"},
 			verified: []string{"new@example.org", "lf@example.org"}, wantLookup: true, wantGithub: true},
 		{name: "no token without the scope", stored: []string{"lf@example.org"}, recordID: "26589865", tokens: &fakeIDPTokens{}, wantLookup: true},
@@ -55,15 +62,19 @@ func TestPrepareSignRefreshesGithubEmails(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			existing := &v1Models.User{UserID: "existing-user-id", LfUsername: "lgryglicki", GithubID: tt.recordID, GithubUsername: "octocat", Emails: tt.stored}
 			users := &fakeUsers{byLFUsername: map[string]*v1Models.User{"lgryglicki": existing}}
-			svc := newTestService(
-				&fakeMyClas{allowed: &my_clas.Identity{GithubIDs: []int64{26589865}, GithubUsernames: []string{"octocat"}}},
-				users, enabledCLAGroup(), &fakeStore{})
+			allowed := &my_clas.Identity{GithubIDs: []int64{26589865}, GithubUsernames: []string{"octocat"}}
+			if tt.noIDs {
+				allowed = &my_clas.Identity{}
+			}
+			svc := newTestService(&fakeMyClas{allowed: allowed}, users, enabledCLAGroup(), &fakeStore{})
 			if tt.tokens != nil {
 				WithGithubEmailRefresh(tt.tokens)(svc)
 			}
 			githubCalls := 0
-			svc.githubVerifiedEmails = func(_ context.Context, accessToken string) ([]string, error) {
+			svc.githubVerifiedEmails = func(ctx context.Context, accessToken string) ([]string, error) {
 				githubCalls++
+				_, bounded := ctx.Deadline()
+				assert.True(t, bounded, "a slow GitHub must not hold the signing back")
 				assert.Equal(t, "gho_test", accessToken)
 				return tt.verified, tt.githubErr
 			}
@@ -79,6 +90,7 @@ func TestPrepareSignRefreshesGithubEmails(t *testing.T) {
 			if tt.tokens != nil {
 				if tt.wantLookup {
 					assert.Equal(t, [][3]string{{"lgryglicki", "github", "26589865"}}, tt.tokens.calls)
+					assert.True(t, tt.tokens.deadline, "a slow Auth0 must not hold the signing back")
 				} else {
 					assert.Empty(t, tt.tokens.calls)
 				}

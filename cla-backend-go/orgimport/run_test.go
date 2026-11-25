@@ -148,6 +148,7 @@ type fakePlatform struct {
 	failDelete  bool
 	oneOrg      bool
 	createHook  func(username, orgID, objectType string) error
+	deleteHook  func(grantID string) error
 	failGetB2B  bool
 	noMembers   bool
 	listHook    func(orgID string)
@@ -210,6 +211,11 @@ func (p *fakePlatform) DeleteUserRoleScope(_ context.Context, orgID, roleID, gra
 	p.calls = append(p.calls, "delete-grant:"+orgID+":"+username+":"+roleID+":"+grantID)
 	if p.failDelete {
 		return errors.New("org-service down")
+	}
+	if p.deleteHook != nil {
+		if err := p.deleteHook(grantID); err != nil {
+			return err
+		}
 	}
 	kept := p.grants[orgID][:0]
 	for _, g := range p.grants[orgID] {

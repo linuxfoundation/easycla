@@ -267,6 +267,17 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 	sort.Slice(oldGrants, func(i, j int) bool { return oldGrants[i].GrantID < oldGrants[j].GrantID })
 	deleted, copied := 0, 0
 	var held []acs_service.OrgGrant
+	// restoreHeld puts the grants still waiting for their move back on the old id, so that the next run finds them
+	restoreHeld := func(cause error) error {
+		for _, gr := range held {
+			if restoreErr := r.deps.Orgs.CreateUserRoleScope(ctx, gr.Username, g.OldID, objectTypeOrganization, g.OldID, gr.RoleID); restoreErr != nil {
+				cause = fmt.Errorf("%w; restoring %s grant %s on %s: %v", cause, firstNonEmpty(gr.RoleName, gr.RoleID), gr.GrantID, g.OldID, restoreErr)
+				continue
+			}
+			g.undrop(gr)
+		}
+		return cause
+	}
 	for _, gr := range oldGrants {
 		if gr.GrantID == "" || gr.RoleID == "" {
 			continue
@@ -274,13 +285,13 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 		created, ensureErr := r.ensureGrant(ctx, g, gr, have)
 		moving := heldElsewhere(gr, ensureErr)
 		if ensureErr != nil && !moving {
-			return ensureErr
+			return restoreHeld(ensureErr)
 		}
 		if created {
 			copied++
 		}
 		if err = r.deps.Orgs.DeleteUserRoleScope(ctx, g.OldID, gr.RoleID, gr.GrantID, gr.Username); err != nil {
-			return fmt.Errorf("deleting %s grant %s: %w", gr.RoleName, gr.GrantID, err)
+			return restoreHeld(fmt.Errorf("deleting %s grant %s: %w", gr.RoleName, gr.GrantID, err))
 		}
 		deleted++
 		switch {
@@ -293,23 +304,22 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 			g.undrop(gr)
 		}
 	}
-	for _, gr := range held {
+	for len(held) > 0 {
+		gr := held[0]
 		created, ensureErr := r.ensureGrant(ctx, g, gr, have)
-		switch {
-		case heldElsewhere(gr, ensureErr):
-			g.dropUncopied(r, gr)
-		case ensureErr != nil:
-			if restoreErr := r.deps.Orgs.CreateUserRoleScope(ctx, gr.Username, g.OldID, objectTypeOrganization, g.OldID, gr.RoleID); restoreErr != nil {
-				g.drop(gr)
-				return fmt.Errorf("%w; restoring it on %s: %v", ensureErr, g.OldID, restoreErr)
-			}
-			return ensureErr
-		default:
-			if created {
-				copied++
-			}
-			g.undrop(gr)
+		refused := heldElsewhere(gr, ensureErr)
+		if ensureErr != nil && !refused {
+			return restoreHeld(ensureErr)
 		}
+		held = held[1:]
+		if refused {
+			g.dropUncopied(r, gr)
+			continue
+		}
+		if created {
+			copied++
+		}
+		g.undrop(gr)
 	}
 	fmt.Fprintf(r.deps.Out, "grants %s: %d deleted (%d copied late)\n", g.OldID, deleted, copied)
 	return nil
