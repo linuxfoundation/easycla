@@ -145,3 +145,35 @@ func TestRewriteRestoresHeldGrantsWhenALaterDeleteFails(t *testing.T) {
 	assert.Empty(t, mustListOrgGrants(t, fx, lfID))
 	assert.Empty(t, droppedReport(t, opts.OutDir)[1:])
 }
+
+func TestRewriteRestoresAMovingGrantWhoseDeleteAnswerIsLost(t *testing.T) {
+	fx, mapping, statePath := rewriteFixture(t)
+	fx.platform.oneOrg = true
+	fx.platform.addGrant(lfID, "frank", "role-contact", "")
+	fx.platform.lostDelete = grantIDOf(t, fx, lfID, "frank", "contact")
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}, OutDir: t.TempDir()}
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+
+	require.Error(t, err)
+	assert.Equal(t, 1, sum.Failed)
+	var left []string
+	for _, g := range mustListOrgGrants(t, fx, lfID) {
+		left = append(left, g.Username+":"+g.RoleName)
+	}
+	assert.Contains(t, left, "frank:contact", "the grant was deleted although the call failed, so it is put back on the old id")
+	assert.NotContains(t, targetGrants(t, fx), "frank:contact:"+targetSFID)
+
+	fx.platform.lostDelete = ""
+	plan, err = BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+	sum, err = Execute(context.Background(), fx.deps(), opts, plan)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, sum.Rewritten)
+	assert.Contains(t, targetGrants(t, fx), "frank:contact:"+targetSFID)
+	assert.Empty(t, mustListOrgGrants(t, fx, lfID))
+	assert.Empty(t, droppedReport(t, opts.OutDir)[1:])
+}

@@ -149,6 +149,7 @@ type fakePlatform struct {
 	oneOrg      bool
 	createHook  func(username, orgID, objectType string) error
 	deleteHook  func(grantID string) error
+	lostDelete  string
 	failGetB2B  bool
 	noMembers   bool
 	listHook    func(orgID string)
@@ -224,6 +225,9 @@ func (p *fakePlatform) DeleteUserRoleScope(_ context.Context, orgID, roleID, gra
 		}
 	}
 	p.grants[orgID] = kept
+	if grantID == p.lostDelete {
+		return errors.New("timeout awaiting response headers")
+	}
 	return nil
 }
 

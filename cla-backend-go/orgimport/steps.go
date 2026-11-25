@@ -291,6 +291,10 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 			copied++
 		}
 		if err = r.deps.Orgs.DeleteUserRoleScope(ctx, g.OldID, gr.RoleID, gr.GrantID, gr.Username); err != nil {
+			if moving {
+				g.drop(gr)
+				held = append(held, gr)
+			}
 			return restoreHeld(fmt.Errorf("deleting %s grant %s: %w", gr.RoleName, gr.GrantID, err))
 		}
 		deleted++
