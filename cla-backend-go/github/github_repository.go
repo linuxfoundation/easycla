@@ -209,7 +209,8 @@ func fetchComparePage(
 		if reqErr == nil {
 			return comparePayloadToRepositoryCommits(&payload), resp, nil
 		}
-		if attempt >= 6 {
+		var ghErr *github.ErrorResponse
+		if attempt >= 6 || (errors.As(reqErr, &ghErr) && ghErr.Response != nil && ghErr.Response.StatusCode == http.StatusForbidden) {
 			return nil, resp, reqErr
 		}
 		log.WithFields(logrus.Fields{

@@ -32,7 +32,9 @@ Safety rules:
   write and a journal write failure stops the group); re-running the same command converges.
 - The row rewrite is a conditional write (`company_external_id = <exact stored value>`); a concurrent change stops that group only.
 - Grants are copied before rows are rewritten and old grants deleted last, each old grant re-checked (and copied if missing) right before
-  its deletion: managers never lose access.
+  its deletion: managers never lose access. ACS keeps a user's organization scope roles in one organization, so such a grant (`contact`)
+  cannot be copied while it exists on the old id: it is created on the new id right after the old grants are deleted, and a user who holds an
+  organization role in a third organization keeps that one - the grant is then listed in `dropped_grants.csv`.
 - On an Account that existed before the rewrite or is shared (`matched`, or an old id under a collapse decision) only `cla-manager`, `cla-manager-designee`,
   `cla-signatory`, `contributor` and `contact` are copied; every other role (`company-admin`, `viewer`) is deleted with the old id and listed in
   `dropped_grants.csv`; the journal keeps the list by grant id, so a resumed run still reports it. An Account created for one group alone (`created`)
@@ -127,8 +129,9 @@ Output line: `audit stage=dev companies=N eligible_groups=M MISSING_SFID=a INVAL
 — the five tiers are 1:1 with `utils/audit_company_reachability.sh`; route counts are per row (only rows in eligible groups have a route).
 
 Files (`--out-dir`):
-- `audit.csv` — `company_id, company_name, signing_entity_name, company_external_id, id_shape(001|lf|empty|other), active_ccla, ccla_count, ecla_count, org_service(200|404|err), website, duplicate_sfid_group, route, manual_reason, tier, acs_roles, suggested_account, last_cla_activity` (`YYYY-MM-DD` of the newest active CCLA signing or employee acknowledgement of the row).
-  `ecla_count` is filled only for active rows that are manual, duplicate or unresolvable and for every row of `possible_duplicates.csv` (cheap); `-1` = count failed.
+- `audit.csv` — `company_id, company_name, signing_entity_name, company_external_id, id_shape(001|lf|empty|other), active_ccla, ccla_count, ecla_count, org_service(200|404|err), website, duplicate_sfid_group, route, manual_reason, tier, acs_roles, suggested_account, last_cla_activity, ccla_records` (`YYYY-MM-DD` of the newest active CCLA signing or employee acknowledgement of the row).
+  `ecla_count` is filled for rows without an active CCLA, for active rows that are manual, duplicate or unresolvable and for every row of `possible_duplicates.csv` (cheap); `-1` = count failed.
+  `ccla_records` counts the CCLA signature rows of the company in any state: with `active_ccla=false` a value above 0 means an unsigned or invalidated CCLA, 0 means none.
   `acs_roles` (`role=count;…` of the ACS grants scoped to the old id; `err` = listing failed) is filled in `audit.csv` for eligible `001`/`lf` groups and
   for duplicate-set rows with those id shapes (`possible_duplicates.csv` has no `acs_roles` column). `suggested_account` lists up to three existing Accounts a dead/legacy/manual/duplicate row could belong to:
   `<id> <name> [inventory:domain|inventory:name|crm:domain|crm:name]` (inventory = other Accounts served by org-service for the same import,

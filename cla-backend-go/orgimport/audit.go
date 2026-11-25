@@ -43,6 +43,7 @@ type AuditRow struct {
 	ACSRoles     string
 	Suggested    string
 	LastActivity string
+	CCLARecords  int
 }
 
 // AuditResult is the audit output; Duplicates are the candidate-target sets (rows sharing an id,
@@ -120,6 +121,7 @@ func Audit(ctx context.Context, deps Deps, opts Options) (*AuditResult, error) {
 	res.collectDuplicates(byName, byDomain)
 	res.countECLAs(ctx, deps.ECLAs)
 	res.collectLastActivity(ctx, deps.ECLAs)
+	res.countCCLARecords(ctx, deps.Signatures)
 	inDup := map[string]bool{}
 	for _, set := range res.Duplicates {
 		for _, r := range set {
@@ -265,8 +267,8 @@ func mergeOverlapping(sets [][]*Row) [][]*Row {
 	return out
 }
 
-// countECLAs fills ECLACount for the active manual/duplicate/unresolvable rows and for every row of a
-// candidate set (inactive ones included); -1 marks a failed count.
+// countECLAs fills ECLACount for the active manual/duplicate/unresolvable rows, for every row of a
+// candidate set and for every row without an active CCLA; -1 marks a failed count.
 func (res *AuditResult) countECLAs(ctx context.Context, counter ECLACounter) {
 	if counter == nil {
 		return
@@ -278,13 +280,30 @@ func (res *AuditResult) countECLAs(ctx context.Context, counter ECLACounter) {
 		}
 	}
 	for _, ar := range res.Rows {
-		if reported[ar.Row.CompanyID] || (ar.Row.ActiveCCLA && (ar.Route == RouteManual || ar.Duplicate || ar.unresolvable())) {
+		if reported[ar.Row.CompanyID] || !ar.Row.ActiveCCLA || ar.Route == RouteManual || ar.Duplicate || ar.unresolvable() {
 			ar.ECLACounted = true
 			if n, cErr := counter.CountECLAs(ctx, ar.Row.CompanyID); cErr == nil {
 				ar.ECLACount = n
 			} else {
 				ar.ECLACount = -1
 			}
+		}
+	}
+}
+
+// countCCLARecords fills CCLARecords with the CCLA signature rows of each company in any state; -1 marks a failed listing.
+func (res *AuditResult) countCCLARecords(ctx context.Context, lister CCLALister) {
+	cclas, err := lister.GetCCLASignatures(ctx, nil, nil)
+	records := map[string]int{}
+	for _, s := range cclas {
+		if s != nil && s.SignatureType == utils.SignatureTypeCCLA && s.SignatureReferenceType == utils.SignatureReferenceTypeCompany {
+			records[s.SignatureReferenceID]++
+		}
+	}
+	for _, ar := range res.Rows {
+		ar.CCLARecords = records[ar.Row.CompanyID]
+		if err != nil {
+			ar.CCLARecords = -1
 		}
 	}
 }
@@ -434,7 +453,7 @@ func writeAuditReports(dir string, res *AuditResult) error {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return err
 	}
-	rows := [][]string{{"company_id", "company_name", "signing_entity_name", "company_external_id", "id_shape", "active_ccla", "ccla_count", "ecla_count", "org_service", "website", "duplicate_sfid_group", "route", "manual_reason", "tier", "acs_roles", "suggested_account", "last_cla_activity"}}
+	rows := [][]string{{"company_id", "company_name", "signing_entity_name", "company_external_id", "id_shape", "active_ccla", "ccla_count", "ecla_count", "org_service", "website", "duplicate_sfid_group", "route", "manual_reason", "tier", "acs_roles", "suggested_account", "last_cla_activity", "ccla_records"}}
 	var unresolvable [][]string
 	unresolvable = append(unresolvable, []string{"company_id", "company_name", "signing_entity_name", "company_external_id", "id_shape", "ccla_count", "ecla_count", "org_service", "manual_reason"})
 	for _, ar := range res.Rows {
@@ -443,7 +462,7 @@ func writeAuditReports(dir string, res *AuditResult) error {
 		if ar.ECLACounted {
 			ecla = strconv.Itoa(ar.ECLACount)
 		}
-		rows = append(rows, []string{r.CompanyID, r.CompanyName, r.SigningEntityName, r.ExternalID, string(ar.Shape), strconv.FormatBool(r.ActiveCCLA), strconv.Itoa(r.CCLACount), ecla, ar.OrgStatus, ar.Website, strconv.FormatBool(ar.Duplicate), string(ar.Route), ar.ManualReason, ar.Tier, ar.ACSRoles, ar.Suggested, ar.LastActivity})
+		rows = append(rows, []string{r.CompanyID, r.CompanyName, r.SigningEntityName, r.ExternalID, string(ar.Shape), strconv.FormatBool(r.ActiveCCLA), strconv.Itoa(r.CCLACount), ecla, ar.OrgStatus, ar.Website, strconv.FormatBool(ar.Duplicate), string(ar.Route), ar.ManualReason, ar.Tier, ar.ACSRoles, ar.Suggested, ar.LastActivity, strconv.Itoa(ar.CCLARecords)})
 		if r.ActiveCCLA && ar.unresolvable() {
 			unresolvable = append(unresolvable, []string{r.CompanyID, r.CompanyName, r.SigningEntityName, r.ExternalID, string(ar.Shape), strconv.Itoa(r.CCLACount), ecla, ar.OrgStatus, ar.ManualReason})
 		}

@@ -116,11 +116,13 @@ type service struct {
 	companyRepo           CompanyRepository
 	contributorConsoleURL string
 	githubUserDetails     func(username string) (*githubsdk.User, error)
+	idpTokens             IDPTokenSource
+	githubVerifiedEmails  func(ctx context.Context, accessToken string) ([]string, error)
 }
 
 // NewService creates a new instance of the Self Serve signing service
-func NewService(myClasService MyClasService, usersService UsersService, claGroupService CLAGroupService, projectsClaGroupsRepo ProjectsCLAGroupsRepository, storeRepo StoreRepository, corporateSignService CorporateSignService, companyRepo CompanyRepository, contributorConsoleURL string) Service {
-	return &service{
+func NewService(myClasService MyClasService, usersService UsersService, claGroupService CLAGroupService, projectsClaGroupsRepo ProjectsCLAGroupsRepository, storeRepo StoreRepository, corporateSignService CorporateSignService, companyRepo CompanyRepository, contributorConsoleURL string, options ...Option) Service {
+	s := &service{
 		myClasService:         myClasService,
 		usersService:          usersService,
 		claGroupService:       claGroupService,
@@ -130,7 +132,12 @@ func NewService(myClasService MyClasService, usersService UsersService, claGroup
 		companyRepo:           companyRepo,
 		contributorConsoleURL: contributorConsoleURL,
 		githubUserDetails:     github.GetUserDetails,
+		githubVerifiedEmails:  github.VerifiedEmails,
 	}
+	for _, option := range options {
+		option(s)
+	}
+	return s
 }
 
 // PrepareSign verifies the requested identity belongs to the authenticated user - a trusted Self
@@ -208,6 +215,7 @@ func (s *service) PrepareSign(ctx context.Context, caller *my_clas.Caller, curre
 		log.WithFields(f).WithError(err).Warn("unable to resolve or create the EasyCLA user record")
 		return nil, err
 	}
+	userModel = s.refreshGithubEmails(ctx, userModel, allowed)
 
 	if err := s.recordSigningSession(ctx, userModel.UserID, claGroupID, returnURL, identityACL(allowed)); err != nil {
 		log.WithFields(f).WithError(err).Warn("unable to record the active signing session")
