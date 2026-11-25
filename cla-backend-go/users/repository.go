@@ -36,6 +36,7 @@ type UserRepository interface {
 	CreateUser(user *models.User) (*models.User, error)
 	Save(user *models.UserUpdate) (*models.User, error)
 	UpdateUser(userID string, updates map[string]interface{}) (*models.User, error)
+	AddUserEmails(userID string, emails []string) (*models.User, error)
 	Delete(userID string) error
 	GetUser(userID string) (*models.User, error)
 	GetUserByLFUserName(lfUserName string) (*models.User, error)
@@ -278,6 +279,33 @@ func (repo repository) UpdateUser(userID string, updates map[string]interface{})
 		return nil, err
 	}
 
+	return repo.GetUser(userID)
+}
+
+// AddUserEmails adds the addresses to the e-mail set of the user in one atomic update
+func (repo repository) AddUserEmails(userID string, emails []string) (*models.User, error) {
+	emails = normalizeEmails(emails)
+	if len(emails) == 0 {
+		return repo.GetUser(userID)
+	}
+	_, err := repo.dynamoDBClient.UpdateItem(&dynamodb.UpdateItemInput{
+		TableName:           aws.String(repo.tableName),
+		Key:                 map[string]*dynamodb.AttributeValue{"user_id": {S: aws.String(userID)}},
+		UpdateExpression:    aws.String("ADD #E :e SET #M = :m"),
+		ConditionExpression: aws.String("attribute_exists(#U)"),
+		ExpressionAttributeNames: map[string]*string{
+			"#E": aws.String("user_emails"),
+			"#M": aws.String("date_modified"),
+			"#U": aws.String("user_id"),
+		},
+		ExpressionAttributeValues: map[string]*dynamodb.AttributeValue{
+			":e": {SS: aws.StringSlice(emails)},
+			":m": {S: aws.String(time.Now().UTC().Format(time.RFC3339))},
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
 	return repo.GetUser(userID)
 }
 

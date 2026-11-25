@@ -45,6 +45,7 @@ type resolveHTTP struct {
 	searchBody string
 	mu         sync.Mutex
 	calls      []string
+	searches   []string
 }
 
 // snapshot of the recorded calls, taken under the lock RoundTrip appends with
@@ -63,6 +64,9 @@ func (h *resolveHTTP) RoundTrip(r *http.Request) (*http.Response, error) {
 	case r.URL.Host == resolveAuthHost && r.URL.Path == "/oauth/token":
 		response.Body = io.NopCloser(strings.NewReader(`{"access_token":"unit-test-token","token_type":"Bearer","expires_in":3600}`))
 	case r.URL.Host == resolvePlatformHost && r.URL.Path == "/organization-service/v1/orgs/search":
+		h.mu.Lock()
+		h.searches = append(h.searches, "offset="+r.URL.Query().Get("offset")+" pageSize="+r.URL.Query().Get("pageSize"))
+		h.mu.Unlock()
 		response.Body = io.NopCloser(strings.NewReader(h.searchBody))
 	case r.URL.Host == resolvePlatformHost && strings.HasPrefix(r.URL.Path, "/organization-service/v1/orgs/"):
 		body, ok := h.orgs[strings.TrimPrefix(r.URL.Path, "/organization-service/v1/orgs/")]
@@ -383,6 +387,30 @@ func TestSearchOrganizationByNameBoundsParallelLookups(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, result.List, listed)
 	assert.LessOrEqual(t, int(peak.Load()), limit)
+}
+
+func TestSearchOrganizationByNameStopsAtTheResultLimit(t *testing.T) {
+	const limit = 1000
+	rows := make([]string, 0, limit)
+	for i := 0; i < limit; i++ {
+		rows = append(rows, fmt.Sprintf(`{"ID":"001QP%013d","Name":"Acme %04d","Link":"https://acme%d.invalid"}`, i, i, i))
+	}
+	transport := setupResolveHTTP(t, nil, `{"Data":[`+strings.Join(rows, ",")+`],"Metadata":{"TotalSize":2500,"Offset":0,"PageSize":1000}}`)
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+	repo := mock_company.NewMockIRepository(ctrl)
+	repo.EXPECT().GetCompanyByExternalID(gomock.Any(), gomock.Any()).Times(limit).DoAndReturn(func(_ context.Context, id string) (*models.Company, error) {
+		return nil, &utils.CompanyNotFound{CompanySFID: id}
+	})
+	repo.EXPECT().GetCompanyByName(gomock.Any(), "Acme").Return(nil, nil)
+
+	result, err := newResolveService(repo).SearchOrganizationByName(context.Background(), "Acme", "", false, "")
+
+	require.NoError(t, err)
+	assert.Len(t, result.List, limit)
+	transport.mu.Lock()
+	defer transport.mu.Unlock()
+	assert.Equal(t, []string{"offset=0 pageSize=1000"}, transport.searches, "a broad search reads one page of the organization service")
 }
 
 func TestSearchOrganizationByNameAddsNewCompanyNotListed(t *testing.T) {

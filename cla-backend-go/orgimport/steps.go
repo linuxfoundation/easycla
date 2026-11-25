@@ -22,6 +22,9 @@ const (
 // orgAssociated is how ACS refuses an organization scope grant to a user who holds one in another organization
 const orgAssociated = "already associated with other organization"
 
+// userGone is how the organization service refuses a grant for a user who no longer exists on the platform
+const userGone = "user does not exist on platform"
+
 // easyCLARoles are the only roles copied to an Account that existed before the rewrite (lfx-self-serve #5081).
 var easyCLARoles = map[string]bool{"cla-manager": true, "cla-manager-designee": true, "cla-signatory": true, "contributor": true, "contact": true}
 
@@ -85,7 +88,7 @@ func (r *runner) copyGrants(ctx context.Context, g *Group) error {
 	created, skipped := 0, 0
 	for _, gr := range oldGrants {
 		ok, createErr := r.ensureGrant(ctx, g, gr, have)
-		if createErr != nil && !heldElsewhere(gr, createErr) {
+		if createErr != nil && !heldElsewhere(gr, createErr) && !goneUser(createErr) {
 			return createErr
 		}
 		if ok {
@@ -284,7 +287,7 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 		}
 		created, ensureErr := r.ensureGrant(ctx, g, gr, have)
 		moving := heldElsewhere(gr, ensureErr)
-		if ensureErr != nil && !moving {
+		if ensureErr != nil && !moving && !goneUser(ensureErr) {
 			return restoreHeld(ensureErr)
 		}
 		if created {
@@ -311,7 +314,7 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 	for len(held) > 0 {
 		gr := held[0]
 		created, ensureErr := r.ensureGrant(ctx, g, gr, have)
-		refused := heldElsewhere(gr, ensureErr)
+		refused := heldElsewhere(gr, ensureErr) || goneUser(ensureErr)
 		if ensureErr != nil && !refused {
 			return restoreHeld(ensureErr)
 		}
@@ -327,6 +330,11 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 	}
 	fmt.Fprintf(r.deps.Out, "grants %s: %d deleted (%d copied late)\n", g.OldID, deleted, copied)
 	return nil
+}
+
+// goneUser reports a grant that no organization can take any more: its user is gone, so it is dropped and reported
+func goneUser(err error) bool {
+	return err != nil && strings.Contains(err.Error(), userGone)
 }
 
 // heldElsewhere tells the ACS refusal of an organization scope grant whose user holds one in another organization

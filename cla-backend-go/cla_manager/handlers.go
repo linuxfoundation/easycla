@@ -939,6 +939,7 @@ func sendRequestAccessEmailToCLAManagers(emailSvc emails.EmailTemplateService, e
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: New CLA Manager Access Request for %s on %s", companyName, projectName)
 	recipients := []string{emailParams.RecipientAddress}
+	emailParams.CLAGroupID = claGroupModel.ProjectID
 	body, err := emails.RenderRequestAccessToCLAManagersTemplate(
 		emailSvc, claGroupModel.Version, claGroupModel.ProjectExternalID, emailParams)
 	if err != nil {
@@ -960,6 +961,7 @@ func sendRequestApprovedEmailToCLAManagers(emailSvc emails.EmailTemplateService,
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: CLA Manager Access Approval Notice for %s", projectName)
 	recipients := []string{emailParams.RecipientAddress}
+	emailParams.CLAGroupID = claGroupModel.ProjectID
 	body, err := emails.RenderRequestApprovedToCLAManagersTemplate(emailSvc, claGroupModel.Version, claGroupModel.ProjectExternalID, emailParams)
 	if err != nil {
 		log.Warnf("rendering email template : %s failed : %v", emails.RequestApprovedToCLAManagersTemplateName, err)
@@ -979,6 +981,7 @@ func sendRequestApprovedEmailToRequester(emailSvc emails.EmailTemplateService, e
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: New CLA Manager Access Approved for %s", projectName)
 	recipients := []string{emailParams.RecipientAddress}
+	emailParams.CLAGroupID = claGroupModel.ProjectID
 	body, err := emails.RenderRequestApprovedToRequesterTemplate(emailSvc, claGroupModel.Version, claGroupModel.ProjectExternalID, emailParams)
 	if err != nil {
 		log.Warnf("email template : %s failed rendering : %s", emails.RequestApprovedToRequesterTemplateName, err)
@@ -998,6 +1001,7 @@ func sendRequestDeniedEmailToCLAManagers(emailSvc emails.EmailTemplateService, e
 	// subject string, body string, recipients []string
 	subject := fmt.Sprintf("EasyCLA: CLA Manager Access Denied Notice for %s", projectName)
 	recipients := []string{emailParams.RecipientAddress}
+	emailParams.CLAGroupID = claGroupModel.ProjectID
 	body, err := emails.RenderRequestDeniedToCLAManagersTemplate(emailSvc, claGroupModel.Version, claGroupModel.ProjectExternalID, emailParams)
 
 	if err != nil {
@@ -1020,7 +1024,8 @@ func sendRequestDeniedEmailToRequester(emailSvc emails.EmailTemplateService, ema
 	subject := fmt.Sprintf("EasyCLA: New CLA Manager Access Denied for %s", projectName)
 	recipients := []string{emailParams.RecipientAddress}
 	body, err := emails.RenderRequestDeniedToRequesterTemplate(emailSvc, claGroupModel.Version, claGroupModel.ProjectExternalID, emails.RequestDeniedToRequesterTemplateParams{
-		CommonEmailParams: emailParams,
+		CommonEmailParams:      emailParams,
+		CLAGroupTemplateParams: emails.CLAGroupTemplateParams{CLAGroupID: claGroupModel.ProjectID},
 	})
 	if err != nil {
 		log.Warnf("email template rendering %s failed : %v", emails.RequestDeniedToRequesterTemplateName, err)

@@ -132,3 +132,35 @@ func TestContactClaManagerEmailLinksToOrgLens(t *testing.T) {
 	assert.Contains(t, console, "log into the EasyCLA Corporate Console")
 	assert.NotContains(t, console, "Organization lens")
 }
+
+func TestCLAManagerEmailsKeepTheCLAGroupOfTheSender(t *testing.T) {
+	const own = "00000000-0000-4000-8000-00000000000a"
+	svc := &documentSignedTemplateServiceStub{projectParams: lensTestCLAGroup(lensTestBase)}
+	ownPage := lensTestBase + "/org/" + lensTestCompany + "/easycla/" + own
+	group := CLAGroupTemplateParams{CLAGroupID: own}
+	renders := map[string]func() (string, error){
+		"request access": func() (string, error) {
+			return RenderRequestAccessToCLAManagersTemplate(svc, utils.V2, "a0P000000000001AAA", RequestAccessToCLAManagersTemplateParams{CommonEmailParams: lensTestCommon(), CLAGroupTemplateParams: group})
+		},
+		"request approved to requester": func() (string, error) {
+			return RenderRequestApprovedToRequesterTemplate(svc, utils.V2, "a0P000000000001AAA", RequestApprovedToRequesterTemplateParams{CommonEmailParams: lensTestCommon(), CLAGroupTemplateParams: group})
+		},
+		"CLA manager added": func() (string, error) {
+			return RenderClaManagerAddedEToUserTemplate(svc, utils.V2, "a0P000000000001AAA", ClaManagerAddedEToUserTemplateParams{CommonEmailParams: lensTestCommon(), CLAGroupTemplateParams: group})
+		},
+	}
+	for name, render := range renders {
+		t.Run(name, func(t *testing.T) {
+			body, err := render()
+			assert.NoError(t, err)
+			assert.Contains(t, body, `<a href="`+ownPage+`"`, "the link goes to the CLA Group of the request")
+			assert.NotContains(t, body, lensTestCLAGroupID, "the CLA Group of the project lookup is not used for the link")
+			assert.Contains(t, body, "Example Group", "the rest still comes from the lookup")
+		})
+	}
+	t.Run("a sender that names no CLA Group keeps the lookup", func(t *testing.T) {
+		body, err := RenderRequestAccessToCLAManagersTemplate(svc, utils.V2, "a0P000000000001AAA", RequestAccessToCLAManagersTemplateParams{CommonEmailParams: lensTestCommon()})
+		assert.NoError(t, err)
+		assert.Contains(t, body, `<a href="`+lensTestPage+`"`)
+	})
+}

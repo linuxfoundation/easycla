@@ -765,6 +765,9 @@ func (s service) GetCompanyBySigningEntityName(ctx context.Context, signingEntit
 // searchLookupConcurrency keeps the company lookups of one organization search within the Lambda's file descriptors
 const searchLookupConcurrency = 32
 
+// searchResultLimit is the most organizations one organization search fetches and looks up
+const searchResultLimit = 1000
+
 func (s service) SearchOrganizationByName(ctx context.Context, orgName string, websiteName string, includeSigningEntityName bool, filter string) (*models.OrgList, error) {
 	f := logrus.Fields{
 		"functionName":             "company.service.SearchOrganizationByName",
@@ -777,10 +780,13 @@ func (s service) SearchOrganizationByName(ctx context.Context, orgName string, w
 
 	osc := organization_service.GetClient()
 	log.WithFields(f).Debug("Searching organizations by name and website...")
-	orgs, err := osc.SearchOrganization(ctx, orgName, websiteName, filter)
+	orgs, more, err := osc.SearchOrganizationPage(ctx, orgName, websiteName, filter, searchResultLimit)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warn("problem searching organizations by name and website")
 		return nil, err
+	}
+	if more {
+		log.WithFields(f).Warnf("the search matches more than %d organizations - only the first %d are returned", searchResultLimit, searchResultLimit)
 	}
 
 	resultsChannel := make(chan *models.Org, len(orgs))
