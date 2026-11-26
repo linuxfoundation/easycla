@@ -74,6 +74,8 @@ for cid, path in own:
     e2e.expect(cid, ID1, 200, "GET", path)
 # public /v3 route of the Contributor Console hand-off: the lens page of the CLA Group for a live Account, "" otherwise
 lens_ok, lens = e2e.expect("R-ANON-ORG-LENS", "anon", 200, "GET", f"/v3/company/{CO}/cla-group/{GRP}/org-lens", base=c("LEGACY_API"))
+if lens_ok:
+    e2e.check("R-ANON-ORG-LENS-SHAPE", isinstance(lens, dict), f"the answer is a JSON object: {type(lens).__name__}")
 if lens_ok and isinstance(lens, dict):
     lens_url = lens.get("orgLensURL")
     e2e.check("R-ANON-ORG-LENS-IDS", (lens.get("companyID"), lens.get("companySFID"), lens.get("claGroupID")) == (CO, SFID, GRP) and "foundationSFID" in lens,

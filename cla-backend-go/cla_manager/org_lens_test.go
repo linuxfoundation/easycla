@@ -30,8 +30,8 @@ const (
 	orgLensTestFoundation = "a0P000000000001AAA"
 )
 
-func orgLensTestURL(companySFID, claGroupID string) string {
-	return utils.OrgLensURL(orgLensTestBase, companySFID, claGroupID)
+func orgLensTestURL(ctx context.Context, companySFID, claGroupID string) string {
+	return utils.OrgLensURLContext(ctx, orgLensTestBase, companySFID, claGroupID)
 }
 
 func TestGetCompanyCLAGroupOrgLens(t *testing.T) {
@@ -72,16 +72,16 @@ func TestGetCompanyCLAGroupOrgLens(t *testing.T) {
 		},
 		{
 			name: "company lookup fails", companyErr: errors.New("dynamodb is down"), live: true, wantStatus: http.StatusInternalServerError,
-			wantBody: `{"Code":"500","Message":"dynamodb is down"}`,
+			wantBody: `{"Code":"500","Message":"unable to load the company or the CLA Group"}`,
 		},
 		{
 			name: "CLA Group lookup fails", company: company, groupErr: errors.New("dynamodb is down"), live: true, wantStatus: http.StatusInternalServerError,
-			wantBody: `{"Code":"500","Message":"dynamodb is down"}`,
+			wantBody: `{"Code":"500","Message":"unable to load the company or the CLA Group"}`,
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			utils.SetOrgLensLiveCheck(func(string) bool { return tt.live })
+			utils.SetOrgLensLiveCheck(func(context.Context, string) bool { return tt.live })
 			t.Cleanup(func() { utils.SetOrgLensLiveCheck(nil) })
 			ctrl := gomock.NewController(t)
 			defer ctrl.Finish()

@@ -18,7 +18,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func companyCLAGroupOrgLens(ctx context.Context, companyService company.IService, projectService service2.Service, lensURL func(companySFID, claGroupID string) string, companyID, claGroupID string) (*models.CompanyClaGroupOrgLens, error) {
+func companyCLAGroupOrgLens(ctx context.Context, companyService company.IService, projectService service2.Service, lensURL func(ctx context.Context, companySFID, claGroupID string) string, companyID, claGroupID string) (*models.CompanyClaGroupOrgLens, error) {
 	companyModel, err := companyService.GetCompany(ctx, companyID)
 	if err != nil {
 		return nil, err
@@ -38,14 +38,14 @@ func companyCLAGroupOrgLens(ctx context.Context, companyService company.IService
 		CompanySFID:    companyModel.CompanyExternalID,
 		ClaGroupID:     claGroupModel.ProjectID,
 		FoundationSFID: claGroupModel.FoundationSFID,
-		OrgLensURL:     lensURL(companyModel.CompanyExternalID, claGroupModel.ProjectID),
+		OrgLensURL:     lensURL(ctx, companyModel.CompanyExternalID, claGroupModel.ProjectID),
 	}, nil
 }
 
-func configureOrgLens(api *operations.ClaAPI, companyService company.IService, projectService service2.Service, lensURL func(companySFID, claGroupID string) string) {
+func configureOrgLens(api *operations.ClaAPI, companyService company.IService, projectService service2.Service, lensURL func(ctx context.Context, companySFID, claGroupID string) string) {
 	api.ClaManagerGetCompanyCLAGroupOrgLensHandler = cla_manager.GetCompanyCLAGroupOrgLensHandlerFunc(func(params cla_manager.GetCompanyCLAGroupOrgLensParams) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
-		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
+		ctx := context.WithValue(params.HTTPRequest.Context(), utils.XREQUESTID, reqID) // nolint
 		lens, err := companyCLAGroupOrgLens(ctx, companyService, projectService, lensURL, params.CompanyID, params.ClaGroupID)
 		if err != nil {
 			var companyNotFound *utils.CompanyNotFound
@@ -59,7 +59,7 @@ func configureOrgLens(api *operations.ClaAPI, companyService company.IService, p
 				"companyID":      params.CompanyID,
 				"claGroupID":     params.ClaGroupID,
 			}).WithError(err).Warn("unable to load the company or the CLA Group")
-			return cla_manager.NewGetCompanyCLAGroupOrgLensInternalServerError().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{Code: "500", Message: err.Error()})
+			return cla_manager.NewGetCompanyCLAGroupOrgLensInternalServerError().WithXRequestID(reqID).WithPayload(&models.ErrorResponse{Code: "500", Message: "unable to load the company or the CLA Group"})
 		}
 		return cla_manager.NewGetCompanyCLAGroupOrgLensOK().WithXRequestID(reqID).WithPayload(lens)
 	})

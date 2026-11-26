@@ -484,7 +484,10 @@ func livenessGuard(groups []*Group) {
 }
 
 func resolveNewID(ctx context.Context, deps Deps, g *Group, mapping *Mapping, shared SharedDomains, opts Options) (newID, action, reason string) {
-	if mapping.Creates(g.OldID) {
+	if _, mapAction, mapReason := mapping.Resolve(g.OldID); mapAction == ActionCreate {
+		if mapReason != "" {
+			return "", mapAction, mapReason
+		}
 		return resolveCreate(deps, g, shared)
 	}
 	if !opts.UseApex {
@@ -524,14 +527,14 @@ func resolveNewID(ctx context.Context, deps Deps, g *Group, mapping *Mapping, sh
 
 // resolveCreate plans an approved create row: the Account is created, and gets its id, at apply.
 func resolveCreate(deps Deps, g *Group, shared SharedDomains) (newID, action, reason string) {
-	if deps.Apex == nil {
+	if deps.Creator == nil {
 		g.Err = fmt.Errorf("create row for %s: %w", g.OldID, ErrNotConfigured)
 		return "", ActionCreate, ReasonApexError
 	}
 	if _, gate := shared.Shared(g.Website()); gate != "" {
 		return "", ActionCreate, gate
 	}
-	g.ViaApex = true
+	g.ViaApex, g.ViaCreate = true, true
 	return "", ActionCreated, ""
 }
 
@@ -713,7 +716,7 @@ func Execute(ctx context.Context, deps Deps, opts Options, plan *Plan) (Summary,
 			}
 			sum.Rewritten++
 		}
-		r.retryHeld(ctx)
+		sum.Failed += r.retryHeld(ctx)
 	}
 	if recheck {
 		sum.Failed += r.recheckEvents(ctx, recheckBudget)
@@ -826,7 +829,11 @@ func (r *runner) resolveApex(ctx context.Context) {
 		if g.Replayed || g.Err != nil || !g.ViaApex {
 			continue
 		}
-		res, err := r.deps.Apex.FindOrCreate(ctx, apexRequest(g, false))
+		svc := r.deps.Apex
+		if g.ViaCreate {
+			svc = r.deps.Creator
+		}
+		res, err := svc.FindOrCreate(ctx, apexRequest(g, false))
 		switch {
 		case err != nil:
 			g.Err = err

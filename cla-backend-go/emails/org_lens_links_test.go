@@ -4,6 +4,7 @@
 package emails
 
 import (
+	"context"
 	"testing"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
@@ -19,7 +20,7 @@ const (
 )
 
 func lensTestLive(t *testing.T, live bool) {
-	utils.SetOrgLensLiveCheck(func(string) bool { return live })
+	utils.SetOrgLensLiveCheck(func(context.Context, string) bool { return live })
 	t.Cleanup(func() { utils.SetOrgLensLiveCheck(nil) })
 }
 

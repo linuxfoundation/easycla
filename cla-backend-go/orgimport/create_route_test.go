@@ -26,20 +26,20 @@ func (f *fakeMemberAccounts) FindOrCreateB2BOrg(_ context.Context, name, website
 }
 
 // creating makes the fake platform serve the new Account, as Salesforce and the organization service do after a create
-func creating(fx *fixture, sfid string) *fakeMemberAccounts {
+func creating(fx *fixture) *fakeMemberAccounts {
 	return &fakeMemberAccounts{answer: func(name, website string) (*member_service.B2BOrg, member_service.Action, error) {
-		fx.platform.sfAccounts[sfid] = true
-		fx.platform.orgs[sfid] = &Org{ID: sfid, Name: name, Website: website}
-		return &member_service.B2BOrg{UID: sfid, Name: name}, member_service.ActionCreated, nil
+		fx.platform.sfAccounts[targetSFID2] = true
+		fx.platform.orgs[targetSFID2] = &Org{ID: targetSFID2, Name: name, Website: website}
+		return &member_service.B2BOrg{UID: targetSFID2, Name: name}, member_service.ActionCreated, nil
 	}}
 }
 
 func TestCreateRowCreatesTheAccountAtApply(t *testing.T) {
 	fx, _, statePath := rewriteFixture(t)
 	mapping := writeMapping(t, t.TempDir(), lfID+",,create,true")
-	members := creating(fx, targetSFID2)
+	members := creating(fx)
 	deps := fx.deps()
-	deps.Apex = MemberApex{Members: members}
+	deps.Creator = MemberApex{Members: members}
 
 	dry := Options{Stage: "dev", Mapping: mapping, Routes: []Route{RouteRewrite}, OutDir: t.TempDir()}
 	plan, err := BuildPlan(context.Background(), deps, dry)
@@ -92,9 +92,9 @@ func TestCreateRowCreatesTheAccountAtApply(t *testing.T) {
 func TestCreateRowResumesWithTheCreatedAccount(t *testing.T) {
 	fx, _, statePath := rewriteFixture(t)
 	mapping := writeMapping(t, t.TempDir(), lfID+",,create,true")
-	members := creating(fx, targetSFID2)
+	members := creating(fx)
 	deps := fx.deps()
-	deps.Apex = MemberApex{Members: members}
+	deps.Creator = MemberApex{Members: members}
 	fx.platform.failCreate = true
 	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}, OutDir: t.TempDir()}
 	plan, err := BuildPlan(context.Background(), deps, opts)
@@ -127,7 +127,7 @@ func TestCreateRowStopsWhenAnAccountAlreadyMatches(t *testing.T) {
 		return &member_service.B2BOrg{UID: targetSFID, Name: name}, member_service.ActionMatched, nil
 	}}
 	deps := fx.deps()
-	deps.Apex = MemberApex{Members: members}
+	deps.Creator = MemberApex{Members: members}
 	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}, OutDir: t.TempDir()}
 	plan, err := BuildPlan(context.Background(), deps, opts)
 	require.NoError(t, err)
@@ -161,7 +161,7 @@ func TestCreateRowStopsWhenSeveralAccountsShareTheDomain(t *testing.T) {
 		return nil, "", member_service.ErrAmbiguousDomain
 	}}
 	deps := fx.deps()
-	deps.Apex = MemberApex{Members: members}
+	deps.Creator = MemberApex{Members: members}
 	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}, OutDir: t.TempDir()}
 	plan, err := BuildPlan(context.Background(), deps, opts)
 	require.NoError(t, err)
@@ -181,7 +181,7 @@ func TestCreateRowNeedsApprovalAWebsiteAndMemberService(t *testing.T) {
 	t.Run("not approved", func(t *testing.T) {
 		fx, _, _ := rewriteFixture(t)
 		deps := fx.deps()
-		deps.Apex = MemberApex{Members: members}
+		deps.Creator = MemberApex{Members: members}
 		plan, err := BuildPlan(context.Background(), deps, Options{Stage: "dev", Mapping: writeMapping(t, t.TempDir(), lfID+",,create,false")})
 		require.NoError(t, err)
 		g := groupByKey(plan.Groups, lfID)
@@ -193,7 +193,7 @@ func TestCreateRowNeedsApprovalAWebsiteAndMemberService(t *testing.T) {
 		fx, _, _ := rewriteFixture(t)
 		fx.platform.orgs[lfID].Website = ""
 		deps := fx.deps()
-		deps.Apex = MemberApex{Members: members}
+		deps.Creator = MemberApex{Members: members}
 		plan, err := BuildPlan(context.Background(), deps, Options{Stage: "dev", Mapping: writeMapping(t, t.TempDir(), lfID+",,create,true")})
 		require.NoError(t, err)
 		g := groupByKey(plan.Groups, lfID)
@@ -205,7 +205,7 @@ func TestCreateRowNeedsApprovalAWebsiteAndMemberService(t *testing.T) {
 		fx, _, _ := rewriteFixture(t)
 		fx.company("c-empty", "No Id Ltd", "", "", "cg-1")
 		deps := fx.deps()
-		deps.Apex = MemberApex{Members: members}
+		deps.Creator = MemberApex{Members: members}
 		plan, err := BuildPlan(context.Background(), deps, Options{Stage: "dev", Mapping: writeMapping(t, t.TempDir(), "c-empty,,create,true")})
 		require.NoError(t, err)
 		g := groupByKey(plan.Groups, "c-empty")
@@ -231,7 +231,7 @@ func TestCreateRowRewritesAnAccountMemberServiceCannotRead(t *testing.T) {
 		fx.platform.orgs[unreadable] = &Org{ID: unreadable, Name: "Gone Co", Website: "https://gone.example"}
 		fx.platform.forbidden = map[string]int{unreadable: -1}
 		deps := fx.deps()
-		deps.Apex = MemberApex{Members: creating(fx, targetSFID2)}
+		deps.Creator = MemberApex{Members: creating(fx)}
 		plan, err := BuildPlan(context.Background(), deps, Options{Stage: "dev", Mapping: writeMapping(t, t.TempDir(), mappingRows...)})
 		require.NoError(t, err)
 		return groupByKey(plan.Groups, unreadable)
@@ -291,4 +291,54 @@ func TestMemberApex(t *testing.T) {
 
 	_, err = answer(&member_service.B2BOrg{UID: "lf-not-an-account"}, member_service.ActionCreated, nil).FindOrCreate(context.Background(), req)
 	assert.ErrorContains(t, err, "unusable answer")
+}
+
+type fakeApex struct {
+	calls []ApexRequest
+	res   ApexResult
+}
+
+func (f *fakeApex) FindOrCreate(_ context.Context, req ApexRequest) (*ApexResult, error) {
+	f.calls = append(f.calls, req)
+	res := f.res
+	return &res, nil
+}
+
+func TestCreateRowUsesMemberServiceAlsoWithUseApex(t *testing.T) {
+	fx, _, statePath := rewriteFixture(t)
+	mapping := writeMapping(t, t.TempDir(), lfID+",,create,true")
+	members := creating(fx)
+	apex := &fakeApex{res: ApexResult{ID: targetSFID, Action: ActionCreated}}
+	deps := fx.deps()
+	deps.Apex, deps.Creator = apex, MemberApex{Members: members}
+	opts := Options{Stage: "dev", Apply: true, UseApex: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}, OutDir: t.TempDir()}
+	plan, err := BuildPlan(context.Background(), deps, opts)
+	require.NoError(t, err)
+	require.Len(t, plan.Rewrite, 1)
+	assert.True(t, plan.Rewrite[0].ViaCreate)
+
+	sum, err := Execute(context.Background(), deps, opts, plan)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, sum.Rewritten)
+	assert.Len(t, members.calls, 1, "an approved create row is created through member-service")
+	assert.Empty(t, apex.calls, "--use-apex never takes over a create row")
+	assert.Equal(t, targetSFID2, fx.companies.rows["c-parent"].CompanyExternalID)
+}
+
+func TestUnapprovedCreateRowIsRefusedAlsoWithUseApex(t *testing.T) {
+	fx, _, _ := rewriteFixture(t)
+	apex := &fakeApex{res: ApexResult{Action: ActionCreated}}
+	members := creating(fx)
+	deps := fx.deps()
+	deps.Apex, deps.Creator = apex, MemberApex{Members: members}
+	plan, err := BuildPlan(context.Background(), deps, Options{Stage: "dev", UseApex: true, Mapping: writeMapping(t, t.TempDir(), lfID+",,create,false")})
+	require.NoError(t, err)
+	g := groupByKey(plan.Groups, lfID)
+	assert.Equal(t, RouteManual, g.Route)
+	assert.Equal(t, "mapping_not_approved", g.ManualReason)
+	assert.False(t, g.ViaApex)
+	assert.Empty(t, plan.Rewrite)
+	assert.Empty(t, apex.calls, "a row the reviewer did not approve never reaches Apex")
+	assert.Empty(t, members.calls)
 }

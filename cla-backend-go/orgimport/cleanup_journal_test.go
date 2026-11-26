@@ -37,8 +37,6 @@ func TestCleanupJournalsAMovingGrantBeforeItsDelete(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, 1, sum.Rewritten)
-	assert.Equal(t, StepCleanup, atDelete.Step)
-	assert.Equal(t, statusPartial, atDelete.Status)
 	var journaled []string
 	for _, d := range atDelete.Dropped {
 		journaled = append(journaled, d.GrantID)
@@ -142,4 +140,82 @@ func TestCollapseTriesARefusedOrganizationGrantAgainAfterTheOtherSources(t *test
 			assert.Empty(t, st.Last["lf-a"].Dropped)
 		})
 	}
+}
+
+func TestCleanupJournalsALateUncopiedGrantBeforeItsDelete(t *testing.T) {
+	const late = "grace"
+	fx, mapping, statePath := rewriteFixture(t)
+	lateGrant := ""
+	fx.platform.listHook = func(orgID string) {
+		journal, readErr := os.ReadFile(filepath.Clean(statePath))
+		if readErr != nil || orgID != lfID || lateGrant != "" || !strings.Contains(string(journal), StepEvents) {
+			return
+		}
+		fx.platform.addGrantLocked(lfID, late, "role-company-admin", "")
+		for _, g := range fx.platform.grants[lfID] {
+			if g.Username == late {
+				lateGrant = g.GrantID
+			}
+		}
+	}
+	var atDelete StateRecord
+	fx.platform.deleteHook = func(grantID string) error {
+		if grantID == lateGrant {
+			st, err := LoadState(statePath)
+			require.NoError(t, err)
+			atDelete = st.Last[lfID]
+		}
+		return nil
+	}
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}, OutDir: t.TempDir()}
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, sum.Rewritten)
+	require.NotEmpty(t, lateGrant, "the role appeared after the copy step")
+	assert.Equal(t, StepCleanup, atDelete.Step)
+	assert.Equal(t, statusPartial, atDelete.Status)
+	var journaled []string
+	for _, d := range atDelete.Dropped {
+		journaled = append(journaled, d.GrantID)
+	}
+	assert.Contains(t, journaled, lateGrant, "a role that is not copied is in the journal before it is deleted")
+	assert.Equal(t, [][]string{{lfID, targetSFID, late, "company-admin", objectTypeOrganization, lfID}}, droppedReport(t, opts.OutDir)[1:])
+}
+
+func TestARetryThatCannotBeJournaledFailsTheGroup(t *testing.T) {
+	fx, dir := collisionFixture(t)
+	fx.platform.oneOrg = true
+	fx.platform.addGrant("lf-a", "uma", "role-contact", "")
+	fx.platform.addGrant("lf-b", "uma", "role-cla-signatory", "")
+	mapping := writeMapping(t, dir, "lf-a,"+targetSFID+",created,true", "lf-b,"+targetSFID+",created,true")
+	decisions := writeDecisions(t, dir, "collapse,lf-a;lf-b,"+targetSFID+",michal,one legal entity")
+	statePath := filepath.Join(dir, "state.jsonl")
+	t.Cleanup(func() {
+		if err := os.Chmod(statePath, 0o600); err != nil {
+			t.Log(err)
+		}
+	})
+	fx.platform.listHook = func(string) {
+		st, err := LoadState(statePath)
+		if err == nil && st.Done("lf-a") && st.Done("lf-b") {
+			if chmodErr := os.Chmod(statePath, 0o400); chmodErr != nil {
+				t.Error(chmodErr)
+			}
+		}
+	}
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, Decisions: decisions, State: statePath, Routes: []Route{RouteRewrite}, OutDir: filepath.Join(dir, "out")}
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+
+	require.Error(t, err, "the run must not report success with a wrong loss report")
+	assert.Equal(t, 2, sum.Rewritten)
+	assert.Equal(t, 1, sum.Failed)
+	assert.ErrorContains(t, groupByKey(plan.Groups, "lf-a").Err, "the journal still lists them as dropped")
+	assert.Contains(t, targetGrants(t, fx), "uma:contact:"+targetSFID, "the role itself was copied")
 }

@@ -137,6 +137,15 @@ func (g *Group) drop(gr acs_service.OrgGrant) {
 	g.Dropped = append(g.Dropped, gr)
 }
 
+func (g *Group) isDropped(gr acs_service.OrgGrant) bool {
+	for _, d := range g.Dropped {
+		if d.GrantID == gr.GrantID {
+			return true
+		}
+	}
+	return false
+}
+
 func (g *Group) undrop(gr acs_service.OrgGrant) {
 	for i, d := range g.Dropped {
 		if d.GrantID == gr.GrantID {
@@ -314,10 +323,13 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 		if created {
 			copied++
 		}
-		if moving {
+		if moving || uncopied(g, gr, have) {
+			journaled := g.isDropped(gr)
 			g.drop(gr)
-			if recErr := r.record(g, StepCleanup, statusPartial, nil); recErr != nil {
-				return restoreHeld(recErr)
+			if !journaled {
+				if recErr := r.record(g, StepCleanup, statusPartial, nil); recErr != nil {
+					return restoreHeld(recErr)
+				}
 			}
 		}
 		if err = r.deps.Orgs.DeleteUserRoleScope(ctx, g.OldID, gr.RoleID, gr.GrantID, gr.Username); err != nil {
@@ -368,7 +380,7 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 
 // retryHeld tries once more the organization scope grants that ACS refused while their user held one in another
 // organization: a later group of the run may have moved that one (several old ids collapsing onto one Account)
-func (r *runner) retryHeld(ctx context.Context) {
+func (r *runner) retryHeld(ctx context.Context) (failed int) {
 	for _, g := range r.plan.Rewrite {
 		if g.Err != nil || len(g.heldBack) == 0 {
 			continue
@@ -399,9 +411,12 @@ func (r *runner) retryHeld(ctx context.Context) {
 		}
 		fmt.Fprintf(r.deps.Out, "grants %s -> %s: %d copied after the other organizations of the run\n", g.OldID, g.NewID, moved)
 		if recErr := r.record(g, StepDone, statusOK, nil); recErr != nil {
-			fmt.Fprintf(r.deps.Out, "WARNING: %v: the journal still lists %d grant(s) of %s as dropped that are on %s now\n", recErr, moved, g.OldID, g.NewID)
+			g.Err = fmt.Errorf("%d grant(s) of %s are on %s now but the journal still lists them as dropped: %w", moved, g.OldID, g.NewID, recErr)
+			fmt.Fprintf(r.deps.Out, "FAILED rewrite %s -> %s: %v\n", g.Key, g.NewID, g.Err)
+			failed++
 		}
 	}
+	return failed
 }
 
 // goneUser reports a grant that no organization can take any more: its user is gone, so it is dropped and reported

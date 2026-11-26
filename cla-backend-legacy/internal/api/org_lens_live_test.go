@@ -5,10 +5,13 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	ssmtypes "github.com/aws/aws-sdk-go-v2/service/ssm/types"
 
 	"github.com/linuxfoundation/easycla/cla-backend-legacy/internal/legacy/userservice"
 )
@@ -119,5 +122,44 @@ func TestOrgLensLinkAsksNothingWithoutABaseOrAnAccountID(t *testing.T) {
 	}
 	if fake.getCalls+fake.tokenCalls != 0 {
 		t.Errorf("member-service must not be asked: lookups = %d, token requests = %d", fake.getCalls, fake.tokenCalls)
+	}
+}
+
+func TestOrgLensSettingsAreReadOutsideTheAnswersLockAndAnAbsentOneIsKept(t *testing.T) {
+	reads := 0
+	accounts := &orgLensAccounts{}
+	accounts.readSSM = func(context.Context, string) (string, error) {
+		reads++
+		if !accounts.mu.TryLock() {
+			t.Error("the settings are read while the lock of the answers is held")
+			return "", errors.New("locked")
+		}
+		accounts.mu.Unlock()
+		return "", &ssmtypes.ParameterNotFound{}
+	}
+	for i := 0; i < 3; i++ {
+		if got := accounts.lensURL(context.Background(), orgLensLiveTestBase, orgLensLiveTestSFID, orgLensLiveTestGroup); got != "" {
+			t.Errorf("lensURL() = %q, want none without member-service settings", got)
+		}
+		delete(accounts.answers, orgLensLiveTestSFID)
+	}
+	if reads != 1 {
+		t.Errorf("an absent setting is read once per process: %d reads", reads)
+	}
+
+	unreadable := &orgLensAccounts{}
+	unreadable.readSSM = func(context.Context, string) (string, error) {
+		reads++
+		return "", errors.New("throttled")
+	}
+	reads = 0
+	for i := 0; i < 2; i++ {
+		if unreadable.live(context.Background(), orgLensLiveTestSFID) {
+			t.Error("an unreadable setting must not be live")
+		}
+		delete(unreadable.answers, orgLensLiveTestSFID)
+	}
+	if reads != 2 {
+		t.Errorf("an unreadable setting is read again: %d reads", reads)
 	}
 }
