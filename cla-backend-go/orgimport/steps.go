@@ -7,9 +7,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/go-openapi/runtime"
 	"github.com/linuxfoundation/easycla/cla-backend-go/company"
 	acs_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
 )
@@ -24,6 +27,17 @@ const orgAssociated = "already associated with other organization"
 
 // userGone is how the organization service refuses a grant for a user who no longer exists on the platform
 const userGone = "user does not exist on platform"
+
+const (
+	stepRetries    = 2
+	stepRetryDelay = 10 * time.Second
+)
+
+// gatewayError tells a 502, 503 or 504 answer of a platform service: the step is tried again before the group fails
+func gatewayError(err error) bool {
+	var apiErr *runtime.APIError
+	return errors.As(err, &apiErr) && (apiErr.Code == http.StatusBadGateway || apiErr.Code == http.StatusServiceUnavailable || apiErr.Code == http.StatusGatewayTimeout)
+}
 
 // easyCLARoles are the only roles copied to an Account that existed before the rewrite (lfx-self-serve #5081).
 var easyCLARoles = map[string]bool{"cla-manager": true, "cla-manager-designee": true, "cla-signatory": true, "contributor": true, "contact": true}
@@ -54,6 +68,13 @@ func (r *runner) rewrite(ctx context.Context, g *Group) error {
 	}
 	for _, s := range steps {
 		err := s.fn(ctx, g)
+		for try := 1; try <= stepRetries && gatewayError(err); try++ {
+			fmt.Fprintf(r.deps.Out, "%s %s: %v; trying the step again (%d of %d)\n", s.name, g.Key, err, try, stepRetries)
+			if sleepErr := r.deps.Sleep(ctx, stepRetryDelay); sleepErr != nil {
+				break
+			}
+			err = s.fn(ctx, g)
+		}
 		if recErr := r.record(g, s.name, status(err), err); recErr != nil {
 			if err != nil {
 				return fmt.Errorf("%s: %w (%v)", s.name, err, recErr)
@@ -114,6 +135,15 @@ func (g *Group) drop(gr acs_service.OrgGrant) {
 		}
 	}
 	g.Dropped = append(g.Dropped, gr)
+}
+
+func (g *Group) isDropped(gr acs_service.OrgGrant) bool {
+	for _, d := range g.Dropped {
+		if d.GrantID == gr.GrantID {
+			return true
+		}
+	}
+	return false
 }
 
 func (g *Group) undrop(gr acs_service.OrgGrant) {
@@ -293,10 +323,18 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 		if created {
 			copied++
 		}
+		if moving || uncopied(g, gr, have) {
+			journaled := g.isDropped(gr)
+			g.drop(gr)
+			if !journaled {
+				if recErr := r.record(g, StepCleanup, statusPartial, nil); recErr != nil {
+					return restoreHeld(recErr)
+				}
+			}
+		}
 		if err = r.deps.Orgs.DeleteUserRoleScope(ctx, g.OldID, gr.RoleID, gr.GrantID, gr.Username); err != nil {
 			switch {
 			case moving:
-				g.drop(gr)
 				held = append(held, gr)
 			case uncopied(g, gr, have):
 				g.drop(gr)
@@ -306,7 +344,6 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 		deleted++
 		switch {
 		case moving:
-			g.drop(gr)
 			held = append(held, gr)
 		case uncopied(g, gr, have):
 			g.dropUncopied(r, gr)
@@ -323,6 +360,9 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 		}
 		held = held[1:]
 		if refused {
+			if heldElsewhere(gr, ensureErr) {
+				g.heldBack = append(g.heldBack, gr)
+			}
 			g.dropUncopied(r, gr)
 			continue
 		}
@@ -330,9 +370,53 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 			copied++
 		}
 		g.undrop(gr)
+		if recErr := r.record(g, StepCleanup, statusPartial, nil); recErr != nil {
+			return restoreHeld(recErr)
+		}
 	}
 	fmt.Fprintf(r.deps.Out, "grants %s: %d deleted (%d copied late)\n", g.OldID, deleted, copied)
 	return nil
+}
+
+// retryHeld tries once more the organization scope grants that ACS refused while their user held one in another
+// organization: a later group of the run may have moved that one (several old ids collapsing onto one Account)
+func (r *runner) retryHeld(ctx context.Context) (failed int) {
+	for _, g := range r.plan.Rewrite {
+		if g.Err != nil || len(g.heldBack) == 0 {
+			continue
+		}
+		newGrants, err := r.deps.ACS.ListOrgGrants(ctx, g.NewID)
+		if err != nil {
+			fmt.Fprintf(r.deps.Out, "WARNING: %d organization grant(s) of %s not tried again on %s: %v\n", len(g.heldBack), g.OldID, g.NewID, err)
+			continue
+		}
+		have := map[string]bool{}
+		for _, gr := range newGrants {
+			have[grantKey(gr, g.NewID)] = true
+		}
+		moved := 0
+		for _, gr := range g.heldBack {
+			if _, ensureErr := r.ensureGrant(ctx, g, gr, have); ensureErr != nil {
+				if !heldElsewhere(gr, ensureErr) {
+					fmt.Fprintf(r.deps.Out, "WARNING: %s grant %s of %s not copied to %s: %v\n", firstNonEmpty(gr.RoleName, gr.RoleID), gr.GrantID, g.OldID, g.NewID, ensureErr)
+				}
+				continue
+			}
+			g.undrop(gr)
+			moved++
+		}
+		g.heldBack = nil
+		if moved == 0 {
+			continue
+		}
+		fmt.Fprintf(r.deps.Out, "grants %s -> %s: %d copied after the other organizations of the run\n", g.OldID, g.NewID, moved)
+		if recErr := r.record(g, StepDone, statusOK, nil); recErr != nil {
+			g.Err = fmt.Errorf("%d grant(s) of %s are on %s now but the journal still lists them as dropped: %w", moved, g.OldID, g.NewID, recErr)
+			fmt.Fprintf(r.deps.Out, "FAILED rewrite %s -> %s: %v\n", g.Key, g.NewID, g.Err)
+			failed++
+		}
+	}
+	return failed
 }
 
 // goneUser reports a grant that no organization can take any more: its user is gone, so it is dropped and reported

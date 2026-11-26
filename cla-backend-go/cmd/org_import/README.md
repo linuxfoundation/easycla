@@ -242,8 +242,10 @@ lfbd1c2b3a4d5e6f7a8,0014100000NewNewNe,matched,true
 lf000000000000000001,,ambiguous,false
 ```
 
-- `action`: `matched` (existing account found by domain/name — **requires `approved=true`**, a human checked it), `created` (new account created for this org, accepted as is), `ambiguous` (several candidates — stays manual).
-- `new_id` must be a 15/18-char alphanumeric Salesforce id (`ambiguous` rows may leave it empty); `new_id == old_id` is refused (`mapping_same_id`).
+- `action`: `matched` (existing account found by domain/name — **requires `approved=true`**, a human checked it), `created` (new account created for this org, accepted as is), `ambiguous` (several candidates — stays manual),
+  `create` (**requires `approved=true`** and an empty `new_id`: the apply creates the Account through the member-service find-or-create of the
+  company create flow, with the organization's name and website; an Account that already matches the website stops the group for review).
+- `new_id` must be a 15/18-char alphanumeric Salesforce id (`ambiguous` and `create` rows leave it empty); `new_id == old_id` is refused (`mapping_same_id`).
 - Ids are compared **per Account**: the 15-char id and its 18-char form (first 15 chars + checksum) name the same target, so co-targeting
   mappings and rows already carrying the other form collide the same way; a source group whose Account appears in the inventory in both
   forms is `sfid_alias_forms` (manual) until the rows are normalized to one form, and a destination that would end up carrying both forms

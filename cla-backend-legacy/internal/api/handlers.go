@@ -2167,7 +2167,7 @@ func (h *Handlers) RequestCompanyAllowlistV2(w http.ResponseWriter, r *http.Requ
 	subject := fmt.Sprintf("EasyCLA: Request to Authorize %s for %s", userName, projectName)
 	corpURL := corporateCompanyURL(companyID)
 	companyStr := pythonCompanyString(company)
-	lensURL := orgLensURL(orgLensBase(ctx), getAttrString(company, "company_external_id"), projectID)
+	lensURL := orgLensLiveAccounts.lensURL(ctx, orgLensBase(ctx), getAttrString(company, "company_external_id"), projectID)
 	body := requestCompanyAllowlistBody(recipientNameVal, projectName, userName, userEmail, companyName, companyStr, messageVal, corpURL, lensURL)
 	body = appendEmailHelpSignOffContent(body, getAttrString(project, "version"))
 

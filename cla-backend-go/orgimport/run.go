@@ -273,7 +273,7 @@ func classify(ctx context.Context, deps Deps, g *Group, mapping *Mapping, shared
 		case LiveUnregistered:
 			g.liveErr = liveErr
 			// a usable mapping row is the operator's resolution: since lfx-self-serve#3401 a 403 is an Account that member-service cannot read
-			if newID, _, reason := mapping.Resolve(g.OldID); reason != "" || newID == "" {
+			if newID, _, reason := mapping.Resolve(g.OldID); (reason != "" || newID == "") && !mapping.Creates(g.OldID) {
 				g.Route = RouteRegister
 				if !opts.RegisterUnregistered {
 					g.ManualReason = ReasonUnregistered
@@ -425,6 +425,8 @@ func lookupOrg(ctx context.Context, deps Deps, g *Group) {
 func classifyRowTargeted(g *Group, mapping *Mapping) {
 	newID, action, reason := mapping.Resolve(g.Key)
 	switch {
+	case action == ActionCreate && reason == "":
+		g.Route, g.ManualReason, g.Action = RouteManual, ReasonMissingWebsite, action
 	case reason == ReasonNoMapping:
 		g.Route, g.ManualReason = RouteManual, "empty_external_id"
 		if g.Shape == ShapeOther {
@@ -482,6 +484,12 @@ func livenessGuard(groups []*Group) {
 }
 
 func resolveNewID(ctx context.Context, deps Deps, g *Group, mapping *Mapping, shared SharedDomains, opts Options) (newID, action, reason string) {
+	if _, mapAction, mapReason := mapping.Resolve(g.OldID); mapAction == ActionCreate {
+		if mapReason != "" {
+			return "", mapAction, mapReason
+		}
+		return resolveCreate(deps, g, shared)
+	}
 	if !opts.UseApex {
 		return mapping.Resolve(g.OldID)
 	}
@@ -496,7 +504,7 @@ func resolveNewID(ctx context.Context, deps Deps, g *Group, mapping *Mapping, sh
 	res, err := deps.Apex.FindOrCreate(ctx, apexRequest(g, true))
 	if err != nil {
 		g.Err = fmt.Errorf("apex dry run for %s: %w", g.OldID, err)
-		return "", "", "apex_error"
+		return "", "", ReasonApexError
 	}
 	switch res.Action {
 	case ActionAmbiguous:
@@ -515,6 +523,19 @@ func resolveNewID(ctx context.Context, deps Deps, g *Group, mapping *Mapping, sh
 		return "", res.Action, ReasonMappingSameID
 	}
 	return res.ID, res.Action, ""
+}
+
+// resolveCreate plans an approved create row: the Account is created, and gets its id, at apply.
+func resolveCreate(deps Deps, g *Group, shared SharedDomains) (newID, action, reason string) {
+	if deps.Creator == nil {
+		g.Err = fmt.Errorf("create row for %s: %w", g.OldID, ErrNotConfigured)
+		return "", ActionCreate, ReasonApexError
+	}
+	if _, gate := shared.Shared(g.Website()); gate != "" {
+		return "", ActionCreate, gate
+	}
+	g.ViaApex, g.ViaCreate = true, true
+	return "", ActionCreated, ""
 }
 
 func apexRequest(g *Group, dryRun bool) ApexRequest {
@@ -695,6 +716,7 @@ func Execute(ctx context.Context, deps Deps, opts Options, plan *Plan) (Summary,
 			}
 			sum.Rewritten++
 		}
+		sum.Failed += r.retryHeld(ctx)
 	}
 	if recheck {
 		sum.Failed += r.recheckEvents(ctx, recheckBudget)
@@ -800,20 +822,23 @@ func (r *runner) confirmRegistered(ctx context.Context, sfid string) {
 	fmt.Fprintf(r.deps.Out, "WARNING: b2b_org %s not yet visible after %d checks (FGA tuples pending); the registration itself succeeded\n", sfid, registerChecks)
 }
 
-// resolveApex performs the real Apex call for every rewrite group resolved through --use-apex; a
-// group created in the dry run receives its Account id here, anything else must match the dry run.
+// resolveApex performs the real find-or-create for every rewrite group resolved through --use-apex or
+// an approved create row; a group planned as created receives its Account id here, anything else must match the plan.
 func (r *runner) resolveApex(ctx context.Context) {
-	if !r.opts.UseApex {
-		return
-	}
 	for _, g := range r.plan.Rewrite {
 		if g.Replayed || g.Err != nil || !g.ViaApex {
 			continue
 		}
-		res, err := r.deps.Apex.FindOrCreate(ctx, apexRequest(g, false))
+		svc := r.deps.Apex
+		if g.ViaCreate {
+			svc = r.deps.Creator
+		}
+		res, err := svc.FindOrCreate(ctx, apexRequest(g, false))
 		switch {
 		case err != nil:
 			g.Err = err
+		case g.NewID == "" && res.Action == ActionMatched:
+			g.Err = fmt.Errorf("no Account created for %s: Account %s already matches its website; review it, then use the mapping row %s,%s,matched,true", g.OldID, res.ID, g.OldID, res.ID)
 		case res.Action != g.Action || (g.NewID != "" && res.ID != g.NewID):
 			g.Err = fmt.Errorf("apex result changed between dry run (%s %s) and call (%s %s)", g.Action, g.NewID, res.Action, res.ID)
 		case g.NewID == "" && (!IsSFID(res.ID) || res.ID == g.OldID):
@@ -899,9 +924,11 @@ func (r *runner) waitForOrgs(ctx context.Context) {
 	}
 }
 
+// statusPartial marks a record written inside a step: the group is replayed from it like from a failed step
 const (
-	statusOK     = "ok"
-	statusFailed = "failed"
+	statusOK      = "ok"
+	statusFailed  = "failed"
+	statusPartial = "partial"
 )
 
 func status(err error) string {

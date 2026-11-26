@@ -182,7 +182,7 @@ try {
       skip('M3-ACK-INVALIDATE', `ID1 holds a valid acknowledgment ${h.ackId(valid[0])} but ${configured ? `the re-acknowledgment target is not confirmed (${target.note})` : 'ID1_UID / LEGACY_API / ID1_GITHUB are not configured'}, so the suite could not re-acknowledge ID1 afterwards (a manager-invalidated acknowledgment is never resurrected) - probe skipped`);
     } else if (valid.length) {
       try {
-        const probe = await h.invalidateAck(h.ackId(valid[0]), 'M3-ACK-INVALIDATE');
+        const probe = await h.invalidateAck(h.ackId(valid[0]), 'M3-ACK-INVALIDATE', e2e.cfg('ID1'));
         // the dialog's default-on "also remove the matching criteria" may take ID1's BASELINE entries with it (a correct
         // backend behaviour, not fixture drift): put them back through the BFF right away so the end state still matches
         if (probe?.alsoRemove) {

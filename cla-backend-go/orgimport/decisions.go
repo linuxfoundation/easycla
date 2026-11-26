@@ -430,7 +430,7 @@ func (s SharedDomains) Shared(website string) (string, string) {
 	d := s.Domain(website)
 	switch {
 	case d == "":
-		return "", "missing_website"
+		return "", ReasonMissingWebsite
 	case s[d]:
 		return d, ReasonSharedDomain
 	}
