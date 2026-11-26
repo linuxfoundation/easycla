@@ -623,6 +623,7 @@ func wire(ctx context.Context, stage string, useApex bool) (env, error) {
 	case err == nil:
 		e.deps.Members = members
 		e.members = members
+		e.deps.Apex = orgimport.MemberApex{Members: members}
 	case errors.Is(err, member_service.ErrNotConfigured):
 		log.Warnf("member-service not configured (cla-member-service-base-url-%s / cla-member-service-auth0-audience-%s): liveness is unverified, SFID groups stay pending (crm_unverified) and nothing is registered or rewritten for them", stage, stage)
 	default:

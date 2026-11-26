@@ -25,6 +25,8 @@ const (
 // The gomock controller fails the test on any unexpected call, so a case that sets no expectation
 // on GetCompanyBySigningEntityName also proves the notify path never looks a company up by name.
 func TestNotifyCompanySFID(t *testing.T) {
+	utils.SetOrgLensLiveCheck(func(string) bool { return true })
+	t.Cleanup(func() { utils.SetOrgLensLiveCheck(nil) })
 	tests := []struct {
 		name          string
 		requestedSFID string

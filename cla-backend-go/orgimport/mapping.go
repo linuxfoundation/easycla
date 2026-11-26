@@ -14,11 +14,13 @@ import (
 
 const trueString = "true"
 
-// Mapping actions produced by Salesforce (mapping file or Apex).
+// Mapping actions produced by Salesforce (mapping file or Apex); ActionCreate is a reviewer's request
+// to create the Account at apply, it carries no new_id.
 const (
 	ActionMatched   = "matched"
 	ActionCreated   = "created"
 	ActionAmbiguous = "ambiguous"
+	ActionCreate    = "create"
 )
 
 // MappingRow is one old_id,new_id,action,approved line.
@@ -98,8 +100,12 @@ func ParseMapping(r io.Reader) (*Mapping, error) {
 			}
 			m.Targets[row.NewID]++
 		case ActionAmbiguous:
+		case ActionCreate:
+			if row.NewID != "" {
+				return nil, fmt.Errorf("mapping line %d: action create takes no new_id (the Account gets its id at apply)", line)
+			}
 		default:
-			return nil, fmt.Errorf("mapping line %d: action must be matched|created|ambiguous", line)
+			return nil, fmt.Errorf("mapping line %d: action must be matched|created|ambiguous|create", line)
 		}
 		m.Rows[row.OldID] = row
 	}
@@ -118,10 +124,18 @@ func (m *Mapping) Resolve(oldID string) (newID, action, reason string) {
 	switch {
 	case row.Action == ActionAmbiguous:
 		return "", row.Action, ReasonMappingAmbiguous
-	case row.Action == ActionMatched && !row.Approved:
+	case (row.Action == ActionMatched || row.Action == ActionCreate) && !row.Approved:
 		return "", row.Action, "mapping_not_approved"
+	case row.Action == ActionCreate:
+		return "", row.Action, ""
 	case accountKey(row.NewID) == accountKey(oldID):
 		return "", row.Action, ReasonMappingSameID
 	}
 	return row.NewID, row.Action, ""
+}
+
+// Creates reports an approved create row for oldID.
+func (m *Mapping) Creates(oldID string) bool {
+	_, action, reason := m.Resolve(oldID)
+	return action == ActionCreate && reason == ""
 }

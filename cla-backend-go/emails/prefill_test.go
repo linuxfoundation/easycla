@@ -14,6 +14,8 @@ import (
 )
 
 func TestGetCLAGroupTemplateParamsFromCLAGroupUsesAuthoritativeCLAGroup(t *testing.T) {
+	utils.SetOrgLensLiveCheck(func(string) bool { return true })
+	t.Cleanup(func() { utils.SetOrgLensLiveCheck(nil) })
 	const (
 		claGroupID   = "b941159a-7bb9-4a07-bc03-6fcce4431434"
 		claGroupName = "ACES"

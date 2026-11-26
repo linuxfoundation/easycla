@@ -10,6 +10,8 @@ func TestOrgLensURL(t *testing.T) {
 		sfid       = "001000000000000AAA"
 		claGroupID = "00000000-0000-4000-8000-000000000001"
 	)
+	SetOrgLensLiveCheck(func(string) bool { return true })
+	t.Cleanup(func() { SetOrgLensLiveCheck(nil) })
 	tests := []struct {
 		name        string
 		base        string
@@ -39,5 +41,40 @@ func TestOrgLensURL(t *testing.T) {
 				t.Errorf("OrgLensURL(%q, %q, %q) = %q, want %q", tt.base, tt.companySFID, tt.claGroupID, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestOrgLensURLNeedsALiveAccount(t *testing.T) {
+	const (
+		sfid = "001000000000000AAA"
+		base = "https://app.example.org"
+		page = base + "/org/" + sfid + "/easycla"
+	)
+	t.Cleanup(func() { SetOrgLensLiveCheck(nil) })
+
+	SetOrgLensLiveCheck(nil)
+	if got := OrgLensURL(base, sfid, ""); got != "" {
+		t.Errorf("without a check: got %q, want no lens link", got)
+	}
+
+	var asked []string
+	live := false
+	SetOrgLensLiveCheck(func(companySFID string) bool {
+		asked = append(asked, companySFID)
+		return live
+	})
+	if got := OrgLensURL(base, sfid, ""); got != "" {
+		t.Errorf("Account that is not live: got %q, want no lens link", got)
+	}
+	live = true
+	if got := OrgLensURL(base, " "+sfid+" ", ""); got != page {
+		t.Errorf("live Account: got %q, want %q", got, page)
+	}
+
+	OrgLensURL("", sfid, "")
+	OrgLensURL("://", sfid, "")
+	OrgLensURL(base, "lf0000000000000AAA", "")
+	if len(asked) != 2 || asked[0] != sfid || asked[1] != sfid {
+		t.Errorf("the check is asked once per link, and only for an Account id with a usable base: %q", asked)
 	}
 }

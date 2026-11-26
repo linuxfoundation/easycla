@@ -454,6 +454,7 @@ func server(localMode bool) http.Handler {
 	if memberErr != nil {
 		log.WithError(memberErr).Warn("unable to configure member-service client for company creation or pending-Account screening")
 	}
+	utils.SetOrgLensLiveCheck(member_service.NewLiveAccounts(members).IsLive)
 	if configFile.MemberService.CreateCompanyEnabled {
 		v2CompanyService.EnableMemberServiceCreate(members)
 		v2CompanyService.EnableCreateLock(v2Company.DynamoCreateLocks{DB: dynamodb.New(awsSession), Table: fmt.Sprintf("cla-%s-store", stage)})

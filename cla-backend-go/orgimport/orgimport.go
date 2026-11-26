@@ -68,6 +68,8 @@ const (
 	ReasonTargetNotLive     = "target_not_live"
 	ReasonNotImported       = "not_imported"
 	ReasonSkipConflict      = "skip_conflict"
+	ReasonMissingWebsite    = "missing_website"
+	ReasonApexError         = "apex_error"
 
 	orgStatusErr = "err"
 )
@@ -153,7 +155,7 @@ type OrgLookup interface {
 	LookupOrganization(ctx context.Context, name, domain string) (*Org, error)
 }
 
-// ApexService is the Salesforce find-or-create contract (design §4), used only with --use-apex.
+// ApexService is the Salesforce find-or-create contract (design §4), used with --use-apex and for approved create rows.
 type ApexService interface {
 	FindOrCreate(ctx context.Context, req ApexRequest) (*ApexResult, error)
 }
@@ -231,6 +233,7 @@ type Group struct {
 	Suggested    string
 	Err          error
 	liveErr      error
+	heldBack     []acs_service.OrgGrant
 }
 
 // Summary is the one-line run result.

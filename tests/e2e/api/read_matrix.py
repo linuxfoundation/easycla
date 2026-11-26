@@ -72,6 +72,14 @@ own = [
 ]
 for cid, path in own:
     e2e.expect(cid, ID1, 200, "GET", path)
+# public /v3 route of the Contributor Console hand-off: the lens page of the CLA Group for a live Account, "" otherwise
+lens_ok, lens = e2e.expect("R-ANON-ORG-LENS", "anon", 200, "GET", f"/v3/company/{CO}/cla-group/{GRP}/org-lens", base=c("LEGACY_API"))
+if lens_ok and isinstance(lens, dict):
+    lens_url = lens.get("orgLensURL")
+    e2e.check("R-ANON-ORG-LENS-IDS", (lens.get("companyID"), lens.get("companySFID"), lens.get("claGroupID")) == (CO, SFID, GRP) and "foundationSFID" in lens,
+              f"ids of the answer: {[lens.get(k) for k in ('companyID', 'companySFID', 'claGroupID', 'foundationSFID')]}")
+    e2e.check("R-ANON-ORG-LENS-URL", lens_url == "" or (isinstance(lens_url, str) and lens_url.endswith(f"/org/{SFID}/easycla/{GRP}")), f"orgLensURL={lens_url!r}")
+e2e.expect("R-ANON-ORG-LENS-UNKNOWN-COMPANY", "anon", 404, "GET", f"/v3/company/00000000-0000-4000-8000-000000000000/cla-group/{GRP}/org-lens", base=c("LEGACY_API"))
 e2e.expect("R-ID1-MANAGER-REQUESTS", ID1, (200, 403), "GET", f"/v4/company/{CO}/project/{PROJ}/cla-manager/requests")
 e2e.expect("R-ID1-EVENTS-PROJECT", ID1, (200, 403), "GET", f"/v4/events/project/{PROJ}?pageSize=3")
 if c("FOUNDATION_SFID"):

@@ -43,6 +43,7 @@ func isValidUser(claUser *user.CLAUser) bool {
 
 // Configure is the API handler routine for the CLA manager routes
 func Configure(api *operations.ClaAPI, service IService, companyService company.IService, projectService service2.Service, usersService users.Service, sigService signatures.SignatureService, eventsService events.Service, emailSvc emails.EmailTemplateService) { // nolint
+	configureOrgLens(api, companyService, projectService, utils.GetOrgLensURL)
 	api.ClaManagerCreateCLAManagerRequestHandler = cla_manager.CreateCLAManagerRequestHandlerFunc(func(params cla_manager.CreateCLAManagerRequestParams, claUser *user.CLAUser) middleware.Responder {
 		reqID := utils.GetRequestID(params.XREQUESTID)
 		ctx := context.WithValue(context.Background(), utils.XREQUESTID, reqID) // nolint
