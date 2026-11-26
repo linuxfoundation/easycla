@@ -68,6 +68,8 @@ const (
 	ReasonTargetNotLive     = "target_not_live"
 	ReasonNotImported       = "not_imported"
 	ReasonSkipConflict      = "skip_conflict"
+	ReasonMissingWebsite    = "missing_website"
+	ReasonApexError         = "apex_error"
 
 	orgStatusErr = "err"
 )
@@ -153,12 +155,13 @@ type OrgLookup interface {
 	LookupOrganization(ctx context.Context, name, domain string) (*Org, error)
 }
 
-// ApexService is the Salesforce find-or-create contract (design §4), used only with --use-apex.
+// ApexService is the Salesforce find-or-create contract (design §4), used with --use-apex (Deps.Apex) and for approved create rows (Deps.Creator).
 type ApexService interface {
 	FindOrCreate(ctx context.Context, req ApexRequest) (*ApexResult, error)
 }
 
-// Deps are the external dependencies; Members, Events, ECLAs, Lookup and Apex may be nil.
+// Deps are the external dependencies; Members, Events, ECLAs, Lookup, Apex and Creator may be nil.
+// Creator is the find-or-create of approved create rows; --use-apex never replaces it.
 type Deps struct {
 	Companies  CompanyStore
 	Signatures CCLALister
@@ -169,6 +172,7 @@ type Deps struct {
 	Members    MemberService
 	Lookup     OrgLookup
 	Apex       ApexService
+	Creator    ApexService
 	Out        io.Writer
 	Now        func() time.Time
 	Sleep      func(context.Context, time.Duration) error
@@ -228,9 +232,11 @@ type Group struct {
 	Decision     *Decision
 	Replayed     bool
 	ViaApex      bool
+	ViaCreate    bool
 	Suggested    string
 	Err          error
 	liveErr      error
+	heldBack     []acs_service.OrgGrant
 }
 
 // Summary is the one-line run result.

@@ -4,6 +4,7 @@
 package emails
 
 import (
+	"context"
 	"testing"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
@@ -17,6 +18,11 @@ const (
 	lensTestCLAGroupID = "00000000-0000-4000-8000-000000000001"
 	lensTestPage       = lensTestBase + "/org/" + lensTestCompany + "/easycla/" + lensTestCLAGroupID
 )
+
+func lensTestLive(t *testing.T, live bool) {
+	utils.SetOrgLensLiveCheck(func(context.Context, string) bool { return live })
+	t.Cleanup(func() { utils.SetOrgLensLiveCheck(nil) })
+}
 
 func lensTestCommon() CommonEmailParams {
 	return CommonEmailParams{RecipientName: "Example Manager", CompanyName: "Example Org", CompanySFID: lensTestCompany}
@@ -84,6 +90,7 @@ func TestCLAManagerEmailsLinkToOrgLens(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			lensTestLive(t, true)
 			lens, err := RenderTemplate(utils.V2, tt.name, tt.template, tt.params(lensTestBase))
 			assert.NoError(t, err)
 			assert.Contains(t, lens, `<a href="`+lensTestPage+`" target="_blank">Example Group in the Organization lens</a>`)
@@ -93,6 +100,11 @@ func TestCLAManagerEmailsLinkToOrgLens(t *testing.T) {
 			assert.NoError(t, err)
 			assert.Contains(t, console, lensTestConsole)
 			assert.NotContains(t, console, "Organization lens")
+
+			lensTestLive(t, false)
+			notLive, err := RenderTemplate(utils.V2, tt.name, tt.template, tt.params(lensTestBase))
+			assert.NoError(t, err)
+			assert.Equal(t, console, notLive, "a company whose Account is not live keeps the Corporate Console copy")
 		})
 	}
 }
@@ -100,6 +112,7 @@ func TestCLAManagerEmailsLinkToOrgLens(t *testing.T) {
 func TestOrgLensLinkWithoutValidCompanySFIDKeepsCorporateConsole(t *testing.T) {
 	for _, sfid := range []string{"", "lf0000000000000AAA", "001000000000000"} {
 		t.Run(sfid, func(t *testing.T) {
+			lensTestLive(t, true)
 			params := ClaManagerAddedEToUserTemplateParams{CommonEmailParams: lensTestCommon(), CLAGroupTemplateParams: lensTestCLAGroup(lensTestBase)}
 			params.CompanySFID = sfid
 
@@ -134,6 +147,7 @@ func TestContactClaManagerEmailLinksToOrgLens(t *testing.T) {
 }
 
 func TestCLAManagerEmailsKeepTheCLAGroupOfTheSender(t *testing.T) {
+	lensTestLive(t, true)
 	const own = "00000000-0000-4000-8000-00000000000a"
 	svc := &documentSignedTemplateServiceStub{projectParams: lensTestCLAGroup(lensTestBase)}
 	ownPage := lensTestBase + "/org/" + lensTestCompany + "/easycla/" + own

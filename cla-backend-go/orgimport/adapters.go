@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/aws/aws-sdk-go/service/dynamodb/dynamodbiface"
 
+	member_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
 	organization_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
 	"github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service/client/organizations"
 )
@@ -142,4 +143,33 @@ func (c DynamoECLACounter) LatestECLA(ctx context.Context, companyID string) (st
 		}
 		input.ExclusiveStartKey = out.LastEvaluatedKey
 	}
+}
+
+// MemberAccounts is the member-service find-or-create (member_service.Client satisfies it).
+type MemberAccounts interface {
+	FindOrCreateB2BOrg(ctx context.Context, name, website string) (*member_service.B2BOrg, member_service.Action, error)
+}
+
+// MemberApex creates Accounts through member-service, the path of the company create flow; it has no dry run.
+type MemberApex struct {
+	Members MemberAccounts
+}
+
+// FindOrCreate maps the member-service answer onto the Apex contract; several Accounts on the website domain is ambiguous.
+func (m MemberApex) FindOrCreate(ctx context.Context, req ApexRequest) (*ApexResult, error) {
+	if req.DryRun {
+		return nil, errors.New("member-service find-or-create has no dry run")
+	}
+	org, action, err := m.Members.FindOrCreateB2BOrg(ctx, req.Name, req.Website)
+	if errors.Is(err, member_service.ErrAmbiguousDomain) {
+		return &ApexResult{Action: ActionAmbiguous}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	res := &ApexResult{ID: org.UID, Action: string(action)}
+	if (res.Action != ActionMatched && res.Action != ActionCreated) || !IsSFID(res.ID) {
+		return nil, fmt.Errorf("member-service find-or-create: unusable answer %q %q", res.Action, res.ID)
+	}
+	return res, nil
 }

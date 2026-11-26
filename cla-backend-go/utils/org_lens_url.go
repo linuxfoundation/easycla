@@ -4,6 +4,7 @@
 package utils
 
 import (
+	"context"
 	"net/url"
 	"regexp"
 	"strings"
@@ -14,11 +15,23 @@ import (
 
 var orgLensAccountIDPattern = regexp.MustCompile(`^001[A-Za-z0-9]{15}$`)
 
+var orgLensLiveCheck func(ctx context.Context, companySFID string) bool
+
+// SetOrgLensLiveCheck sets the check that a company's Salesforce Account is live; until it is set no company gets an Organization lens address
+func SetOrgLensLiveCheck(check func(ctx context.Context, companySFID string) bool) {
+	orgLensLiveCheck = check
+}
+
 // OrgLensURL returns the Organization lens address for a company's CLA Group page,
 // /org/{companySFID}/easycla/{claGroupID}. Without a CLA Group it is the company's EasyCLA page.
-// It returns "" when base is empty or unparseable, or when companySFID is not an 18-character
-// Salesforce Account ID, which callers treat as "use the Corporate Console".
+// It returns "" when base is empty or unparseable, or when companySFID is not the 18-character
+// ID of a live Salesforce Account, which callers treat as "use the Corporate Console".
 func OrgLensURL(base, companySFID, claGroupID string) string {
+	return OrgLensURLContext(context.Background(), base, companySFID, claGroupID)
+}
+
+// OrgLensURLContext is OrgLensURL with the caller's context for the live Account check.
+func OrgLensURLContext(ctx context.Context, base, companySFID, claGroupID string) string {
 	base = strings.TrimSpace(base)
 	companySFID = strings.TrimSpace(companySFID)
 	if base == "" || !orgLensAccountIDPattern.MatchString(companySFID) {
@@ -30,6 +43,9 @@ func OrgLensURL(base, companySFID, claGroupID string) string {
 	u, err := url.Parse(base)
 	if err != nil || u.Host == "" {
 		log.Warnf("unable to parse the Organization lens base URL %q: %v", base, err)
+		return ""
+	}
+	if orgLensLiveCheck == nil || !orgLensLiveCheck(ctx, companySFID) {
 		return ""
 	}
 
@@ -56,4 +72,9 @@ func OrgLensURL(base, companySFID, claGroupID string) string {
 // cla-org-lens-base-{stage}.
 func GetOrgLensURL(companySFID, claGroupID string) string {
 	return OrgLensURL(config.GetConfig().OrgLensURL, companySFID, claGroupID)
+}
+
+// GetOrgLensURLContext is GetOrgLensURL with the caller's context for the live Account check.
+func GetOrgLensURLContext(ctx context.Context, companySFID, claGroupID string) string {
+	return OrgLensURLContext(ctx, config.GetConfig().OrgLensURL, companySFID, claGroupID)
 }

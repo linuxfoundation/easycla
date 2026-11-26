@@ -27,10 +27,10 @@ import (
 	v2ProjectServiceClient "github.com/linuxfoundation/easycla/cla-backend-go/v2/project-service/client/project"
 )
 
-// Configure sets up the middleware handlers
 // companyByNamePage is the one page of the organization search that the lookup of a company by name reads
 const companyByNamePage = 1000
 
+// Configure sets up the middleware handlers
 func Configure(api *operations.EasyclaAPI, service Service, projectClaGroupRepo projects_cla_groups.Repository, LFXPortalURL string) { // nolint
 
 	api.CompanyGetCompanyByInternalIDHandler = company.GetCompanyByInternalIDHandlerFunc(
