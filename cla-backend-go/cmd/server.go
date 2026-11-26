@@ -198,6 +198,22 @@ func newMemberServiceClient(cfg config.Config) (*member_service.Client, error) {
 	if !cfg.MemberService.CreateCompanyEnabled && !cfg.ACSDirectCLARolesEnabled {
 		return nil, nil
 	}
+	return memberServiceClient(cfg)
+}
+
+// newOrgLensLiveCheck returns the "live Account" check of the Organization lens links; it has its own client when the
+// member-service flags are off, so that the lens base alone is enough for it
+func newOrgLensLiveCheck(cfg config.Config, members *member_service.Client) func(ctx context.Context, companySFID string) bool {
+	if members == nil && strings.TrimSpace(cfg.OrgLensURL) != "" {
+		var err error
+		if members, err = memberServiceClient(cfg); err != nil {
+			log.WithError(err).Warn("unable to configure member-service client for the Organization lens links: every e-mail keeps the Corporate Console link")
+		}
+	}
+	return member_service.NewLiveAccounts(members).IsLive
+}
+
+func memberServiceClient(cfg config.Config) (*member_service.Client, error) {
 	return member_service.NewClient(member_service.Config{
 		BaseURL:       cfg.MemberService.BaseURL,
 		Audience:      cfg.MemberService.Audience,
@@ -454,6 +470,7 @@ func server(localMode bool) http.Handler {
 	if memberErr != nil {
 		log.WithError(memberErr).Warn("unable to configure member-service client for company creation or pending-Account screening")
 	}
+	utils.SetOrgLensLiveCheck(newOrgLensLiveCheck(configFile, members))
 	if configFile.MemberService.CreateCompanyEnabled {
 		v2CompanyService.EnableMemberServiceCreate(members)
 		v2CompanyService.EnableCreateLock(v2Company.DynamoCreateLocks{DB: dynamodb.New(awsSession), Table: fmt.Sprintf("cla-%s-store", stage)})

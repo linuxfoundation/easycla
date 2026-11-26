@@ -1949,6 +1949,34 @@ paths:
       tags:
         - cla-manager
 
+  /company/{companyID}/cla-group/{claGroupID}/org-lens:
+    get:
+      summary: Get the Organization lens page of a company's CLA Group
+      description: Returns where the company manages the CLA Group. orgLensURL is empty when the company keeps the Corporate Console.
+      security: [ ]
+      operationId: getCompanyCLAGroupOrgLens
+      parameters:
+        - $ref: "#/parameters/x-request-id"
+        - $ref: "#/parameters/path-companyID"
+        - $ref: "#/parameters/path-claGroupID"
+      responses:
+        '200':
+          description: 'Success'
+          headers:
+            x-request-id:
+              type: string
+              description: The unique request ID value - assigned/set by the API Gateway based on the session
+          schema:
+            $ref: '#/definitions/company-cla-group-org-lens'
+        '400':
+          $ref: '#/responses/invalid-request'
+        '404':
+          $ref: '#/responses/not-found'
+        '500':
+          $ref: '#/responses/internal-server-error'
+      tags:
+        - cla-manager
+
   /template:
     get:
       summary: Get Templates
@@ -2961,6 +2989,32 @@ definitions:
 
   company:
     $ref: './common/company.yaml'
+
+  company-cla-group-org-lens:
+    type: object
+    title: Company CLA Group Organization lens
+    description: Where a company manages a CLA Group
+    properties:
+      companyID:
+        type: string
+        description: The internal ID of the company
+        x-omitempty: false
+      companySFID:
+        type: string
+        description: The Salesforce Account ID of the company
+        x-omitempty: false
+      claGroupID:
+        type: string
+        description: The ID of the CLA Group
+        x-omitempty: false
+      foundationSFID:
+        type: string
+        description: The Salesforce ID of the foundation of the CLA Group
+        x-omitempty: false
+      orgLensURL:
+        type: string
+        description: The Organization lens page of the CLA Group for the company, empty when the company keeps the Corporate Console
+        x-omitempty: false
 
   company-with-invite:
     type: object
