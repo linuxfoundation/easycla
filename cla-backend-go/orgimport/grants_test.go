@@ -533,6 +533,7 @@ func TestWithoutNameTakesOutWholeWordsInAnyLetterCase(t *testing.T) {
 	assert.Equal(t, "user "+RemovedName+" and "+RemovedName, WithoutName("user j.doe- and J.DOE-", "j.doe-"), "a name that ends in a non-word character")
 	assert.Equal(t, "nothing to do", WithoutName("nothing to do", ""))
 	assert.Equal(t, "mail "+RemovedName+" and <"+RemovedName+"> for 0014100000NewNewNe", WithoutEmails("mail a.b@corp.example and <c@d.example.org> for 0014100000NewNewNe"))
+	assert.Equal(t, "user "+RemovedName+" is unknown", WithoutEmails("user jane.o'connor@corp.example is unknown"))
 }
 
 func TestDroppedGrantsOfAFinishedRewriteStayListedWhenItsKeyIsPlannedAgain(t *testing.T) {

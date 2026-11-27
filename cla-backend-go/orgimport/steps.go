@@ -459,7 +459,7 @@ func (r *runner) again(ctx context.Context, g *Group, call func() error) error {
 // RemovedName stands in for a username or an e-mail address in a text that is published
 const RemovedName = "[removed]"
 
-var emailAddress = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
+var emailAddress = regexp.MustCompile(`[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
 
 // WithoutEmails takes every e-mail address out of a text
 func WithoutEmails(text string) string {
