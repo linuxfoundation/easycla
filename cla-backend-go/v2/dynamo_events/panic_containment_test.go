@@ -12,11 +12,13 @@ import (
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/golang/mock/gomock"
 	"github.com/sirupsen/logrus"
+	logtest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/gen/v1/models"
 	"github.com/linuxfoundation/easycla/cla-backend-go/github_organizations"
+	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
 	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	mock_pcg_repo "github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups/mocks"
 	repositoriesmock "github.com/linuxfoundation/easycla/cla-backend-go/repositories/mock"
@@ -50,6 +52,47 @@ func TestProcessEventsContainsAPanicOfOneHandler(t *testing.T) {
 	s.ProcessEvents(events.DynamoDBEvent{Records: []events.DynamoDBEventRecord{record("bad"), record("good")}})
 
 	assert.ElementsMatch(t, []string{"second:bad", "first:good", "second:good"}, ran, "the other handler of the record and the next record are still processed")
+}
+
+func TestProcessEventsLogsTheKeysOfAFailedRecordNotTheRecord(t *testing.T) {
+	logger := log.GetLogger()
+	oldLevel := logger.GetLevel()
+	oldHooks := logger.ReplaceHooks(make(logrus.LevelHooks))
+	logger.SetLevel(logrus.DebugLevel)
+	t.Cleanup(func() {
+		logger.ReplaceHooks(oldHooks)
+		logger.SetLevel(oldLevel)
+	})
+	hook := logtest.NewLocal(logger)
+
+	const table = "cla-test-signatures"
+	s := &service{functions: map[string][]EventHandlerFunc{}}
+	s.registerCallback(table, Modify, func(events.DynamoDBEventRecord) error { return errors.New("handler failed") })
+	record := events.DynamoDBEventRecord{EventID: "e1", EventName: Modify, EventSourceArn: "arn:aws:dynamodb:us-east-1:000000000000:table/" + table + "/stream/2026-01-01T00:00:00.000", Change: events.DynamoDBStreamRecord{
+		Keys: map[string]events.DynamoDBAttributeValue{"signature_id": events.NewStringAttribute("sig-1")},
+		NewImage: map[string]events.DynamoDBAttributeValue{
+			"signature_id":       events.NewStringAttribute("sig-1"),
+			"signature_sign_url": events.NewStringAttribute("https://docusign.example/signing/secret"),
+			"user_email":         events.NewStringAttribute("jane.signer@corp.example"),
+		},
+	}}
+
+	s.ProcessEvents(events.DynamoDBEvent{Records: []events.DynamoDBEventRecord{record}})
+
+	failures := 0
+	for _, entry := range hook.AllEntries() {
+		if entry.Message != "unable to process event" {
+			continue
+		}
+		failures++
+		assert.Equal(t, record.Change.Keys, entry.Data["recordKeys"])
+		line, err := entry.String()
+		require.NoError(t, err)
+		assert.Contains(t, line, "sig-1")
+		assert.NotContains(t, line, "docusign.example")
+		assert.NotContains(t, line, "jane.signer@corp.example")
+	}
+	assert.Equal(t, 1, failures)
 }
 
 func TestAutoEnabledForGithubOrgSkipsTheNotificationWithoutACLAService(t *testing.T) {

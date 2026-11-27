@@ -118,7 +118,7 @@ func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID
 	f := logrus.Fields{
 		"functionName": "v2.sign.helpers.hasUserSigned",
 		"projectID":    projectID,
-		"user":         user,
+		"userID":       user.UserID,
 	}
 	var hasSigned bool
 	var companyAffiliation bool

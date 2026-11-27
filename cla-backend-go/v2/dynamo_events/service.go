@@ -241,7 +241,7 @@ func (s *service) ProcessEvents(dynamoDBEvents events.DynamoDBEvent) {
 							WithField("key", key).
 							WithField("functionType", fnType).
 							WithError(err).
-							WithField("event", e).
+							WithField("recordKeys", e.Change.Keys).
 							Error("unable to process event")
 					}
 

@@ -456,9 +456,34 @@ func (r *runner) again(ctx context.Context, g *Group, call func() error) error {
 	return err
 }
 
-const removedName = "[removed]"
+// RemovedName stands in for a username or an e-mail address in a text that is published
+const RemovedName = "[removed]"
 
 var emailAddress = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
+
+// WithoutEmails takes every e-mail address out of a text
+func WithoutEmails(text string) string {
+	return emailAddress.ReplaceAllString(text, RemovedName)
+}
+
+// WithoutName takes a name out of a text, as a whole word and in any letter case
+func WithoutName(text, name string) string {
+	if name == "" {
+		return text
+	}
+	pattern := regexp.QuoteMeta(name)
+	if wordCharacter(name[0]) {
+		pattern = `\b` + pattern
+	}
+	if wordCharacter(name[len(name)-1]) {
+		pattern += `\b`
+	}
+	return regexp.MustCompile(`(?i)`+pattern).ReplaceAllString(text, RemovedName)
+}
+
+func wordCharacter(c byte) bool {
+	return c == '_' || (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')
+}
 
 // namelessError is an upstream error whose text names no user: the journal and the reports are published
 type namelessError struct {
@@ -475,10 +500,7 @@ func nameless(err error, gr acs_service.OrgGrant) error {
 	if err == nil {
 		return nil
 	}
-	text := emailAddress.ReplaceAllString(err.Error(), removedName)
-	if gr.Username != "" {
-		text = regexp.MustCompile(`(?i)`+regexp.QuoteMeta(gr.Username)).ReplaceAllString(text, removedName)
-	}
+	text := WithoutName(WithoutEmails(err.Error()), gr.Username)
 	if text == err.Error() {
 		return err
 	}

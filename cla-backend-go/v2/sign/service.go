@@ -2674,7 +2674,7 @@ func getTabsFromDocument(document *v1Models.ClaGroupDocument, documentID string,
 		if defaultValues != nil {
 			if value, ok := defaultValues[tab.DocumentTabID].(string); ok {
 				args.Value = value
-				log.WithFields(f).Debugf("setting default value for tab: %s, value: %s", tab.DocumentTabID, value)
+				log.WithFields(f).Debugf("setting default value for tab: %s", tab.DocumentTabID)
 			} else {
 				log.WithFields(f).Debugf("no default value found for tab: %s", tab.DocumentTabID)
 			}

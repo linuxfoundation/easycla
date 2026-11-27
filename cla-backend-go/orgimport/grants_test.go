@@ -499,7 +499,7 @@ func TestUpstreamErrorOfAGrantStepNamesNoUser(t *testing.T) {
 			assert.Contains(t, string(journal), `"step":"`+tc.step+`"`)
 			published := []string{plan.Rewrite[0].Err.Error(), string(journal), fx.out.String()}
 			for _, text := range published[:2] {
-				assert.Contains(t, text, "user "+removedName+" ("+removedName+") cannot take the role")
+				assert.Contains(t, text, "user "+RemovedName+" ("+RemovedName+") cannot take the role")
 			}
 			for _, text := range published {
 				for _, name := range []string{"alice", "bob", "carol", "ALICE", "BOB", "CAROL", "corp.example"} {
@@ -517,7 +517,7 @@ func TestNamelessErrorKeepsWhatTheStepsCheck(t *testing.T) {
 
 	gone := fmt.Errorf("granting: %w", nameless(errors.New("user does not exist on platform"), acs_service.OrgGrant{Username: "User"}))
 	assert.True(t, goneUser(gone))
-	assert.Equal(t, "granting: "+removedName+" does not exist on platform", gone.Error())
+	assert.Equal(t, "granting: "+RemovedName+" does not exist on platform", gone.Error())
 
 	held := fmt.Errorf("granting: %w", nameless(errors.New("other is already associated with other organization"), acs_service.OrgGrant{Username: "other"}))
 	assert.True(t, heldElsewhere(acs_service.OrgGrant{Username: "other", ObjectID: targetSFID}, held))
@@ -526,6 +526,13 @@ func TestNamelessErrorKeepsWhatTheStepsCheck(t *testing.T) {
 	gateway := fmt.Errorf("deleting: %w", nameless(runtime.NewAPIError("deleteOrgUsrRoleScopes", "no answer for jdoe@corp.example", http.StatusBadGateway), acs_service.OrgGrant{Username: "jdoe"}))
 	assert.True(t, gatewayError(gateway))
 	assert.NotContains(t, gateway.Error(), "jdoe")
+}
+
+func TestWithoutNameTakesOutWholeWordsInAnyLetterCase(t *testing.T) {
+	assert.Equal(t, "organization service: "+RemovedName+" is unknown, "+RemovedName+" again", WithoutName("organization service: org is unknown, ORG again", "org"))
+	assert.Equal(t, "user "+RemovedName+" and "+RemovedName, WithoutName("user j.doe- and J.DOE-", "j.doe-"), "a name that ends in a non-word character")
+	assert.Equal(t, "nothing to do", WithoutName("nothing to do", ""))
+	assert.Equal(t, "mail "+RemovedName+" and <"+RemovedName+"> for 0014100000NewNewNe", WithoutEmails("mail a.b@corp.example and <c@d.example.org> for 0014100000NewNewNe"))
 }
 
 func TestDroppedGrantsOfAFinishedRewriteStayListedWhenItsKeyIsPlannedAgain(t *testing.T) {
