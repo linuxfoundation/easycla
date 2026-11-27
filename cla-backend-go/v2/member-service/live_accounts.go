@@ -39,7 +39,8 @@ func NewLiveAccounts(client *Client) *LiveAccounts {
 }
 
 // IsLive reports whether the Account is live; any other answer than 200, and no answer, is "not live".
-// Lookups of one Account that overlap share one request; an answer cut short by the caller's context is not kept.
+// Lookups of one Account that overlap share one request, which no caller can cut short: a caller whose
+// context ends gets "not live" at once and the request goes on for the others.
 func (l *LiveAccounts) IsLive(ctx context.Context, sfid string) bool {
 	if l == nil || l.client == nil {
 		return false
@@ -51,16 +52,19 @@ func (l *LiveAccounts) IsLive(ctx context.Context, sfid string) bool {
 	if answer, known := l.cached(uid); known {
 		return answer
 	}
-	answer, err, _ := l.lookups.Do(uid, func() (interface{}, error) {
+	shared := l.lookups.DoChan(uid, func() (result interface{}, failure error) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.WithField("accountID", uid).Errorf("panic while checking that the Account is live, it gets no Organization lens address for now: %v", rec)
+				result, failure = false, nil
+			}
+		}()
 		if answer, known := l.cached(uid); known {
 			return answer, nil
 		}
-		callCtx, cancel := context.WithTimeout(ctx, liveAccountTimeout)
+		callCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), liveAccountTimeout)
 		defer cancel()
 		_, err := l.client.GetB2BOrg(callCtx, uid)
-		if err != nil && ctx.Err() != nil {
-			return false, nil
-		}
 		answer := liveAnswer{live: err == nil, expires: time.Now().Add(notLiveAccountTTL)}
 		var authErr *AuthError
 		switch {
@@ -75,8 +79,13 @@ func (l *LiveAccounts) IsLive(ctx context.Context, sfid string) bool {
 		l.mu.Unlock()
 		return answer.live, nil
 	})
-	live, ok := answer.(bool)
-	return err == nil && ok && live
+	select {
+	case result := <-shared:
+		live, ok := result.Val.(bool)
+		return result.Err == nil && ok && live
+	case <-ctx.Done():
+		return false
+	}
 }
 
 func (l *LiveAccounts) cached(uid string) (live, known bool) {

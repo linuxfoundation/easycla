@@ -163,3 +163,48 @@ func TestOrgLensSettingsAreReadOutsideTheAnswersLockAndAnAbsentOneIsKept(t *test
 		t.Errorf("an unreadable setting is read again: %d reads", reads)
 	}
 }
+
+func TestOrgLensLinkDoesNotKeepAnAnswerOfACallerThatGaveUp(t *testing.T) {
+	fake := &orgLensFakeMemberService{status: http.StatusOK}
+	accounts := orgLensTestAccounts(t, fake)
+	gone, cancel := context.WithCancel(context.Background())
+	cancel()
+	if accounts.live(gone, orgLensLiveTestSFID) {
+		t.Fatal("a caller that gave up gets no lens link")
+	}
+	if _, kept := accounts.answers[orgLensLiveTestSFID]; kept {
+		t.Error("its answer must not be kept")
+	}
+	if !accounts.live(context.Background(), orgLensLiveTestSFID) {
+		t.Error("the next caller asks again and gets the live answer")
+	}
+}
+
+func TestOrgLensLinkUsesTheCanonicalAccountID(t *testing.T) {
+	fake := &orgLensFakeMemberService{status: http.StatusOK}
+	accounts := orgLensTestAccounts(t, fake)
+	if got := accounts.lensURL(context.Background(), orgLensLiveTestBase, "001000000000000aaa", orgLensLiveTestGroup); got != orgLensLiveTestPage {
+		t.Errorf("lensURL() = %q, want %q", got, orgLensLiveTestPage)
+	}
+	if fake.getCalls != 1 {
+		t.Errorf("Account lookups = %d, want 1 with the canonical id", fake.getCalls)
+	}
+	for stored, want := range map[string]string{
+		"0014100000Te0G7AAJ": "0014100000Te0G7AAJ",
+		"0014100000te0g7aaj": "0014100000Te0G7AAJ",
+		"0014100000TE0G7AAJ": "0014100000Te0G7AAJ",
+		"0014100000Te0G7":    "0014100000Te0G7",
+		"0014100000Te0G7AA9": "0014100000Te0G7AA9",
+		"0014100000Te0G7AAZ": "0014100000Te0G7AAZ",
+		"0014ı0000000000AA":  "0014ı0000000000AA",
+		"0014100000Te0G7ſA":  "0014100000Te0G7ſA",
+		"0014100000Te0G7/AJ": "0014100000Te0G7/AJ",
+	} {
+		if got := canonicalAccountID(stored); got != want {
+			t.Errorf("canonicalAccountID(%q) = %q, want %q", stored, got, want)
+		}
+	}
+	if got := accounts.lensURL(context.Background(), orgLensLiveTestBase, "0014ı0000000000AA", orgLensLiveTestGroup); got != "" {
+		t.Errorf("an id with a character outside the Salesforce alphabet gets no lens link, got %q", got)
+	}
+}

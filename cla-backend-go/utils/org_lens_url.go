@@ -11,6 +11,7 @@ import (
 
 	"github.com/linuxfoundation/easycla/cla-backend-go/config"
 	log "github.com/linuxfoundation/easycla/cla-backend-go/logging"
+	member_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/member-service"
 )
 
 var orgLensAccountIDPattern = regexp.MustCompile(`^001[A-Za-z0-9]{15}$`)
@@ -44,6 +45,9 @@ func OrgLensURLContext(ctx context.Context, base, companySFID, claGroupID string
 	if err != nil || u.Host == "" {
 		log.Warnf("unable to parse the Organization lens base URL %q: %v", base, err)
 		return ""
+	}
+	if canonical, ok := member_service.SFID18(companySFID); ok {
+		companySFID = canonical
 	}
 	if orgLensLiveCheck == nil || !orgLensLiveCheck(ctx, companySFID) {
 		return ""

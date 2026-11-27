@@ -150,6 +150,24 @@ func main() {
 	os.Exit(run(os.Args[1:], os.Stdin))
 }
 
+var usernameHook sync.Once
+
+// noUsernames keeps the usernames that shared clients log as fields out of run.log (lfx-self-serve-ops#1668)
+type noUsernames struct{}
+
+// Levels makes the hook see every log line
+func (noUsernames) Levels() []logrus.Level { return logrus.AllLevels }
+
+// Fire drops the fields whose name ends with "username"
+func (noUsernames) Fire(entry *logrus.Entry) error {
+	for key := range entry.Data {
+		if strings.HasSuffix(strings.ToLower(key), "username") {
+			delete(entry.Data, key)
+		}
+	}
+	return nil
+}
+
 func run(args []string, stdin io.Reader) int {
 	if len(args) < 1 {
 		fmt.Fprint(os.Stderr, usageText)
@@ -159,6 +177,7 @@ func run(args []string, stdin io.Reader) int {
 		_ = os.Setenv("LOG_LEVEL", "warn")
 		log.GetLogger().SetLevel(logrus.WarnLevel)
 	}
+	usernameHook.Do(func() { log.GetLogger().AddHook(noUsernames{}) })
 	cmd := args[0]
 	fs := flag.NewFlagSet("org_import "+cmd, flag.ContinueOnError)
 	fs.Usage = func() { fmt.Fprint(os.Stderr, usageText); fs.PrintDefaults() }

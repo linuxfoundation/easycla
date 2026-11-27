@@ -660,6 +660,7 @@ func server(localMode bool) http.Handler {
 	}
 
 	apiHandler = legacyGitHubInternalTriggerHandler(apiHandler, v1SignaturesService)
+	apiHandler = recoverHandler(apiHandler)
 
 	// OTel/Datadog (OTLP -> Datadog Lambda Extension) - enabled by flag
 	if otelDatadogEnabled {
