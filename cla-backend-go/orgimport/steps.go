@@ -385,7 +385,11 @@ func (r *runner) retryHeld(ctx context.Context) (failed int) {
 		if g.Err != nil || len(g.heldBack) == 0 {
 			continue
 		}
-		newGrants, err := r.deps.ACS.ListOrgGrants(ctx, g.NewID)
+		var newGrants []acs_service.OrgGrant
+		err := r.again(ctx, g, func() (err error) {
+			newGrants, err = r.deps.ACS.ListOrgGrants(ctx, g.NewID)
+			return err
+		})
 		if err != nil {
 			fmt.Fprintf(r.deps.Out, "WARNING: %d organization grant(s) of %s not tried again on %s: %v\n", len(g.heldBack), g.OldID, g.NewID, err)
 			continue
@@ -396,7 +400,11 @@ func (r *runner) retryHeld(ctx context.Context) (failed int) {
 		}
 		moved := 0
 		for _, gr := range g.heldBack {
-			if _, ensureErr := r.ensureGrant(ctx, g, gr, have); ensureErr != nil {
+			ensureErr := r.again(ctx, g, func() error {
+				_, err := r.ensureGrant(ctx, g, gr, have)
+				return err
+			})
+			if ensureErr != nil {
 				if !heldElsewhere(gr, ensureErr) {
 					fmt.Fprintf(r.deps.Out, "WARNING: %s grant %s of %s not copied to %s: %v\n", firstNonEmpty(gr.RoleName, gr.RoleID), gr.GrantID, g.OldID, g.NewID, ensureErr)
 				}
@@ -417,6 +425,19 @@ func (r *runner) retryHeld(ctx context.Context) (failed int) {
 		}
 	}
 	return failed
+}
+
+// again repeats a call of the end-of-run pass after a gateway error, as rewrite does for a step
+func (r *runner) again(ctx context.Context, g *Group, call func() error) error {
+	err := call()
+	for try := 1; try <= stepRetries && gatewayError(err); try++ {
+		fmt.Fprintf(r.deps.Out, "%s %s: %v; trying again (%d of %d)\n", StepCleanup, g.Key, err, try, stepRetries)
+		if sleepErr := r.deps.Sleep(ctx, stepRetryDelay); sleepErr != nil {
+			break
+		}
+		err = call()
+	}
+	return err
 }
 
 // goneUser reports a grant that no organization can take any more: its user is gone, so it is dropped and reported

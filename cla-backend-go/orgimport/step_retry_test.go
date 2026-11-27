@@ -6,6 +6,8 @@ package orgimport
 import (
 	"context"
 	"errors"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -104,4 +106,35 @@ func TestRewriteDoesNotTryAgainAfterAnotherError(t *testing.T) {
 
 func TestStepRetryDelayIsShort(t *testing.T) {
 	assert.LessOrEqual(t, time.Duration(stepRetries)*stepRetryDelay, time.Minute)
+}
+
+func TestCollapseTriesTheEndOfRunCopyAgainAfterAGatewayError(t *testing.T) {
+	fx, dir := collisionFixture(t)
+	fx.platform.oneOrg = true
+	fx.platform.addGrant("lf-a", "uma", "role-contact", "")
+	fx.platform.addGrant("lf-b", "uma", "role-cla-signatory", "")
+	answers := 0
+	fx.platform.createHook = func(username, orgID, _ string) error {
+		if username == "uma" && orgID == targetSFID && answers == 0 && strings.Contains(fx.out.String(), "rewritten lf-b") {
+			answers++
+			return badGateway(502)
+		}
+		return nil
+	}
+	mapping := writeMapping(t, dir, "lf-a,"+targetSFID+",created,true", "lf-b,"+targetSFID+",created,true")
+	decisions := writeDecisions(t, dir, "collapse,lf-a;lf-b,"+targetSFID+",michal,one legal entity")
+	opts := Options{Stage: "dev", Apply: true, Mapping: mapping, Decisions: decisions, State: filepath.Join(dir, "state.jsonl"), Routes: []Route{RouteRewrite}, OutDir: filepath.Join(dir, "out")}
+	plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+	require.NoError(t, err)
+
+	sum, err := Execute(context.Background(), fx.deps(), opts, plan)
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, sum.Rewritten)
+	assert.Equal(t, 1, answers, "the end-of-run copy got the 502")
+	assert.Contains(t, fx.out.String(), StepCleanup+" lf-a: ")
+	assert.Contains(t, fx.out.String(), "trying again (1 of 2)")
+	assert.Contains(t, fx.sleeps, stepRetryDelay)
+	assert.Equal(t, []string{"uma:cla-signatory:" + targetSFID, "uma:contact:" + targetSFID}, targetGrants(t, fx))
+	assert.Empty(t, droppedReport(t, opts.OutDir)[1:])
 }

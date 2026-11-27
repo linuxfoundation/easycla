@@ -170,7 +170,8 @@ func TestCreateRowStopsWhenSeveralAccountsShareTheDomain(t *testing.T) {
 
 	require.Error(t, err)
 	assert.Equal(t, 1, sum.Failed)
-	assert.ErrorContains(t, plan.Rewrite[0].Err, ActionAmbiguous)
+	assert.ErrorContains(t, plan.Rewrite[0].Err, "more than one Account matches its website")
+	assert.NotContains(t, plan.Rewrite[0].Err.Error(), "dry run")
 	assert.Empty(t, fx.companies.updates)
 }
 

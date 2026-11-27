@@ -67,3 +67,24 @@ func TestRequestCompanyAllowlistBodyEscapesCallerFields(t *testing.T) {
 		t.Fatalf("stored project/company values must be escaped too: %s", stored)
 	}
 }
+
+// stored names must not become markup in the CLA manager added / removed e-mail (lfx-self-serve-ops#1563)
+func TestCLAManagerAccessBodyEscapesItsValues(t *testing.T) {
+	payload := `<a href="https://evil.invalid">x</a>`
+	managers := []map[string]any{{"name": "Ann" + payload, "email": "ann@example.invalid"}}
+	for _, action := range []string{"added", "removed"} {
+		body := claManagerAccessBody(action, "lfid"+payload, "Project"+payload, "Acme"+payload, managers)
+		if strings.Contains(body, payload) || strings.Contains(body, "<a ") {
+			t.Fatalf("%s: stored markup reached the body: %s", action, body)
+		}
+		if strings.Count(body, "&lt;a href=") != 5 {
+			t.Fatalf("%s: every value must be escaped (LFID, project twice, company, manager): %s", action, body)
+		}
+		if !strings.Contains(body, "&lt;ann@example.invalid&gt;") {
+			t.Fatalf("%s: the manager's address must stay readable: %s", action, body)
+		}
+	}
+	if !strings.Contains(claManagerAccessBody("removed", "u", "P", "C", nil), "You have been removed as a CLA Manager from the project: P") {
+		t.Fatal("the removed text must stay as it is")
+	}
+}

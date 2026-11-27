@@ -75,7 +75,7 @@ func TestLiveAccountsWhenNoTokenIsIssued(t *testing.T) {
 	assert.Zero(t, fake.getCalls)
 }
 
-func TestLiveAccountsShareOneLookupAndDoNotKeepACancelledAnswer(t *testing.T) {
+func TestLiveAccountsShareOneLookupThatNoCallerCutsShort(t *testing.T) {
 	var mu sync.Mutex
 	lookups := 0
 	release := make(chan struct{})
@@ -110,24 +110,23 @@ func TestLiveAccountsShareOneLookupAndDoNotKeepACancelledAnswer(t *testing.T) {
 	go func() { done <- accounts.IsLive(cancelled, liveTestSFID) }()
 	waitFor(t, func() bool { mu.Lock(); defer mu.Unlock(); return lookups == 1 })
 	cancel()
-	assert.False(t, <-done, "a caller that gave up gets no lens address")
-	_, kept := accounts.cached(liveTestSFID)
-	assert.False(t, kept, "its answer is not kept for the next caller")
+	assert.False(t, <-done, "a caller that gave up gets no lens address, without waiting for the answer")
 
 	const callers = 8
 	answers := make(chan bool, callers)
 	for i := 0; i < callers; i++ {
 		go func() { answers <- accounts.IsLive(context.Background(), liveTestSFID) }()
 	}
-	waitFor(t, func() bool { mu.Lock(); defer mu.Unlock(); return lookups == 2 })
 	time.Sleep(50 * time.Millisecond)
 	close(release)
 	for i := 0; i < callers; i++ {
-		assert.True(t, <-answers)
+		assert.True(t, <-answers, "the request the first caller started goes on for the others")
 	}
+	live, kept := accounts.cached(liveTestSFID)
+	assert.True(t, kept && live, "its answer is kept")
 	mu.Lock()
 	defer mu.Unlock()
-	assert.Equal(t, 2, lookups, "the callers that overlap share one request")
+	assert.Equal(t, 1, lookups, "the callers that overlap share one request")
 }
 
 func waitFor(t *testing.T, cond func() bool) {

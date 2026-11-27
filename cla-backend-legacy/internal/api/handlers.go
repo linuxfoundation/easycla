@@ -4375,14 +4375,29 @@ func (h *Handlers) sendCLAManagerEmailBestEffort(ctx context.Context, action str
 			managers = resp
 		}
 	}
-	managerList := make([]string, 0, len(managers))
-	for _, mgr := range managers {
-		managerList = append(managerList, fmt.Sprintf("%s <%s>", mgr["name"], mgr["email"]))
-	}
-	managerListStr := strings.Join(managerList, "-") + "\n"
-
 	subject := fmt.Sprintf("CLA: Access to Corporate CLA for Project %s", projectName)
 	action = strings.ToLower(strings.TrimSpace(action))
+	body := appendEmailHelpSignOffContent(claManagerAccessBody(action, lfid, projectName, companyName, managers), projectVersion)
+
+	svc, err := email.NewFromEnv(ctx)
+	if err != nil {
+		logging.Warnf("cla-manager email service init failed: %v", err)
+		return
+	}
+	if err := svc.Send(ctx, subject, body, []string{primaryEmail}); err != nil {
+		logging.Warnf("failed to send cla-manager %s email: %v", action, err)
+	}
+}
+
+// claManagerAccessBody builds the HTML body of the "CLA manager added / removed" e-mail; every value is escaped (lfx-self-serve-ops#1563)
+func claManagerAccessBody(action, lfid, projectName, companyName string, managers []map[string]any) string {
+	managerList := make([]string, 0, len(managers))
+	for _, mgr := range managers {
+		managerList = append(managerList, emailField(fmt.Sprintf("%s <%s>", mgr["name"], mgr["email"]), 320))
+	}
+	managerListStr := strings.Join(managerList, "-") + "\n"
+	lfid, projectName, companyName = emailField(lfid, 60), emailField(projectName, 255), emailField(companyName, 255)
+
 	var body string
 	if action == "removed" {
 		body = fmt.Sprintf(`
@@ -4403,17 +4418,7 @@ func (h *Handlers) sendCLAManagerEmailBestEffort(ctx context.Context, action str
     %s
     `, lfid, projectName, projectName, companyName, managerListStr)
 	}
-	body = "<p>" + strings.ReplaceAll(body, "\n", "<br>") + "</p>"
-	body = appendEmailHelpSignOffContent(body, projectVersion)
-
-	svc, err := email.NewFromEnv(ctx)
-	if err != nil {
-		logging.Warnf("cla-manager email service init failed: %v", err)
-		return
-	}
-	if err := svc.Send(ctx, subject, body, []string{primaryEmail}); err != nil {
-		logging.Warnf("failed to send cla-manager %s email: %v", action, err)
-	}
+	return "<p>" + strings.ReplaceAll(body, "\n", "<br>") + "</p>"
 }
 
 func (h *Handlers) GetClaManagersV1(w http.ResponseWriter, r *http.Request) {
