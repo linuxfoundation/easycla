@@ -90,3 +90,30 @@ func TestOrgLensURLNeedsALiveAccount(t *testing.T) {
 		t.Errorf("the caller's context reaches the check: %v", seen)
 	}
 }
+
+func TestOrgLensURLUsesTheCanonicalAccountID(t *testing.T) {
+	const (
+		canonical = "0014100000Te0G7AAJ"
+		base      = "https://app.example.org"
+	)
+	var asked []string
+	SetOrgLensLiveCheck(func(_ context.Context, companySFID string) bool {
+		asked = append(asked, companySFID)
+		return true
+	})
+	t.Cleanup(func() { SetOrgLensLiveCheck(nil) })
+
+	for _, stored := range []string{canonical, "0014100000te0g7aaj", "0014100000TE0G7AAJ"} {
+		if got, want := OrgLensURL(base, stored, "group-1"), base+"/org/"+canonical+"/easycla/group-1"; got != want {
+			t.Errorf("stored id %q: got %q, want %q", stored, got, want)
+		}
+	}
+	for _, id := range asked {
+		if id != canonical {
+			t.Errorf("the check is asked with the canonical id, got %q", id)
+		}
+	}
+	if len(asked) != 3 {
+		t.Errorf("one check per link, got %d", len(asked))
+	}
+}

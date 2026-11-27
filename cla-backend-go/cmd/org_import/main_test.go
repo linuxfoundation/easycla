@@ -64,6 +64,25 @@ func TestRunDefaultsTheLoggerToWarn(t *testing.T) {
 	assert.Equal(t, logrus.DebugLevel, logger.GetLevel(), "an exported level is kept")
 }
 
+func TestRunKeepsUsernamesOutOfTheLog(t *testing.T) {
+	logger := log.GetLogger()
+	previousOut, previousLevel := logger.Out, logger.GetLevel()
+	t.Cleanup(func() { logger.SetOutput(previousOut); logger.SetLevel(previousLevel) })
+	t.Setenv("LOG_LEVEL", "")
+	assert.Equal(t, 2, run([]string{"bogus"}, strings.NewReader("")))
+	var buf bytes.Buffer
+	logger.SetOutput(&buf)
+
+	fields := logrus.Fields{"functionName": "organization_service.CreateOrgUserRoleScopeByUsername", "username": "jdoe-create", "userName": "jdoe-delete", "lfUsername": "jdoe-lf", "organizationID": "001000000000000AAA"}
+	log.WithFields(fields).WithError(errors.New("user is already associated with other organization")).Warn("unable to assign role scope by username")
+
+	line := buf.String()
+	assert.Contains(t, line, "unable to assign role scope by username")
+	assert.Contains(t, line, "001000000000000AAA")
+	assert.NotContains(t, line, "jdoe")
+	assert.Len(t, fields, 5, "the caller's fields are left alone")
+}
+
 func TestSnapshotInputs(t *testing.T) {
 	dir := t.TempDir()
 	mapping := filepath.Join(dir, "m.csv")

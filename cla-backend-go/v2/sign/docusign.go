@@ -518,7 +518,7 @@ func (s *service) GetSignURL(email, recipientID, userName, clientUserId, envelop
 		return "", err
 	}
 
-	log.WithFields(f).Debugf("payload: %s", string(jsonRequest))
+	log.WithFields(f).Debugf("payload: %d bytes", len(jsonRequest))
 
 	req, err := http.NewRequest("POST", url, strings.NewReader(string(jsonRequest)))
 
@@ -561,7 +561,7 @@ func (s *service) GetSignURL(email, recipientID, userName, clientUserId, envelop
 		return "", err
 	}
 
-	log.WithFields(f).Debugf("View response: %+v", viewResponse)
+	log.WithFields(f).Debugf("View response: signing URL returned: %t", viewResponse.URL != "")
 
 	return viewResponse.URL, nil
 }

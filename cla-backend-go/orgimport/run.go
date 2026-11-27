@@ -837,6 +837,8 @@ func (r *runner) resolveApex(ctx context.Context) {
 		switch {
 		case err != nil:
 			g.Err = err
+		case g.ViaCreate && res.Action == ActionAmbiguous:
+			g.Err = fmt.Errorf("no Account created for %s: more than one Account matches its website; review them, then use the mapping row %s,<Account id>,matched,true", g.OldID, g.OldID)
 		case g.NewID == "" && res.Action == ActionMatched:
 			g.Err = fmt.Errorf("no Account created for %s: Account %s already matches its website; review it, then use the mapping row %s,%s,matched,true", g.OldID, res.ID, g.OldID, res.ID)
 		case res.Action != g.Action || (g.NewID != "" && res.ID != g.NewID):
