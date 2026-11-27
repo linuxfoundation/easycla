@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -152,20 +153,44 @@ func main() {
 
 var usernameHook sync.Once
 
-// noUsernames keeps the usernames that shared clients log as fields out of run.log (lfx-self-serve-ops#1668)
+// noUsernames keeps the usernames and e-mail addresses that shared clients log out of run.log (lfx-self-serve-ops#1668)
 type noUsernames struct{}
 
 // Levels makes the hook see every log line
 func (noUsernames) Levels() []logrus.Level { return logrus.AllLevels }
 
-// Fire drops the fields whose name ends with "username"
+// Fire drops the fields that name a person and takes their values and every e-mail address out of the message and the error of the line
 func (noUsernames) Fire(entry *logrus.Entry) error {
-	for key := range entry.Data {
-		if strings.HasSuffix(strings.ToLower(key), "username") {
-			delete(entry.Data, key)
+	var names []string
+	for key, value := range entry.Data {
+		if !namesAPerson(key) {
+			continue
+		}
+		if name, ok := value.(string); ok && name != "" {
+			names = append(names, name)
+		}
+		delete(entry.Data, key)
+	}
+	sort.Slice(names, func(i, j int) bool { return len(names[i]) > len(names[j]) })
+	clean := func(text string) string {
+		text = orgimport.WithoutEmails(text)
+		for _, name := range names {
+			text = orgimport.WithoutName(text, name)
+		}
+		return text
+	}
+	entry.Message = clean(entry.Message)
+	if err, failed := entry.Data[logrus.ErrorKey].(error); failed {
+		if text := clean(err.Error()); text != err.Error() {
+			entry.Data[logrus.ErrorKey] = text
 		}
 	}
 	return nil
+}
+
+func namesAPerson(field string) bool {
+	field = strings.ToLower(field)
+	return strings.Contains(field, "username") || strings.Contains(field, "email") || strings.Contains(field, "lfid")
 }
 
 func run(args []string, stdin io.Reader) int {
@@ -263,7 +288,7 @@ func run(args []string, stdin io.Reader) int {
 		info.RunURL = fmt.Sprintf("%s/%s/actions/runs/%s", os.Getenv("GITHUB_SERVER_URL"), os.Getenv("GITHUB_REPOSITORY"), runID)
 		info.Artifact = fmt.Sprintf("org-import-out-%s-%s", stage, runID)
 	}
-	fmt.Fprintf(out, "org-import %s %s stage=%s start=%s runner=%s revision=%s args=%s\n", cmd, info.Mode(), stage, info.Start.Format(time.RFC3339), info.Runner, info.Revision, strings.Join(args, " "))
+	fmt.Fprintf(out, "org-import %s %s stage=%s start=%s runner=%s revision=%s args=%s\n", cmd, info.Mode(), stage, info.Start.Format(time.RFC3339), info.Runner, info.Revision, orgimport.WithoutEmails(strings.Join(args, " ")))
 
 	ctx := context.Background()
 	var plan *orgimport.Plan
@@ -441,7 +466,7 @@ func report(ctx context.Context, e env, info orgimport.RunInfo, plan *orgimport.
 		fmt.Fprintf(errOut, "report: SES send failed: %v\n", err)
 		return
 	}
-	fmt.Fprintf(out, "report e-mailed to %s (%d bytes, %d attachments built, SES message id %s)\n", strings.Join(recipients, ","), len(raw), len(rep.Attachments), id)
+	fmt.Fprintf(out, "report e-mailed to %d recipient(s) (%d bytes, %d attachments built, SES message id %s)\n", len(recipients), len(raw), len(rep.Attachments), id)
 }
 
 // parseRoutes turns the --routes value into the route list.

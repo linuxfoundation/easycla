@@ -73,14 +73,18 @@ func TestRunKeepsUsernamesOutOfTheLog(t *testing.T) {
 	var buf bytes.Buffer
 	logger.SetOutput(&buf)
 
-	fields := logrus.Fields{"functionName": "organization_service.CreateOrgUserRoleScopeByUsername", "username": "jdoe-create", "userName": "jdoe-delete", "lfUsername": "jdoe-lf", "organizationID": "001000000000000AAA"}
-	log.WithFields(fields).WithError(errors.New("user is already associated with other organization")).Warn("unable to assign role scope by username")
+	fields := logrus.Fields{"functionName": "organization_service.DeleteOrgUserRoleOrgScopeProjectOrg", "username": "jdoe-create", "userName": "jdoe-delete", "lfUsername": "jdoe-lf", "userEmail": "jdoe@corp.example", "emailID": "jdoe-id@corp.example", "userLFID": "jdoe-lfid", "organizationID": "001000000000000AAA"}
+	log.WithFields(fields).WithError(errors.New("user JDOE-DELETE (jdoe@corp.example) is already associated with other organization")).Warn("problem removing user jdoe-delete from role")
+	log.Warn("no answer for someone@corp.example")
 
-	line := buf.String()
-	assert.Contains(t, line, "unable to assign role scope by username")
-	assert.Contains(t, line, "001000000000000AAA")
-	assert.NotContains(t, line, "jdoe")
-	assert.Len(t, fields, 5, "the caller's fields are left alone")
+	lines := buf.String()
+	assert.Contains(t, lines, "problem removing user "+orgimport.RemovedName+" from role")
+	assert.Contains(t, lines, "user "+orgimport.RemovedName+" ("+orgimport.RemovedName+") is already associated with other organization")
+	assert.Contains(t, lines, "no answer for "+orgimport.RemovedName)
+	assert.Contains(t, lines, "001000000000000AAA")
+	assert.NotContains(t, strings.ToLower(lines), "jdoe")
+	assert.NotContains(t, lines, "corp.example")
+	assert.Len(t, fields, 8, "the caller's fields are left alone")
 }
 
 func TestSnapshotInputs(t *testing.T) {

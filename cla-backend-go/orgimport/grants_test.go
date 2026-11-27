@@ -6,13 +6,17 @@ package orgimport
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-openapi/runtime"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -456,6 +460,80 @@ func TestFailedGrantStepNamesNoUser(t *testing.T) {
 			}
 		})
 	}
+}
+
+// lfx-self-serve-ops#1668: the text of a platform error goes into the journal and the reports as it is received
+func TestUpstreamErrorOfAGrantStepNamesNoUser(t *testing.T) {
+	upstream := func(username string) error {
+		return fmt.Errorf("[POST /v1/orgs/{salesforceID}/scopes][400] createOrgUsrRoleScopesBadRequest  &{Code:400 Message:user %s (%s@corp.example) cannot take the role}", strings.ToUpper(username), username)
+	}
+	for _, tc := range []struct {
+		name string
+		fail func(fx *fixture)
+		step string
+	}{
+		{"copy", func(fx *fixture) {
+			fx.platform.createHook = func(username, _, _ string) error { return upstream(username) }
+		}, StepGrants},
+		{"cleanup", func(fx *fixture) {
+			fx.platform.deleteHook = func(grantID string) error {
+				for _, gr := range fx.platform.grants[lfID] {
+					if gr.GrantID == grantID {
+						return upstream(gr.Username)
+					}
+				}
+				return errors.New("unknown grant")
+			}
+		}, StepCleanup},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fx, mapping, statePath := rewriteFixture(t)
+			tc.fail(fx)
+			opts := Options{Stage: "dev", Apply: true, Mapping: mapping, State: statePath, Routes: []Route{RouteRewrite}}
+			plan, err := BuildPlan(context.Background(), fx.deps(), opts)
+			require.NoError(t, err)
+			_, err = Execute(context.Background(), fx.deps(), opts, plan)
+			require.Error(t, err)
+			journal, err := os.ReadFile(filepath.Clean(statePath))
+			require.NoError(t, err)
+			assert.Contains(t, string(journal), `"step":"`+tc.step+`"`)
+			published := []string{plan.Rewrite[0].Err.Error(), string(journal), fx.out.String()}
+			for _, text := range published[:2] {
+				assert.Contains(t, text, "user "+RemovedName+" ("+RemovedName+") cannot take the role")
+			}
+			for _, text := range published {
+				for _, name := range []string{"alice", "bob", "carol", "ALICE", "BOB", "CAROL", "corp.example"} {
+					assert.NotContains(t, text, name)
+				}
+			}
+		})
+	}
+}
+
+func TestNamelessErrorKeepsWhatTheStepsCheck(t *testing.T) {
+	assert.NoError(t, nameless(nil, acs_service.OrgGrant{Username: "jdoe"}))
+	plain := errors.New("org-service down")
+	assert.Same(t, plain, nameless(plain, acs_service.OrgGrant{Username: "jdoe"}), "an error that names nobody is passed on as it is")
+
+	gone := fmt.Errorf("granting: %w", nameless(errors.New("user does not exist on platform"), acs_service.OrgGrant{Username: "User"}))
+	assert.True(t, goneUser(gone))
+	assert.Equal(t, "granting: "+RemovedName+" does not exist on platform", gone.Error())
+
+	held := fmt.Errorf("granting: %w", nameless(errors.New("other is already associated with other organization"), acs_service.OrgGrant{Username: "other"}))
+	assert.True(t, heldElsewhere(acs_service.OrgGrant{Username: "other", ObjectID: targetSFID}, held))
+	assert.NotContains(t, held.Error(), "other")
+
+	gateway := fmt.Errorf("deleting: %w", nameless(runtime.NewAPIError("deleteOrgUsrRoleScopes", "no answer for jdoe@corp.example", http.StatusBadGateway), acs_service.OrgGrant{Username: "jdoe"}))
+	assert.True(t, gatewayError(gateway))
+	assert.NotContains(t, gateway.Error(), "jdoe")
+}
+
+func TestWithoutNameTakesOutWholeWordsInAnyLetterCase(t *testing.T) {
+	assert.Equal(t, "organization service: "+RemovedName+" is unknown, "+RemovedName+" again", WithoutName("organization service: org is unknown, ORG again", "org"))
+	assert.Equal(t, "user "+RemovedName+" and "+RemovedName, WithoutName("user j.doe- and J.DOE-", "j.doe-"), "a name that ends in a non-word character")
+	assert.Equal(t, "nothing to do", WithoutName("nothing to do", ""))
+	assert.Equal(t, "mail "+RemovedName+" and <"+RemovedName+"> for 0014100000NewNewNe", WithoutEmails("mail a.b@corp.example and <c@d.example.org> for 0014100000NewNewNe"))
+	assert.Equal(t, "user "+RemovedName+" is unknown", WithoutEmails("user jane.o'connor@corp.example is unknown"))
 }
 
 func TestDroppedGrantsOfAFinishedRewriteStayListedWhenItsKeyIsPlannedAgain(t *testing.T) {
