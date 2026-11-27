@@ -486,7 +486,7 @@ func (s *service) requestCorporateSignatureWithExpectedCLAGroup(ctx context.Cont
 		log.WithFields(f).WithError(companyACLError).Warnf("Unable to add user with LFID: %s to company ACL, companyID: %s", lfUsername, *input.CompanySfid)
 	}
 
-	log.WithFields(f).Debugf("Returning Signature: %+v", signature)
+	log.WithFields(f).Debugf("Returning Signature: %s", signature.SignatureID)
 
 	return &models.CorporateSignatureOutput{
 		SignURL:     signature.SignatureSignURL,
@@ -725,7 +725,7 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 		}
 		email := utils.GetBestEmail(claUser)
 		if email == "" {
-			log.WithFields(f).Warnf("unable to find email for user: %+v", claUser)
+			log.WithFields(f).Warnf("unable to find email for user: %s", claUser.UserID)
 			return errors.New("unable to find email for user")
 		}
 
@@ -790,7 +790,7 @@ func (s *service) SignedIndividualCallbackGithub(ctx context.Context, payload []
 			EventData:  &eventData,
 			CLAGroupID: signature.ProjectID,
 		}
-		log.WithFields(f).Debugf("logging event: %+v", eventArgs)
+		log.WithFields(f).Debugf("logging event: %s", eventArgs.EventType)
 		s.eventsService.LogEvent(eventArgs)
 		err = github.UpdateCacheAfterSignature(ctx, claUser, signature.ProjectID)
 		if err != nil {
@@ -1104,7 +1104,7 @@ func (s *service) SignedIndividualCallbackGitlab(ctx context.Context, payload []
 		}
 		email := utils.GetBestEmail(claUser)
 		if email == "" {
-			log.WithFields(f).Warnf("unable to find email for user: %+v", claUser)
+			log.WithFields(f).Warnf("unable to find email for user: %s", claUser.UserID)
 			return errors.New("unable to find email for user")
 		}
 
@@ -1280,7 +1280,7 @@ func (s *service) signedIndividualCallbackGerrit(ctx context.Context, payload []
 
 		email := utils.GetBestEmail(claUser)
 		if email == "" {
-			log.WithFields(f).Warnf("unable to find email for user: %+v", claUser)
+			log.WithFields(f).Warnf("unable to find email for user: %s", claUser.UserID)
 			return nil, errors.New("unable to find email for user")
 		}
 
@@ -1459,7 +1459,7 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 			log.WithFields(f).Warnf("unable to lookup corporate signature by company ID: %s, project ID: %s - not found", companyID, projectID)
 			return errors.New("unable to lookup corporate signature by company ID and project ID - not found")
 		}
-		log.WithFields(f).Debugf("signature: %+v", signature)
+		log.WithFields(f).Debugf("signature: %s", signature.SignatureID)
 		signatureID = signature.SignatureID
 	} else {
 		signatureID = clientUserID
@@ -1504,7 +1504,7 @@ func (s *service) SignedCorporateCallback(ctx context.Context, payload []byte, c
 				return errors.New("unable to lookup user by ID - not found")
 			}
 
-			log.WithFields(f).Debugf("found cla manager: %+v", user)
+			log.WithFields(f).Debugf("found cla manager: %s", user.UserID)
 		}
 	}
 
@@ -1713,7 +1713,7 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 	// creating individual default values
 	log.WithFields(f).Debugf("creating individual default values...")
 	defaultValues := s.createDefaultIndividualValues(user, preferredEmail, false)
-	log.WithFields(f).Debugf("default values: %+v", defaultValues)
+	log.WithFields(f).Debugf("default values: %d", len(defaultValues))
 
 	// 4. Generate signature callback url
 	log.WithFields(f).Debugf("generating signature callback url...")
@@ -1859,7 +1859,7 @@ func (s *service) RequestIndividualSignature(ctx context.Context, input *models.
 		return nil, err
 	}
 
-	log.WithFields(f).Debugf("Updated signature: %+v", itemSignature)
+	log.WithFields(f).Debugf("Updated signature: %s", itemSignature.SignatureID)
 
 	return &models.IndividualSignatureOutput{
 		UserID:      itemSignature.SignatureReferenceID,
@@ -2221,7 +2221,7 @@ func (s *service) populateSignURL(ctx context.Context,
 
 	log.WithFields(f).Debugf("signatureReferenceType: %s", signatureReferenceType)
 	log.WithFields(f).Debugf("processing signing request...")
-	log.WithFields(f).Debugf("latestSignature: %+v", latestSignature)
+	log.WithFields(f).Debugf("latestSignature: %s", latestSignature.SignatureID)
 
 	var userSignatureName string
 	var userSignatureEmail string
@@ -2343,9 +2343,8 @@ func (s *service) populateSignURL(ctx context.Context,
 			ClaManagerEmail: claManagerEmail,
 		}
 
-		log.WithFields(f).Debugf("claSignatoryParams: %+v", claSignatoryParams)
 		emailSubject, emailBody = claSignatoryEmailContent(*claSignatoryParams)
-		log.WithFields(f).Debugf("subject: %s, body: %s", emailSubject, emailBody)
+		log.WithFields(f).Debugf("subject: %s, body: %d bytes", emailSubject, len(emailBody))
 
 		signer = DocuSignRecipient{
 			Email:       signatoryEmail,
@@ -2596,7 +2595,7 @@ func (s *service) populateUserDetails(ctx context.Context, signatureReferenceTyp
 				log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by ID: %s", latestSignature.SignatureReferenceID)
 				return nil, userErr
 			}
-			log.WithFields(f).Debugf("loaded user : %+v", userModel)
+			log.WithFields(f).Debugf("loaded user : %s", latestSignature.SignatureReferenceID)
 
 			if userModel == nil {
 				log.WithFields(f).WithError(userErr).Warnf("unable to lookup user by ID: %s", latestSignature.SignatureReferenceID)
@@ -2741,7 +2740,7 @@ func (s *service) createDefaultIndividualValues(user *v1Models.User, preferredEm
 	f := logrus.Fields{
 		"functionName": "sign.createDefaultIndiviualValues",
 	}
-	log.WithFields(f).Debugf("creating individual default values...for user : %+v", user)
+	log.WithFields(f).Debug("creating individual default values...")
 
 	defaultValues := make(map[string]interface{})
 
@@ -2888,7 +2887,7 @@ func (s *service) RequestIndividualSignatureGerrit(ctx context.Context, input *m
 
 	defaultValues := s.createDefaultIndividualValues(user, preferredEmail, true)
 
-	log.WithFields(f).Debugf("defaultValues: %+v", defaultValues)
+	log.WithFields(f).Debugf("defaultValues: %d", len(defaultValues))
 
 	sigParams := sigs.GetUserSignaturesParams{
 		UserID:   *input.UserID,
@@ -3135,7 +3134,6 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 		companySignature = companySignatures[0]
 		log.WithFields(f).Debugf("found %d corporate signatures - using first one with signatureID: %s", len(companySignatures), companySignature.SignatureID)
 		_, currentTime := utils.CurrentTime()
-		log.WithFields(f).Debugf("companySignature: %+v", companySignature)
 		majorVersion := 2
 		minorVersion := 0
 		var majorVersionErr error
@@ -3224,7 +3222,7 @@ func (s *service) requestCorporateSignature(ctx context.Context, apiURL string, 
 
 	// 7. Populate sign url
 	log.WithFields(f).Debugf("populating sign url...")
-	log.WithFields(f).Debugf("itemSignature: %+v", itemSignature)
+	log.WithFields(f).Debugf("itemSignature: %s", itemSignature.SignatureID)
 	err = s.populateSignURL(ctx, itemSignature, callbackURL, input.AuthorityName, input.AuthorityEmail, input.SendAsEmail, claUser.Username, currentUserEmail, defaultValues, currentUserEmail)
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to populate sign url for company: %s", input.CompanyID)

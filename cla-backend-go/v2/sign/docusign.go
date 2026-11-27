@@ -172,7 +172,7 @@ func (s *service) createEnvelope(ctx context.Context, payload *DocuSignEnvelopeR
 		return "", err
 	}
 
-	log.WithFields(f).Debugf("sign request: %+v", string(requestJSON))
+	log.WithFields(f).Debugf("sign request: %d bytes", len(requestJSON))
 
 	// Get the access token
 	accessToken, err := s.getAccessToken(ctx)

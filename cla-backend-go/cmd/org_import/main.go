@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -152,20 +153,48 @@ func main() {
 
 var usernameHook sync.Once
 
-// noUsernames keeps the usernames that shared clients log as fields out of run.log (lfx-self-serve-ops#1668)
+// noUsernames keeps the usernames and e-mail addresses that shared clients log out of run.log (lfx-self-serve-ops#1668)
 type noUsernames struct{}
 
 // Levels makes the hook see every log line
 func (noUsernames) Levels() []logrus.Level { return logrus.AllLevels }
 
-// Fire drops the fields whose name ends with "username"
+// Fire drops the fields that name a person and takes their values out of the message and the error of the line
 func (noUsernames) Fire(entry *logrus.Entry) error {
-	for key := range entry.Data {
-		if strings.HasSuffix(strings.ToLower(key), "username") {
-			delete(entry.Data, key)
+	var names []string
+	for key, value := range entry.Data {
+		if !namesAPerson(key) {
+			continue
 		}
+		if name, ok := value.(string); ok && name != "" {
+			names = append(names, name)
+		}
+		delete(entry.Data, key)
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	sort.Slice(names, func(i, j int) bool { return len(names[i]) > len(names[j]) })
+	err, failed := entry.Data[logrus.ErrorKey].(error)
+	text := ""
+	if failed {
+		text = err.Error()
+	}
+	for _, name := range names {
+		entry.Message = strings.ReplaceAll(entry.Message, name, removedName)
+		text = strings.ReplaceAll(text, name, removedName)
+	}
+	if failed {
+		entry.Data[logrus.ErrorKey] = text
 	}
 	return nil
+}
+
+const removedName = "[removed]"
+
+func namesAPerson(field string) bool {
+	field = strings.ToLower(field)
+	return strings.Contains(field, "username") || strings.Contains(field, "email") || strings.Contains(field, "lfid")
 }
 
 func run(args []string, stdin io.Reader) int {

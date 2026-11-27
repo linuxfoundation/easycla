@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -225,7 +226,7 @@ func (r *runner) ensureGrant(ctx context.Context, g *Group, gr acs_service.OrgGr
 		objectType, objectID = objectTypeProjectOrganization, p+"|"+g.NewID
 	}
 	if err := r.deps.Orgs.CreateUserRoleScope(ctx, gr.Username, g.NewID, objectType, objectID, gr.RoleID); err != nil {
-		return false, fmt.Errorf("granting %s (grant %s) on %s: %w", gr.RoleName, gr.GrantID, objectID, err)
+		return false, fmt.Errorf("granting %s (grant %s) on %s: %w", gr.RoleName, gr.GrantID, objectID, nameless(err, gr))
 	}
 	have[key] = true
 	return true, nil
@@ -319,7 +320,7 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 	restoreHeld := func(cause error) error {
 		for _, gr := range held {
 			if restoreErr := r.deps.Orgs.CreateUserRoleScope(ctx, gr.Username, g.OldID, objectTypeOrganization, g.OldID, gr.RoleID); restoreErr != nil {
-				cause = fmt.Errorf("%w; restoring %s grant %s on %s: %v", cause, firstNonEmpty(gr.RoleName, gr.RoleID), gr.GrantID, g.OldID, restoreErr)
+				cause = fmt.Errorf("%w; restoring %s grant %s on %s: %v", cause, firstNonEmpty(gr.RoleName, gr.RoleID), gr.GrantID, g.OldID, nameless(restoreErr, gr))
 				continue
 			}
 			g.undrop(gr)
@@ -354,7 +355,7 @@ func (r *runner) deleteOldGrants(ctx context.Context, g *Group) error {
 			case uncopied(g, gr, have):
 				g.drop(gr)
 			}
-			return restoreHeld(fmt.Errorf("deleting %s grant %s: %w", gr.RoleName, gr.GrantID, err))
+			return restoreHeld(fmt.Errorf("deleting %s grant %s: %w", gr.RoleName, gr.GrantID, nameless(err, gr)))
 		}
 		deleted++
 		switch {
@@ -455,14 +456,52 @@ func (r *runner) again(ctx context.Context, g *Group, call func() error) error {
 	return err
 }
 
+const removedName = "[removed]"
+
+var emailAddress = regexp.MustCompile(`[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}`)
+
+// namelessError is an upstream error whose text names no user: the journal and the reports are published
+type namelessError struct {
+	err  error
+	text string
+}
+
+func (e *namelessError) Error() string { return e.text }
+
+func (e *namelessError) Unwrap() error { return e.err }
+
+// nameless takes the grant holder's username and every e-mail address out of the text of an upstream error
+func nameless(err error, gr acs_service.OrgGrant) error {
+	if err == nil {
+		return nil
+	}
+	text := emailAddress.ReplaceAllString(err.Error(), removedName)
+	if gr.Username != "" {
+		text = regexp.MustCompile(`(?i)`+regexp.QuoteMeta(gr.Username)).ReplaceAllString(text, removedName)
+	}
+	if text == err.Error() {
+		return err
+	}
+	return &namelessError{err: err, text: text}
+}
+
+// upstreamText is the text of an error as the platform sent it
+func upstreamText(err error) string {
+	var hidden *namelessError
+	if errors.As(err, &hidden) {
+		return hidden.err.Error()
+	}
+	return err.Error()
+}
+
 // goneUser reports a grant that no organization can take any more: its user is gone, so it is dropped and reported
 func goneUser(err error) bool {
-	return err != nil && strings.Contains(err.Error(), userGone)
+	return err != nil && strings.Contains(upstreamText(err), userGone)
 }
 
 // heldElsewhere tells the ACS refusal of an organization scope grant whose user holds one in another organization
 func heldElsewhere(gr acs_service.OrgGrant, err error) bool {
-	return err != nil && gr.ProjectSFID() == "" && strings.Contains(err.Error(), orgAssociated)
+	return err != nil && gr.ProjectSFID() == "" && strings.Contains(upstreamText(err), orgAssociated)
 }
 
 func (g *Group) dropUncopied(r *runner, gr acs_service.OrgGrant) {

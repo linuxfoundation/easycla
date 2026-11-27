@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/linuxfoundation/easycla/cla-backend-go/projects_cla_groups"
 	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	acs_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/acs-service"
 	organization_service "github.com/linuxfoundation/easycla/cla-backend-go/v2/organization-service"
@@ -499,6 +500,18 @@ func deleteFoundationCLAManager(ctx context.Context, f logrus.Fields, orgSFID, f
 	return nil
 }
 
+// projectMappings returns the project mappings of a CLA Group; a CLA Group without one is an error
+func (s *service) projectMappings(ctx context.Context, claGroupID string) ([]*projects_cla_groups.ProjectClaGroup, error) {
+	mappings, err := s.projectsClaGroupRepo.GetProjectsIdsForClaGroup(ctx, claGroupID)
+	if err != nil {
+		return nil, err
+	}
+	if len(mappings) == 0 {
+		return nil, fmt.Errorf("no project mapping for CLA Group: %s", claGroupID)
+	}
+	return mappings, nil
+}
+
 // helper function that assigns acl permissions(v2 specific)
 func (s *service) updateCLAManagerPermissions(signature Signature, managers []string, action string) error {
 	ctx := utils.NewContext()
@@ -537,7 +550,7 @@ func (s *service) updateCLAManagerPermissions(signature Signature, managers []st
 		return orgErr
 	}
 
-	projectCLAGroups, pcgErr := s.projectsClaGroupRepo.GetProjectsIdsForClaGroup(ctx, signature.SignatureProjectID)
+	projectCLAGroups, pcgErr := s.projectMappings(ctx, signature.SignatureProjectID)
 	if pcgErr != nil {
 		log.WithFields(f).WithError(pcgErr).Warnf("unable to get project mappings for claGroupID: %s ", signature.SignatureProjectID)
 		return pcgErr

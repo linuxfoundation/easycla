@@ -86,7 +86,7 @@ func (s service) updateChangeRequest(ctx context.Context, installationID, reposi
 
 	signed, unsigned := github.GetCommitAuthorsSignedStatuses(ctx, s.userService, s.hasUserSigned, projectID, authors)
 
-	log.WithFields(f).Debugf("commit authors status => signed: %+v and missing: %+v", signed, unsigned)
+	log.WithFields(f).Debugf("commit authors status => signed: %d and missing: %d", len(signed), len(unsigned))
 	if ghOrg != nil {
 		var allowlisted []*github.UserCommitSummary
 		unsigned, allowlisted = github.SkipAllowlistedBots(s.eventsService, ghOrg, gitHubRepoName, projectID, unsigned)
@@ -94,7 +94,7 @@ func (s service) updateChangeRequest(ctx context.Context, installationID, reposi
 			log.WithFields(f).Debugf("adding %d allowlisted actors to signed list", len(allowlisted))
 			signed = append(signed, allowlisted...)
 		}
-		log.WithFields(f).Debugf("commit authors status after allowlisting bots => signed: %+v, missing: %+v, allowlisted: %+v", signed, unsigned, allowlisted)
+		log.WithFields(f).Debugf("commit authors status after allowlisting bots => signed: %d, missing: %d, allowlisted: %d", len(signed), len(unsigned), len(allowlisted))
 	}
 	signed = github.DedupAndSortCommitSummaries(signed)
 	unsigned = github.DedupAndSortCommitSummaries(unsigned)
@@ -135,10 +135,10 @@ func (s service) hasUserSigned(ctx context.Context, user *models.User, projectID
 	}
 	if signature != nil {
 		hasSigned = true
-		log.WithFields(f).Debugf("ICLA signature check passed for user: %+v on project : %s", user, projectID)
+		log.WithFields(f).Debugf("ICLA signature check passed for user: %s on project : %s", user.UserID, projectID)
 		return &hasSigned, &companyAffiliation, nil // ICLA passes, no company affiliation
 	} else {
-		log.WithFields(f).Debugf("ICLA signature check failed for user: %+v on project: %s - ICLA not signed", user, projectID)
+		log.WithFields(f).Debugf("ICLA signature check failed for user: %s on project: %s - ICLA not signed", user.UserID, projectID)
 	}
 
 	// Check for Employee Acknowledgment ECLA

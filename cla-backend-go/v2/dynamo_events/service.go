@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -226,6 +227,7 @@ func (s *service) ProcessEvents(dynamoDBEvents events.DynamoDBEvent) {
 			for _, eventHandlerFunction := range s.functions[key] {
 				go func(f EventHandlerFunc, e events.DynamoDBEventRecord) {
 					defer wg.Done()
+					defer recoverEventHandler(fields, key)
 
 					fnType := runtime.FuncForPC(reflect.ValueOf(f).Pointer()).Name()
 					log.WithFields(fields).
@@ -255,6 +257,13 @@ func (s *service) ProcessEvents(dynamoDBEvents events.DynamoDBEvent) {
 			wg.Wait()
 			log.WithFields(fields).Debugf("%d event handler functions completed", len(s.functions[key]))
 		}
+	}
+}
+
+// recoverEventHandler keeps a panic of one handler from ending the invocation: the other handlers and records go on
+func recoverEventHandler(fields logrus.Fields, key string) {
+	if rec := recover(); rec != nil {
+		log.WithFields(fields).WithField("key", key).Errorf("panic in a stream event handler: %v\n%s", rec, debug.Stack())
 	}
 }
 
