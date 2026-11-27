@@ -4393,7 +4393,7 @@ func (h *Handlers) sendCLAManagerEmailBestEffort(ctx context.Context, action str
 func claManagerAccessBody(action, lfid, projectName, companyName string, managers []map[string]any) string {
 	managerList := make([]string, 0, len(managers))
 	for _, mgr := range managers {
-		managerList = append(managerList, emailField(fmt.Sprintf("%s <%s>", mgr["name"], mgr["email"]), 320))
+		managerList = append(managerList, emailField(fmt.Sprintf("%s", mgr["name"]), 60)+" &lt;"+emailField(fmt.Sprintf("%s", mgr["email"]), 254)+"&gt;")
 	}
 	managerListStr := strings.Join(managerList, "-") + "\n"
 	lfid, projectName, companyName = emailField(lfid, 60), emailField(projectName, 255), emailField(companyName, 255)

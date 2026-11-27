@@ -2535,7 +2535,7 @@ func (s *service) populateSignURL(ctx context.Context,
 			return signErr
 		}
 
-		log.WithFields(f).Debugf("setting signature sign_url as: %s", signURL)
+		log.WithFields(f).Debug("setting signature sign_url")
 		latestSignature.SignatureSignURL = signURL
 	}
 
@@ -2543,7 +2543,7 @@ func (s *service) populateSignURL(ctx context.Context,
 	log.WithFields(f).Debugf("saving signature to database...")
 	latestSignature.SignatureEnvelopeID = envelopeResponse.EnvelopeId
 
-	log.WithFields(f).Debugf("signature: %+v", latestSignature)
+	log.WithFields(f).Debugf("signature: %s, envelope: %s", latestSignature.SignatureID, latestSignature.SignatureEnvelopeID)
 
 	if err != nil {
 		log.WithFields(f).WithError(err).Warnf("unable to save signature to database for user: %s", latestSignature.SignatureID)

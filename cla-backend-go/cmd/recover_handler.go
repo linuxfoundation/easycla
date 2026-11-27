@@ -30,6 +30,9 @@ func recoverHandler(next http.Handler) http.Handler {
 			}
 			log.WithFields(f).Errorf("panic in an API handler: %v\n%s", rec, debug.Stack())
 			w.Header().Set("Content-Type", "application/json")
+			if reqID != "" {
+				w.Header().Set(utils.XREQUESTID, reqID)
+			}
 			w.WriteHeader(http.StatusInternalServerError)
 			if _, err := w.Write([]byte(`{"Code":"500","Message":"internal server error"}`)); err != nil {
 				log.WithFields(f).WithError(err).Warn("unable to write the answer for a panic")

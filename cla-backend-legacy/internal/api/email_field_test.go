@@ -87,4 +87,9 @@ func TestCLAManagerAccessBodyEscapesItsValues(t *testing.T) {
 	if !strings.Contains(claManagerAccessBody("removed", "u", "P", "C", nil), "You have been removed as a CLA Manager from the project: P") {
 		t.Fatal("the removed text must stay as it is")
 	}
+	address := strings.Repeat("a", 209) + "@example.org"
+	long := claManagerAccessBody("added", "u", "P", "C", []map[string]any{{"name": strings.Repeat("n", 100), "email": address}})
+	if !strings.Contains(long, "&lt;"+address+"&gt;") {
+		t.Fatalf("a long name must not cut the manager's address: %s", long)
+	}
 }

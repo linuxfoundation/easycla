@@ -63,5 +63,6 @@ func TestRecoverHandlerClearsTheRequestMetricsOfAPanic(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 
 	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.Equal(t, reqID, rec.Header().Get(utils.XREQUESTID), "the answer carries the request id of the panic log")
 	assert.Nil(t, getRequestMetrics(reqID), "the metrics entry of the request is removed")
 }

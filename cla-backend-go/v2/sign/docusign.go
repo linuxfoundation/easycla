@@ -561,7 +561,7 @@ func (s *service) GetSignURL(email, recipientID, userName, clientUserId, envelop
 		return "", err
 	}
 
-	log.WithFields(f).Debugf("View response: %+v", viewResponse)
+	log.WithFields(f).Debugf("View response: signing URL returned: %t", viewResponse.URL != "")
 
 	return viewResponse.URL, nil
 }
