@@ -124,9 +124,12 @@ func (a *orgLensAccounts) live(ctx context.Context, companySFID string) bool {
 		return answer.live
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, orgLensLiveTimeout)
+	callCtx, cancel := context.WithTimeout(ctx, orgLensLiveTimeout)
 	defer cancel()
-	live, err := a.ask(ctx, companySFID)
+	live, err := a.ask(callCtx, companySFID)
+	if err != nil && ctx.Err() != nil {
+		return false
+	}
 	if err != nil && !errors.Is(err, errOrgLensNoMemberService) {
 		logging.Warnf("unable to check that the Account %s is live, this e-mail keeps the Corporate Console link: %v", companySFID, err)
 	}
@@ -145,9 +148,45 @@ func (a *orgLensAccounts) live(ctx context.Context, companySFID string) bool {
 
 // lensURL is orgLensURL for a company whose Salesforce Account is live
 func (a *orgLensAccounts) lensURL(ctx context.Context, base, companySFID, claGroupID string) string {
+	companySFID = canonicalAccountID(strings.TrimSpace(companySFID))
 	lensURL := orgLensURL(base, companySFID, claGroupID)
-	if lensURL == "" || !a.live(ctx, strings.TrimSpace(companySFID)) {
+	if lensURL == "" || !a.live(ctx, companySFID) {
 		return ""
 	}
 	return lensURL
+}
+
+const accountIDSuffixChars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ012345"
+
+// canonicalAccountID restores the letter case that the suffix of an 18-character Salesforce id encodes
+func canonicalAccountID(id string) string {
+	if len(id) != 18 {
+		return id
+	}
+	b := []byte(id)
+	for i, c := range b {
+		switch {
+		case c >= 'a' && c <= 'z':
+			b[i] = c - ('a' - 'A')
+		case (c < 'A' || c > 'Z') && (c < '0' || c > '9'):
+			return id
+		}
+	}
+	for g := 0; g < 3; g++ {
+		bits := strings.IndexByte(accountIDSuffixChars, b[15+g])
+		if bits < 0 {
+			return id
+		}
+		for j := 0; j < 5; j++ {
+			c := &b[g*5+j]
+			letter := *c >= 'A' && *c <= 'Z'
+			switch {
+			case bits&(1<<j) == 0 && letter:
+				*c += 'a' - 'A'
+			case bits&(1<<j) != 0 && !letter:
+				return id
+			}
+		}
+	}
+	return string(b)
 }

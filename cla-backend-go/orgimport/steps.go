@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,10 +34,24 @@ const (
 	stepRetryDelay = 10 * time.Second
 )
 
+// acsListFailed starts the error of a failed ACS grants listing (acs_service.ListOrgGrants), which is no *runtime.APIError
+const acsListFailed = "acs rolescopes/organization returned "
+
 // gatewayError tells a 502, 503 or 504 answer of a platform service: the step is tried again before the group fails
 func gatewayError(err error) bool {
+	if err == nil {
+		return false
+	}
 	var apiErr *runtime.APIError
-	return errors.As(err, &apiErr) && (apiErr.Code == http.StatusBadGateway || apiErr.Code == http.StatusServiceUnavailable || apiErr.Code == http.StatusGatewayTimeout)
+	if errors.As(err, &apiErr) {
+		return apiErr.Code == http.StatusBadGateway || apiErr.Code == http.StatusServiceUnavailable || apiErr.Code == http.StatusGatewayTimeout
+	}
+	for _, code := range []int{http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout} {
+		if strings.Contains(err.Error(), acsListFailed+strconv.Itoa(code)+":") {
+			return true
+		}
+	}
+	return false
 }
 
 // easyCLARoles are the only roles copied to an Account that existed before the rewrite (lfx-self-serve #5081).
@@ -385,7 +400,11 @@ func (r *runner) retryHeld(ctx context.Context) (failed int) {
 		if g.Err != nil || len(g.heldBack) == 0 {
 			continue
 		}
-		newGrants, err := r.deps.ACS.ListOrgGrants(ctx, g.NewID)
+		var newGrants []acs_service.OrgGrant
+		err := r.again(ctx, g, func() (err error) {
+			newGrants, err = r.deps.ACS.ListOrgGrants(ctx, g.NewID)
+			return err
+		})
 		if err != nil {
 			fmt.Fprintf(r.deps.Out, "WARNING: %d organization grant(s) of %s not tried again on %s: %v\n", len(g.heldBack), g.OldID, g.NewID, err)
 			continue
@@ -396,7 +415,11 @@ func (r *runner) retryHeld(ctx context.Context) (failed int) {
 		}
 		moved := 0
 		for _, gr := range g.heldBack {
-			if _, ensureErr := r.ensureGrant(ctx, g, gr, have); ensureErr != nil {
+			ensureErr := r.again(ctx, g, func() error {
+				_, err := r.ensureGrant(ctx, g, gr, have)
+				return err
+			})
+			if ensureErr != nil {
 				if !heldElsewhere(gr, ensureErr) {
 					fmt.Fprintf(r.deps.Out, "WARNING: %s grant %s of %s not copied to %s: %v\n", firstNonEmpty(gr.RoleName, gr.RoleID), gr.GrantID, g.OldID, g.NewID, ensureErr)
 				}
@@ -417,6 +440,19 @@ func (r *runner) retryHeld(ctx context.Context) (failed int) {
 		}
 	}
 	return failed
+}
+
+// again repeats a call of the end-of-run pass after a gateway error, as rewrite does for a step
+func (r *runner) again(ctx context.Context, g *Group, call func() error) error {
+	err := call()
+	for try := 1; try <= stepRetries && gatewayError(err); try++ {
+		fmt.Fprintf(r.deps.Out, "%s %s: %v; trying again (%d of %d)\n", StepCleanup, g.Key, err, try, stepRetries)
+		if sleepErr := r.deps.Sleep(ctx, stepRetryDelay); sleepErr != nil {
+			break
+		}
+		err = call()
+	}
+	return err
 }
 
 // goneUser reports a grant that no organization can take any more: its user is gone, so it is dropped and reported
