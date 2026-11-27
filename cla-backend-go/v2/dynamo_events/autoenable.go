@@ -220,6 +220,11 @@ func (a *autoEnableServiceProvider) NotifyCLAManagerForRepos(claGroupID string, 
 		return nil
 	}
 
+	if a.claService == nil {
+		log.Warnf("NotifyCLAManagerForRepos has no CLA service, the cla managers of the claGroup : %s are not notified", claGroupID)
+		return nil
+	}
+
 	claManagers, err := a.claService.GetCLAManagers(context.Background(), claGroupID)
 	if err != nil {
 		log.Warnf("NotifyCLAManagerForRepos fetching cla managers failed : %v", err)

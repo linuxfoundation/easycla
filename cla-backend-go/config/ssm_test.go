@@ -526,6 +526,48 @@ func TestLoadConfigReadsParametersInBatches(t *testing.T) {
 	}
 }
 
+// lfx-self-serve-ops#1668: three debug lines printed the first and the last four characters of the GitLab values
+func TestLoadConfigLogsNoPartOfTheGitLabValues(t *testing.T) {
+	oldConfig := easyCLAConfig
+	t.Cleanup(func() { easyCLAConfig = oldConfig })
+	store := rolloutParameterStore()
+	values := map[string]string{
+		"cla-gitlab-app-id-test":          "AAAAgitlab-app-idZZZZ",
+		"cla-gitlab-app-secret-test":      "BBBBgitlab-app-secretYYYY",
+		"cla-gitlab-app-private-key-test": "CCCCgitlab-app-private-keyXXXX",
+	}
+	for name, value := range values {
+		store.values[name] = value
+	}
+	logger := log.GetLogger()
+	oldLevel := logger.GetLevel()
+	oldHooks := logger.ReplaceHooks(make(logrus.LevelHooks))
+	logger.SetLevel(logrus.DebugLevel)
+	t.Cleanup(func() {
+		logger.ReplaceHooks(oldHooks)
+		logger.SetLevel(oldLevel)
+	})
+	hook := logtest.NewLocal(logger)
+
+	cfg, err := LoadConfig("", store.session(t), "test")
+	require.NoError(t, err)
+	assert.Equal(t, values["cla-gitlab-app-id-test"], cfg.Gitlab.AppClientID)
+	assert.Equal(t, values["cla-gitlab-app-secret-test"], cfg.Gitlab.AppClientSecret)
+	assert.Equal(t, values["cla-gitlab-app-private-key-test"], cfg.Gitlab.AppPrivateKey)
+
+	gitLabLines := 0
+	for _, entry := range hook.AllEntries() {
+		if strings.Contains(entry.Message, "CLA GitLab") {
+			gitLabLines++
+		}
+		for _, value := range values {
+			assert.NotContains(t, entry.Message, value[:4])
+			assert.NotContains(t, entry.Message, value[len(value)-4:])
+		}
+	}
+	assert.Equal(t, 3, gitLabLines, "the lines still say that the three values were read")
+}
+
 func TestLoadConfigReadsOneByOneWhenBatchedReadsAreDenied(t *testing.T) {
 	oldConfig := easyCLAConfig
 	t.Cleanup(func() { easyCLAConfig = oldConfig })
