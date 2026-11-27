@@ -20,9 +20,11 @@ func recoverHandler(next http.Handler) http.Handler {
 			if rec == nil {
 				return
 			}
+			reqID := r.Header.Get(utils.XREQUESTID)
+			clearRequestMetrics(reqID)
 			f := logrus.Fields{
 				"functionName":   "cmd.recoverHandler",
-				utils.XREQUESTID: r.Header.Get(utils.XREQUESTID),
+				utils.XREQUESTID: reqID,
 				"method":         r.Method,
 				"path":           r.URL.Path,
 			}

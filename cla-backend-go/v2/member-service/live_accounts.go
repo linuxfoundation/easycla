@@ -52,7 +52,13 @@ func (l *LiveAccounts) IsLive(ctx context.Context, sfid string) bool {
 	if answer, known := l.cached(uid); known {
 		return answer
 	}
-	shared := l.lookups.DoChan(uid, func() (interface{}, error) {
+	shared := l.lookups.DoChan(uid, func() (result interface{}, failure error) {
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.WithField("accountID", uid).Errorf("panic while checking that the Account is live, it gets no Organization lens address for now: %v", rec)
+				result, failure = false, nil
+			}
+		}()
 		if answer, known := l.cached(uid); known {
 			return answer, nil
 		}

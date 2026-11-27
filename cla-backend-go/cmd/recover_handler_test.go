@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/linuxfoundation/easycla/cla-backend-go/utils"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -48,4 +49,19 @@ func TestRecoverHandlerLeavesAnAnswerAlone(t *testing.T) {
 	assert.Equal(t, http.StatusTeapot, rec.Code)
 	assert.Equal(t, "text/plain", rec.Header().Get("Content-Type"))
 	assert.Equal(t, "answer", rec.Body.String())
+}
+
+func TestRecoverHandlerClearsTheRequestMetricsOfAPanic(t *testing.T) {
+	const reqID = "recover-handler-test-request"
+	handler := recoverHandler(setRequestIDHandler(responseLoggingMiddleware(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		panic("boom")
+	}))))
+	req := httptest.NewRequest(http.MethodGet, "/v4/anything", nil)
+	req.Header.Set(utils.XREQUESTID, reqID)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.Nil(t, getRequestMetrics(reqID), "the metrics entry of the request is removed")
 }

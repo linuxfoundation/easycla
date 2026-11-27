@@ -129,6 +129,14 @@ func TestLiveAccountsShareOneLookupThatNoCallerCutsShort(t *testing.T) {
 	assert.Equal(t, 1, lookups, "the callers that overlap share one request")
 }
 
+func TestLiveAccountsSurviveAPanicOfTheLookup(t *testing.T) {
+	accounts := NewLiveAccounts(&Client{cfg: Config{BaseURL: "http://member.invalid", OAuthTokenURL: "http://member.invalid/oauth/token"}})
+
+	assert.False(t, accounts.IsLive(context.Background(), liveTestSFID), "a lookup that panics (no HTTP client) is \"not live\"")
+	_, kept := accounts.cached(liveTestSFID)
+	assert.False(t, kept, "and nothing is kept")
+}
+
 func waitFor(t *testing.T, cond func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)

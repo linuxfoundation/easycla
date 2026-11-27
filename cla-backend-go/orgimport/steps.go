@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,10 +34,24 @@ const (
 	stepRetryDelay = 10 * time.Second
 )
 
+// acsListFailed starts the error of a failed ACS grants listing (acs_service.ListOrgGrants), which is no *runtime.APIError
+const acsListFailed = "acs rolescopes/organization returned "
+
 // gatewayError tells a 502, 503 or 504 answer of a platform service: the step is tried again before the group fails
 func gatewayError(err error) bool {
+	if err == nil {
+		return false
+	}
 	var apiErr *runtime.APIError
-	return errors.As(err, &apiErr) && (apiErr.Code == http.StatusBadGateway || apiErr.Code == http.StatusServiceUnavailable || apiErr.Code == http.StatusGatewayTimeout)
+	if errors.As(err, &apiErr) {
+		return apiErr.Code == http.StatusBadGateway || apiErr.Code == http.StatusServiceUnavailable || apiErr.Code == http.StatusGatewayTimeout
+	}
+	for _, code := range []int{http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout} {
+		if strings.Contains(err.Error(), acsListFailed+strconv.Itoa(code)+":") {
+			return true
+		}
+	}
+	return false
 }
 
 // easyCLARoles are the only roles copied to an Account that existed before the rewrite (lfx-self-serve #5081).
